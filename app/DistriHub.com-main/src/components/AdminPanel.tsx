@@ -1,25 +1,26 @@
 import { useEffect, useState } from 'react';
 import {
-  ArrowLeft, Users, Truck, MapPin, Plus, Check, X,
+  ArrowLeft, Users, Check, X, BarChart3,
   Receipt, ShieldCheck, Lock, Eye, EyeOff,
 } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { useSuperAdminAuth } from '../hooks/useSuperAdminAuth';
-import type { AdminCompany, AdminLojista, DeliveryRoute, DeliveryRate, PartnerInvoice } from '../types';
+import type { AdminCompany, AdminLojista, PartnerInvoice } from '../types';
 import { money } from '../utils';
+import { AdminFinancialModule } from './AdminFinancialModule';
+import type { AdminFinancialMonth } from '../types';
 
 type AdminPanelProps = {
   onBack: () => void;
   accessPassword: string;
 };
 
-type AdminTab = 'lojistas' | 'rotas' | 'faturas' | 'seguranca';
+type AdminTab = 'lojistas' | 'financeiro' | 'faturas' | 'seguranca';
 
 export function AdminPanel({ onBack, accessPassword }: AdminPanelProps) {
   const [tab, setTab] = useState<AdminTab>('lojistas');
   const [lojistas, setLojistas] = useState<AdminCompany[]>([]);
-  const [routes, setRoutes] = useState<DeliveryRoute[]>([]);
-  const [rates, setRates] = useState<DeliveryRate[]>([]);
+  const [financialData, setFinancialData] = useState<AdminFinancialMonth[]>([]);
   const [invoices, setInvoices] = useState<PartnerInvoice[]>([]);
   const [loading, setLoading] = useState(true);
   const superAdminAuth = useSuperAdminAuth();
@@ -27,15 +28,13 @@ export function AdminPanel({ onBack, accessPassword }: AdminPanelProps) {
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) { setLoading(false); return; }
     (async () => {
-      const [loj, rt, rt2, inv] = await Promise.all([
+      const [loj, financial, inv] = await Promise.all([
         supabase.rpc('get_super_admin_company_overview', { input_password: accessPassword }),
-        supabase.from('delivery_routes').select('*').order('created_at'),
-        supabase.from('delivery_rates').select('*').order('created_at', { ascending: false }),
+        supabase.rpc('get_super_admin_financial_overview', { input_password: accessPassword }),
         supabase.from('partner_invoices').select('*').order('created_at', { ascending: false }),
       ]);
       setLojistas((loj.data as AdminCompany[]) ?? []);
-      setRoutes((rt.data as DeliveryRoute[]) ?? []);
-      setRates((rt2.data as DeliveryRate[]) ?? []);
+      setFinancialData((financial.data as AdminFinancialMonth[]) ?? []);
       setInvoices((inv.data as PartnerInvoice[]) ?? []);
       setLoading(false);
     })();
@@ -54,27 +53,9 @@ export function AdminPanel({ onBack, accessPassword }: AdminPanelProps) {
   }
 
 
-  async function addRate(neighborhood: string, rate: number, routeId: string) {
-    const newRate: DeliveryRate = {
-      id: crypto.randomUUID(), neighborhood, rate, route_id: routeId || null,
-      created_at: new Date().toISOString(),
-    };
-    setRates((prev) => [newRate, ...prev]);
-    if (isSupabaseConfigured && supabase) {
-      await supabase.from('delivery_rates').insert(newRate);
-    }
-  }
-
-  async function deleteRate(id: string) {
-    setRates((prev) => prev.filter((r) => r.id !== id));
-    if (isSupabaseConfigured && supabase) {
-      await supabase.from('delivery_rates').delete().eq('id', id);
-    }
-  }
-
   const tabs: { id: AdminTab; label: string; icon: typeof Users }[] = [
     { id: 'lojistas', label: 'Gestão de Clientes', icon: Users },
-    { id: 'rotas', label: 'Rotas de Entrega', icon: Truck },
+    { id: 'financeiro', label: 'Financeiro SaaS', icon: BarChart3 },
     { id: 'faturas', label: 'Faturas SaaS', icon: Receipt },
     { id: 'seguranca', label: 'Segurança', icon: ShieldCheck },
   ];
@@ -88,7 +69,7 @@ export function AdminPanel({ onBack, accessPassword }: AdminPanelProps) {
           </button>
           <div className="partner-title">
             <h2>Painel Super Admin — Distribuidora</h2>
-            <p>Controle geral de lojistas, crédito B2B, faturamento e rotas</p>
+            <p>Gestão da plataforma, clientes, assinaturas e recebimentos</p>
           </div>
           {loading && <span className="partner-loading">Carregando...</span>}
         </div>
@@ -152,50 +133,8 @@ export function AdminPanel({ onBack, accessPassword }: AdminPanelProps) {
             </div>
           )}
 
-          {tab === 'rotas' && (
-            <div className="panel-module">
-              <div className="module-header">
-                <span className="module-icon"><Truck size={20} /></span>
-                <div>
-                  <h3>Gestão de Rotas de Entrega Local</h3>
-                  <p>Taxas de motoboy por bairro/região e horários de corte</p>
-                </div>
-              </div>
-
-              <div className="route-cards">
-                {routes.map((r) => (
-                  <div key={r.id} className="route-card">
-                    <MapPin size={18} />
-                    <div>
-                      <strong>{r.name}</strong>
-                      <small>Horário de corte: {r.cutoff_time ?? 'Sem corte'}</small>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <RateForm routes={routes} onAdd={addRate} />
-
-              <div className="stock-table-wrap">
-                <table className="rma-table">
-                  <thead><tr><th>Bairro/Região</th><th>Taxa</th><th>Rota</th><th></th></tr></thead>
-                  <tbody>
-                    {rates.length === 0 ? (
-                      <tr><td colSpan={4} className="empty-row">Nenhuma taxa cadastrada.</td></tr>
-                    ) : (
-                      rates.map((r) => (
-                        <tr key={r.id}>
-                          <td><strong>{r.neighborhood}</strong></td>
-                          <td>{money.format(r.rate)}</td>
-                          <td>{routes.find((rt) => rt.id === r.route_id)?.name ?? '—'}</td>
-                          <td><button className="rma-advance-btn danger" onClick={() => deleteRate(r.id)}><X size={14} /></button></td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+          {tab === 'financeiro' && (
+            <AdminFinancialModule data={financialData} />
           )}
 
           {tab === 'faturas' && (
@@ -340,44 +279,5 @@ function ChangePasswordSection({ auth }: { auth: ReturnType<typeof useSuperAdmin
         </button>
       </form>
     </div>
-  );
-}
-
-function RateForm({ routes, onAdd }: {
-  routes: DeliveryRoute[];
-  onAdd: (neighborhood: string, rate: number, routeId: string) => void;
-}) {
-  const [neighborhood, setNeighborhood] = useState('');
-  const [rate, setRate] = useState('');
-  const [routeId, setRouteId] = useState('');
-
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!neighborhood.trim() || !rate) return;
-    onAdd(neighborhood, Number(rate), routeId);
-    setNeighborhood(''); setRate(''); setRouteId('');
-  }
-
-  return (
-    <form className="rma-form" onSubmit={handleSubmit}>
-      <div className="form-row">
-        <label>
-          Bairro/Região
-          <input value={neighborhood} onChange={(e) => setNeighborhood(e.target.value)} placeholder="Ex: Centro" required />
-        </label>
-        <label>
-          Taxa (R$)
-          <input type="number" step="0.01" value={rate} onChange={(e) => setRate(e.target.value)} placeholder="0,00" required />
-        </label>
-        <label>
-          Rota
-          <select value={routeId} onChange={(e) => setRouteId(e.target.value)}>
-            <option value="">Selecione...</option>
-            {routes.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
-          </select>
-        </label>
-      </div>
-      <button type="submit" className="module-submit-btn"><Plus size={16} /> Adicionar taxa</button>
-    </form>
   );
 }

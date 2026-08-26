@@ -1,4 +1,4 @@
-import { Component, useMemo, useState, type ReactNode } from 'react';
+import { Component, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   Shield, BarChart3, Users, ScrollText, TrendingUp, TrendingDown,
   DollarSign, Wallet, Percent, Eye, EyeOff, Save, Check, AlertCircle,
@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { money } from '../../utils';
 import { ReportsModule } from './ReportsModule';
+import { supabase } from '../../lib/supabase';
 import type {
   PartnerSale, PartnerProduct, PartnerSalesperson, SalespersonRole,
   PartnerBranch, PartnerCustomer, PartnerSupplier, PartnerCategory,
@@ -47,6 +48,7 @@ class AdminErrorBoundary extends Component<
 }
 
 type Props = {
+  userId?: string;
   sales: PartnerSale[];
   products: PartnerProduct[];
   salespeople: PartnerSalesperson[];
@@ -147,12 +149,13 @@ const sidebarSections: {
 ];
 
 export function AdminModule({
-  sales = [], products = [], salespeople = [], branches = [], customers = [], suppliers = [], categories = [],
+  userId, sales = [], products = [], salespeople = [], branches = [], customers = [], suppliers = [], categories = [],
   selectedBranchId = '', onSelectBranch, onNavigate,
 }: Props) {
   return (
     <AdminErrorBoundary>
       <AdminModuleInner
+        userId={userId}
         sales={sales}
         products={products}
         salespeople={salespeople}
@@ -169,7 +172,7 @@ export function AdminModule({
 }
 
 function AdminModuleInner({
-  sales, products, salespeople, branches = [], customers = [], suppliers = [], categories = [],
+  userId, sales, products, salespeople, branches = [], customers = [], suppliers = [], categories = [],
   selectedBranchId = '', onSelectBranch, onNavigate,
 }: Props) {
   const [expandedSection, setExpandedSection] = useState<AdminSection>('dashboard');
@@ -280,7 +283,7 @@ function AdminModuleInner({
               categories={categories}
             />
           )}
-          {activeAdminTab === 'permissoes' && <PermissionsControl salespeople={salespeople} />}
+          {activeAdminTab === 'permissoes' && <PermissionsControl userId={userId} salespeople={salespeople} />}
           {activeAdminTab === 'auditoria' && <AuditTrail sales={sales} salespeople={salespeople} />}
           {activeAdminTab === 'dispositivos' && <DevicesTerminals />}
           {activeAdminTab === 'senha-liberacao' && <SaleReleasePassword />}
@@ -1038,7 +1041,7 @@ function PaymentDonut({ data, colors }: { data: { method: string; amount: number
 
 /* ============ Permissions Control ============ */
 
-function PermissionsControl({ salespeople }: { salespeople: PartnerSalesperson[] }) {
+function PermissionsControl({ userId, salespeople }: { userId?: string; salespeople: PartnerSalesperson[] }) {
   const [overrides, setOverrides] = useState<Record<string, PermissionOverride>>({});
   const [savedId, setSavedId] = useState<string | null>(null);
 
@@ -1046,6 +1049,14 @@ function PermissionsControl({ salespeople }: { salespeople: PartnerSalesperson[]
     () => salespeople.filter((sp) => sp.role !== 'administrador'),
     [salespeople],
   );
+
+  useEffect(() => {
+    if (!supabase || !userId) return;
+    supabase.from('partner_permission_overrides').select('*').eq('user_id', userId).then(({ data }) => {
+      const loaded = (data as PermissionOverride[]) ?? [];
+      setOverrides(Object.fromEntries(loaded.map((item) => [item.salesperson_id, item])));
+    });
+  }, [userId]);
 
   function getOverride(sp: PartnerSalesperson): PermissionOverride {
     return overrides[sp.id] ?? {
@@ -1066,7 +1077,11 @@ function PermissionsControl({ salespeople }: { salespeople: PartnerSalesperson[]
     }));
   }
 
-  function handleSave(spId: string) {
+  async function handleSave(spId: string) {
+    const override = getOverride(salespeople.find((sp) => sp.id === spId)!);
+    if (supabase && userId) {
+      await supabase.from('partner_permission_overrides').upsert({ ...override, user_id: userId }, { onConflict: 'user_id,salesperson_id' });
+    }
     setSavedId(spId);
     setTimeout(() => setSavedId(null), 2000);
   }

@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import type { PartnerProduct, PartnerSale, PartnerCustomer, PartnerProfile, SalespersonRole } from '../../types';
 import { money } from '../../utils';
+import { supabase } from '../../lib/supabase';
 
 type Props = {
   products: PartnerProduct[];
@@ -75,6 +76,11 @@ export function FiscalModule({ products, sales, customers, profile, currentRole 
   const [emitNumero, setEmitNumero] = useState('');
   const [emitCscId, setEmitCscId] = useState('');
   const [emitCscNumber, setEmitCscNumber] = useState('');
+  const [inutilSerie, setInutilSerie] = useState('001');
+  const [inutilInicio, setInutilInicio] = useState('');
+  const [inutilFim, setInutilFim] = useState('');
+  const [inutilJustificativa, setInutilJustificativa] = useState('');
+  const [inutilStatus, setInutilStatus] = useState<string | null>(null);
 
   // Dispatch methods — multiple selection, default to printer
   const [dispatchMethods, setDispatchMethods] = useState<Set<DispatchMethod>>(new Set(['printer']));
@@ -181,11 +187,31 @@ export function FiscalModule({ products, sales, customers, profile, currentRole 
     setShowEmitModal(true);
   }
 
-  function handleEmit() {
+  async function handleEmit() {
     if (!selectedSale || !canEmit) return;
+    if (!profile?.id || !supabase) return;
+    const { error } = await supabase.from('fiscal_documents').insert({
+      user_id: profile.id, order_id: null, document_type: emitType,
+      status: 'pending', series: emitSerie, number: emitNumero || null,
+      provider_response: { sale_id: selectedSale.id, items: fiscalItems, totals, finalidade: emitFinalidade, presenca: emitPresenca, tipo_cliente: emitTipoCliente, observations: emitObservations },
+    });
+    if (error) return;
     setEmitResult({ type: emitType, success: true });
     setShowEmitModal(false);
     setTimeout(() => setEmitResult(null), 3500);
+  }
+
+  async function handleInutilization() {
+    if (!profile?.id || !supabase || !inutilInicio || !inutilFim || inutilJustificativa.trim().length < 15) {
+      setInutilStatus('Informe a série, a faixa numérica e uma justificativa com pelo menos 15 caracteres.');
+      return;
+    }
+    const { error } = await supabase.from('fiscal_inutilizations').insert({
+      user_id: profile.id, document_type: emitType, series: inutilSerie,
+      number_start: Number(inutilInicio), number_end: Number(inutilFim), justification: inutilJustificativa.trim(), status: 'pending',
+    });
+    setInutilStatus(error ? error.message : 'Solicitação registrada e aguardando envio à API fiscal.');
+    if (!error) { setInutilInicio(''); setInutilFim(''); setInutilJustificativa(''); }
   }
 
   const dispatchOptions: { id: DispatchMethod; label: string; shortcut: string; icon: typeof Printer }[] = [
@@ -459,9 +485,10 @@ export function FiscalModule({ products, sales, customers, profile, currentRole 
 
           {emitResult && (
             <div className="sent-message">
-              <Check size={15} /> {emitResult.type === 'nfce' ? 'NFC-e' : 'NF-e'} emitida com sucesso! Protocolo: {Date.now().toString(36).toUpperCase()}
+              <Check size={15} /> Solicitação de {emitResult.type === 'nfce' ? 'NFC-e' : 'NF-e'} registrada. A autorização dependerá da API fiscal.
             </div>
           )}
+
         </>
       )}
 
@@ -471,6 +498,21 @@ export function FiscalModule({ products, sales, customers, profile, currentRole 
           <p>Selecione uma venda concluída para emitir a nota fiscal.</p>
         </div>
       )}
+
+      <div className="section-divider">
+        <span className="section-divider-label"><FileText size={14} /> Inutilização de Numeração</span>
+      </div>
+      <div className="module-card fiscal-inutilization-card">
+        <p className="fiscal-help-text">Registre números não utilizados para envio posterior à SEFAZ pela API fiscal.</p>
+        <div className="form-row">
+          <label>Série<input value={inutilSerie} onChange={(e) => setInutilSerie(e.target.value)} placeholder="001" /></label>
+          <label>Número inicial<input type="number" min="1" value={inutilInicio} onChange={(e) => setInutilInicio(e.target.value)} /></label>
+          <label>Número final<input type="number" min="1" value={inutilFim} onChange={(e) => setInutilFim(e.target.value)} /></label>
+        </div>
+        <label>Justificativa<textarea value={inutilJustificativa} onChange={(e) => setInutilJustificativa(e.target.value)} minLength={15} rows={2} placeholder="Informe o motivo da inutilização..." /></label>
+        {inutilStatus && <p className="fiscal-help-text">{inutilStatus}</p>}
+        {canEmit && <button className="module-action-btn" onClick={handleInutilization}><Save size={16} /> Registrar inutilização</button>}
+      </div>
 
       {/* ===== Emit Modal ===== */}
       {showEmitModal && selectedSale && (

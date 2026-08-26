@@ -263,6 +263,17 @@ export type AdminCompany = AdminLojista & {
   last_order_at: string | null;
 };
 
+export type AdminFinancialMonth = {
+  month_label: string;
+  month_start: string;
+  revenue: number;
+  open_amount: number;
+  paid_count: number;
+  open_count: number;
+  active_clients: number;
+  average_ticket: number;
+};
+
 export type B2BOrder = {
   id: string;
   user_id: string | null;

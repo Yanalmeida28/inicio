@@ -224,6 +224,7 @@ export function PartnerPanel({ onBack, user, segment, initialTab, onConsumeIniti
             )}
             {activeTab === 'administrativo' && (
               <AdminModule
+                userId={user?.id}
                 sales={partner.sales}
                 products={partner.products}
                 salespeople={partner.salespeople}
