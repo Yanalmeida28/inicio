@@ -1,0 +1,24 @@
+{
+  "name": "DistriHub — Catálogo B2B & ERP",
+  "short_name": "DistriHub",
+  "description": "Plataforma de Gestão ERP, Vendas e Distribuição B2B Multissegmento",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#091724",
+  "theme_color": "#091724",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='192' height='192' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='32' fill='%23091724'/%3E%3Ctext x='96' y='125' font-family='Arial' font-size='80' font-weight='bold' fill='%233b9bed' text-anchor='middle'%3EDH%3C/text%3E%3C/svg%3E",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='512' height='512' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='80' fill='%23091724'/%3E%3Ctext x='256' y='330' font-family='Arial' font-size='200' font-weight='bold' fill='%233b9bed' text-anchor='middle'%3EDH%3C/text%3E%3C/svg%3E",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
