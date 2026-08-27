@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import type { CartItem } from '../types';
 import { money, formatWhatsAppMessage, openWhatsApp, generateOrderId, PIX_COPY_PASTE, copyToClipboard } from '../utils';
-import { paymentMethods, deliveryMethods } from '../data';
+import { paymentMethods, deliveryMethods, WHATSAPP_NUMBER } from '../data';
 
 type CartDrawerProps = {
   open: boolean;
@@ -14,6 +14,8 @@ type CartDrawerProps = {
   cartTotal: number;
   businessName: string;
   city: string;
+  storeWhatsapp?: string | null;
+  customerWhatsapp?: string | null;
   onClose: () => void;
   onIncrement: (id: number) => void;
   onDecrement: (id: number) => void;
@@ -27,7 +29,7 @@ type CartDrawerProps = {
 };
 
 export function CartDrawer({
-  open, cart, cartCount, cartTotal, businessName, city,
+  open, cart, cartCount, cartTotal, businessName, city, storeWhatsapp, customerWhatsapp,
   onClose, onIncrement, onDecrement, onRemove,
   onBusinessNameChange, onCityChange, onSendOrder, onExplore,
   isAuthenticated, onLoginRequired,
@@ -44,8 +46,18 @@ export function CartDrawer({
   const [otpVerified, setOtpVerified] = useState(false);
   const [confirmedOrderId, setConfirmedOrderId] = useState('');
   const [pixCopied, setPixCopied] = useState(false);
+  const [whatsappTarget, setWhatsappTarget] = useState<'store' | 'customer' | 'both'>(() => {
+    if (customerWhatsapp && storeWhatsapp) return 'store';
+    if (customerWhatsapp) return 'customer';
+    return 'store';
+  });
 
   const needsOtp = (paymentMethod === 'faturado' || paymentMethod === 'rma') && !otpVerified;
+  const whatsappOptions = [
+    { value: 'store' as const, label: 'Loja', enabled: Boolean(storeWhatsapp || WHATSAPP_NUMBER) },
+    { value: 'customer' as const, label: 'Cliente', enabled: Boolean(customerWhatsapp) },
+    { value: 'both' as const, label: 'Loja + cliente', enabled: Boolean(storeWhatsapp || WHATSAPP_NUMBER) && Boolean(customerWhatsapp) },
+  ].filter((option) => option.enabled);
 
   useEffect(() => {
     if (resendTimer > 0) {
@@ -93,13 +105,32 @@ export function CartDrawer({
     submitOrder();
   }
 
+  function openSelectedWhatsApp(message: string) {
+    const entries = (() => {
+      switch (whatsappTarget) {
+        case 'customer':
+          return customerWhatsapp ? [customerWhatsapp] : [storeWhatsapp ?? WHATSAPP_NUMBER];
+        case 'both':
+          return [storeWhatsapp ?? WHATSAPP_NUMBER, customerWhatsapp].filter(Boolean) as string[];
+        case 'store':
+        default:
+          return [storeWhatsapp ?? WHATSAPP_NUMBER];
+      }
+    })();
+
+    entries.forEach((phone) => {
+      if (!phone) return;
+      openWhatsApp(message, phone);
+    });
+  }
+
   function submitOrder() {
     const orderId = generateOrderId();
     setConfirmedOrderId(orderId);
     onSendOrder(paymentMethod, deliveryMethod);
     if (paymentMethod === 'pix') {
       const msg = formatWhatsAppMessage(cart, businessName, city, grandTotal, orderId, paymentMethod, deliveryMethod);
-      openWhatsApp(msg);
+      openSelectedWhatsApp(msg);
     }
     setStep('confirmation');
   }
@@ -112,7 +143,7 @@ export function CartDrawer({
     const orderId = generateOrderId();
     setConfirmedOrderId(orderId);
     const msg = formatWhatsAppMessage(cart, businessName, city, cartTotal, orderId, paymentMethod, deliveryMethod);
-    openWhatsApp(msg);
+    openSelectedWhatsApp(msg);
     onSendOrder(paymentMethod, deliveryMethod);
     setStep('confirmation');
   }
@@ -285,6 +316,24 @@ export function CartDrawer({
                 })}
               </div>
             </div>
+
+            {whatsappOptions.length > 0 && (
+              <div className="checkout-section">
+                <h4>Destino do WhatsApp</h4>
+                <div className="delivery-options" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))' }}>
+                  {whatsappOptions.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      className={`delivery-option ${whatsappTarget === option.value ? 'selected' : ''}`}
+                      onClick={() => setWhatsappTarget(option.value)}
+                    >
+                      <MessageCircle size={18} /> {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {paymentMethod === 'pix' && (
               <div className="pix-checkout">

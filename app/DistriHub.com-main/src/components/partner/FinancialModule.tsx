@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Wallet, CreditCard, Receipt, Check, QrCode, Copy } from 'lucide-react';
 import type { PartnerInvoice } from '../../types';
 import { money } from '../../utils';
@@ -15,10 +15,24 @@ export function FinancialModule({ invoices, walletBalance, creditLimit, creditUs
   const [payingId, setPayingId] = useState<string | null>(null);
   const [paid, setPaid] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [filter, setFilter] = useState<'all' | 'aberta' | 'paga'>('all');
 
   const openInvoices = invoices.filter((i) => i.status === 'aberta');
+  const paidInvoices = invoices.filter((i) => i.status === 'paga');
   const totalOpen = openInvoices.reduce((sum, i) => sum + i.amount, 0);
+  const totalPaid = paidInvoices.reduce((sum, i) => sum + i.amount, 0);
+  const totalInvoiced = invoices.reduce((sum, i) => sum + i.amount, 0);
   const creditAvailable = creditLimit - creditUsed;
+
+  const overdueCount = useMemo(
+    () => openInvoices.filter((invoice) => invoice.due_date && new Date(invoice.due_date) < new Date()).length,
+    [openInvoices],
+  );
+
+  const visibleInvoices = useMemo(() => {
+    if (filter === 'all') return invoices;
+    return invoices.filter((invoice) => invoice.status === filter);
+  }, [filter, invoices]);
 
   function handlePay(id: string) {
     setPayingId(id);
@@ -79,18 +93,48 @@ export function FinancialModule({ invoices, walletBalance, creditLimit, creditUs
         </div>
       </div>
 
+      <div className="orders-summary" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', margin: '18px 0 12px' }}>
+        <div className="orders-summary-card" style={{ padding: '14px 16px', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', background: '#0f1f2c' }}>
+          <small style={{ color: '#8ba3b5' }}>Total faturado</small>
+          <strong style={{ display: 'block', fontSize: '22px', marginTop: '6px' }}>{money.format(totalInvoiced)}</strong>
+        </div>
+        <div className="orders-summary-card" style={{ padding: '14px 16px', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', background: '#0f1f2c' }}>
+          <small style={{ color: '#8ba3b5' }}>Pago</small>
+          <strong style={{ display: 'block', fontSize: '22px', marginTop: '6px' }}>{money.format(totalPaid)}</strong>
+        </div>
+        <div className="orders-summary-card" style={{ padding: '14px 16px', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', background: '#0f1f2c' }}>
+          <small style={{ color: '#8ba3b5' }}>Vencidas</small>
+          <strong style={{ display: 'block', fontSize: '22px', marginTop: '6px' }}>{overdueCount}</strong>
+        </div>
+      </div>
+
       <div className="fin-invoices">
-        <h4>Extrato de Faturas</h4>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '12px' }}>
+          <h4 style={{ margin: 0 }}>Extrato de Faturas</h4>
+          <div className="orders-filter-row" style={{ gap: '8px' }}>
+            {(['all', 'aberta', 'paga'] as const).map((option) => (
+              <button
+                key={option}
+                className={`rma-advance-btn ${filter === option ? 'active' : ''}`}
+                onClick={() => setFilter(option)}
+                style={{ minWidth: '110px' }}
+              >
+                {option === 'all' ? 'Todas' : option === 'aberta' ? 'Abertas' : 'Pagas'}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="stock-table-wrap">
           <table className="rma-table">
             <thead>
               <tr><th>Valor</th><th>Status</th><th>Vencimento</th><th>Pago em</th><th></th></tr>
             </thead>
             <tbody>
-              {invoices.length === 0 ? (
+              {visibleInvoices.length === 0 ? (
                 <tr><td colSpan={5} className="empty-row">Nenhuma fatura registrada.</td></tr>
               ) : (
-                invoices.map((inv) => (
+                visibleInvoices.map((inv) => (
                   <tr key={inv.id}>
                     <td><strong>{money.format(inv.amount)}</strong></td>
                     <td>

@@ -1044,11 +1044,25 @@ function PaymentDonut({ data, colors }: { data: { method: string; amount: number
 function PermissionsControl({ userId, salespeople }: { userId?: string; salespeople: PartnerSalesperson[] }) {
   const [overrides, setOverrides] = useState<Record<string, PermissionOverride>>({});
   const [savedId, setSavedId] = useState<string | null>(null);
+  const [roleFilter, setRoleFilter] = useState<'all' | SalespersonRole>('all');
 
   const operationalStaff = useMemo(
     () => salespeople.filter((sp) => sp.role !== 'administrador'),
     [salespeople],
   );
+
+  const filteredStaff = useMemo(
+    () => roleFilter === 'all' ? operationalStaff : operationalStaff.filter((sp) => sp.role === roleFilter),
+    [operationalStaff, roleFilter],
+  );
+
+  const permissionSummary = useMemo(() => {
+    const canCancel = operationalStaff.filter((sp) => getOverride(sp).can_cancel_sales).length;
+    const withDiscount = operationalStaff.filter((sp) => (getOverride(sp).discount_override_limit ?? 0) > 0).length;
+    const withCostAccess = operationalStaff.filter((sp) => getOverride(sp).can_view_cost_prices).length;
+
+    return { total: operationalStaff.length, canCancel, withDiscount, withCostAccess };
+  }, [operationalStaff, overrides]);
 
   useEffect(() => {
     if (!supabase || !userId) return;
@@ -1093,6 +1107,38 @@ function PermissionsControl({ userId, salespeople }: { userId?: string; salespeo
         <span>Controle granular de privilégios por funcionário. As permissões abaixo complementam as definições baseadas em função.</span>
       </div>
 
+      <div className="orders-summary" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px', margin: '18px 0' }}>
+        <div className="orders-summary-card" style={{ padding: '14px 16px', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', background: '#0f1f2c' }}>
+          <small style={{ color: '#8ba3b5' }}>Total</small>
+          <strong style={{ display: 'block', fontSize: '22px', marginTop: '6px' }}>{permissionSummary.total}</strong>
+        </div>
+        <div className="orders-summary-card" style={{ padding: '14px 16px', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', background: '#0f1f2c' }}>
+          <small style={{ color: '#8ba3b5' }}>Cancelar vendas</small>
+          <strong style={{ display: 'block', fontSize: '22px', marginTop: '6px' }}>{permissionSummary.canCancel}</strong>
+        </div>
+        <div className="orders-summary-card" style={{ padding: '14px 16px', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', background: '#0f1f2c' }}>
+          <small style={{ color: '#8ba3b5' }}>Desconto especial</small>
+          <strong style={{ display: 'block', fontSize: '22px', marginTop: '6px' }}>{permissionSummary.withDiscount}</strong>
+        </div>
+        <div className="orders-summary-card" style={{ padding: '14px 16px', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', background: '#0f1f2c' }}>
+          <small style={{ color: '#8ba3b5' }}>Ver custo</small>
+          <strong style={{ display: 'block', fontSize: '22px', marginTop: '6px' }}>{permissionSummary.withCostAccess}</strong>
+        </div>
+      </div>
+
+      <div className="orders-filter-row" style={{ marginBottom: '12px' }}>
+        {(['all', 'gerente', 'caixa', 'vendedor', 'tecnico', 'atendente', 'logistica'] as const).map((option) => (
+          <button
+            key={option}
+            className={`rma-advance-btn ${roleFilter === option ? 'active' : ''}`}
+            onClick={() => setRoleFilter(option)}
+            style={{ minWidth: '110px' }}
+          >
+            {option === 'all' ? 'Todos' : roleLabels[option]}
+          </button>
+        ))}
+      </div>
+
       <div className="stock-table-wrap">
         <table className="rma-table">
           <thead>
@@ -1106,10 +1152,10 @@ function PermissionsControl({ userId, salespeople }: { userId?: string; salespeo
             </tr>
           </thead>
           <tbody>
-            {operationalStaff.length === 0 ? (
+            {filteredStaff.length === 0 ? (
               <tr><td colSpan={6} className="empty-row">Nenhum funcionário cadastrado.</td></tr>
             ) : (
-              operationalStaff.map((sp) => {
+              filteredStaff.map((sp) => {
                 const ov = getOverride(sp);
                 return (
                   <tr key={sp.id}>

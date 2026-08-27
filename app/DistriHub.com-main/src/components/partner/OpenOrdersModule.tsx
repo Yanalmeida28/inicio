@@ -36,6 +36,8 @@ export function OpenOrdersModule({ sales, customers, salespeople, currentRole, o
   const [dateEnd, setDateEnd] = useState('');
   const [orderId, setOrderId] = useState('');
   const [customerSearch, setCustomerSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [sourceFilter, setSourceFilter] = useState('all');
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [searchResults, setSearchResults] = useState<PartnerSale[] | null>(null);
   const [finalizeTarget, setFinalizeTarget] = useState<PartnerSale | null>(null);
@@ -73,15 +75,22 @@ export function OpenOrdersModule({ sales, customers, salespeople, currentRole, o
         customers.some((c) => c.id === s.customer_id && c.name.toLowerCase().includes(term)),
       );
     }
+    if (statusFilter !== 'all') {
+      filtered = filtered.filter((s) => s.status === statusFilter);
+    }
+    if (sourceFilter !== 'all') {
+      filtered = filtered.filter((s) => s.origin === sourceFilter);
+    }
     setSearchResults(filtered);
   }
 
   function clearFilters() {
-    setDateStart(''); setDateEnd(''); setOrderId(''); setCustomerSearch('');
+    setDateStart(''); setDateEnd(''); setOrderId(''); setCustomerSearch(''); setStatusFilter('all'); setSourceFilter('all');
     setSearchResults(null);
   }
 
   const totalAmount = displayedOrders.reduce((sum, s) => sum + s.total, 0);
+  const pendingCount = displayedOrders.filter((s) => s.payment_status === 'pendente' || s.status === 'pre_venda').length;
 
   function requestFinalize(sale: PartnerSale) {
     setFinalizeTarget(sale);
@@ -127,6 +136,21 @@ export function OpenOrdersModule({ sales, customers, salespeople, currentRole, o
         </div>
       </div>
 
+      <div className="orders-summary" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginBottom: '16px' }}>
+        <div className="orders-summary-card" style={{ padding: '14px 16px', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', background: '#0f1f2c' }}>
+          <small style={{ color: '#8ba3b5' }}>Pedidos em aberto</small>
+          <strong style={{ display: 'block', fontSize: '22px', marginTop: '6px' }}>{displayedOrders.length}</strong>
+        </div>
+        <div className="orders-summary-card" style={{ padding: '14px 16px', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', background: '#0f1f2c' }}>
+          <small style={{ color: '#8ba3b5' }}>Valor total</small>
+          <strong style={{ display: 'block', fontSize: '22px', marginTop: '6px' }}>{money.format(totalAmount)}</strong>
+        </div>
+        <div className="orders-summary-card" style={{ padding: '14px 16px', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', background: '#0f1f2c' }}>
+          <small style={{ color: '#8ba3b5' }}>Pendentes</small>
+          <strong style={{ display: 'block', fontSize: '22px', marginTop: '6px' }}>{pendingCount}</strong>
+        </div>
+      </div>
+
       {/* Filter Bar */}
       <div className="orders-filter-bar">
         <div className="orders-filter-row">
@@ -161,6 +185,16 @@ export function OpenOrdersModule({ sales, customers, salespeople, currentRole, o
         {showAdvanced && (
           <div className="orders-advanced-filters">
             <label className="orders-filter-field">
+              Status do pedido
+              <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+                <option value="all">Todos</option>
+                <option value="aberta">Aberta</option>
+                <option value="pre_venda">Pré-venda</option>
+                <option value="concluida">Concluída</option>
+                <option value="cancelada">Cancelada</option>
+              </select>
+            </label>
+            <label className="orders-filter-field">
               Status do pagamento
               <select>
                 <option value="">Todos</option>
@@ -171,8 +205,8 @@ export function OpenOrdersModule({ sales, customers, salespeople, currentRole, o
             </label>
             <label className="orders-filter-field">
               Origem
-              <select>
-                <option value="">Todas</option>
+              <select value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)}>
+                <option value="all">Todas</option>
                 <option value="pdv">PDV</option>
                 <option value="catalogo">Catálogo Online</option>
               </select>

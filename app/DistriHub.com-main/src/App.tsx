@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, Lock, ShieldAlert, Eye, KeyRound, Mail, ShieldCheck, CheckCircle2 } from 'lucide-react';
 import type { CartItem, Product, BusinessSegment } from './types';
-import { formatWhatsAppMessage, openWhatsApp } from './utils';
+import { formatWhatsAppMessage } from './utils';
 import { useProducts } from './hooks/useProducts';
 import { useAuth } from './hooks/useAuth';
 import { useSuperAdminAuth } from './hooks/useSuperAdminAuth';
@@ -34,6 +34,7 @@ function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [businessName, setBusinessName] = useState('');
   const [city, setCity] = useState('');
+  const storeWhatsapp = auth.profile?.whatsapp ?? null;
 
   useEffect(() => {
     if (auth.passwordRecovery) setView('auth');
@@ -126,8 +127,8 @@ function App() {
         status: 'pendente',
       });
     }
-    const message = formatWhatsAppMessage(cart, businessName, city, cartTotal);
-    openWhatsApp(message);
+    // O envio via WhatsApp fica centralizado no checkout para respeitar a escolha do destino.
+    return;
   }
 
   function clearFilters() {
@@ -234,6 +235,8 @@ function App() {
         cartTotal={cartTotal}
         businessName={businessName}
         city={city}
+        storeWhatsapp={storeWhatsapp}
+        customerWhatsapp={null}
         onClose={() => setCartOpen(false)}
         onIncrement={incrementQuantity}
         onDecrement={decrementQuantity}

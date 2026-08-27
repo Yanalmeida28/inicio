@@ -151,7 +151,7 @@ export const categories: Category[] = [
 
 export const brands = ['Todos', 'Samsung', 'Apple', 'Motorola', 'Xiaomi'] as const;
 
-export const WHATSAPP_NUMBER = '';
+export const WHATSAPP_NUMBER = (import.meta.env.VITE_WHATSAPP_NUMBER ?? '').replace(/\D/g, '');
 
 export const rmaStatusLabels: Record<RmaStatus, string> = {
   aguardando_troca: 'Aguardando Troca',

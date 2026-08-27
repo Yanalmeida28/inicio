@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Truck, MapPin, Package, Check, Clock, X, Phone, Navigation,
 } from 'lucide-react';
@@ -52,7 +52,13 @@ export function DeliveryModule({ sales, salespeople, selectedBranchId }: Props) 
 
   const [filter, setFilter] = useState<DeliveryStatus | 'all'>('all');
 
-  const filtered = filter === 'all' ? deliveries : deliveries.filter((d) => d.status === filter);
+  const filtered = useMemo(
+    () => (filter === 'all' ? deliveries : deliveries.filter((d) => d.status === filter)),
+    [deliveries, filter],
+  );
+
+  const totalValue = useMemo(() => deliveries.reduce((sum, d) => sum + d.total, 0), [deliveries]);
+  const assignedCount = useMemo(() => deliveries.filter((d) => d.driverId).length, [deliveries]);
 
   function updateStatus(saleId: string, status: DeliveryStatus) {
     setDeliveries((prev) => prev.map((d) => d.saleId === saleId ? { ...d, status } : d));
@@ -115,6 +121,21 @@ export function DeliveryModule({ sales, salespeople, selectedBranchId }: Props) 
             <small>Falhas</small>
             <strong>{stats.falhou}</strong>
           </div>
+        </div>
+      </div>
+
+      <div className="orders-summary" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', margin: '18px 0 12px' }}>
+        <div className="orders-summary-card" style={{ padding: '14px 16px', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', background: '#0f1f2c' }}>
+          <small style={{ color: '#8ba3b5' }}>Valor total em rota</small>
+          <strong style={{ display: 'block', fontSize: '22px', marginTop: '6px' }}>{money.format(totalValue)}</strong>
+        </div>
+        <div className="orders-summary-card" style={{ padding: '14px 16px', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', background: '#0f1f2c' }}>
+          <small style={{ color: '#8ba3b5' }}>Entregas atribuídas</small>
+          <strong style={{ display: 'block', fontSize: '22px', marginTop: '6px' }}>{assignedCount}</strong>
+        </div>
+        <div className="orders-summary-card" style={{ padding: '14px 16px', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', background: '#0f1f2c' }}>
+          <small style={{ color: '#8ba3b5' }}>Fila ativa</small>
+          <strong style={{ display: 'block', fontSize: '22px', marginTop: '6px' }}>{filtered.length}</strong>
         </div>
       </div>
 

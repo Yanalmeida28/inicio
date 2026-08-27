@@ -27,6 +27,7 @@ const roleLabels: Record<SalespersonRole, string> = {
 
 export function ReportsModule({ sales, products, customers, salespeople }: Props) {
   const [tab, setTab] = useState<ReportTab>('vendas');
+  const [range, setRange] = useState<'30d' | '90d' | 'all'>('30d');
 
   const tabs: { id: ReportTab; label: string; icon: typeof BarChart3 }[] = [
     { id: 'vendas', label: 'Vendas & Serviços', icon: BarChart3 },
@@ -34,6 +35,16 @@ export function ReportsModule({ sales, products, customers, salespeople }: Props
     { id: 'estoque', label: 'Estoque', icon: Package },
     { id: 'crm', label: 'CRM', icon: Users },
   ];
+
+  const visibleSales = useMemo(() => {
+    if (range === 'all') return sales;
+
+    const days = range === '30d' ? 30 : 90;
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - days);
+
+    return sales.filter((sale) => new Date(sale.created_at) >= cutoff);
+  }, [range, sales]);
 
   return (
     <div className="panel-module">
@@ -45,7 +56,7 @@ export function ReportsModule({ sales, products, customers, salespeople }: Props
         </div>
       </div>
 
-      <div className="subtab-bar">
+      <div className="subtab-bar" style={{ marginBottom: '12px' }}>
         {tabs.map(({ id, label, icon: Icon }) => (
           <button key={id} className={`subtab ${tab === id ? 'active' : ''}`} onClick={() => setTab(id)}>
             <Icon size={15} /> {label}
@@ -53,11 +64,24 @@ export function ReportsModule({ sales, products, customers, salespeople }: Props
         ))}
       </div>
 
+      <div className="orders-filter-row" style={{ marginBottom: '18px' }}>
+        {(['30d', '90d', 'all'] as const).map((option) => (
+          <button
+            key={option}
+            className={`rma-advance-btn ${range === option ? 'active' : ''}`}
+            onClick={() => setRange(option)}
+            style={{ minWidth: '110px' }}
+          >
+            {option === '30d' ? '30 dias' : option === '90d' ? '90 dias' : 'Tudo'}
+          </button>
+        ))}
+      </div>
+
       <div className="subtab-content">
-        {tab === 'vendas' && <SalesReport sales={sales} products={products} salespeople={salespeople} />}
-        {tab === 'financeiro' && <FinancialReport sales={sales} />}
-        {tab === 'estoque' && <StockReport products={products} sales={sales} />}
-        {tab === 'crm' && <CrmReport customers={customers} sales={sales} />}
+        {tab === 'vendas' && <SalesReport sales={visibleSales} products={products} salespeople={salespeople} />}
+        {tab === 'financeiro' && <FinancialReport sales={visibleSales} />}
+        {tab === 'estoque' && <StockReport products={products} sales={visibleSales} />}
+        {tab === 'crm' && <CrmReport customers={customers} sales={visibleSales} />}
       </div>
     </div>
   );

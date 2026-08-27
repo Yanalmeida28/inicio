@@ -53,11 +53,14 @@ export function formatWhatsAppMessage(
   return sections.join('\n');
 }
 
-export function openWhatsApp(message: string): void {
-  const base = WHATSAPP_NUMBER
-    ? `https://wa.me/${WHATSAPP_NUMBER}?text=`
+export function openWhatsApp(message: string, phoneNumber?: string | null): void {
+  const targetPhone = (phoneNumber ?? WHATSAPP_NUMBER).replace(/\D/g, '');
+  const base = targetPhone
+    ? `https://wa.me/${targetPhone}?text=`
     : 'https://wa.me/?text=';
-  window.open(`${base}${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer');
+
+  const target = `${base}${encodeURIComponent(message)}`;
+  window.open(target, '_blank', 'noopener,noreferrer');
 }
 
 export const PIX_COPY_PASTE = '00020126360014BR.GOV.BCB.PIX0114+5511940000000520400005303986580BR6009SAOPAULO62070503***6304ABCD';

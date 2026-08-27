@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   ArrowRightCircle, Camera, FileText, Package, Printer, QrCode, Upload,
   Wallet, X, Pencil, Trash2, AlertCircle,
@@ -37,8 +37,22 @@ export function RmaModule({
   const [editBatchOrOrder, setEditBatchOrOrder] = useState('');
   const [editDefect, setEditDefect] = useState('');
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [filter, setFilter] = useState<'all' | RmaStatus>('all');
 
   const canDelete = deleteAllowedRoles.includes(currentRole);
+
+  const statusSummary = useMemo(() => ({
+    total: rmaRequests.length,
+    aguardando_troca: rmaRequests.filter((r) => r.status === 'aguardando_troca').length,
+    retornou_fornecedor: rmaRequests.filter((r) => r.status === 'retornou_fornecedor').length,
+    reintegrado_estoque: rmaRequests.filter((r) => r.status === 'reintegrado_estoque').length,
+    credito_gerado: rmaRequests.filter((r) => r.status === 'credito_gerado').length,
+  }), [rmaRequests]);
+
+  const visibleRequests = useMemo(() => {
+    if (filter === 'all') return rmaRequests;
+    return rmaRequests.filter((request) => request.status === filter);
+  }, [filter, rmaRequests]);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -117,6 +131,25 @@ export function RmaModule({
         <span className="wallet-hint">Valor abatido automaticamente em futuros pedidos</span>
       </div>
 
+      <div className="orders-summary" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px', margin: '18px 0' }}>
+        <div className="orders-summary-card" style={{ padding: '14px 16px', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', background: '#0f1f2c' }}>
+          <small style={{ color: '#8ba3b5' }}>Total de RMAs</small>
+          <strong style={{ display: 'block', fontSize: '22px', marginTop: '6px' }}>{statusSummary.total}</strong>
+        </div>
+        <div className="orders-summary-card" style={{ padding: '14px 16px', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', background: '#0f1f2c' }}>
+          <small style={{ color: '#8ba3b5' }}>Aguardando troca</small>
+          <strong style={{ display: 'block', fontSize: '22px', marginTop: '6px' }}>{statusSummary.aguardando_troca}</strong>
+        </div>
+        <div className="orders-summary-card" style={{ padding: '14px 16px', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', background: '#0f1f2c' }}>
+          <small style={{ color: '#8ba3b5' }}>Retorno ao fornecedor</small>
+          <strong style={{ display: 'block', fontSize: '22px', marginTop: '6px' }}>{statusSummary.retornou_fornecedor}</strong>
+        </div>
+        <div className="orders-summary-card" style={{ padding: '14px 16px', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', background: '#0f1f2c' }}>
+          <small style={{ color: '#8ba3b5' }}>Crédito gerado</small>
+          <strong style={{ display: 'block', fontSize: '22px', marginTop: '6px' }}>{statusSummary.credito_gerado}</strong>
+        </div>
+      </div>
+
       {warrantyTerms && (
         <div className="warranty-terms-box">
           <FileText size={18} />
@@ -127,9 +160,24 @@ export function RmaModule({
         </div>
       )}
 
-      <button className="module-action-btn" onClick={() => setShowForm(!showForm)}>
-        {showForm ? 'Cancelar' : <><FileText size={16} /> Nova Solicitação de Garantia</>}
-      </button>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '12px' }}>
+        <button className="module-action-btn" onClick={() => setShowForm(!showForm)}>
+          {showForm ? 'Cancelar' : <><FileText size={16} /> Nova Solicitação de Garantia</>}
+        </button>
+
+        <div className="orders-filter-row" style={{ gap: '8px' }}>
+          {(['all', 'aguardando_troca', 'retornou_fornecedor', 'reintegrado_estoque', 'credito_gerado'] as const).map((option) => (
+            <button
+              key={option}
+              className={`rma-advance-btn ${filter === option ? 'active' : ''}`}
+              onClick={() => setFilter(option)}
+              style={{ minWidth: '120px' }}
+            >
+              {option === 'all' ? 'Todos' : rmaStatusLabels[option]}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {showForm && (
         <form className="rma-form" onSubmit={handleSubmit}>
@@ -209,10 +257,10 @@ export function RmaModule({
             <tr><th>Produto</th><th>Lote/Pedido</th><th>Status</th><th>Etiqueta</th><th>Ações</th></tr>
           </thead>
           <tbody>
-            {rmaRequests.length === 0 ? (
+            {visibleRequests.length === 0 ? (
               <tr><td colSpan={5} className="empty-row">Nenhuma solicitação de garantia registrada.</td></tr>
             ) : (
-              rmaRequests.map((rma) => (
+              visibleRequests.map((rma) => (
                 <tr key={rma.id}>
                   {editingId === rma.id ? (
                     <>
