@@ -77,6 +77,12 @@ export function PartnerPanel({ onBack, user, segment, initialTab, onConsumeIniti
     return true;
   });
 
+  useEffect(() => {
+    if (!visibleTabs.some((tab) => tab.id === activeTab)) {
+      setActiveTab(visibleTabs[0]?.id ?? 'cadastros');
+    }
+  }, [visibleTabs, activeTab]);
+
   const defaultSettings: StoreSettings = {
     id: 'default',
     user_id: user?.id ?? '',

@@ -1,21 +1,37 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, Lock, ShieldAlert, Eye, KeyRound, Mail, ShieldCheck, CheckCircle2 } from 'lucide-react';
-import type { CartItem, Product, BusinessSegment } from './types';
+import type { BusinessSegment } from './types';
 import { formatWhatsAppMessage } from './utils';
 import { useProducts } from './hooks/useProducts';
 import { useAuth } from './hooks/useAuth';
 import { useSuperAdminAuth } from './hooks/useSuperAdminAuth';
+import { useCart } from './hooks/useCart';
+import { useCatalogFilters } from './hooks/useCatalogFilters';
 import { Header } from './components/Header';
 import { NavBar } from './components/NavBar';
 import { CartDrawer } from './components/CartDrawer';
 import { Footer } from './components/Footer';
-import { PartnerPanel } from './components/PartnerPanel';
 import { HubHome } from './components/HubHome';
-import { AuthScreen } from './components/AuthScreen';
-import { AdminPanel } from './components/AdminPanel';
 import { supabase, isSupabaseConfigured } from './lib/supabase';
 
+const PartnerPanel = lazy(() => import('./components/PartnerPanel').then((module) => ({ default: module.PartnerPanel })));
+const AuthScreen = lazy(() => import('./components/AuthScreen').then((module) => ({ default: module.AuthScreen })));
+const AdminPanel = lazy(() => import('./components/AdminPanel').then((module) => ({ default: module.AdminPanel })));
+
 type View = 'hub' | 'partner' | 'auth' | 'admin' | 'super-admin';
+
+function LoadingScreen({ label }: { label: string }) {
+  return (
+    <div className="super-admin-gate">
+      <div className="super-admin-gate-card">
+        <div className="super-admin-gate-header">
+          <h2>{label}</h2>
+          <p>Carregando painel...</p>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function App() {
   const { products, loading } = useProducts();
@@ -26,10 +42,18 @@ function App() {
   const [partnerInitialTab, setPartnerInitialTab] = useState<string | undefined>(undefined);
   const [superAdminUnlocked, setSuperAdminUnlocked] = useState(false);
   const [superAdminPassword, setSuperAdminPassword] = useState('');
-  const [selectedBrand, setSelectedBrand] = useState('Todos');
-  const [selectedCategory, setSelectedCategory] = useState('');
-  const [search, setSearch] = useState('');
-  const [cart, setCart] = useState<CartItem[]>([]);
+  const { cart, cartCount, cartTotal, cartQuantities, incrementQuantity, decrementQuantity, removeFromCart, setCart } = useCart();
+  const {
+    selectedBrand,
+    setSelectedBrand,
+    selectedCategory,
+    setSelectedCategory,
+    search,
+    setSearch,
+    filteredProducts,
+    productCountByBrand,
+    clearFilters,
+  } = useCatalogFilters(products);
   const [cartOpen, setCartOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [businessName, setBusinessName] = useState('');
@@ -41,77 +65,6 @@ function App() {
   }, [auth.passwordRecovery]);
 
   const segment: BusinessSegment = auth.profile?.segment ?? 'assistencia';
-
-  const filteredProducts = useMemo(
-    () =>
-      products.filter((product) => {
-        const term = search.toLowerCase();
-        const matchesSearch =
-          !term ||
-          `${product.name} ${product.subtitle} ${product.sku}`
-            .toLowerCase()
-            .includes(term);
-        const matchesBrand = selectedBrand === 'Todos' || product.brand === selectedBrand;
-        const matchesCategory =
-          !selectedCategory || product.category === selectedCategory;
-        return matchesSearch && matchesBrand && matchesCategory;
-      }),
-    [products, search, selectedBrand, selectedCategory],
-  );
-
-  const cartCount = cart.reduce((total, item) => total + item.quantity, 0);
-  const cartTotal = cart.reduce(
-    (total, item) => total + item.price * item.quantity,
-    0,
-  );
-
-  const cartQuantities = useMemo(() => {
-    const map: Record<number, number> = {};
-    for (const item of cart) map[item.id] = item.quantity;
-    return map;
-  }, [cart]);
-
-  const productCountByBrand = useMemo(() => {
-    const map: Record<string, number> = {};
-    for (const product of products) {
-      map[product.brand] = (map[product.brand] ?? 0) + 1;
-    }
-    return map;
-  }, [products]);
-
-  function addToCart(product: Product) {
-    setCart((current) => {
-      const existing = current.find((item) => item.id === product.id);
-      if (existing) {
-        return current.map((item) =>
-          item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item,
-        );
-      }
-      return [...current, { ...product, quantity: 1 }];
-    });
-  }
-
-  function incrementQuantity(id: number) {
-    setCart((current) =>
-      current.map((item) =>
-        item.id === id ? { ...item, quantity: item.quantity + 1 } : item,
-      ),
-    );
-  }
-
-  function decrementQuantity(id: number) {
-    setCart((current) =>
-      current.flatMap((item) => {
-        if (item.id !== id) return [item];
-        const quantity = item.quantity - 1;
-        return quantity > 0 ? [{ ...item, quantity }] : [];
-      }),
-    );
-  }
-
-  function removeFromCart(id: number) {
-    setCart((current) => current.filter((item) => item.id !== id));
-  }
 
   async function sendOrder(paymentMethod = 'pix', deliveryMethod = 'balcao') {
     if (!cart.length || !businessName.trim() || !city.trim()) return;
@@ -129,12 +82,6 @@ function App() {
     }
     // O envio via WhatsApp fica centralizado no checkout para respeitar a escolha do destino.
     return;
-  }
-
-  function clearFilters() {
-    setSelectedBrand('Todos');
-    setSelectedCategory('');
-    setSearch('');
   }
 
   function handlePartnerClick() {
@@ -192,28 +139,34 @@ function App() {
       )}
 
       {view === 'auth' && (
-        <AuthScreen
-          onBack={() => setView('hub')}
-          onSignIn={handleSignIn}
-          onSignUp={handleSignUp}
-          onRequestPasswordReset={auth.requestPasswordReset}
-          onUpdatePassword={auth.updatePassword}
-          recoveryMode={auth.passwordRecovery}
-        />
+        <Suspense fallback={<LoadingScreen label="Autenticação" />}>
+          <AuthScreen
+            onBack={() => setView('hub')}
+            onSignIn={handleSignIn}
+            onSignUp={handleSignUp}
+            onRequestPasswordReset={auth.requestPasswordReset}
+            onUpdatePassword={auth.updatePassword}
+            recoveryMode={auth.passwordRecovery}
+          />
+        </Suspense>
       )}
 
       {view === 'partner' && (
-        <PartnerPanel
-          onBack={() => setView('hub')}
-          user={auth.user}
-          segment={segment}
-          initialTab={partnerInitialTab}
-          onConsumeInitialTab={() => setPartnerInitialTab(undefined)}
-        />
+        <Suspense fallback={<LoadingScreen label="Área do parceiro" />}>
+          <PartnerPanel
+            onBack={() => setView('hub')}
+            user={auth.user}
+            segment={segment}
+            initialTab={partnerInitialTab}
+            onConsumeInitialTab={() => setPartnerInitialTab(undefined)}
+          />
+        </Suspense>
       )}
 
       {view === 'admin' && (
-        <AdminPanel onBack={() => setView('hub')} accessPassword={superAdminPassword} />
+        <Suspense fallback={<LoadingScreen label="Administração" />}>
+          <AdminPanel onBack={() => setView('hub')} accessPassword={superAdminPassword} />
+        </Suspense>
       )}
 
       {view === 'super-admin' && !superAdminUnlocked && (
@@ -225,7 +178,9 @@ function App() {
       )}
 
       {view === 'super-admin' && superAdminUnlocked && (
-        <AdminPanel onBack={() => setView('hub')} accessPassword={superAdminPassword} />
+        <Suspense fallback={<LoadingScreen label="Painel master" />}>
+          <AdminPanel onBack={() => setView('hub')} accessPassword={superAdminPassword} />
+        </Suspense>
       )}
 
       <CartDrawer

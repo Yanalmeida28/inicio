@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useReducer } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import type { PartnerProfile, BusinessSegment } from '../types';
+import type { PartnerProfile } from '../types';
 
 type AuthState = {
   session: Session | null;
@@ -27,8 +27,42 @@ type UseAuthReturn = AuthState & {
   updatePassword: (password: string) => Promise<{ error: string | null }>;
 };
 
+type AuthAction =
+  | { type: 'RESET' }
+  | { type: 'SET_SESSION'; session: Session | null; user: User | null; passwordRecovery?: boolean }
+  | { type: 'SET_PROFILE'; profile: PartnerProfile | null };
+
+function authReducer(state: AuthState, action: AuthAction): AuthState {
+  switch (action.type) {
+    case 'RESET':
+      return {
+        session: null,
+        user: null,
+        profile: null,
+        loading: false,
+        error: null,
+        passwordRecovery: false,
+      };
+    case 'SET_SESSION':
+      return {
+        ...state,
+        session: action.session,
+        user: action.user,
+        loading: false,
+        passwordRecovery: action.passwordRecovery ?? state.passwordRecovery,
+      };
+    case 'SET_PROFILE':
+      return {
+        ...state,
+        profile: action.profile,
+      };
+    default:
+      return state;
+  }
+}
+
 export function useAuth(): UseAuthReturn {
-  const [state, setState] = useState<AuthState>({
+  const [state, dispatch] = useReducer(authReducer, {
     session: null,
     user: null,
     profile: null,
@@ -37,46 +71,57 @@ export function useAuth(): UseAuthReturn {
     passwordRecovery: false,
   });
 
+  const loadProfile = useCallback(async (userId: string): Promise<PartnerProfile | null> => {
+    if (!supabase) return null;
+
+    const { data: profile } = await supabase
+      .from('partner_profiles')
+      .select('*')
+      .eq('id', userId)
+      .maybeSingle();
+
+    return profile as PartnerProfile | null;
+  }, []);
+
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) {
-      setState({ session: null, user: null, profile: null, loading: false, error: null, passwordRecovery: false });
+      dispatch({ type: 'RESET' });
       return;
     }
 
     supabase.auth.getSession().then(({ data }) => {
-      setState((prev) => ({
-        ...prev,
-        session: data.session,
-        user: data.session?.user ?? null,
-        loading: false,
-      }));
+      const session = data.session;
+      dispatch({
+        type: 'SET_SESSION',
+        session,
+        user: session?.user ?? null,
+      });
+
+      if (session?.user) {
+        loadProfile(session.user.id).then((profile) => {
+          dispatch({ type: 'SET_PROFILE', profile });
+        });
+      }
     });
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      (async () => {
-        setState((prev) => ({
-          ...prev,
-          session,
-          user: session?.user ?? null,
-          loading: false,
-          passwordRecovery: _event === 'PASSWORD_RECOVERY',
-        }));
+    const { data: listener } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      dispatch({
+        type: 'SET_SESSION',
+        session,
+        user: session?.user ?? null,
+        passwordRecovery: _event === 'PASSWORD_RECOVERY',
+      });
 
-        if (session?.user) {
-          const { data: profile } = await supabase!
-            .from('partner_profiles')
-            .select('*')
-            .eq('id', session.user.id)
-            .maybeSingle();
-          setState((prev) => ({ ...prev, profile: profile as PartnerProfile | null }));
-        } else {
-          setState((prev) => ({ ...prev, profile: null }));
-        }
-      })();
+      if (session?.user) {
+        const profile = await loadProfile(session.user.id);
+        dispatch({ type: 'SET_PROFILE', profile });
+      } else {
+        dispatch({ type: 'SET_PROFILE', profile: null });
+      }
     });
 
     return () => listener.subscription.unsubscribe();
-  }, []);
+  }, [loadProfile]);
 
   const signUp = useCallback(async (data: SignUpData): Promise<{ error: string | null }> => {
     if (!isSupabaseConfigured || !supabase) return { error: 'Supabase não configurado.' };
