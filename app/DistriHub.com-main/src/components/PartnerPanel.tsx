@@ -68,7 +68,7 @@ export function PartnerPanel({ onBack, user, segment, initialTab, onConsumeIniti
     }
   }, [initialTab, onConsumeInitialTab]);
 
-  const visibleTabs = allTabs.filter((t) => {
+  const visibleTabs = (allTabs ?? []).filter((t) => {
     if (currentRole === 'gerente') return !gerenteBlockedTabs.includes(t.id) && t.id !== 'administrativo';
     if (currentRole === 'vendedor') return !vendedorBlockedTabs.includes(t.id) && t.id !== 'administrativo';
     if (currentRole === 'atendente') return !atendenteBlockedTabs.includes(t.id) && t.id !== 'administrativo';
@@ -166,7 +166,8 @@ export function PartnerPanel({ onBack, user, segment, initialTab, onConsumeIniti
             {activeTab === 'cadastros' && (
               <CadastrosModule
                 products={partner.products}
-                categories={partner.categories}
+               selectedBranchId={selectedBranchId}
+               categories={partner.categories}
                 suppliers={partner.suppliers}
                 salespeople={partner.salespeople}
                 combos={partner.combos}

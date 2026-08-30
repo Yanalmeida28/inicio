@@ -15,6 +15,7 @@ import { ImportExportModule, ExportButtons } from './ImportExportModule';
 
 type Props = {
   products: PartnerProduct[];
+    selectedBranchId: string | null;
   categories: PartnerCategory[];
   suppliers: PartnerSupplier[];
   salespeople: PartnerSalesperson[];
@@ -54,13 +55,17 @@ const subTabs: { id: SubTab; label: string; icon: typeof Package }[] = [
 ];
 
 export function CadastrosModule({
-  products, categories, suppliers, salespeople, combos, modifiers, customers, sales,
+  products,selectedBranchId, categories, suppliers, salespeople, combos, modifiers, customers, sales,
   segment, onAddProduct, onDeleteProduct,
   onAddCategory, onDeleteCategory, onAddSupplier, onAddSalesperson,
   onUpdateSalesperson, onDeleteSalesperson,
   onAddCombo, onDeleteCombo, onAddModifier, onDeleteModifier, onAddCustomer,
 }: Props) {
   const [subTab, setSubTab] = useState<SubTab>('produtos');
+  const filteredProducts = products.filter(product => {
+  if (!selectedBranchId) return true; // Visão Consolidada mostra tudo
+  return product.branch_id === selectedBranchId; // Filial específica mostra só os dela
+});
 
   return (
     <div className="panel-module">
@@ -87,7 +92,7 @@ export function CadastrosModule({
       <div className="subtab-content">
         {subTab === 'produtos' && (
           <ProductsSubTab
-            products={products}
+            products={filteredProducts}
             categories={categories}
             segment={segment}
             onAddProduct={onAddProduct}
@@ -99,10 +104,10 @@ export function CadastrosModule({
         )}
         {subTab === 'xml' && <XmlSubTab onAddProduct={onAddProduct} />}
         {subTab === 'combos' && (
-          <CombosSubTab combos={combos} products={products} onAdd={onAddCombo} onDelete={onDeleteCombo} />
+          <CombosSubTab combos={combos} products={filteredProducts} onAdd={onAddCombo} onDelete={onDeleteCombo} />
         )}
         {subTab === 'modificadores' && (
-          <ModifiersSubTab modifiers={modifiers} products={products} onAdd={onAddModifier} onDelete={onDeleteModifier} />
+          <ModifiersSubTab modifiers={modifiers} products={filteredProducts} onAdd={onAddModifier} onDelete={onDeleteModifier} />
         )}
         {subTab === 'clientes' && (
           <CustomersSubTab customers={customers} sales={sales} onAdd={onAddCustomer} />
