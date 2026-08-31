@@ -28,6 +28,23 @@ jobs:
       - name: Instalar dependências
         run: npm ci
 
+      - name: Verificar configuração do Supabase
+        run: |
+          if [ -z "$VITE_SUPABASE_URL" ]; then
+            echo "ERRO: VITE_SUPABASE_URL está vazia"
+            exit 1
+          fi
+
+          if [ -z "$VITE_SUPABASE_ANON_KEY" ]; then
+            echo "ERRO: VITE_SUPABASE_ANON_KEY está vazia"
+            exit 1
+          fi
+
+          echo "OK: variáveis do Supabase foram recebidas"
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+
       - name: Gerar build
         run: npm run build
         env:
