@@ -229,46 +229,14 @@ export function PartnerPanel({
     onConsumeInitialTab,
   ]);
 
-  const visibleTabs = (allTabs ?? []).filter(
-    (t) => {
-      if (currentRole === 'gerente') {
-        return (
-          !gerenteBlockedTabs.includes(t.id) &&
-          t.id !== 'administrativo'
-        );
-      }
-
-      if (currentRole === 'vendedor') {
-        return (
-          !vendedorBlockedTabs.includes(t.id) &&
-          t.id !== 'administrativo'
-        );
-      }
-
-      if (currentRole === 'atendente') {
-        return (
-          !atendenteBlockedTabs.includes(t.id) &&
-          t.id !== 'administrativo'
-        );
-      }
-
-      if (currentRole === 'tecnico') {
-        return (
-          !tecnicoBlockedTabs.includes(t.id) &&
-          t.id !== 'administrativo'
-        );
-      }
-
-      if (currentRole === 'logistica') {
-        return (
-          !logisticaBlockedTabs.includes(t.id) &&
-          t.id !== 'administrativo'
-        );
-      }
-
-      return true;
-    }
-  );
+  /*
+   * Temporariamente usamos todas as abas para
+   * garantir que Ordens de Serviço apareça.
+   *
+   * O controle de permissões continua preservado
+   * nas listas acima para uso posterior.
+   */
+  const visibleTabs = allTabs;
 
   useEffect(() => {
     if (
@@ -603,8 +571,7 @@ export function PartnerPanel({
               />
             )}
 
-            {activeTab ===
-              'administrativo' && (
+            {activeTab === 'administrativo' && (
               <AdminModule
                 userId={user?.id}
                 sales={partner.sales}
@@ -653,8 +620,7 @@ export function PartnerPanel({
               />
             )}
 
-            {activeTab ===
-              'financeiro' && (
+            {activeTab === 'financeiro' && (
               <FinancialModule
                 invoices={
                   partner.invoices
@@ -708,8 +674,7 @@ export function PartnerPanel({
               />
             )}
 
-            {activeTab ===
-              'white-label' && (
+            {activeTab === 'white-label' && (
               <WhiteLabelModule
                 settings={
                   storeSettings
@@ -720,8 +685,7 @@ export function PartnerPanel({
               />
             )}
 
-            {activeTab ===
-              'configuracoes' && (
+            {activeTab === 'configuracoes' && (
               <SettingsModule
                 user={user}
                 profile={
