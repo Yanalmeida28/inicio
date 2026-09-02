@@ -20,13 +20,18 @@ function slugify(text: string): string {
     .slice(0, 40);
 }
 
+function buildCatalogUrl(slug: string) {
+  const baseUrl = window.location.origin || 'https://distrihub.com.br';
+  return slug ? `${baseUrl}/catalogo?loja=${encodeURIComponent(slug)}` : '';
+}
+
 export function OnlineCatalogModule({ settings, onUpdate }: Props) {
   const [copied, setCopied] = useState(false);
   const [showQR, setShowQR] = useState(false);
   const [saved, setSaved] = useState(false);
 
   const slug = settings.catalog_slug ?? '';
-  const catalogUrl = slug ? `${window.location.origin}/catalogo/${slug}` : '';
+  const catalogUrl = buildCatalogUrl(slug);
 
   function handleSlugChange(value: string) {
     onUpdate({ catalog_slug: slugify(value) || null });
@@ -34,13 +39,51 @@ export function OnlineCatalogModule({ settings, onUpdate }: Props) {
 
   function handleShare() {
     if (!catalogUrl) return;
-    navigator.clipboard?.writeText(catalogUrl).then(() => {
+
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(catalogUrl)
+        .then(() => {
+          setCopied(true);
+          setShowQR(true);
+          setTimeout(() => setCopied(false), 2500);
+        })
+        .catch(() => {
+          const fallback = document.createElement('textarea');
+          fallback.value = catalogUrl;
+          fallback.style.position = 'fixed';
+          fallback.style.opacity = '0';
+          document.body.appendChild(fallback);
+          fallback.focus();
+          fallback.select();
+          try {
+            document.execCommand('copy');
+            setCopied(true);
+            setShowQR(true);
+          } catch {
+            setShowQR(true);
+          }
+          document.body.removeChild(fallback);
+          setTimeout(() => setCopied(false), 2500);
+        });
+      return;
+    }
+
+    const fallback = document.createElement('textarea');
+    fallback.value = catalogUrl;
+    fallback.style.position = 'fixed';
+    fallback.style.opacity = '0';
+    document.body.appendChild(fallback);
+    fallback.focus();
+    fallback.select();
+    try {
+      document.execCommand('copy');
       setCopied(true);
       setShowQR(true);
-      setTimeout(() => setCopied(false), 2500);
-    }).catch(() => {
+    } catch {
       setShowQR(true);
-    });
+    }
+    document.body.removeChild(fallback);
+    setTimeout(() => setCopied(false), 2500);
   }
 
   function handleAccess() {
@@ -88,7 +131,7 @@ export function OnlineCatalogModule({ settings, onUpdate }: Props) {
         <div className="module-card-title"><Globe size={16} /> Link do Catálogo</div>
         <label className="catalog-slug-label">Identificador da Loja (URL)</label>
         <div className="catalog-slug-row">
-          <span className="catalog-slug-prefix">{window.location.origin}/catalogo/</span>
+          <span className="catalog-slug-prefix">{window.location.origin}/catalogo?loja=</span>
           <input
             className="catalog-slug-input"
             value={slug}
@@ -110,7 +153,7 @@ export function OnlineCatalogModule({ settings, onUpdate }: Props) {
           <ExternalLink size={16} /> Acessar Catálogo
         </button>
         <button className="module-action-btn" onClick={handleShare} disabled={!catalogUrl}>
-          {copied ? <><Check size={16} /> Link Copiado!</> : <><Share2 size={16} /> Compartilhar</>}
+          {copied ? <><Check size={16} /> Link copiado!</> : <><Share2 size={16} /> Copiar link</>}
         </button>
       </div>
 

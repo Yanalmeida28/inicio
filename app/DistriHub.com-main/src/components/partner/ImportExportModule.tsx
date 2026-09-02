@@ -11,6 +11,7 @@ type ImportTarget = 'produtos' | 'clientes';
 type Props = {
   products: PartnerProduct[];
   customers: PartnerCustomer[];
+  selectedBranchId?: string | null;
   onAddProduct: (p: Omit<PartnerProduct, 'id' | 'user_id' | 'created_at' | 'updated_at'>) => Promise<void>;
   onAddCustomer: (c: Omit<PartnerCustomer, 'id' | 'user_id' | 'created_at'>) => Promise<void>;
 };
@@ -142,7 +143,7 @@ export function ExportButtons({ target, products, customers }: { target: ImportT
   );
 }
 
-export function ImportExportModule({ products, customers, onAddProduct, onAddCustomer }: Props) {
+export function ImportExportModule({ products, customers, selectedBranchId, onAddProduct, onAddCustomer }: Props) {
   const [target, setTarget] = useState<ImportTarget>('produtos');
   const [parsed, setParsed] = useState<ParsedData | null>(null);
   const [fileName, setFileName] = useState('');
@@ -207,6 +208,10 @@ export function ImportExportModule({ products, customers, onAddProduct, onAddCus
           if (target === 'produtos') {
             const name = getVal('name');
             if (!name) { fail++; continue; }
+            if (!selectedBranchId) {
+              window.alert('Selecione uma filial antes de importar estoque para manter a separação entre filiais.');
+              fail++; continue;
+            }
             await onAddProduct({
               name,
               sku: getVal('sku') || null,
@@ -218,12 +223,16 @@ export function ImportExportModule({ products, customers, onAddProduct, onAddCus
               image_url: null,
               category: getVal('category') || null,
               is_service: false,
-              branch_id: null,
+              branch_id: selectedBranchId,
             });
             ok++;
           } else {
             const name = getVal('name');
             if (!name) { fail++; continue; }
+            if (!selectedBranchId) {
+              window.alert('Selecione uma filial antes de importar clientes para manter a separação entre filiais.');
+              fail++; continue;
+            }
             await onAddCustomer({
               name,
               document: getVal('document') || null,
@@ -236,7 +245,7 @@ export function ImportExportModule({ products, customers, onAddProduct, onAddCus
               device_model: null,
               notes: null,
               customer_type: 'varejo',
-              branch_id: null,
+              branch_id: selectedBranchId,
             });
             ok++;
           }

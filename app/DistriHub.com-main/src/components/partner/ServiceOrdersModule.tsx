@@ -27,7 +27,7 @@ type Props = {
   branches: PartnerBranch[];
   customers: PartnerCustomer[];
   products: PartnerProduct[];
-  selectedBranchId: string;
+  selectedBranchId: string | null;
 };
 
 type DraftItem = {
@@ -51,6 +51,27 @@ const money = (value: number) =>
     style: 'currency',
     currency: 'BRL',
   });
+
+const inputDarkStyle: React.CSSProperties = {
+  width: '100%',
+  backgroundColor: '#111827',
+  color: '#f9fafb',
+  border: '1px solid #374151',
+  borderRadius: 10,
+  padding: '10px 12px',
+  fontSize: 14,
+  outline: 'none',
+  boxSizing: 'border-box',
+};
+
+const labelDarkStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 8,
+  color: '#e5e7eb',
+  fontWeight: 600,
+  fontSize: 14,
+};
 
 export function ServiceOrdersModule({
   userId,
@@ -347,16 +368,36 @@ export function ServiceOrdersModule({
         customer_id: customerId || null,
         customer_name: customer?.name ?? '',
         service_segment: segment,
+        os_number: null,
         equipment_type: equipmentType,
+        equipment_brand: null,
+        equipment_model: null,
         equipment_identification: identification,
         serial_number: serial,
+        imei: null,
+        reported_issue: null,
+        observations: notes,
+        technician_name: null,
+        entry_date: new Date().toISOString(),
+        forecast_delivery: null,
         accessories_left: accessories,
         physical_condition: condition,
         entry_damage: damage,
         entry_notes: notes,
+        screen_condition: null,
+        shell_condition: null,
+        side_condition: null,
+        rear_condition: null,
+        connectors_condition: null,
+        buttons_condition: null,
+        other_damage: null,
+        inspection_notes: null,
         status: 'aberta',
+        approval_status: 'aguardando_aprovacao',
+        approval_notes: null,
         labor_total: laborTotal,
         parts_total: partsTotal,
+        discount_total: 0,
         total,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -483,75 +524,61 @@ export function ServiceOrdersModule({
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns:
-                'repeat(auto-fit,minmax(220px,1fr))',
-              gap: 14,
-              marginTop: 18,
+              gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))',
+              gap: 16,
+              marginTop: 22,
             }}
           >
-            <label>
-              Cliente
-
+            <label style={labelDarkStyle}>
+              <span style={{ color: '#f3f4f6' }}>Cliente</span>
               <select
                 value={customerId}
-                onChange={(event) =>
-                  setCustomerId(event.target.value)
-                }
+                onChange={(event) => setCustomerId(event.target.value)}
+                style={{ ...inputDarkStyle, WebkitAppearance: 'none', appearance: 'none' }}
               >
-                <option value="">
-                  Sem cliente
-                </option>
-
+                <option value="" style={{ backgroundColor: '#111827', color: '#f3f4f6' }}>Sem cliente</option>
                 {customers.map((item) => (
-                  <option
-                    key={item.id}
-                    value={item.id}
-                  >
+                  <option key={item.id} value={item.id} style={{ backgroundColor: '#111827', color: '#f3f4f6' }}>
                     {item.name}
                   </option>
                 ))}
               </select>
             </label>
 
-            <label>
-              Tipo de equipamento
-
+            <label style={labelDarkStyle}>
+              <span style={{ color: '#f3f4f6' }}>Tipo de equipamento</span>
               <input
                 value={equipmentType}
-                onChange={(event) =>
-                  setEquipmentType(event.target.value)
-                }
+                onChange={(event) => setEquipmentType(event.target.value)}
                 placeholder="Celular, notebook, ar-condicionado, veículo..."
+                style={{ ...inputDarkStyle, placeholder: { color: '#9ca3af' } }}
+                className="dark-os-input"
               />
             </label>
 
-            <label>
-              Identificação do Equipamento
-
+            <label style={labelDarkStyle}>
+              <span style={{ color: '#f3f4f6' }}>Identificação do Equipamento</span>
               <input
                 value={identification}
-                onChange={(event) =>
-                  setIdentification(event.target.value)
-                }
+                onChange={(event) => setIdentification(event.target.value)}
                 placeholder="Modelo, patrimônio, placa, etiqueta..."
+                style={{ ...inputDarkStyle }}
               />
             </label>
 
-            <label>
-              Nº de Série
-
+            <label style={labelDarkStyle}>
+              <span style={{ color: '#f3f4f6' }}>Nº de Série</span>
               <input
                 value={serial}
-                onChange={(event) =>
-                  setSerial(event.target.value)
-                }
+                onChange={(event) => setSerial(event.target.value)}
                 placeholder="Opcional"
+                style={{ ...inputDarkStyle }}
               />
             </label>
           </div>
 
-          <div style={{ marginTop: 22 }}>
-            <h3>
+          <div style={{ marginTop: 24, padding: 18, borderRadius: 14, backgroundColor: '#0f172a', border: '1px solid #334155' }}>
+            <h3 style={{ margin: '0 0 16px', display: 'flex', alignItems: 'center', gap: 8, color: '#f3f4f6' }}>
               <ClipboardList size={18} />
               Laudo e Vistoria de Entrada
             </h3>
@@ -559,60 +586,51 @@ export function ServiceOrdersModule({
             <div
               style={{
                 display: 'grid',
-                gridTemplateColumns:
-                  'repeat(auto-fit,minmax(280px,1fr))',
-                gap: 14,
+                gridTemplateColumns: 'repeat(auto-fit,minmax(280px,1fr))',
+                gap: 16,
               }}
             >
-              <label>
-                Acessórios Deixados
-
+              <label style={labelDarkStyle}>
+                <span style={{ color: '#f3f4f6' }}>Acessórios Deixados</span>
                 <textarea
                   value={accessories}
-                  onChange={(event) =>
-                    setAccessories(event.target.value)
-                  }
-                  rows={3}
+                  onChange={(event) => setAccessories(event.target.value)}
+                  rows={4}
                   placeholder="Cabos, fontes, controles, capas..."
+                  style={{ ...inputDarkStyle, minHeight: 110, resize: 'vertical' }}
                 />
               </label>
 
-              <label>
-                Estado físico
-
+              <label style={labelDarkStyle}>
+                <span style={{ color: '#f3f4f6' }}>Estado físico</span>
                 <textarea
                   value={condition}
-                  onChange={(event) =>
-                    setCondition(event.target.value)
-                  }
-                  rows={3}
+                  onChange={(event) => setCondition(event.target.value)}
+                  rows={4}
                   placeholder="Riscos, trincas, amassados, desgaste..."
+                  style={{ ...inputDarkStyle, minHeight: 110, resize: 'vertical' }}
                 />
               </label>
 
-              <label>
-                Avarias identificadas
-
+              <label style={labelDarkStyle}>
+                <span style={{ color: '#f3f4f6' }}>Avarias identificadas</span>
                 <textarea
                   value={damage}
-                  onChange={(event) =>
-                    setDamage(event.target.value)
-                  }
-                  rows={3}
+                  onChange={(event) => setDamage(event.target.value)}
+                  rows={4}
                   placeholder="Registre o que já existia na entrada."
+                  style={{ ...inputDarkStyle, minHeight: 110, resize: 'vertical' }}
                 />
               </label>
 
-              <label>
-                Observações
-
+              <label style={labelDarkStyle}>
+                <span style={{ color: '#f3f4f6' }}>Observações</span>
                 <textarea
                   value={notes}
-                  onChange={(event) =>
-                    setNotes(event.target.value)
-                  }
-                  rows={3}
+                  onChange={(event) => setNotes(event.target.value)}
+                  rows={4}
                   placeholder="Sintomas, testes, observações do cliente..."
+                  style={{ ...inputDarkStyle, minHeight: 110, resize: 'vertical' }}
                 />
               </label>
             </div>
@@ -711,17 +729,13 @@ export function ServiceOrdersModule({
               }}
             >
               <div>
-                <label>
-                  Buscar no estoque da filial
-
+                <label style={labelDarkStyle}>
+                  <span style={{ color: '#f3f4f6' }}>Buscar no estoque da filial</span>
                   <input
                     value={productSearch}
-                    onChange={(event) =>
-                      setProductSearch(
-                        event.target.value
-                      )
-                    }
+                    onChange={(event) => setProductSearch(event.target.value)}
                     placeholder="Nome ou SKU"
+                    style={{ ...inputDarkStyle }}
                   />
                 </label>
 
@@ -745,6 +759,9 @@ export function ServiceOrdersModule({
                         padding: 10,
                         marginTop: 7,
                         borderRadius: 9,
+                        backgroundColor: '#111827',
+                        border: '1px solid #374151',
+                        color: '#f3f4f6',
                       }}
                     >
                       <b>{product.name}</b>
@@ -793,30 +810,21 @@ export function ServiceOrdersModule({
                       <input
                         type="number"
                         min={1}
-                        max={
-                          item.is_service
-                            ? undefined
-                            : item.stock
-                        }
+                        max={item.is_service ? undefined : item.stock}
                         value={item.quantity}
                         onChange={(event) => {
-                          const value = Number(
-                            event.target.value
-                          );
+                          const value = Number(event.target.value);
 
                           setItems((current) =>
                             current.map((currentItem) =>
-                              currentItem.product_id ===
-                              item.product_id
+                              currentItem.product_id === item.product_id
                                 ? {
                                     ...currentItem,
                                     quantity: Math.max(
                                       1,
                                       Math.min(
                                         value,
-                                        currentItem.is_service
-                                          ? 999
-                                          : currentItem.stock
+                                        currentItem.is_service ? 999 : currentItem.stock
                                       )
                                     ),
                                   }
@@ -824,6 +832,7 @@ export function ServiceOrdersModule({
                             )
                           );
                         }}
+                        style={{ ...inputDarkStyle }}
                       />
 
                       <input
@@ -832,14 +841,11 @@ export function ServiceOrdersModule({
                         step="0.01"
                         value={item.unit_price}
                         onChange={(event) => {
-                          const value = Number(
-                            event.target.value
-                          );
+                          const value = Number(event.target.value);
 
                           setItems((current) =>
                             current.map((currentItem) =>
-                              currentItem.product_id ===
-                              item.product_id
+                              currentItem.product_id === item.product_id
                                 ? {
                                     ...currentItem,
                                     unit_price: value,
@@ -848,6 +854,7 @@ export function ServiceOrdersModule({
                             )
                           );
                         }}
+                        style={{ ...inputDarkStyle }}
                       />
 
                       <button
@@ -886,17 +893,15 @@ export function ServiceOrdersModule({
               flexWrap: 'wrap',
             }}
           >
-            <label>
-              Mão de obra
-
+            <label style={labelDarkStyle}>
+              <span style={{ color: '#f3f4f6' }}>Mão de obra</span>
               <input
                 type="number"
                 min={0}
                 step="0.01"
                 value={labor}
-                onChange={(event) =>
-                  setLabor(event.target.value)
-                }
+                onChange={(event) => setLabor(event.target.value)}
+                style={{ ...inputDarkStyle }}
               />
             </label>
 
@@ -940,12 +945,15 @@ export function ServiceOrdersModule({
 
           <input
             value={search}
-            onChange={(event) =>
-              setSearch(event.target.value)
-            }
+            onChange={(event) => setSearch(event.target.value)}
             placeholder="Pesquisar OS"
             style={{
               flex: 1,
+              backgroundColor: '#111827',
+              color: '#f3f4f6',
+              border: '1px solid #374151',
+              borderRadius: 10,
+              padding: '10px 12px',
             }}
           />
         </div>

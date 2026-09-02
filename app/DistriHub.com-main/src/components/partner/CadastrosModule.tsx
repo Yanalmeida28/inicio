@@ -8,14 +8,15 @@ import {
 import type {
   PartnerProduct, PartnerCategory, PartnerSupplier,
   PartnerSalesperson, PartnerCombo, PartnerModifier, PartnerCustomer,
-  PartnerSale, SalespersonRole,
+  PartnerSale, SalespersonRole, PartnerBranch,
 } from '../../types';
 import { money } from '../../utils';
 import { ImportExportModule, ExportButtons } from './ImportExportModule';
 
 type Props = {
   products: PartnerProduct[];
-    selectedBranchId: string | null;
+  branches: PartnerBranch[];
+  selectedBranchId: string | null;
   categories: PartnerCategory[];
   suppliers: PartnerSupplier[];
   salespeople: PartnerSalesperson[];
@@ -37,6 +38,8 @@ type Props = {
   onAddModifier: (m: Omit<PartnerModifier, 'id' | 'user_id' | 'created_at'>) => Promise<void>;
   onDeleteModifier: (id: string) => Promise<void>;
   onAddCustomer: (c: Omit<PartnerCustomer, 'id' | 'user_id' | 'created_at'>) => Promise<void>;
+  onUpdateCustomer: (id: string, updates: Partial<PartnerCustomer>) => Promise<void>;
+  onDeleteCustomer: (id: string) => Promise<void>;
 };
 
 type SubTab = 'produtos' | 'categorias' | 'xml' | 'combos' | 'modificadores' | 'clientes' | 'fornecedores' | 'vendedores' | 'importar' | 'reposicao';
@@ -55,17 +58,17 @@ const subTabs: { id: SubTab; label: string; icon: typeof Package }[] = [
 ];
 
 export function CadastrosModule({
-  products,selectedBranchId, categories, suppliers, salespeople, combos, modifiers, customers, sales,
+  products, branches, selectedBranchId, categories, suppliers, salespeople, combos, modifiers, customers, sales,
   segment, onAddProduct, onDeleteProduct,
   onAddCategory, onDeleteCategory, onAddSupplier, onAddSalesperson,
   onUpdateSalesperson, onDeleteSalesperson,
   onAddCombo, onDeleteCombo, onAddModifier, onDeleteModifier, onAddCustomer,
+  onUpdateCustomer, onDeleteCustomer,
 }: Props) {
   const [subTab, setSubTab] = useState<SubTab>('produtos');
-  const filteredProducts = products.filter(product => {
-  if (!selectedBranchId) return true; // Visão Consolidada mostra tudo
-  return product.branch_id === selectedBranchId; // Filial específica mostra só os dela
-});
+  const filteredProducts = selectedBranchId
+    ? products.filter((product) => product.branch_id === selectedBranchId)
+    : [];
 
   return (
     <div className="panel-module">
@@ -93,6 +96,9 @@ export function CadastrosModule({
         {subTab === 'produtos' && (
           <ProductsSubTab
             products={filteredProducts}
+            allProducts={products}
+            branches={branches}
+            selectedBranchId={selectedBranchId}
             categories={categories}
             segment={segment}
             onAddProduct={onAddProduct}
@@ -102,7 +108,7 @@ export function CadastrosModule({
         {subTab === 'categorias' && (
           <CategoriesSubTab categories={categories} onAdd={onAddCategory} onDelete={onDeleteCategory} />
         )}
-        {subTab === 'xml' && <XmlSubTab onAddProduct={onAddProduct} />}
+        {subTab === 'xml' && <XmlSubTab selectedBranchId={selectedBranchId} onAddProduct={onAddProduct} />}
         {subTab === 'combos' && (
           <CombosSubTab combos={combos} products={filteredProducts} onAdd={onAddCombo} onDelete={onDeleteCombo} />
         )}
@@ -110,7 +116,14 @@ export function CadastrosModule({
           <ModifiersSubTab modifiers={modifiers} products={filteredProducts} onAdd={onAddModifier} onDelete={onDeleteModifier} />
         )}
         {subTab === 'clientes' && (
-          <CustomersSubTab customers={customers} sales={sales} onAdd={onAddCustomer} />
+          <CustomersSubTab
+            customers={customers}
+            sales={sales}
+            selectedBranchId={selectedBranchId}
+            onAdd={onAddCustomer}
+            onUpdate={onUpdateCustomer}
+            onDelete={onDeleteCustomer}
+          />
         )}
         {subTab === 'fornecedores' && (
           <SuppliersSubTab suppliers={suppliers} onAdd={onAddSupplier} />
@@ -130,6 +143,7 @@ export function CadastrosModule({
           <ImportExportModule
             products={products}
             customers={customers}
+            selectedBranchId={selectedBranchId}
             onAddProduct={onAddProduct}
             onAddCustomer={onAddCustomer}
           />
@@ -139,8 +153,11 @@ export function CadastrosModule({
   );
 }
 
-function ProductsSubTab({ products, categories, segment, onAddProduct, onDeleteProduct }: {
+function ProductsSubTab({ products, allProducts, branches, selectedBranchId, categories, segment, onAddProduct, onDeleteProduct }: {
   products: PartnerProduct[];
+  allProducts: PartnerProduct[];
+  branches: PartnerBranch[];
+  selectedBranchId: string | null;
   categories: PartnerCategory[];
   segment: string;
   onAddProduct: (p: Omit<PartnerProduct, 'id' | 'user_id' | 'created_at' | 'updated_at'>) => Promise<void>;
@@ -163,15 +180,20 @@ function ProductsSubTab({ products, categories, segment, onAddProduct, onDeleteP
   const [pisRate, setPisRate] = useState('');
   const [cofinsRate, setCofinsRate] = useState('');
   const [labelProductId, setLabelProductId] = useState<string | null>(null);
+  const [availabilityProductId, setAvailabilityProductId] = useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim() || !sale) return;
+    if (!selectedBranchId) {
+      window.alert('Selecione uma filial antes de cadastrar produtos para manter o estoque separado por filial.');
+      return;
+    }
     await onAddProduct({
       name, sku: sku || null, cost_price: Number(cost) || 0, sale_price: Number(sale) || 0,
       wholesale_price: Number(wholesale) || 0,
       stock: Number(stock) || 0, min_stock: Number(minStock) || 0,
-      image_url: null, category: category || null, is_service: isService, branch_id: null,
+      image_url: null, category: category || null, is_service: isService, branch_id: selectedBranchId,
       ncm: ncm || null, cfop: cfop || null, cst_csosn: cstCsosn || null,
       icms_rate: Number(icmsRate) || 0, pis_rate: Number(pisRate) || 0, cofins_rate: Number(cofinsRate) || 0,
     });
@@ -181,6 +203,19 @@ function ProductsSubTab({ products, categories, segment, onAddProduct, onDeleteP
   }
 
   const itemLabel = segment === 'assistencia' ? 'Peça / Serviço' : 'Produto / Serviço';
+
+  const selectedProduct = products.find((p) => p.id === availabilityProductId) ?? null;
+  const currentBranch = branches.find((branch) => branch.id === selectedBranchId);
+
+  const productMatches = selectedProduct
+    ? allProducts.filter((product) => {
+        if (!product.branch_id || product.branch_id === selectedBranchId) return false;
+        const sameName = product.name.trim().toLowerCase() === selectedProduct.name.trim().toLowerCase();
+        const sameSku = !!selectedProduct.sku && !!product.sku && product.sku.trim().toLowerCase() === selectedProduct.sku.trim().toLowerCase();
+        const sameFallback = !selectedProduct.sku && !product.sku && sameName;
+        return sameName && (sameSku || sameFallback);
+      })
+    : [];
 
   return (
     <div>
@@ -304,6 +339,9 @@ function ProductsSubTab({ products, categories, segment, onAddProduct, onDeleteP
                       <button className="rma-advance-btn" onClick={() => setLabelProductId(p.id)} title="Imprimir Etiqueta">
                         <QrCode size={14} />
                       </button>
+                      <button className="rma-advance-btn" onClick={() => setAvailabilityProductId(p.id)} title="Ver disponibilidade em outras filiais">
+                        <Building2 size={14} />
+                      </button>
                       <button className="rma-advance-btn danger" onClick={() => onDeleteProduct(p.id)}>
                         <Trash2 size={14} />
                       </button>
@@ -322,9 +360,82 @@ function ProductsSubTab({ products, categories, segment, onAddProduct, onDeleteP
           onClose={() => setLabelProductId(null)}
         />
       )}
+
+      {availabilityProductId && selectedProduct && (
+        <ProductBranchAvailabilityModal
+          product={selectedProduct}
+          currentBranchName={currentBranch?.name ?? 'Minha filial'}
+          currentBranchStock={selectedProduct.stock}
+          currentBranchPrice={selectedProduct.sale_price}
+          otherBranches={productMatches.map((product) => ({
+            branchId: product.branch_id!,
+            branchName: branches.find((branch) => branch.id === product.branch_id)?.name ?? 'Filial',
+            stock: product.stock,
+            salePrice: product.sale_price,
+          }))}
+          onClose={() => setAvailabilityProductId(null)}
+        />
+      )}
     </div>
   );
 }
+
+function ProductBranchAvailabilityModal({
+  product,
+  currentBranchName,
+  currentBranchStock,
+  currentBranchPrice,
+  otherBranches,
+  onClose,
+}: {
+  product: PartnerProduct;
+  currentBranchName: string;
+  currentBranchStock: number;
+  currentBranchPrice: number;
+  otherBranches: { branchId: string; branchName: string; stock: number; salePrice: number }[];
+  onClose: () => void;
+}) {
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 560 }}>
+        <div className="modal-header">
+          <h3>Ver disponibilidade em outras filiais</h3>
+          <button onClick={onClose}><X size={18} /></button>
+        </div>
+
+        <div style={{ display: 'grid', gap: 12, marginTop: 16 }}>
+          <div className="partner-card" style={{ padding: 16 }}>
+            <strong>Produto: {product.name}</strong>
+            <div style={{ marginTop: 8 }}>
+              <div><strong>Minha filial</strong></div>
+              <div>{currentBranchName}</div>
+              <small>Estoque: {currentBranchStock} unidades</small><br />
+              <small>Preço de venda: {money.format(currentBranchPrice)}</small>
+            </div>
+          </div>
+
+          <div className="partner-card" style={{ padding: 16 }}>
+            <strong>Outras filiais</strong>
+            {otherBranches.length === 0 ? (
+              <div style={{ marginTop: 12 }}>Sem estoque em outras filiais.</div>
+            ) : (
+              <div style={{ display: 'grid', gap: 10, marginTop: 12 }}>
+                {otherBranches.map((branch) => (
+                  <div key={branch.branchId} style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 10 }}>
+                    <div><strong>{branch.branchName}</strong></div>
+                    <small>Estoque: {branch.stock} unidades</small><br />
+                    <small>Preço de venda: {money.format(branch.salePrice)}</small>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 
 function ThermalLabelModal({ product, onClose }: {
   product: PartnerProduct | undefined;
@@ -401,7 +512,8 @@ function CategoriesSubTab({ categories, onAdd, onDelete }: {
   );
 }
 
-function XmlSubTab({ onAddProduct }: {
+function XmlSubTab({ selectedBranchId, onAddProduct }: {
+  selectedBranchId: string | null;
   onAddProduct: (p: Omit<PartnerProduct, 'id' | 'user_id' | 'created_at' | 'updated_at'>) => Promise<void>;
 }) {
   const [fileName, setFileName] = useState('');
@@ -422,11 +534,15 @@ function XmlSubTab({ onAddProduct }: {
 
   async function handleImport() {
     if (!parsed) return;
+    if (!selectedBranchId) {
+      window.alert('Selecione uma filial antes de importar produtos para manter o estoque separado entre filiais.');
+      return;
+    }
     for (const item of parsed) {
       await onAddProduct({
         name: item.name, sku: item.sku, cost_price: item.cost, sale_price: item.cost * 1.8,
         wholesale_price: item.cost * 1.3,
-        stock: item.qty, min_stock: 5, image_url: null, category: null, is_service: false, branch_id: null,
+        stock: item.qty, min_stock: 5, image_url: null, category: null, is_service: false, branch_id: selectedBranchId,
         ncm: null, cfop: null, cst_csosn: null, icms_rate: 0, pis_rate: 0, cofins_rate: 0,
       });
     }
@@ -621,12 +737,16 @@ function ModifiersSubTab({ modifiers, products, onAdd, onDelete }: {
   );
 }
 
-function CustomersSubTab({ customers, sales, onAdd }: {
+function CustomersSubTab({ customers, sales, selectedBranchId, onAdd, onUpdate, onDelete }: {
   customers: PartnerCustomer[];
   sales: PartnerSale[];
+  selectedBranchId: string | null;
   onAdd: (c: Omit<PartnerCustomer, 'id' | 'user_id' | 'created_at'>) => Promise<void>;
+  onUpdate: (id: string, updates: Partial<PartnerCustomer>) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
 }) {
   const [showForm, setShowForm] = useState(false);
+  const [editingCustomerId, setEditingCustomerId] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [document, setDocument] = useState('');
   const [phone, setPhone] = useState('');
@@ -641,18 +761,63 @@ function CustomersSubTab({ customers, sales, onAdd }: {
   const [historyCustomerId, setHistoryCustomerId] = useState<string | null>(null);
   const [profileCustomerId, setProfileCustomerId] = useState<string | null>(null);
 
+  function resetForm() {
+    setName(''); setDocument(''); setPhone(''); setEmail(''); setBirthday(''); setAddress('');
+    setNeighborhood(''); setCity(''); setDevice(''); setNotes(''); setCustomerType('varejo');
+    setEditingCustomerId(null); setShowForm(false);
+  }
+
+  function openEditForm(customer: PartnerCustomer) {
+    setEditingCustomerId(customer.id);
+    setName(customer.name ?? '');
+    setDocument(customer.document ?? '');
+    setPhone(customer.phone ?? '');
+    setEmail(customer.email ?? '');
+    setBirthday(customer.birthday ?? '');
+    setAddress(customer.address ?? '');
+    setNeighborhood(customer.neighborhood ?? '');
+    setCity(customer.city ?? '');
+    setDevice(customer.device_model ?? '');
+    setNotes(customer.notes ?? '');
+    setCustomerType(customer.customer_type ?? 'varejo');
+    setShowForm(true);
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) return;
-    await onAdd({
-      name, document: document || null, phone: phone || null, email: email || null,
-      birthday: birthday || null, address: address || null, neighborhood: neighborhood || null,
-      city: city || null, device_model: device || null, notes: notes || null,
-      customer_type: customerType, branch_id: null,
-    });
-    setName(''); setDocument(''); setPhone(''); setEmail(''); setBirthday(''); setAddress('');
-    setNeighborhood(''); setCity(''); setDevice(''); setNotes(''); setCustomerType('varejo');
-    setShowForm(false);
+    if (!selectedBranchId && !editingCustomerId) {
+      window.alert('Selecione uma filial antes de cadastrar clientes para manter a separação entre filiais.');
+      return;
+    }
+
+    const payload = {
+      name,
+      document: document || null,
+      phone: phone || null,
+      email: email || null,
+      birthday: birthday || null,
+      address: address || null,
+      neighborhood: neighborhood || null,
+      city: city || null,
+      device_model: device || null,
+      notes: notes || null,
+      customer_type: customerType,
+      branch_id: editingCustomerId ? (customers.find((customer) => customer.id === editingCustomerId)?.branch_id ?? selectedBranchId) : selectedBranchId,
+    };
+
+    if (!payload.branch_id) {
+      window.alert('Não foi possível localizar a filial atual do cliente. Selecione uma filial antes de salvar.');
+      return;
+    }
+
+    if (editingCustomerId) {
+      await onUpdate(editingCustomerId, payload);
+    } else {
+      await onAdd(payload as Omit<PartnerCustomer, 'id' | 'user_id' | 'created_at'>);
+    }
+
+    resetForm();
   }
 
   const historyCustomer = customers.find((c) => c.id === historyCustomerId);
@@ -662,7 +827,18 @@ function CustomersSubTab({ customers, sales, onAdd }: {
   return (
     <div>
       <div className="action-row">
-        <button className="module-action-btn" onClick={() => setShowForm(!showForm)}>
+        <button className="module-action-btn" onClick={() => {
+          if (showForm && editingCustomerId) {
+            resetForm();
+            return;
+          }
+          setShowForm(!showForm);
+          if (!showForm) {
+            setName(''); setDocument(''); setPhone(''); setEmail(''); setBirthday(''); setAddress('');
+            setNeighborhood(''); setCity(''); setDevice(''); setNotes(''); setCustomerType('varejo');
+            setEditingCustomerId(null);
+          }
+        }}>
           {showForm ? 'Cancelar' : <><Plus size={16} /> Novo Cliente</>}
         </button>
         <ExportButtons target="clientes" products={[]} customers={customers} />
@@ -724,7 +900,7 @@ function CustomersSubTab({ customers, sales, onAdd }: {
             Observações Adicionais
             <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notas sobre o cliente..." rows={2} />
           </label>
-          <button type="submit" className="module-submit-btn">Cadastrar cliente</button>
+          <button type="submit" className="module-submit-btn">{editingCustomerId ? 'Salvar alterações' : 'Cadastrar cliente'}</button>
         </form>
       )}
 
@@ -744,6 +920,16 @@ function CustomersSubTab({ customers, sales, onAdd }: {
                   <td>{c.birthday ? new Date(c.birthday).toLocaleDateString('pt-BR') : '—'}</td>
                   <td>
                     <div className="row-action-group">
+                      <button className="rma-advance-btn" onClick={() => openEditForm(c)} title="Editar Cliente">
+                        <Save size={14} /> Editar
+                      </button>
+                      <button className="rma-advance-btn" onClick={async () => {
+                        const confirmed = window.confirm(`Deseja excluir o cliente "${c.name}"?`);
+                        if (!confirmed) return;
+                        await onDelete(c.id);
+                      }} title="Excluir Cliente" style={{ color: '#fca5a5' }}>
+                        <Trash2 size={14} /> Excluir
+                      </button>
                       <button className="rma-advance-btn" onClick={() => setProfileCustomerId(c.id)} title="Detalhes do Cliente">
                         <UserCircle size={14} /> Detalhes
                       </button>

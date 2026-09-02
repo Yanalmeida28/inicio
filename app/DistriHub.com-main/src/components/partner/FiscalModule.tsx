@@ -13,6 +13,7 @@ type Props = {
   customers: PartnerCustomer[];
   profile: PartnerProfile | null;
   currentRole: SalespersonRole;
+  selectedBranchId: string | null;
 };
 
 type DocType = 'pf' | 'pj';
@@ -44,9 +45,10 @@ function detectDocType(doc: string | null | undefined): DocType {
   return d.length <= 11 ? 'pf' : 'pj';
 }
 
-export function FiscalModule({ products, sales, customers, profile, currentRole }: Props) {
+export function FiscalModule({ products, sales, customers, profile, currentRole, selectedBranchId }: Props) {
   const [selectedSaleId, setSelectedSaleId] = useState('');
   const [emitResult, setEmitResult] = useState<{ type: EmitType; success: boolean } | null>(null);
+  const hasActiveBranch = Boolean(selectedBranchId);
   const [fiscalTab, setFiscalTab] = useState<FiscalTab>('cupom');
   const [emitType, setEmitType] = useState<EmitType>('nfce');
   const [showEmitModal, setShowEmitModal] = useState(false);
@@ -181,19 +183,19 @@ export function FiscalModule({ products, sales, customers, profile, currentRole 
   }, [fiscalItems]);
 
   function openEmitModal(type: EmitType) {
-    if (!selectedSale || !canEmit) return;
+    if (!selectedSale || !canEmit || !hasActiveBranch) return;
     setEmitType(type);
     setFiscalTab(type === 'nfce' ? 'cupom' : 'nota');
     setShowEmitModal(true);
   }
 
   async function handleEmit() {
-    if (!selectedSale || !canEmit) return;
+    if (!selectedSale || !canEmit || !hasActiveBranch) return;
     if (!profile?.id || !supabase) return;
     const { error } = await supabase.from('fiscal_documents').insert({
       user_id: profile.id, order_id: null, document_type: emitType,
       status: 'pending', series: emitSerie, number: emitNumero || null,
-      provider_response: { sale_id: selectedSale.id, items: fiscalItems, totals, finalidade: emitFinalidade, presenca: emitPresenca, tipo_cliente: emitTipoCliente, observations: emitObservations },
+      provider_response: { sale_id: selectedSale.id, branch_id: selectedBranchId, items: fiscalItems, totals, finalidade: emitFinalidade, presenca: emitPresenca, tipo_cliente: emitTipoCliente, observations: emitObservations },
     });
     if (error) return;
     setEmitResult({ type: emitType, success: true });
@@ -202,6 +204,10 @@ export function FiscalModule({ products, sales, customers, profile, currentRole 
   }
 
   async function handleInutilization() {
+    if (!hasActiveBranch) {
+      setInutilStatus('Selecione uma filial para continuar.');
+      return;
+    }
     if (!profile?.id || !supabase || !inutilInicio || !inutilFim || inutilJustificativa.trim().length < 15) {
       setInutilStatus('Informe a série, a faixa numérica e uma justificativa com pelo menos 15 caracteres.');
       return;
@@ -226,9 +232,16 @@ export function FiscalModule({ products, sales, customers, profile, currentRole 
         <span className="module-icon"><FileText size={20} /></span>
         <div>
           <h3>Emissão de Nota Fiscal — NF-e / NFC-e</h3>
-          <p>Gestão fiscal completa com cálculo de impostos e emissão de documentos</p>
+          <p>Gestão fiscal completa com cálculo de impostos e emissão de documentos por filial</p>
         </div>
       </div>
+
+      {!hasActiveBranch && (
+        <div className="pdv-restricted-checkout" style={{ marginBottom: 16 }}>
+          <AlertCircle size={16} />
+          <span>Selecione uma filial para continuar.</span>
+        </div>
+      )}
 
       {/* Company Fiscal Details */}
       <div className="section-divider">

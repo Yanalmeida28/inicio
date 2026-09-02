@@ -190,8 +190,11 @@ function PdvCheckout({ products, customers, sales, salespeople, segment, selecte
 
   const filtered = useMemo(() => {
     const term = search.toLowerCase();
-    return products.filter((p) => !term || p.name.toLowerCase().includes(term) || (p.sku ?? '').toLowerCase().includes(term));
-  }, [products, search]);
+    return products.filter((p) => {
+      if (!selectedBranchId || p.branch_id !== selectedBranchId) return false;
+      return !term || p.name.toLowerCase().includes(term) || (p.sku ?? '').toLowerCase().includes(term);
+    });
+  }, [products, search, selectedBranchId]);
 
   const total = cart.reduce((sum, item) => sum + item.unit_price * item.quantity, 0);
 
@@ -219,6 +222,10 @@ function PdvCheckout({ products, customers, sales, salespeople, segment, selecte
 
   async function handleCheckout() {
     if (cart.length === 0) return;
+    if (!selectedBranchId) {
+      alert('Selecione uma filial antes de finalizar a venda.');
+      return;
+    }
     const customer = customers.find((c) => c.id === customerId);
     const fallbackName = clientType === 'atacado' ? 'Cliente Atacado' : 'Cliente Varejo';
     await onCreateSale({
@@ -599,8 +606,11 @@ function PreVendaTab({ products, customers, sales, salespeople, segment, selecte
 
   const filtered = useMemo(() => {
     const term = search.toLowerCase();
-    return products.filter((p) => !term || p.name.toLowerCase().includes(term) || (p.sku ?? '').toLowerCase().includes(term));
-  }, [products, search]);
+    return products.filter((p) => {
+      if (!selectedBranchId || p.branch_id !== selectedBranchId) return false;
+      return !term || p.name.toLowerCase().includes(term) || (p.sku ?? '').toLowerCase().includes(term);
+    });
+  }, [products, search, selectedBranchId]);
 
   const total = cart.reduce((sum, item) => sum + item.unit_price * item.quantity, 0);
 
@@ -628,6 +638,10 @@ function PreVendaTab({ products, customers, sales, salespeople, segment, selecte
 
   async function handleSavePreSale() {
     if (cart.length === 0) return;
+    if (!selectedBranchId) {
+      alert('Selecione uma filial antes de salvar a pré-venda.');
+      return;
+    }
     const customer = customers.find((c) => c.id === customerId);
     const fallbackName = clientType === 'atacado' ? 'Cliente Atacado' : 'Cliente Varejo';
     await onCreatePreSale({

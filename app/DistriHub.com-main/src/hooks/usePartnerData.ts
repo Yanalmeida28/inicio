@@ -30,6 +30,8 @@ type PartnerData = {
   updateProduct: (id: string, updates: Partial<PartnerProduct>) => Promise<void>;
   deleteProduct: (id: string) => Promise<void>;
   addCustomer: (customer: Omit<PartnerCustomer, 'id' | 'user_id' | 'created_at'>) => Promise<void>;
+  updateCustomer: (id: string, updates: Partial<PartnerCustomer>) => Promise<void>;
+  deleteCustomer: (id: string) => Promise<void>;
   createSale: (sale: { customer_id: string | null; customer_name: string; items: SaleItem[]; total: number; imei?: string; serial_number?: string; payment_method?: string; salesperson_id?: string | null; branch_id?: string | null }) => Promise<void>;
   createPreSale: (sale: { customer_id: string | null; customer_name: string; items: SaleItem[]; total: number; imei?: string; serial_number?: string; salesperson_id?: string | null; branch_id?: string | null }) => Promise<void>;
   finalizePreSale: (id: string, paymentMethod: string) => Promise<void>;
@@ -109,6 +111,9 @@ export function usePartnerData(user: User | null): PartnerData {
 
   const addProduct = useCallback(async (product: Omit<PartnerProduct, 'id' | 'user_id' | 'created_at' | 'updated_at'>) => {
     if (!user) return;
+    if (!product.branch_id) {
+      throw new Error('Produto sem filial não pode ser cadastrado.');
+    }
     const np: PartnerProduct = {
       ...product,
       wholesale_price: product.wholesale_price ?? 0,
@@ -139,17 +144,50 @@ export function usePartnerData(user: User | null): PartnerData {
 
   const addCustomer = useCallback(async (customer: Omit<PartnerCustomer, 'id' | 'user_id' | 'created_at'>) => {
     if (!user) return;
+    if (!customer.branch_id) {
+      throw new Error('Cliente sem filial não pode ser cadastrado.');
+    }
     const nc: PartnerCustomer = { ...customer, id: crypto.randomUUID(), user_id: user.id, created_at: new Date().toISOString() };
     setData((prev) => ({ ...prev, customers: [nc, ...prev.customers] }));
     if (isSupabaseConfigured && supabase) await supabase.from('partner_customers').insert(nc);
   }, [user]);
 
+  const updateCustomer = useCallback(async (id: string, updates: Partial<PartnerCustomer>) => {
+    setData((prev) => ({
+      ...prev,
+      customers: prev.customers.map((customer) => customer.id === id ? { ...customer, ...updates } : customer),
+    }));
+    if (isSupabaseConfigured && supabase) {
+      const safeUpdates = { ...updates };
+      if (safeUpdates.branch_id === null) {
+        const currentCustomer = data.customers.find((customer) => customer.id === id);
+        if (currentCustomer?.branch_id) {
+          safeUpdates.branch_id = currentCustomer.branch_id;
+        }
+      }
+      await supabase.from('partner_customers').update(safeUpdates).eq('id', id);
+    }
+  }, [data.customers]);
+
+  const deleteCustomer = useCallback(async (id: string) => {
+    setData((prev) => ({ ...prev, customers: prev.customers.filter((customer) => customer.id !== id) }));
+    if (isSupabaseConfigured && supabase) await supabase.from('partner_customers').delete().eq('id', id);
+  }, []);
+
   const createSale = useCallback(async (sale: { customer_id: string | null; customer_name: string; items: SaleItem[]; total: number; imei?: string; serial_number?: string; payment_method?: string; salesperson_id?: string | null; branch_id?: string | null }) => {
     if (!user) return;
-    const ns: PartnerSale = { ...sale, id: crypto.randomUUID(), user_id: user.id, status: 'concluida', created_at: new Date().toISOString(), imei: sale.imei ?? null, serial_number: sale.serial_number ?? null, payment_method: sale.payment_method ?? null, branch_id: sale.branch_id ?? null, salesperson_id: sale.salesperson_id ?? null, origin: 'pdv', online_payment: false, payment_status: 'pago' };
+    const branchId = sale.branch_id ?? null;
+    if (!branchId) {
+      throw new Error('Venda sem filial selecionada.');
+    }
+    const ns: PartnerSale = { ...sale, id: crypto.randomUUID(), user_id: user.id, status: 'concluida', created_at: new Date().toISOString(), imei: sale.imei ?? null, serial_number: sale.serial_number ?? null, payment_method: sale.payment_method ?? null, branch_id: branchId, salesperson_id: sale.salesperson_id ?? null, origin: 'pdv', online_payment: false, payment_status: 'pago' };
     setData((prev) => {
       const newMovements: StockMovement[] = sale.items.map((item) => ({ id: crypto.randomUUID(), user_id: user.id, product_id: item.product_id, product_name: item.name, type: 'saida' as const, quantity: item.quantity, reason: 'Venda', created_at: new Date().toISOString() }));
-      const updatedProducts = prev.products.map((p) => { const si = sale.items.find((i) => i.product_id === p.id); return si ? { ...p, stock: Math.max(0, p.stock - si.quantity) } : p; });
+      const updatedProducts = prev.products.map((p) => {
+        if (p.branch_id !== branchId) return p;
+        const si = sale.items.find((i) => i.product_id === p.id);
+        return si ? { ...p, stock: Math.max(0, p.stock - si.quantity) } : p;
+      });
       return { ...prev, sales: [ns, ...prev.sales], movements: [...newMovements, ...prev.movements], products: updatedProducts };
     });
     if (isSupabaseConfigured && supabase) {
@@ -172,15 +210,19 @@ export function usePartnerData(user: User | null): PartnerData {
   const finalizePreSale = useCallback(async (id: string, paymentMethod: string) => {
     setData((prev) => {
       const sale = prev.sales.find((s) => s.id === id);
-      if (!sale) return prev;
+      if (!sale || !sale.branch_id) return prev;
       const newMovements: StockMovement[] = sale.items.map((item) => ({ id: crypto.randomUUID(), user_id: sale.user_id, product_id: item.product_id, product_name: item.name, type: 'saida' as const, quantity: item.quantity, reason: 'Venda (Pré-venda)', created_at: new Date().toISOString() }));
-      const updatedProducts = prev.products.map((p) => { const si = sale.items.find((i) => i.product_id === p.id); return si ? { ...p, stock: Math.max(0, p.stock - si.quantity) } : p; });
+      const updatedProducts = prev.products.map((p) => {
+        if (p.branch_id !== sale.branch_id) return p;
+        const si = sale.items.find((i) => i.product_id === p.id);
+        return si ? { ...p, stock: Math.max(0, p.stock - si.quantity) } : p;
+      });
       return { ...prev, sales: prev.sales.map((s) => s.id === id ? { ...s, status: 'concluida' as const, payment_method: paymentMethod } : s), movements: [...newMovements, ...prev.movements], products: updatedProducts };
     });
     if (isSupabaseConfigured && supabase) {
       await supabase.from('partner_sales').update({ status: 'concluida', payment_method: paymentMethod }).eq('id', id);
       const sale = data.sales.find((s) => s.id === id);
-      if (sale) {
+      if (sale && sale.branch_id) {
         for (const item of sale.items) {
           await supabase.from('stock_movements').insert({ user_id: sale.user_id, product_id: item.product_id, product_name: item.name, type: 'saida', quantity: item.quantity, reason: 'Venda (Pré-venda)' });
         }

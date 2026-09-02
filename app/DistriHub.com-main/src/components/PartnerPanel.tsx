@@ -400,6 +400,7 @@ export function PartnerPanel({
             {activeTab === 'cadastros' && (
               <CadastrosModule
                 products={partner.products}
+                branches={partner.branches}
                 selectedBranchId={
                   selectedBranchId
                 }
@@ -459,6 +460,12 @@ export function PartnerPanel({
                 }
                 onAddCustomer={
                   partner.addCustomer
+                }
+                onUpdateCustomer={
+                  partner.updateCustomer
+                }
+                onDeleteCustomer={
+                  partner.deleteCustomer
                 }
               />
             )}
@@ -567,6 +574,9 @@ export function PartnerPanel({
                 }
                 currentRole={
                   currentRole
+                }
+                selectedBranchId={
+                  selectedBranchId
                 }
               />
             )}
