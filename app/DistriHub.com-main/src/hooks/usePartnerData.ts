@@ -8,6 +8,7 @@ import type {
   B2BOrder,
 } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { normalizeDocument } from '../utils';
 
 type PartnerData = {
   products: PartnerProduct[];
@@ -147,25 +148,33 @@ export function usePartnerData(user: User | null): PartnerData {
     if (!customer.branch_id) {
       throw new Error('Cliente sem filial não pode ser cadastrado.');
     }
-    const nc: PartnerCustomer = { ...customer, id: crypto.randomUUID(), user_id: user.id, created_at: new Date().toISOString() };
+    const normalizedDocument = customer.document ? normalizeDocument(customer.document) : null;
+    if (normalizedDocument && data.customers.some((item) => normalizeDocument(item.document ?? '') === normalizedDocument)) {
+      throw new Error('Já existe um cliente com este CPF/CNPJ neste lojista.');
+    }
+    const nc: PartnerCustomer = { ...customer, document: normalizedDocument, id: crypto.randomUUID(), user_id: user.id, created_at: new Date().toISOString() };
     setData((prev) => ({ ...prev, customers: [nc, ...prev.customers] }));
-    if (isSupabaseConfigured && supabase) await supabase.from('partner_customers').insert(nc);
-  }, [user]);
+    if (isSupabaseConfigured && supabase) {
+      const { error } = await supabase.from('partner_customers').insert(nc);
+      if (error) throw error;
+    }
+  }, [user, data.customers]);
 
   const updateCustomer = useCallback(async (id: string, updates: Partial<PartnerCustomer>) => {
+    const normalizedDocument = updates.document === undefined
+      ? undefined
+      : (updates.document ? normalizeDocument(updates.document) : null);
+    if (normalizedDocument && data.customers.some((item) => item.id !== id && normalizeDocument(item.document ?? '') === normalizedDocument)) {
+      throw new Error('Já existe um cliente com este CPF/CNPJ neste lojista.');
+    }
+    const normalizedUpdates = normalizedDocument === undefined ? updates : { ...updates, document: normalizedDocument };
     setData((prev) => ({
       ...prev,
-      customers: prev.customers.map((customer) => customer.id === id ? { ...customer, ...updates } : customer),
+      customers: prev.customers.map((customer) => customer.id === id ? { ...customer, ...normalizedUpdates } : customer),
     }));
     if (isSupabaseConfigured && supabase) {
-      const safeUpdates = { ...updates };
-      if (safeUpdates.branch_id === null) {
-        const currentCustomer = data.customers.find((customer) => customer.id === id);
-        if (currentCustomer?.branch_id) {
-          safeUpdates.branch_id = currentCustomer.branch_id;
-        }
-      }
-      await supabase.from('partner_customers').update(safeUpdates).eq('id', id);
+      const { error } = await supabase.from('partner_customers').update(normalizedUpdates).eq('id', id);
+      if (error) throw error;
     }
   }, [data.customers]);
 

@@ -28,6 +28,8 @@ type Props = {
   customers: PartnerCustomer[];
   products: PartnerProduct[];
   selectedBranchId: string | null;
+  warrantyTerms?: string;
+  onUpdateWarrantyTerms?: (value: string) => void;
 };
 
 type DraftItem = {
@@ -42,6 +44,7 @@ type DraftItem = {
 type Photo = {
   id: string;
   file: File;
+  type: 'entry' | 'exit';
   label: string;
   preview: string;
 };
@@ -80,6 +83,8 @@ export function ServiceOrdersModule({
   customers,
   products,
   selectedBranchId,
+  warrantyTerms = '',
+  onUpdateWarrantyTerms,
 }: Props) {
   const [orders, setOrders] = useState<ServiceOrder[]>([]);
   const [open, setOpen] = useState(false);
@@ -98,9 +103,13 @@ export function ServiceOrdersModule({
 
   const [productSearch, setProductSearch] = useState('');
   const [items, setItems] = useState<DraftItem[]>([]);
-  const [photos, setPhotos] = useState<Photo[]>([]);
+  const [entryPhotos, setEntryPhotos] = useState<Photo[]>([]);
+  const [exitPhotos, setExitPhotos] = useState<Photo[]>([]);
 
-  const fileRef = useRef<HTMLInputElement>(null);
+  const photos = [...entryPhotos, ...exitPhotos];
+
+  const entryFileRef = useRef<HTMLInputElement>(null);
+  const exitFileRef = useRef<HTMLInputElement>(null);
 
   const branch = branches.find(
     (item) => item.id === selectedBranchId
@@ -224,7 +233,7 @@ export function ServiceOrdersModule({
   }
 
   function resetForm() {
-    photos.forEach((photo) => {
+    [...entryPhotos, ...exitPhotos].forEach((photo) => {
       URL.revokeObjectURL(photo.preview);
     });
 
@@ -240,15 +249,19 @@ export function ServiceOrdersModule({
     setLabor('');
     setProductSearch('');
     setItems([]);
-    setPhotos([]);
+    setEntryPhotos([]);
+    setExitPhotos([]);
   }
 
-  function addPhotos(files: FileList | null) {
+  function addPhotos(files: FileList | null, type: 'entry' | 'exit') {
     if (!files) {
       return;
     }
 
-    const remaining = 8 - photos.length;
+    const current = type === 'entry' ? entryPhotos : exitPhotos;
+    const setter = type === 'entry' ? setEntryPhotos : setExitPhotos;
+
+    const remaining = 8 - current.length;
 
     if (remaining <= 0) {
       return;
@@ -263,18 +276,16 @@ export function ServiceOrdersModule({
       (file, index) => ({
         id: crypto.randomUUID(),
         file,
+        type,
         label:
-          photos.length === 0 && index === 0
-            ? 'Frente'
-            : 'Entrada',
+          current.length === 0 && index === 0
+            ? type === 'entry' ? 'Frente' : 'Saída'
+            : type === 'entry' ? 'Entrada' : 'Saída',
         preview: URL.createObjectURL(file),
       })
     );
 
-    setPhotos((current) => [
-      ...current,
-      ...newPhotos,
-    ]);
+    setter((existing) => [...existing, ...newPhotos]);
   }
 
   async function saveOrder() {
@@ -337,7 +348,12 @@ export function ServiceOrdersModule({
         const extension =
           photo.file.name.split('.').pop() || 'jpg';
 
-        const storagePath = `${userId}/${orderId}/${photo.id}.${extension}`;
+        const storagePath = `${selectedBranchId}/${orderId}/${photo.type}/${photo.id}.${extension}`;
+        const branchId = selectedBranchId;
+
+        if (!branchId) {
+          throw new Error('Filial da operação ausente.');
+        }
 
         const upload = await supabase.storage
           .from('service-order-photos')
@@ -356,6 +372,9 @@ export function ServiceOrdersModule({
           .insert({
             service_order_id: orderId,
             user_id: userId,
+            branch_id: branchId,
+            photo_type: photo.type,
+            operation_type: 'service_order',
             label: photo.label,
             storage_path: storagePath,
           });
@@ -639,79 +658,171 @@ export function ServiceOrdersModule({
           <div style={{ marginTop: 22 }}>
             <div
               style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                gap: 10,
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+                gap: 16,
               }}
             >
-              <h3>
-                <Camera size={18} />
-                Fotos de entrada
-              </h3>
-
-              <button
-                className="partner-secondary-btn"
-                onClick={() =>
-                  fileRef.current?.click()
-                }
-                disabled={photos.length >= 8}
-              >
-                <ImagePlus size={17} />
-                Adicionar fotos
-              </button>
-            </div>
-
-            <input
-              ref={fileRef}
-              hidden
-              type="file"
-              accept="image/*"
-              multiple
-              onChange={(event) =>
-                addPhotos(event.target.files)
-              }
-            />
-
-            {photos.length > 0 ? (
               <div
                 style={{
-                  display: 'grid',
-                  gridTemplateColumns:
-                    'repeat(auto-fill,minmax(120px,1fr))',
-                  gap: 10,
+                  padding: 18,
+                  borderRadius: 14,
+                  backgroundColor: '#0f172a',
+                  border: '1px solid #334155',
                 }}
               >
-                {photos.map((photo) => (
-                  <div key={photo.id}>
-                    <img
-                      src={photo.preview}
-                      alt={photo.label}
-                      style={{
-                        width: '100%',
-                        aspectRatio: 1,
-                        objectFit: 'cover',
-                        borderRadius: 10,
-                      }}
-                    />
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    gap: 10,
+                    marginBottom: 12,
+                  }}
+                >
+                  <h3 style={{ margin: 0 }}>
+                    <Camera size={18} />
+                    Fotos de entrada
+                  </h3>
 
-                    <small>{photo.label}</small>
+                  <button
+                    className="partner-secondary-btn"
+                    onClick={() => entryFileRef.current?.click()}
+                    disabled={entryPhotos.length >= 8}
+                  >
+                    <ImagePlus size={17} />
+                    Adicionar foto
+                  </button>
+                </div>
+
+                <input
+                  ref={entryFileRef}
+                  hidden
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={(event) => addPhotos(event.target.files, 'entry')}
+                />
+
+                {entryPhotos.length > 0 ? (
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fill,minmax(120px,1fr))',
+                      gap: 10,
+                    }}
+                  >
+                    {entryPhotos.map((photo) => (
+                      <div key={photo.id}>
+                        <img
+                          src={photo.preview}
+                          alt={photo.label}
+                          style={{
+                            width: '100%',
+                            aspectRatio: 1,
+                            objectFit: 'cover',
+                            borderRadius: 10,
+                          }}
+                        />
+
+                        <small>{photo.label} · ENTRADA</small>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                ) : (
+                  <div
+                    style={{
+                      padding: 20,
+                      border: '1px dashed #999',
+                      borderRadius: 10,
+                      opacity: 0.65,
+                    }}
+                  >
+                    Registre frente, verso/lados e detalhes das avarias.
+                  </div>
+                )}
               </div>
-            ) : (
+
               <div
                 style={{
-                  padding: 20,
-                  border: '1px dashed #999',
-                  borderRadius: 10,
-                  opacity: 0.65,
+                  padding: 18,
+                  borderRadius: 14,
+                  backgroundColor: '#0f172a',
+                  border: '1px solid #334155',
                 }}
               >
-                Registre frente, verso/lados e detalhes
-                das avarias.
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    gap: 10,
+                    marginBottom: 12,
+                  }}
+                >
+                  <h3 style={{ margin: 0 }}>
+                    <Package size={18} />
+                    Fotos de saída
+                  </h3>
+
+                  <button
+                    className="partner-secondary-btn"
+                    onClick={() => exitFileRef.current?.click()}
+                    disabled={exitPhotos.length >= 8}
+                  >
+                    <ImagePlus size={17} />
+                    Adicionar foto
+                  </button>
+                </div>
+
+                <input
+                  ref={exitFileRef}
+                  hidden
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={(event) => addPhotos(event.target.files, 'exit')}
+                />
+
+                {exitPhotos.length > 0 ? (
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fill,minmax(120px,1fr))',
+                      gap: 10,
+                    }}
+                  >
+                    {exitPhotos.map((photo) => (
+                      <div key={photo.id}>
+                        <img
+                          src={photo.preview}
+                          alt={photo.label}
+                          style={{
+                            width: '100%',
+                            aspectRatio: 1,
+                            objectFit: 'cover',
+                            borderRadius: 10,
+                          }}
+                        />
+
+                        <small>{photo.label} · SAÍDA</small>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      padding: 20,
+                      border: '1px dashed #999',
+                      borderRadius: 10,
+                      opacity: 0.65,
+                    }}
+                  >
+                    Registre fotos finais, entrega e item concluído.
+                  </div>
+                )}
               </div>
-            )}
+            </div>
           </div>
 
           <div style={{ marginTop: 22 }}>

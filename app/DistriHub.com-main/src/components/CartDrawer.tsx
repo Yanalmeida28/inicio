@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import {
   ArrowRight, Check, Minus, Plus, ShoppingBag, Trash2, X,
-  QrCode, Copy, CreditCard, Wallet, Truck, Store, ShieldCheck, MessageCircle,
+  QrCode, CreditCard, Wallet, Truck, Store, ShieldCheck, MessageCircle,
 } from 'lucide-react';
 import type { CartItem } from '../types';
-import { money, formatWhatsAppMessage, openWhatsApp, generateOrderId, PIX_COPY_PASTE, copyToClipboard } from '../utils';
+import { money, formatWhatsAppMessage, openWhatsApp, generateOrderId } from '../utils';
 import { paymentMethods, deliveryMethods, WHATSAPP_NUMBER } from '../data';
 
 type CartDrawerProps = {
@@ -37,7 +37,6 @@ export function CartDrawer({
   const [step, setStep] = useState<'cart' | 'checkout' | 'confirmation'>('cart');
   const [paymentMethod, setPaymentMethod] = useState('pix');
   const [deliveryMethod, setDeliveryMethod] = useState('balcao');
-  const [copied, setCopied] = useState(false);
   const [showOtp, setShowOtp] = useState(false);
   const [otpCode, setOtpCode] = useState(['', '', '', '']);
   const [otpError, setOtpError] = useState(false);
@@ -45,7 +44,6 @@ export function CartDrawer({
   const [resendTimer, setResendTimer] = useState(0);
   const [otpVerified, setOtpVerified] = useState(false);
   const [confirmedOrderId, setConfirmedOrderId] = useState('');
-  const [pixCopied, setPixCopied] = useState(false);
   const [whatsappTarget, setWhatsappTarget] = useState<'store' | 'customer' | 'both'>(() => {
     if (customerWhatsapp && storeWhatsapp) return 'store';
     if (customerWhatsapp) return 'customer';
@@ -168,18 +166,6 @@ export function CartDrawer({
     setOtpSent(false);
     setOtpCode(['', '', '', '']);
     onClose();
-  }
-
-  function copyPix() {
-    copyToClipboard(PIX_COPY_PASTE);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }
-
-  function copyPixConfirmation() {
-    copyToClipboard(PIX_COPY_PASTE);
-    setPixCopied(true);
-    setTimeout(() => setPixCopied(false), 2000);
   }
 
   const paymentIcons: Record<string, typeof QrCode> = {
@@ -342,10 +328,7 @@ export function CartDrawer({
                   <small>PIX Instantâneo</small>
                 </div>
                 <div className="pix-copy-area">
-                  <code>{PIX_COPY_PASTE.slice(0, 40)}...</code>
-                  <button className="pix-copy-btn" onClick={copyPix}>
-                    {copied ? <Check size={14} /> : <Copy size={14} />} Copia e Cola
-                  </button>
+                  <small>Chave PIX será informada pelo estabelecimento após a confirmação do pedido.</small>
                 </div>
               </div>
             )}
@@ -439,11 +422,7 @@ export function CartDrawer({
             </div>
             {paymentMethod === 'pix' && (
               <div className="confirmation-pix-area">
-                <p>Pague agora com PIX Copia e Cola:</p>
-                <code>{PIX_COPY_PASTE.slice(0, 48)}...</code>
-                <button className="pix-copy-btn" onClick={copyPixConfirmation}>
-                  {pixCopied ? <Check size={14} /> : <Copy size={14} />} {pixCopied ? 'Copiado!' : 'Copiar código PIX'}
-                </button>
+                <p>A chave PIX será informada pelo estabelecimento após a confirmação do pedido.</p>
               </div>
             )}
             {paymentMethod !== 'pix' && (

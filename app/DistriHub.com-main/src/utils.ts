@@ -3,6 +3,38 @@ import { WHATSAPP_NUMBER } from './data';
 
 export const money = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 
+export function normalizeDocument(value: string): string {
+  return value.replace(/\D/g, '');
+}
+
+export function formatCpf(value: string): string {
+  const digits = normalizeDocument(value).slice(0, 11);
+  return digits.replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+}
+
+export function formatCnpj(value: string): string {
+  const digits = normalizeDocument(value).slice(0, 14);
+  return digits.replace(/(\d{2})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1/$2').replace(/(\d{4})(\d{1,2})$/, '$1-$2');
+}
+
+function hasValidCheckDigits(value: string, weights: number[]): boolean {
+  const sum = weights.reduce((total, weight, index) => total + Number(value[index]) * weight, 0);
+  const digit = (sum * 10) % 11;
+  return (digit === 10 ? 0 : digit) === Number(value[weights.length]);
+}
+
+export function isValidCpf(value: string): boolean {
+  const digits = normalizeDocument(value);
+  if (digits.length !== 11 || /^([0-9])\1+$/.test(digits)) return false;
+  return hasValidCheckDigits(digits, [10, 9, 8, 7, 6, 5, 4, 3, 2]) && hasValidCheckDigits(digits, [11, 10, 9, 8, 7, 6, 5, 4, 3, 2]);
+}
+
+export function isValidCnpj(value: string): boolean {
+  const digits = normalizeDocument(value);
+  if (digits.length !== 14 || /^([0-9])\1+$/.test(digits)) return false;
+  return hasValidCheckDigits(digits, [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]) && hasValidCheckDigits(digits, [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
+}
+
 export function generateOrderId(): string {
   const ts = Date.now().toString(36).toUpperCase().slice(-6);
   const rand = Math.random().toString(36).toUpperCase().slice(2, 6);
@@ -62,8 +94,6 @@ export function openWhatsApp(message: string, phoneNumber?: string | null): void
   const target = `${base}${encodeURIComponent(message)}`;
   window.open(target, '_blank', 'noopener,noreferrer');
 }
-
-export const PIX_COPY_PASTE = '00020126360014BR.GOV.BCB.PIX0114+5511940000000520400005303986580BR6009SAOPAULO62070503***6304ABCD';
 
 export function copyToClipboard(text: string): boolean {
   try {

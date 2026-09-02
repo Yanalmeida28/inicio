@@ -61,11 +61,7 @@ export function HubHome({ onAccessPanel, onAccessSuperAdmin, superAdminActive }:
               plataforma. Catálogo B2B, ERP multi-loja, PDV ultrarrápido, gestão financeira e
               logística de entrega — tudo integrado.
             </p>
-            <div className="hub-hero-actions">
-              <button className="primary-button" onClick={onAccessPanel}>
-                Acessar Meu Painel <ArrowRight size={17} />
-              </button>
-            </div>
+            <div className="hub-hero-actions" />
           </div>
           <div className="hub-hero-visual">
             <div className="hub-orb hub-orb-1" />

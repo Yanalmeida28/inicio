@@ -148,17 +148,6 @@ export function WhiteLabelModule({ settings, onUpdate }: WhiteLabelModuleProps) 
       </div>
 
       <div className="module-card">
-        <div className="module-card-title"><Printer size={16} /> Termos de Garantia (impresso em O.S.)</div>
-        <textarea
-          className="notice-input"
-          value={settings.warranty_terms ?? ''}
-          onChange={(e) => onUpdate({ warranty_terms: e.target.value })}
-          placeholder="Ex: A garantia cobre defeitos de fabricação por 90 dias. Não cobre danos por líquidos, quedas, violação de selo de garantia, ou mau uso."
-          rows={4}
-        />
-      </div>
-
-      <div className="module-card">
         <div className="module-card-title">Opções de Impressão</div>
         <div className="print-toggle-list">
           <label className="print-toggle-item">

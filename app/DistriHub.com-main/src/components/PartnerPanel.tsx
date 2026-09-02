@@ -545,6 +545,14 @@ export function PartnerPanel({
                 selectedBranchId={
                   selectedBranchId
                 }
+                warrantyTerms={
+                  storeSettings.warranty_terms ?? ''
+                }
+                onUpdateWarrantyTerms={(value) =>
+                  partner.updateStoreSettings({
+                    warranty_terms: value,
+                  })
+                }
               />
             )}
 

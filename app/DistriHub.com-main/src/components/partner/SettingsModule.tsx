@@ -62,12 +62,6 @@ const statusLabels: Record<string, { label: string; color: string }> = {
   suspensa: { label: 'Suspensa', color: '#e6a06d' },
 };
 
-const mockInvoices = [
-  { id: 'inv_001', date: '2026-08-01', amount: 49.90, status: 'paga' as const, plan: 'Básico' },
-  { id: 'inv_002', date: '2026-07-01', amount: 49.90, status: 'paga' as const, plan: 'Básico' },
-  { id: 'inv_003', date: '2026-06-01', amount: 49.90, status: 'paga' as const, plan: 'Básico' },
-];
-
 export function SettingsModule({ user, profile, onProfileUpdate }: Props) {
   const [accountName, setAccountName] = useState(profile?.account_name ?? '');
   const [email, setEmail] = useState(user?.email ?? '');
@@ -281,15 +275,7 @@ export function SettingsModule({ user, profile, onProfileUpdate }: Props) {
         <table className="rma-table">
           <thead><tr><th>Fatura</th><th>Data</th><th>Plano</th><th>Valor</th><th>Status</th></tr></thead>
           <tbody>
-            {mockInvoices.map((inv) => (
-              <tr key={inv.id}>
-                <td><strong>#{inv.id.toUpperCase()}</strong></td>
-                <td>{new Date(inv.date).toLocaleDateString('pt-BR')}</td>
-                <td>{inv.plan}</td>
-                <td>{money.format(inv.amount)}</td>
-                <td><span className="invoice-status paid">Paga</span></td>
-              </tr>
-            ))}
+            <tr><td colSpan={5}>Nenhuma fatura real registrada.</td></tr>
           </tbody>
         </table>
       </div>

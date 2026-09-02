@@ -9,8 +9,9 @@ import type {
   PartnerProduct, PartnerCategory, PartnerSupplier,
   PartnerSalesperson, PartnerCombo, PartnerModifier, PartnerCustomer,
   PartnerSale, SalespersonRole, PartnerBranch,
+  PersonType,
 } from '../../types';
-import { money } from '../../utils';
+import { formatCnpj, formatCpf, isValidCnpj, isValidCpf, money, normalizeDocument } from '../../utils';
 import { ImportExportModule, ExportButtons } from './ImportExportModule';
 
 type Props = {
@@ -749,6 +750,7 @@ function CustomersSubTab({ customers, sales, selectedBranchId, onAdd, onUpdate, 
   const [editingCustomerId, setEditingCustomerId] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [document, setDocument] = useState('');
+  const [personType, setPersonType] = useState<PersonType | ''>('PF');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [birthday, setBirthday] = useState('');
@@ -758,11 +760,12 @@ function CustomersSubTab({ customers, sales, selectedBranchId, onAdd, onUpdate, 
   const [device, setDevice] = useState('');
   const [notes, setNotes] = useState('');
   const [customerType, setCustomerType] = useState<'varejo' | 'atacado'>('varejo');
+  const [customerSearch, setCustomerSearch] = useState('');
   const [historyCustomerId, setHistoryCustomerId] = useState<string | null>(null);
   const [profileCustomerId, setProfileCustomerId] = useState<string | null>(null);
 
   function resetForm() {
-    setName(''); setDocument(''); setPhone(''); setEmail(''); setBirthday(''); setAddress('');
+    setName(''); setDocument(''); setPersonType('PF'); setPhone(''); setEmail(''); setBirthday(''); setAddress('');
     setNeighborhood(''); setCity(''); setDevice(''); setNotes(''); setCustomerType('varejo');
     setEditingCustomerId(null); setShowForm(false);
   }
@@ -771,6 +774,7 @@ function CustomersSubTab({ customers, sales, selectedBranchId, onAdd, onUpdate, 
     setEditingCustomerId(customer.id);
     setName(customer.name ?? '');
     setDocument(customer.document ?? '');
+    setPersonType(customer.person_type ?? '');
     setPhone(customer.phone ?? '');
     setEmail(customer.email ?? '');
     setBirthday(customer.birthday ?? '');
@@ -791,9 +795,21 @@ function CustomersSubTab({ customers, sales, selectedBranchId, onAdd, onUpdate, 
       return;
     }
 
+    if (!personType) {
+      window.alert('Selecione o tipo de pessoa: Pessoa Física ou Pessoa Jurídica.');
+      return;
+    }
+
+    const normalizedDocument = normalizeDocument(document);
+    if (normalizedDocument && ((personType === 'PF' && !isValidCpf(normalizedDocument)) || (personType === 'PJ' && !isValidCnpj(normalizedDocument)))) {
+      window.alert(personType === 'PF' ? 'Informe um CPF válido.' : 'Informe um CNPJ válido.');
+      return;
+    }
+
     const payload = {
       name,
-      document: document || null,
+      document: normalizedDocument || null,
+      person_type: personType,
       phone: phone || null,
       email: email || null,
       birthday: birthday || null,
@@ -823,6 +839,15 @@ function CustomersSubTab({ customers, sales, selectedBranchId, onAdd, onUpdate, 
   const historyCustomer = customers.find((c) => c.id === historyCustomerId);
   const historySales = sales.filter((s) => s.customer_id === historyCustomerId);
   const profileCustomer = customers.find((c) => c.id === profileCustomerId);
+  const normalizedSearch = normalizeDocument(customerSearch);
+  const visibleCustomers = customers.filter((customer) => {
+    const searchTerm = customerSearch.trim().toLowerCase();
+    return !searchTerm
+      || customer.name.toLowerCase().includes(searchTerm)
+      || (customer.email ?? '').toLowerCase().includes(searchTerm)
+      || (customer.phone ?? '').toLowerCase().includes(searchTerm)
+      || normalizeDocument(customer.document ?? '').includes(normalizedSearch);
+  });
 
   return (
     <div>
@@ -834,7 +859,7 @@ function CustomersSubTab({ customers, sales, selectedBranchId, onAdd, onUpdate, 
           }
           setShowForm(!showForm);
           if (!showForm) {
-            setName(''); setDocument(''); setPhone(''); setEmail(''); setBirthday(''); setAddress('');
+            setName(''); setDocument(''); setPersonType('PF'); setPhone(''); setEmail(''); setBirthday(''); setAddress('');
             setNeighborhood(''); setCity(''); setDevice(''); setNotes(''); setCustomerType('varejo');
             setEditingCustomerId(null);
           }
@@ -843,6 +868,13 @@ function CustomersSubTab({ customers, sales, selectedBranchId, onAdd, onUpdate, 
         </button>
         <ExportButtons target="clientes" products={[]} customers={customers} />
       </div>
+      <input
+        value={customerSearch}
+        onChange={(e) => setCustomerSearch(e.target.value)}
+        placeholder="Buscar por nome, CPF/CNPJ, telefone ou e-mail"
+        aria-label="Buscar clientes"
+        style={{ width: '100%', marginBottom: '12px' }}
+      />
       {showForm && (
         <form className="rma-form" onSubmit={handleSubmit}>
           <div className="form-row">
@@ -851,8 +883,20 @@ function CustomersSubTab({ customers, sales, selectedBranchId, onAdd, onUpdate, 
               <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex: João Silva ou Silva Tech LTDA" required />
             </label>
             <label>
-              CPF / CNPJ
-              <input value={document} onChange={(e) => setDocument(e.target.value)} placeholder="000.000.000-00" />
+              Tipo de pessoa
+              <select value={personType} onChange={(e) => {
+                const nextType = e.target.value as PersonType;
+                setPersonType(nextType);
+                setDocument(nextType === 'PF' ? formatCpf(document) : formatCnpj(document));
+              }} required>
+                <option value="">Selecione</option>
+                <option value="PF">Pessoa Física (CPF)</option>
+                <option value="PJ">Pessoa Jurídica (CNPJ)</option>
+              </select>
+            </label>
+            <label>
+              Documento
+              <input value={personType === 'PJ' ? formatCnpj(document) : formatCpf(document)} onChange={(e) => setDocument(normalizeDocument(e.target.value))} placeholder={personType === 'PJ' ? '00.000.000/0000-00' : '000.000.000-00'} inputMode="numeric" />
             </label>
           </div>
           <div className="form-row">
@@ -908,10 +952,10 @@ function CustomersSubTab({ customers, sales, selectedBranchId, onAdd, onUpdate, 
         <table className="rma-table">
           <thead><tr><th>Nome</th><th>CPF/CNPJ</th><th>WhatsApp</th><th>Bairro/Cidade</th><th>Aniversário</th><th>Ações</th></tr></thead>
           <tbody>
-            {customers.length === 0 ? (
+            {visibleCustomers.length === 0 ? (
               <tr><td colSpan={6} className="empty-row">Nenhum cliente cadastrado.</td></tr>
             ) : (
-              customers.map((c) => (
+              visibleCustomers.map((c) => (
                 <tr key={c.id}>
                   <td><strong>{c.name}</strong>{c.customer_type === 'atacado' && <small className="tag-service">Atacado</small>}</td>
                   <td>{c.document ?? '—'}</td>

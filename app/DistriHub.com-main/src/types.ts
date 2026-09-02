@@ -1,4 +1,5 @@
 export type BusinessSegment = 'assistencia' | 'varejo' | 'servicos';
+export type PersonType = 'PF' | 'PJ';
 
 export type SalespersonRole =
   | 'administrador'
@@ -31,6 +32,8 @@ export type ServiceOrderApprovalStatus =
   | 'aprovado'
   | 'reprovado';
 
+export type PhotoType = 'entry' | 'exit' | 'legacy';
+
 export interface PartnerBranch {
   id: string;
   user_id: string;
@@ -46,6 +49,7 @@ export interface PartnerCustomer {
   user_id: string;
   name: string;
   document?: string | null;
+  person_type?: PersonType | null;
   phone?: string | null;
   email?: string | null;
   birthday?: string | null;
@@ -191,6 +195,7 @@ export interface PartnerProfile {
 export interface RmaRequest {
   id: string;
   user_id: string;
+  branch_id: string | null;
   customer_name: string;
   product_name: string;
   order_number: string | null;
@@ -303,6 +308,9 @@ export interface ServiceOrderPhoto {
   id: string;
   service_order_id: string;
   user_id: string;
+  branch_id: string | null;
+  photo_type: PhotoType | null;
+  operation_type: 'service_order' | 'rma' | null;
   label: string;
   storage_path: string;
   created_at: string;

@@ -11,7 +11,7 @@ type UseSuperAdminAuthReturn = {
 export function useSuperAdminAuth(): UseSuperAdminAuthReturn {
   const verifyPassword = useCallback(async (password: string): Promise<boolean> => {
     if (!isSupabaseConfigured || !supabase) {
-      return password === import.meta.env.VITE_SUPER_ADMIN_PASSWORD;
+      return false;
     }
     const { data, error } = await supabase.rpc('verify_super_admin_password', {
       input_password: password,
@@ -42,8 +42,8 @@ export function useSuperAdminAuth(): UseSuperAdminAuthReturn {
         input_email: email,
       });
       if (error) return { code: null, error: error.message };
-      if (!data) return { code: null, error: 'E-mail não confere com o cadastro master.' };
-      return { code: data as string, error: null };
+      if (!data) return { code: null, error: 'Não foi possível iniciar a recuperação.' };
+      return { code: null, error: 'A recuperação deve usar o canal seguro configurado.' };
     },
     [],
   );
