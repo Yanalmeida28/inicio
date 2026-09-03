@@ -74,6 +74,7 @@ export function useAuth(): UseAuthReturn {
     session: null,
     user: null,
     profile: null,
+    identity: null,
     loading: true,
     error: null,
     passwordRecovery: false,
@@ -81,13 +82,15 @@ export function useAuth(): UseAuthReturn {
 
   const resolveIdentity = useCallback(async (authUserId: string): Promise<PartnerIdentity> => {
     if (!supabase) {
-      return { authUserId, companyUserId: authUserId, role: 'administrador', salespersonId: null, branchId: null };
+      throw new Error('Supabase não configurado; não foi possível resolver a identidade do usuário.');
     }
 
     const { data, error } = await supabase
       .from('partner_salespeople')
       .select('id, user_id, role, branch_id')
       .eq('auth_user_id', authUserId)
+      .order('created_at', { ascending: false })
+      .limit(1)
       .maybeSingle();
 
     if (error) {
@@ -95,17 +98,35 @@ export function useAuth(): UseAuthReturn {
     }
 
     const salesperson = data as Pick<PartnerSalesperson, 'id' | 'user_id' | 'role' | 'branch_id'> | null;
-    if (!salesperson) {
-      return { authUserId, companyUserId: authUserId, role: 'administrador', salespersonId: null, branchId: null };
+    if (salesperson) {
+      if (!salesperson.user_id) {
+        throw new Error('O vínculo do funcionário não possui uma empresa válida.');
+      }
+
+      return {
+        authUserId,
+        companyUserId: salesperson.user_id,
+        role: salesperson.role,
+        salespersonId: salesperson.id,
+        branchId: salesperson.branch_id ?? null,
+      };
     }
 
-    return {
-      authUserId,
-      companyUserId: salesperson.user_id,
-      role: salesperson.role,
-      salespersonId: salesperson.id,
-      branchId: salesperson.branch_id ?? null,
-    };
+    const { data: ownerProfile, error: ownerError } = await supabase
+      .from('partner_profiles')
+      .select('id')
+      .eq('id', authUserId)
+      .limit(1)
+      .maybeSingle();
+
+    if (ownerError) {
+      throw new Error(`Não foi possível validar a identidade do proprietário: ${ownerError.message}`);
+    }
+    if (!ownerProfile) {
+      throw new Error('Usuário autenticado não possui vínculo de proprietário ou funcionário.');
+    }
+
+    return { authUserId, companyUserId: authUserId, role: 'administrador', salespersonId: null, branchId: null };
   }, []);
 
   const loadProfile = useCallback(async (userId: string): Promise<PartnerProfile | null> => {
@@ -210,11 +231,17 @@ export function useAuth(): UseAuthReturn {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) return { error: error.message };
 
-    const { data: client } = await supabase
+    const { data: client, error: clientError } = await supabase
       .from('admin_lojistas')
       .select('status')
       .eq('user_id', data.user.id)
+      .order('created_at', { ascending: false })
+      .limit(1)
       .maybeSingle();
+
+    if (clientError) {
+      console.error('Não foi possível verificar o status do lojista durante o login.', clientError);
+    }
     if (client?.status === 'reprovado') {
       await supabase.auth.signOut();
       return { error: 'Acesso bloqueado pelo administrador da plataforma.' };

@@ -57,6 +57,12 @@ type PartnerData = {
   payInvoice: (id: string) => Promise<void>;
 };
 
+type PartnerDataState = Pick<PartnerData,
+  | 'products' | 'customers' | 'sales' | 'movements' | 'storeSettings' | 'profile'
+  | 'rmaRequests' | 'branches' | 'categories' | 'suppliers' | 'salespeople' | 'combos'
+  | 'modifiers' | 'invoices' | 'orders' | 'loading' | 'error'
+>;
+
 const emptyState = {
   products: [], customers: [], sales: [], movements: [],
   storeSettings: null, profile: null, rmaRequests: [], branches: [], categories: [],
@@ -64,34 +70,58 @@ const emptyState = {
 };
 
 export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
-  const [data, setData] = useState<PartnerData & { loading: boolean }>({
+  const [data, setData] = useState<PartnerDataState>({
     ...emptyState, loading: false, error: null,
   });
 
   const loadData = useCallback(async () => {
     if (!isSupabaseConfigured || !supabase || !identity) return;
+    const client = supabase;
     setData((prev) => ({ ...prev, loading: true, error: null }));
+
+    if (identity.salespersonId && !identity.branchId) {
+      setData((prev) => ({
+        ...prev,
+        loading: false,
+        error: 'O funcionário autenticado não possui uma filial atribuída.',
+      }));
+      return;
+    }
 
     const tables = [
       'partner_products', 'partner_customers', 'partner_sales', 'stock_movements',
-      'store_settings_v2', 'rma_requests_v2', 'partner_branches', 'partner_categories',
+      'rma_requests_v2', 'partner_branches', 'partner_categories',
       'partner_suppliers', 'partner_salespeople', 'partner_combos', 'partner_modifiers',
       'partner_invoices', 'b2b_orders',
     ];
 
-    const branchScopedTables = new Set(['partner_products', 'partner_customers', 'partner_sales']);
+    const branchScopedTables = new Set(['partner_products', 'partner_customers', 'partner_sales', 'rma_requests_v2']);
     const results = await Promise.all(tables.map((table) => {
-      let query = supabase.from(table).select('*').eq('user_id', identity.companyUserId).order('created_at', { ascending: false });
+      if (identity.salespersonId && table === 'stock_movements') {
+        return Promise.resolve({ data: [], error: null, status: 200 });
+      }
+      let query = client.from(table).select('*').eq('user_id', identity.companyUserId).order('created_at', { ascending: false });
       if (identity.branchId && branchScopedTables.has(table)) query = query.eq('branch_id', identity.branchId);
       if (identity.salespersonId && table === 'partner_salespeople') query = query.eq('id', identity.salespersonId);
       return query;
     }));
 
-    const settingsRes = await supabase.from('store_settings_v2').select('*').eq('user_id', identity.companyUserId).maybeSingle();
-    const profileRes = await supabase.from('partner_profiles').select('*').eq('id', identity.companyUserId).maybeSingle();
+    const settingsRes = identity.salespersonId
+      ? { data: null, error: null, status: 200 }
+      : await client
+        .from('store_settings_v2')
+        .select('*')
+        .eq('user_id', identity.companyUserId)
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+    const profileRes = identity.salespersonId
+      ? { data: null, error: null, status: 200 }
+      : await client.from('partner_profiles').select('*').eq('id', identity.companyUserId).limit(1).maybeSingle();
 
     const failedResult = [...results, settingsRes, profileRes].find((result) => result.error);
     if (failedResult?.error) {
+      console.error('Falha ao carregar dados do painel.', failedResult.error);
       setData((prev) => ({
         ...prev,
         loading: false,
@@ -107,15 +137,15 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
       movements: (results[3].data as StockMovement[]) ?? [],
       storeSettings: (settingsRes.data as StoreSettings) ?? null,
       profile: (profileRes.data as PartnerProfile) ?? null,
-      rmaRequests: (results[5].data as RmaRequest[]) ?? [],
-      branches: (results[6].data as PartnerBranch[]) ?? [],
-      categories: (results[7].data as PartnerCategory[]) ?? [],
-      suppliers: (results[8].data as PartnerSupplier[]) ?? [],
-      salespeople: (results[9].data as PartnerSalesperson[]) ?? [],
-      combos: (results[10].data as PartnerCombo[]) ?? [],
-      modifiers: (results[11].data as PartnerModifier[]) ?? [],
-      invoices: (results[12].data as PartnerInvoice[]) ?? [],
-      orders: (results[13].data as B2BOrder[]) ?? [],
+      rmaRequests: (results[4].data as RmaRequest[]) ?? [],
+      branches: (results[5].data as PartnerBranch[]) ?? [],
+      categories: (results[6].data as PartnerCategory[]) ?? [],
+      suppliers: (results[7].data as PartnerSupplier[]) ?? [],
+      salespeople: (results[8].data as PartnerSalesperson[]) ?? [],
+      combos: (results[9].data as PartnerCombo[]) ?? [],
+      modifiers: (results[10].data as PartnerModifier[]) ?? [],
+      invoices: (results[11].data as PartnerInvoice[]) ?? [],
+      orders: (results[12].data as B2BOrder[]) ?? [],
       loading: false,
       error: null,
     });
@@ -227,7 +257,6 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
       throw new Error('Já existe um cliente com este CPF/CNPJ neste lojista.');
     }
     const nc: PartnerCustomer = { ...customer, document: normalizedDocument, id: crypto.randomUUID(), user_id: identity.companyUserId, created_at: new Date().toISOString() };
-    setData((prev) => ({ ...prev, customers: [nc, ...prev.customers] }));
     if (isSupabaseConfigured && supabase) {
       const { error: rpcErr } = await supabase.rpc('execute_partner_customer_mutation', {
         p_salesperson_id: operatorId ?? null,
@@ -249,6 +278,7 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
       });
       if (rpcErr) throw rpcErr;
     }
+    setData((prev) => ({ ...prev, customers: [nc, ...prev.customers] }));
   }, [identity, data.customers]);
 
   const updateCustomer = useCallback(async (
@@ -264,14 +294,11 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
       throw new Error('Já existe um cliente com este CPF/CNPJ neste lojista.');
     }
     const normalizedUpdates = normalizedDocument === undefined ? updates : { ...updates, document: normalizedDocument };
-    setData((prev) => ({
-      ...prev,
-      customers: prev.customers.map((customer) => customer.id === id ? { ...customer, ...normalizedUpdates } : customer),
-    }));
+    const currentCust = data.customers.find((customer) => customer.id === id);
+    if (!currentCust) throw new Error('Cliente não encontrado no estado atual. Atualize a página e tente novamente.');
+    const merged = { ...currentCust, ...normalizedUpdates };
+    if (!merged.name) throw new Error('Nome do cliente é obrigatório.');
     if (isSupabaseConfigured && supabase) {
-      const currentCust = data.customers.find((c) => c.id === id);
-      const merged = { ...currentCust, ...normalizedUpdates };
-      if (!merged.name) throw new Error('Nome do cliente é obrigatório.');
       const { error: rpcErr } = await supabase.rpc('execute_partner_customer_mutation', {
         p_salesperson_id: operatorId ?? null,
         p_pin: operatorPin ?? null,
@@ -292,6 +319,10 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
       });
       if (rpcErr) throw rpcErr;
     }
+    setData((prev) => ({
+      ...prev,
+      customers: prev.customers.map((customer) => customer.id === id ? { ...customer, ...normalizedUpdates } : customer),
+    }));
   }, [data.customers]);
 
   const deleteCustomer = useCallback(async (
@@ -428,15 +459,30 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
   }, [data.sales]);
 
   const updateStoreSettings = useCallback(async (settings: Partial<StoreSettings>) => {
-    setData((prev) => prev.storeSettings ? { ...prev, storeSettings: { ...prev.storeSettings, ...settings, updated_at: new Date().toISOString() } } : prev);
-    if (isSupabaseConfigured && supabase && identity) {
-      if (data.storeSettings) {
-        await supabase.from('store_settings_v2').update({ ...settings, updated_at: new Date().toISOString() }).eq('id', data.storeSettings.id);
-      } else {
-        await supabase.from('store_settings_v2').insert({ user_id: identity.companyUserId, ...settings });
-      }
+    if (!isSupabaseConfigured || !supabase || !identity) {
+      throw new Error('Supabase não configurado; não foi possível salvar as configurações da loja.');
     }
-  }, [identity, data.storeSettings]);
+    if (identity.salespersonId) {
+      throw new Error('Funcionários não podem alterar as configurações da loja.');
+    }
+    const { id: _id, user_id: _userId, updated_at: _updatedAt, ...changes } = settings;
+    const { data: savedSettings, error } = await supabase
+      .from('store_settings_v2')
+      .upsert(
+        { user_id: identity.companyUserId, ...changes, updated_at: new Date().toISOString() },
+        { onConflict: 'user_id' },
+      )
+      .select('*')
+      .single();
+
+    if (error) {
+      console.error('Falha ao salvar configurações da loja.', error);
+      setData((prev) => ({ ...prev, error: `Não foi possível salvar as configurações da loja: ${error.message}` }));
+      throw error;
+    }
+
+    setData((prev) => ({ ...prev, storeSettings: savedSettings as StoreSettings, error: null }));
+  }, [identity]);
 
   const updateProfile = useCallback(async (profileUpdate: Partial<PartnerProfile>) => {
     setData((prev) => prev.profile ? { ...prev, profile: { ...prev.profile, ...profileUpdate } } : prev);
@@ -580,11 +626,11 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
   return {
     products: data.products, customers: data.customers, sales: data.sales,
     movements: data.movements, storeSettings: data.storeSettings,
-    profile: data.profile,
+    profile: data.profile, orders: data.orders, error: data.error,
     rmaRequests: data.rmaRequests, branches: data.branches, categories: data.categories,
     suppliers: data.suppliers, salespeople: data.salespeople, combos: data.combos,
     modifiers: data.modifiers, invoices: data.invoices, loading: data.loading,
-    addProduct, updateProduct, deleteProduct, addCustomer, createSale,
+    addProduct, updateProduct, deleteProduct, addCustomer, updateCustomer, deleteCustomer, createSale,
     createPreSale, finalizePreSale,
     updateStoreSettings, updateProfile, createRma, updateRmaStatus, deleteRma, addBranch,
     addCategory, deleteCategory, addSupplier, addSalesperson,

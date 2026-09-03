@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Globe, Share2, QrCode, ExternalLink, Clock, TicketPercent, Instagram,
   Facebook, MessageCircle, Copy, Check, Eye, EyeOff, Power,
@@ -7,7 +7,7 @@ import type { StoreSettings } from '../../types';
 
 type Props = {
   settings: StoreSettings;
-  onUpdate: (settings: Partial<StoreSettings>) => void;
+  onUpdate: (settings: Partial<StoreSettings>) => void | Promise<void>;
 };
 
 function slugify(text: string): string {
@@ -29,6 +29,13 @@ export function OnlineCatalogModule({ settings, onUpdate }: Props) {
   const [copied, setCopied] = useState(false);
   const [showQR, setShowQR] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [businessHours, setBusinessHours] = useState(settings.business_hours ?? '');
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setBusinessHours(settings.business_hours ?? '');
+  }, [settings.business_hours]);
 
   const slug = settings.catalog_slug ?? '';
   const catalogUrl = buildCatalogUrl(slug);
@@ -90,9 +97,18 @@ export function OnlineCatalogModule({ settings, onUpdate }: Props) {
     if (catalogUrl) window.open(catalogUrl, '_blank', 'noopener,noreferrer');
   }
 
-  function handleSave() {
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
+  async function handleSave() {
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await onUpdate({ business_hours: businessHours || null });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : 'Não foi possível salvar as configurações do catálogo.');
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -240,8 +256,8 @@ export function OnlineCatalogModule({ settings, onUpdate }: Props) {
           <small>Configure os horários de atendimento</small>
           <textarea
             className="notice-input"
-            value={settings.business_hours ?? ''}
-            onChange={(e) => onUpdate({ business_hours: e.target.value || null })}
+            value={businessHours}
+            onChange={(e) => setBusinessHours(e.target.value)}
             placeholder="Ex: Seg-Sex 8h-18h, Sáb 8h-12h, Dom fechado"
             rows={2}
           />
@@ -264,8 +280,9 @@ export function OnlineCatalogModule({ settings, onUpdate }: Props) {
         </div>
       </div>
 
-      <button className="module-save-btn" onClick={handleSave}>
-        {saved ? <><Check size={16} /> Salvo!</> : 'Salvar Configurações do Catálogo'}
+        {saveError && <p className="partner-loading">{saveError}</p>}
+        <button className="module-save-btn" onClick={handleSave} disabled={saving}>
+          {saving ? 'Salvando...' : saved ? <><Check size={16} /> Salvo!</> : 'Salvar Configurações do Catálogo'}
       </button>
     </div>
   );

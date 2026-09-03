@@ -236,9 +236,7 @@ export function PartnerPanel({
     ? partner.salespeople.find((s) => s.id === currentSalespersonId)
     : null;
 
-  const isEmployeeRestricted = Boolean(
-    identity?.salespersonId && identity.branchId && identity.role !== 'administrador'
-  );
+  const isEmployeeRestricted = Boolean(identity?.salespersonId);
 
   const lockedBranchId = isEmployeeRestricted ? identity!.branchId! : null;
   const effectiveBranchId = lockedBranchId ?? selectedBranchId;

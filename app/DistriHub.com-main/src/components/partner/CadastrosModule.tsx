@@ -847,10 +847,15 @@ function CustomersSubTab({ customers, sales, selectedBranchId, onAdd, onUpdate, 
       return;
     }
 
-    if (editingCustomerId) {
-      await onUpdate(editingCustomerId, payload);
-    } else {
-      await onAdd(payload as Omit<PartnerCustomer, 'id' | 'user_id' | 'created_at'>);
+    try {
+      if (editingCustomerId) {
+        await onUpdate(editingCustomerId, payload);
+      } else {
+        await onAdd(payload as Omit<PartnerCustomer, 'id' | 'user_id' | 'created_at'>);
+      }
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Não foi possível salvar o cliente.');
+      return;
     }
 
     resetForm();
