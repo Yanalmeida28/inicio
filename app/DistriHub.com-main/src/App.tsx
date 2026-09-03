@@ -192,6 +192,7 @@ function App() {
             onBack={() => setView('hub')}
             user={auth.user}
             identity={auth.identity}
+            identityError={auth.error}
             segment={segment}
             initialTab={partnerInitialTab}
             onConsumeInitialTab={() => setPartnerInitialTab(undefined)}

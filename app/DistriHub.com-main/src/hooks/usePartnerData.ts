@@ -26,6 +26,7 @@ type PartnerData = {
   invoices: PartnerInvoice[];
   orders: B2BOrder[];
   loading: boolean;
+  error: string | null;
   addProduct: (product: Omit<PartnerProduct, 'id' | 'user_id' | 'created_at' | 'updated_at'>, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
   updateProduct: (id: string, updates: Partial<PartnerProduct>, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
   deleteProduct: (id: string, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
@@ -64,12 +65,12 @@ const emptyState = {
 
 export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
   const [data, setData] = useState<PartnerData & { loading: boolean }>({
-    ...emptyState, loading: false,
+    ...emptyState, loading: false, error: null,
   });
 
   const loadData = useCallback(async () => {
     if (!isSupabaseConfigured || !supabase || !identity) return;
-    setData((prev) => ({ ...prev, loading: true }));
+    setData((prev) => ({ ...prev, loading: true, error: null }));
 
     const tables = [
       'partner_products', 'partner_customers', 'partner_sales', 'stock_movements',
@@ -89,6 +90,16 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
     const settingsRes = await supabase.from('store_settings_v2').select('*').eq('user_id', identity.companyUserId).maybeSingle();
     const profileRes = await supabase.from('partner_profiles').select('*').eq('id', identity.companyUserId).maybeSingle();
 
+    const failedResult = [...results, settingsRes, profileRes].find((result) => result.error);
+    if (failedResult?.error) {
+      setData((prev) => ({
+        ...prev,
+        loading: false,
+        error: `Não foi possível carregar os dados (${failedResult.status ?? 'sem status'}): ${failedResult.error.message}`,
+      }));
+      return;
+    }
+
     setData({
       products: (results[0].data as PartnerProduct[]) ?? [],
       customers: (results[1].data as PartnerCustomer[]) ?? [],
@@ -106,6 +117,7 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
       invoices: (results[12].data as PartnerInvoice[]) ?? [],
       orders: (results[13].data as B2BOrder[]) ?? [],
       loading: false,
+      error: null,
     });
   }, [identity]);
 
@@ -287,15 +299,16 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
     operatorId?: string | null,
     operatorPin?: string | null,
   ) => {
-    setData((prev) => ({ ...prev, customers: prev.customers.filter((customer) => customer.id !== id) }));
     if (isSupabaseConfigured && supabase) {
-      const { error: rpcErr } = await supabase.rpc('execute_partner_customer_delete', {
+      const { data: deleted, error: rpcErr } = await supabase.rpc('execute_partner_customer_delete', {
         p_salesperson_id: operatorId ?? null,
         p_pin: operatorPin ?? null,
         p_customer_id: id,
       });
       if (rpcErr) throw rpcErr;
+      if (deleted !== true) throw new Error('A exclusão do cliente não foi confirmada pelo servidor.');
     }
+    setData((prev) => ({ ...prev, customers: prev.customers.filter((customer) => customer.id !== id) }));
   }, []);
 
   const createSale = useCallback(async (

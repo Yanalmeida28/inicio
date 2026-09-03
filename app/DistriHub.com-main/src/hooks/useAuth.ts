@@ -32,7 +32,8 @@ type AuthAction =
   | { type: 'RESET' }
   | { type: 'SET_SESSION'; session: Session | null; user: User | null; passwordRecovery?: boolean }
   | { type: 'SET_PROFILE'; profile: PartnerProfile | null }
-  | { type: 'SET_IDENTITY'; identity: PartnerIdentity | null };
+  | { type: 'SET_IDENTITY'; identity: PartnerIdentity | null }
+  | { type: 'SET_ERROR'; error: string | null };
 
 function authReducer(state: AuthState, action: AuthAction): AuthState {
   switch (action.type) {
@@ -61,6 +62,8 @@ function authReducer(state: AuthState, action: AuthAction): AuthState {
       };
     case 'SET_IDENTITY':
       return { ...state, identity: action.identity };
+    case 'SET_ERROR':
+      return { ...state, error: action.error };
     default:
       return state;
   }
@@ -81,11 +84,15 @@ export function useAuth(): UseAuthReturn {
       return { authUserId, companyUserId: authUserId, role: 'administrador', salespersonId: null, branchId: null };
     }
 
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('partner_salespeople')
       .select('id, user_id, role, branch_id')
       .eq('auth_user_id', authUserId)
       .maybeSingle();
+
+    if (error) {
+      throw new Error(`Não foi possível resolver a identidade do usuário: ${error.message}`);
+    }
 
     const salesperson = data as Pick<PartnerSalesperson, 'id' | 'user_id' | 'role' | 'branch_id'> | null;
     if (!salesperson) {
@@ -104,11 +111,15 @@ export function useAuth(): UseAuthReturn {
   const loadProfile = useCallback(async (userId: string): Promise<PartnerProfile | null> => {
     if (!supabase) return null;
 
-    const { data: profile } = await supabase
+    const { data: profile, error } = await supabase
       .from('partner_profiles')
       .select('*')
       .eq('id', userId)
       .maybeSingle();
+
+    if (error) {
+      throw new Error(`Não foi possível carregar o perfil da empresa: ${error.message}`);
+    }
 
     return profile as PartnerProfile | null;
   }, []);
@@ -130,12 +141,15 @@ export function useAuth(): UseAuthReturn {
       if (session?.user) {
         dispatch({ type: 'SET_IDENTITY', identity: null });
         dispatch({ type: 'SET_PROFILE', profile: null });
-        resolveIdentity(session.user.id).then((identity) => {
-          dispatch({ type: 'SET_IDENTITY', identity });
-          loadProfile(identity.companyUserId).then((profile) => {
-            dispatch({ type: 'SET_PROFILE', profile });
+        dispatch({ type: 'SET_ERROR', error: null });
+        resolveIdentity(session.user.id)
+          .then(async (identity) => {
+            dispatch({ type: 'SET_IDENTITY', identity });
+            dispatch({ type: 'SET_PROFILE', profile: await loadProfile(identity.companyUserId) });
+          })
+          .catch((error: unknown) => {
+            dispatch({ type: 'SET_ERROR', error: error instanceof Error ? error.message : 'Não foi possível resolver a identidade do usuário.' });
           });
-        });
       }
     });
 
@@ -150,13 +164,19 @@ export function useAuth(): UseAuthReturn {
       if (session?.user) {
         dispatch({ type: 'SET_IDENTITY', identity: null });
         dispatch({ type: 'SET_PROFILE', profile: null });
-        const identity = await resolveIdentity(session.user.id);
-        dispatch({ type: 'SET_IDENTITY', identity });
-        const profile = await loadProfile(identity.companyUserId);
-        dispatch({ type: 'SET_PROFILE', profile });
+        dispatch({ type: 'SET_ERROR', error: null });
+        try {
+          const identity = await resolveIdentity(session.user.id);
+          dispatch({ type: 'SET_IDENTITY', identity });
+          const profile = await loadProfile(identity.companyUserId);
+          dispatch({ type: 'SET_PROFILE', profile });
+        } catch (error) {
+          dispatch({ type: 'SET_ERROR', error: error instanceof Error ? error.message : 'Não foi possível resolver a identidade do usuário.' });
+        }
       } else {
         dispatch({ type: 'SET_PROFILE', profile: null });
         dispatch({ type: 'SET_IDENTITY', identity: null });
+        dispatch({ type: 'SET_ERROR', error: null });
       }
     });
 

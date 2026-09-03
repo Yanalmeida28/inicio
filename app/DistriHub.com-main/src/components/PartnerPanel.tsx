@@ -58,6 +58,7 @@ type PartnerPanelProps = {
   onBack: () => void;
   user: User | null;
   identity: PartnerIdentity | null;
+  identityError: string | null;
   segment: BusinessSegment;
   initialTab?: string;
   onConsumeInitialTab?: () => void;
@@ -205,6 +206,7 @@ export function PartnerPanel({
   onBack,
   user,
   identity,
+  identityError,
   segment,
   initialTab,
   onConsumeInitialTab,
@@ -523,6 +525,10 @@ export function PartnerPanel({
 
   const storeSettings = partner.storeSettings ?? defaultSettings;
 
+  if (identityError) {
+    return <div className="partner-panel"><p className="partner-loading">{identityError}</p></div>;
+  }
+
   function handleTabClick(tab: Tab) {
     setActiveTab(tab);
     setSidebarOpen(false);
@@ -664,6 +670,8 @@ export function PartnerPanel({
 
       <div className="sidebar-main">
         <div className="sidebar-main-inner">
+
+          {partner.error && <p className="partner-loading">{partner.error}</p>}
 
           <MultiStoreModule
             branches={partner.branches}

@@ -1032,7 +1032,11 @@ function CustomersSubTab({ customers, sales, selectedBranchId, onAdd, onUpdate, 
                         <button className="rma-advance-btn" onClick={async () => {
                           const confirmed = window.confirm(`Deseja excluir o cliente "${c.name}"?`);
                           if (!confirmed) return;
-                          await onDelete(c.id);
+                          try {
+                            await onDelete(c.id);
+                          } catch (error) {
+                            window.alert(error instanceof Error ? error.message : 'Não foi possível excluir o cliente.');
+                          }
                         }} title="Excluir Cliente" style={{ color: '#fca5a5' }}>
                           <Trash2 size={14} /> Excluir
                         </button>
