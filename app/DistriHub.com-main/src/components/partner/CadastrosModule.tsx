@@ -773,8 +773,10 @@ function CustomersSubTab({ customers, sales, selectedBranchId, onAdd, onUpdate, 
   function openEditForm(customer: PartnerCustomer) {
     setEditingCustomerId(customer.id);
     setName(customer.name ?? '');
-    setDocument(customer.document ?? '');
-    setPersonType(customer.person_type ?? '');
+    const normDoc = customer.document ? normalizeDocument(customer.document) : '';
+    setDocument(normDoc);
+    const inferredType: PersonType = customer.person_type || (normDoc.length > 11 ? 'PJ' : 'PF');
+    setPersonType(inferredType);
     setPhone(customer.phone ?? '');
     setEmail(customer.email ?? '');
     setBirthday(customer.birthday ?? '');
@@ -795,21 +797,38 @@ function CustomersSubTab({ customers, sales, selectedBranchId, onAdd, onUpdate, 
       return;
     }
 
-    if (!personType) {
-      window.alert('Selecione o tipo de pessoa: Pessoa Física ou Pessoa Jurídica.');
-      return;
+    const normalizedDocument = normalizeDocument(document);
+    let effectivePersonType = personType;
+    if (!effectivePersonType) {
+      effectivePersonType = normalizedDocument.length > 11 ? 'PJ' : 'PF';
     }
 
-    const normalizedDocument = normalizeDocument(document);
-    if (normalizedDocument && ((personType === 'PF' && !isValidCpf(normalizedDocument)) || (personType === 'PJ' && !isValidCnpj(normalizedDocument)))) {
-      window.alert(personType === 'PF' ? 'Informe um CPF válido.' : 'Informe um CNPJ válido.');
-      return;
+    if (normalizedDocument) {
+      if (effectivePersonType === 'PF') {
+        if (normalizedDocument.length !== 11) {
+          window.alert('O CPF deve conter exatamente 11 dígitos.');
+          return;
+        }
+        if (!isValidCpf(normalizedDocument)) {
+          window.alert('Informe um CPF válido.');
+          return;
+        }
+      } else if (effectivePersonType === 'PJ') {
+        if (normalizedDocument.length !== 14) {
+          window.alert('O CNPJ deve conter exatamente 14 dígitos.');
+          return;
+        }
+        if (!isValidCnpj(normalizedDocument)) {
+          window.alert('Informe um CNPJ válido.');
+          return;
+        }
+      }
     }
 
     const payload = {
       name,
       document: normalizedDocument || null,
-      person_type: personType,
+      person_type: effectivePersonType,
       phone: phone || null,
       email: email || null,
       birthday: birthday || null,
@@ -842,11 +861,17 @@ function CustomersSubTab({ customers, sales, selectedBranchId, onAdd, onUpdate, 
   const normalizedSearch = normalizeDocument(customerSearch);
   const visibleCustomers = customers.filter((customer) => {
     const searchTerm = customerSearch.trim().toLowerCase();
-    return !searchTerm
-      || customer.name.toLowerCase().includes(searchTerm)
-      || (customer.email ?? '').toLowerCase().includes(searchTerm)
-      || (customer.phone ?? '').toLowerCase().includes(searchTerm)
-      || normalizeDocument(customer.document ?? '').includes(normalizedSearch);
+    if (!searchTerm) return true;
+    const docDigits = normalizeDocument(customer.document ?? '');
+    const isPj = customer.person_type === 'PJ' || docDigits.length > 11;
+    const formattedDoc = docDigits ? (isPj ? formatCnpj(docDigits) : formatCpf(docDigits)) : '';
+    return (
+      (customer.name ?? '').toLowerCase().includes(searchTerm) ||
+      (customer.email ?? '').toLowerCase().includes(searchTerm) ||
+      (customer.phone ?? '').toLowerCase().includes(searchTerm) ||
+      formattedDoc.toLowerCase().includes(searchTerm) ||
+      (normalizedSearch && docDigits.includes(normalizedSearch))
+    );
   });
 
   return (
@@ -884,19 +909,38 @@ function CustomersSubTab({ customers, sales, selectedBranchId, onAdd, onUpdate, 
             </label>
             <label>
               Tipo de pessoa
-              <select value={personType} onChange={(e) => {
-                const nextType = e.target.value as PersonType;
-                setPersonType(nextType);
-                setDocument(nextType === 'PF' ? formatCpf(document) : formatCnpj(document));
-              }} required>
-                <option value="">Selecione</option>
+              <select
+                value={personType}
+                onChange={(e) => {
+                  const nextType = e.target.value as PersonType;
+                  setPersonType(nextType);
+                }}
+                required
+              >
                 <option value="PF">Pessoa Física (CPF)</option>
                 <option value="PJ">Pessoa Jurídica (CNPJ)</option>
               </select>
             </label>
             <label>
-              Documento
-              <input value={personType === 'PJ' ? formatCnpj(document) : formatCpf(document)} onChange={(e) => setDocument(normalizeDocument(e.target.value))} placeholder={personType === 'PJ' ? '00.000.000/0000-00' : '000.000.000-00'} inputMode="numeric" />
+              Documento ({personType === 'PJ' ? 'CNPJ' : 'CPF'})
+              <input
+                value={
+                  document
+                    ? (personType === 'PJ' || (!personType && document.length > 11) ? formatCnpj(document) : formatCpf(document))
+                    : ''
+                }
+                onChange={(e) => {
+                  const raw = normalizeDocument(e.target.value);
+                  setDocument(raw);
+                  if (raw.length > 11) {
+                    setPersonType('PJ');
+                  } else if (raw.length > 0 && !personType) {
+                    setPersonType('PF');
+                  }
+                }}
+                placeholder={personType === 'PJ' ? '00.000.000/0000-00' : '000.000.000-00'}
+                inputMode="numeric"
+              />
             </label>
           </div>
           <div className="form-row">
@@ -955,35 +999,53 @@ function CustomersSubTab({ customers, sales, selectedBranchId, onAdd, onUpdate, 
             {visibleCustomers.length === 0 ? (
               <tr><td colSpan={6} className="empty-row">Nenhum cliente cadastrado.</td></tr>
             ) : (
-              visibleCustomers.map((c) => (
-                <tr key={c.id}>
-                  <td><strong>{c.name}</strong>{c.customer_type === 'atacado' && <small className="tag-service">Atacado</small>}</td>
-                  <td>{c.document ?? '—'}</td>
-                  <td>{c.phone ?? '—'}</td>
-                  <td>{[c.neighborhood, c.city].filter(Boolean).join(', ') || '—'}</td>
-                  <td>{c.birthday ? new Date(c.birthday).toLocaleDateString('pt-BR') : '—'}</td>
-                  <td>
-                    <div className="row-action-group">
-                      <button className="rma-advance-btn" onClick={() => openEditForm(c)} title="Editar Cliente">
-                        <Save size={14} /> Editar
-                      </button>
-                      <button className="rma-advance-btn" onClick={async () => {
-                        const confirmed = window.confirm(`Deseja excluir o cliente "${c.name}"?`);
-                        if (!confirmed) return;
-                        await onDelete(c.id);
-                      }} title="Excluir Cliente" style={{ color: '#fca5a5' }}>
-                        <Trash2 size={14} /> Excluir
-                      </button>
-                      <button className="rma-advance-btn" onClick={() => setProfileCustomerId(c.id)} title="Detalhes do Cliente">
-                        <UserCircle size={14} /> Detalhes
-                      </button>
-                      <button className="rma-advance-btn" onClick={() => setHistoryCustomerId(c.id)} title="Histórico de Compras">
-                        <History size={14} /> Histórico
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))
+              visibleCustomers.map((c) => {
+                const normDoc = c.document ? normalizeDocument(c.document) : '';
+                const isPj = c.person_type === 'PJ' || normDoc.length > 11;
+                const formattedDoc = normDoc ? (isPj ? formatCnpj(normDoc) : formatCpf(normDoc)) : '—';
+
+                return (
+                  <tr key={c.id}>
+                    <td>
+                      <strong>{c.name}</strong>
+                      {c.customer_type === 'atacado' && <small className="tag-service">Atacado</small>}
+                    </td>
+                    <td>
+                      <div>
+                        <span>{formattedDoc}</span>
+                        {normDoc && (
+                          <small style={{ display: 'block', color: '#8ba3b5', fontSize: '11px' }}>
+                            {isPj ? 'PJ' : 'PF'}
+                          </small>
+                        )}
+                      </div>
+                    </td>
+                    <td>{c.phone ?? '—'}</td>
+                    <td>{[c.neighborhood, c.city].filter(Boolean).join(', ') || '—'}</td>
+                    <td>{c.birthday ? new Date(c.birthday).toLocaleDateString('pt-BR') : '—'}</td>
+                    <td>
+                      <div className="row-action-group">
+                        <button className="rma-advance-btn" onClick={() => openEditForm(c)} title="Editar Cliente">
+                          <Save size={14} /> Editar
+                        </button>
+                        <button className="rma-advance-btn" onClick={async () => {
+                          const confirmed = window.confirm(`Deseja excluir o cliente "${c.name}"?`);
+                          if (!confirmed) return;
+                          await onDelete(c.id);
+                        }} title="Excluir Cliente" style={{ color: '#fca5a5' }}>
+                          <Trash2 size={14} /> Excluir
+                        </button>
+                        <button className="rma-advance-btn" onClick={() => setProfileCustomerId(c.id)} title="Detalhes do Cliente">
+                          <UserCircle size={14} /> Detalhes
+                        </button>
+                        <button className="rma-advance-btn" onClick={() => setHistoryCustomerId(c.id)} title="Histórico de Compras">
+                          <History size={14} /> Histórico
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
@@ -1083,7 +1145,14 @@ function CustomerProfileModal({ customer, sales, onClose }: {
           </div>
           <div className="customer-profile-summary">
             <strong>{customer.name}</strong>
-            <small>{customer.document ?? '—'} • {customer.customer_type === 'atacado' ? 'Atacado' : 'Varejo'}</small>
+            <small>
+              {customer.document
+                ? (customer.person_type === 'PJ' || normalizeDocument(customer.document).length > 11
+                    ? formatCnpj(customer.document)
+                    : formatCpf(customer.document))
+                : '—'}{' '}
+              • {customer.customer_type === 'atacado' ? 'Atacado' : 'Varejo'}
+            </small>
             <small>Total em compras: {money.format(totalPurchases)} ({customerSales.length} pedidos)</small>
           </div>
         </div>
@@ -1121,7 +1190,14 @@ function CustomerProfileModal({ customer, sales, onClose }: {
               <div className="form-row">
                 <label>
                   <span className="social-label"><IdCard size={14} /> {docType === 'pf' ? 'CPF' : 'CNPJ'}</span>
-                  <input defaultValue={customer.document ?? ''} placeholder={docType === 'pf' ? '000.000.000-00' : '00.000.000/0000-00'} />
+                  <input
+                    defaultValue={
+                      customer.document
+                        ? (docType === 'pj' ? formatCnpj(customer.document) : formatCpf(customer.document))
+                        : ''
+                    }
+                    placeholder={docType === 'pf' ? '000.000.000-00' : '00.000.000/0000-00'}
+                  />
                 </label>
                 <label>
                   <span className="social-label"><IdCard size={14} /> Identidade RG</span>
@@ -1362,19 +1438,24 @@ function CustomerProfileModal({ customer, sales, onClose }: {
                       </tr>
                     </thead>
                     <tbody>
-                      {customerSales.map((s) => {
+                      {(customerSales || []).map((s) => {
+                        if (!s) return null;
                         const isExpanded = expandedSaleId === s.id;
-                        const docType = s.status === 'concluida' ? (s.total <= 1000 ? 'NFC-e' : 'NF-e') : 'Pré-venda';
+                        const saleTotal = Number(s.total) || 0;
+                        const docType = s.status === 'concluida' ? (saleTotal <= 1000 ? 'NFC-e' : 'NF-e') : 'Pré-venda';
                         const statusLabel = s.status === 'concluida' ? 'Concluída' : s.status === 'cancelada' ? 'Cancelada' : s.status === 'devolucao' ? 'Devolução' : 'Em Aberto';
                         const statusColor = s.status === 'concluida' ? '#5bbc87' : s.status === 'cancelada' ? '#e3829b' : s.status === 'devolucao' ? '#e6a06d' : '#5cb5f1';
+                        const saleIdStr = s.id ? String(s.id) : '';
+                        const displaySaleId = saleIdStr ? (saleIdStr.length > 8 ? saleIdStr.slice(0, 8) : saleIdStr) : '—';
+
                         return (
                           <React.Fragment key={s.id}>
                             <tr className={isExpanded ? 'expanded-row' : ''}>
-                              <td>{new Date(s.created_at).toLocaleDateString('pt-BR')}</td>
-                              <td><strong>#{s.id.slice(0, 8).toUpperCase()}</strong></td>
+                              <td>{s.created_at ? new Date(s.created_at).toLocaleDateString('pt-BR') : '—'}</td>
+                              <td><strong>#{displaySaleId.toUpperCase()}</strong></td>
                               <td><span className="rma-status-badge" style={{ color: statusColor, borderColor: statusColor }}>{docType}</span></td>
                               <td>{s.payment_method ?? '—'}</td>
-                              <td><strong>{money.format(s.total)}</strong></td>
+                              <td><strong>{money.format(saleTotal)}</strong></td>
                               <td><span className="rma-status-badge" style={{ color: statusColor, borderColor: statusColor }}>{statusLabel}</span></td>
                               <td>
                                 <button className="rma-advance-btn" onClick={() => setExpandedSaleId(isExpanded ? null : s.id)} title={isExpanded ? 'Recolher' : 'Ver itens'}>
@@ -1391,7 +1472,7 @@ function CustomerProfileModal({ customer, sales, onClose }: {
                                       <table className="rma-table sale-detail-inner-table">
                                         <thead><tr><th>Produto</th><th>Qtd</th><th>Preço Unit.</th><th>Subtotal</th></tr></thead>
                                         <tbody>
-                                          {s.items.map((item, idx) => (
+                                          {(s.items || []).map((item, idx) => (
                                             <tr key={idx}>
                                               <td>{item.name}</td>
                                               <td>{item.quantity}</td>

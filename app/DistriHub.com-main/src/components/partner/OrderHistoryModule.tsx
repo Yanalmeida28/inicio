@@ -3,7 +3,7 @@ import { ClipboardList, PackageCheck, Search } from 'lucide-react';
 import type { B2BOrder } from '../../types';
 import { money } from '../../utils';
 
-type Props = { orders: B2BOrder[] };
+type Props = { orders?: B2BOrder[] };
 
 const statusMap: Record<string, { label: string; color: string }> = {
   pendente: { label: 'Pendente', color: '#e6a06d' },
@@ -23,25 +23,32 @@ const paymentMap: Record<string, string> = {
   dinheiro: 'Dinheiro',
 };
 
-export function OrderHistoryModule({ orders }: Props) {
+export function OrderHistoryModule({ orders = [] }: Props) {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
 
+  const safeOrders = useMemo(() => (Array.isArray(orders) ? orders : []), [orders]);
+
   const filteredOrders = useMemo(() => {
-    const term = search.toLowerCase();
-    return orders.filter((order) => {
+    const term = search.trim().toLowerCase();
+    return safeOrders.filter((order) => {
+      if (!order) return false;
       const matchesStatus = statusFilter === 'all' || order.status === statusFilter;
+      const orderIdStr = order.id ? String(order.id) : '';
+      const bizNameStr = order.business_name ? String(order.business_name) : '';
+      const payMethodStr = order.payment_method ? String(order.payment_method) : '';
+
       const matchesSearch =
         !term ||
-        order.business_name?.toLowerCase().includes(term) ||
-        order.id.toLowerCase().includes(term) ||
-        (order.payment_method ?? '').toLowerCase().includes(term);
+        bizNameStr.toLowerCase().includes(term) ||
+        orderIdStr.toLowerCase().includes(term) ||
+        payMethodStr.toLowerCase().includes(term);
       return matchesStatus && matchesSearch;
     });
-  }, [orders, search, statusFilter]);
+  }, [safeOrders, search, statusFilter]);
 
-  const totalValue = filteredOrders.reduce((sum, order) => sum + order.total, 0);
-  const pendingCount = filteredOrders.filter((order) => order.status === 'pendente').length;
+  const totalValue = filteredOrders.reduce((sum, order) => sum + (Number(order?.total) || 0), 0);
+  const pendingCount = filteredOrders.filter((order) => order?.status === 'pendente').length;
 
   return (
     <div className="panel-module">
@@ -110,16 +117,32 @@ export function OrderHistoryModule({ orders }: Props) {
           <tbody>
             {filteredOrders.length === 0 ? (
               <tr><td colSpan={6} className="empty-row"><PackageCheck size={18} /> Nenhuma compra registrada.</td></tr>
-            ) : filteredOrders.map((order) => {
-              const mappedStatus = statusMap[order.status] ?? { label: order.status, color: '#7f97a9' };
+            ) : filteredOrders.map((order, index) => {
+              if (!order) return null;
+              const statusKey = order.status ? String(order.status) : '';
+              const mappedStatus = statusMap[statusKey] ?? { label: statusKey || 'Pendente', color: '#7f97a9' };
               const mappedPayment = paymentMap[order.payment_method ?? ''] ?? order.payment_method ?? '—';
+              const orderIdStr = order.id ? String(order.id) : '';
+              const displayId = orderIdStr ? (orderIdStr.length > 8 ? orderIdStr.slice(0, 8) : orderIdStr) : '—';
+
+              let formattedDate = '—';
+              if (order.created_at) {
+                try {
+                  const d = new Date(order.created_at);
+                  if (!isNaN(d.getTime())) {
+                    formattedDate = d.toLocaleDateString('pt-BR');
+                  }
+                } catch {
+                  formattedDate = '—';
+                }
+              }
 
               return (
-                <tr key={order.id}>
-                  <td><strong>#{order.id.slice(0, 8)}</strong></td>
+                <tr key={order.id ?? index}>
+                  <td><strong>#{displayId}</strong></td>
                   <td>{order.business_name ?? '—'}</td>
-                  <td>{new Date(order.created_at).toLocaleDateString('pt-BR')}</td>
-                  <td>{money.format(order.total)}</td>
+                  <td>{formattedDate}</td>
+                  <td>{money.format(Number(order.total) || 0)}</td>
                   <td>{mappedPayment}</td>
                   <td>
                     <span className="rma-status-badge" style={{ color: mappedStatus.color, borderColor: mappedStatus.color }}>
