@@ -213,6 +213,7 @@ export function PartnerPanel({
 
   // Operator session & employee branch restriction
   const [currentSalespersonId, setCurrentSalespersonId] = useState<string | null>(null);
+  const [activeOperatorPin, setActiveOperatorPin] = useState<string | null>(null);
   const [showOperatorModal, setShowOperatorModal] = useState(false);
   const [selectedOperatorId, setSelectedOperatorId] = useState<string>('owner');
   const [operatorPinInput, setOperatorPinInput] = useState('');
@@ -331,7 +332,7 @@ export function PartnerPanel({
       window.alert('Acesso negado: você só pode cadastrar produtos na sua filial vinculada.');
       return;
     }
-    await partner.addProduct({ ...product, branch_id: targetBranch });
+    await partner.addProduct({ ...product, branch_id: targetBranch }, currentSalespersonId, activeOperatorPin);
   }
 
   async function handleDeleteProduct(id: string) {
@@ -340,7 +341,7 @@ export function PartnerPanel({
       window.alert('Acesso negado: você não tem permissão para excluir produtos de outra filial.');
       return;
     }
-    await partner.deleteProduct(id);
+    await partner.deleteProduct(id, currentSalespersonId, activeOperatorPin);
   }
 
   async function handleAddCustomer(customer: Omit<PartnerCustomer, 'id' | 'user_id' | 'created_at'>) {
@@ -353,7 +354,7 @@ export function PartnerPanel({
       window.alert('Acesso negado: você só pode cadastrar clientes na sua filial vinculada.');
       return;
     }
-    await partner.addCustomer({ ...customer, branch_id: targetBranch });
+    await partner.addCustomer({ ...customer, branch_id: targetBranch }, currentSalespersonId, activeOperatorPin);
   }
 
   async function handleUpdateCustomer(id: string, updates: Partial<PartnerCustomer>) {
@@ -362,7 +363,7 @@ export function PartnerPanel({
       window.alert('Acesso negado: você não tem permissão para alterar clientes de outra filial.');
       return;
     }
-    await partner.updateCustomer(id, isEmployeeRestricted ? { ...updates, branch_id: effectiveBranchId } : updates);
+    await partner.updateCustomer(id, isEmployeeRestricted ? { ...updates, branch_id: effectiveBranchId } : updates, currentSalespersonId, activeOperatorPin);
   }
 
   async function handleDeleteCustomer(id: string) {
@@ -371,7 +372,7 @@ export function PartnerPanel({
       window.alert('Acesso negado: você não tem permissão para excluir clientes desta filial.');
       return;
     }
-    await partner.deleteCustomer(id);
+    await partner.deleteCustomer(id, currentSalespersonId, activeOperatorPin);
   }
 
   async function handleCreateSale(sale: { customer_id: string | null; customer_name: string; items: SaleItem[]; total: number; imei?: string; serial_number?: string; payment_method?: string; salesperson_id?: string | null; branch_id?: string | null }) {
@@ -384,11 +385,15 @@ export function PartnerPanel({
       window.alert('Acesso negado: você só pode realizar vendas na sua filial vinculada.');
       return;
     }
-    await partner.createSale({
-      ...sale,
-      branch_id: targetBranch,
-      salesperson_id: activeSalesperson ? activeSalesperson.id : (sale.salesperson_id || null),
-    });
+    await partner.createSale(
+      {
+        ...sale,
+        branch_id: targetBranch,
+        salesperson_id: activeSalesperson ? activeSalesperson.id : (sale.salesperson_id || null),
+      },
+      currentSalespersonId,
+      activeOperatorPin,
+    );
   }
 
   async function handleCreatePreSale(sale: { customer_id: string | null; customer_name: string; items: SaleItem[]; total: number; imei?: string; serial_number?: string; salesperson_id?: string | null; branch_id?: string | null }) {
@@ -401,11 +406,15 @@ export function PartnerPanel({
       window.alert('Acesso negado: você só pode criar pré-vendas na sua filial vinculada.');
       return;
     }
-    await partner.createPreSale({
-      ...sale,
-      branch_id: targetBranch,
-      salesperson_id: activeSalesperson ? activeSalesperson.id : (sale.salesperson_id || null),
-    });
+    await partner.createPreSale(
+      {
+        ...sale,
+        branch_id: targetBranch,
+        salesperson_id: activeSalesperson ? activeSalesperson.id : (sale.salesperson_id || null),
+      },
+      currentSalespersonId,
+      activeOperatorPin,
+    );
   }
 
   async function handleFinalizePreSale(id: string, paymentMethod: string) {
@@ -414,7 +423,7 @@ export function PartnerPanel({
       window.alert('Acesso negado: você só pode finalizar pré-vendas da sua filial vinculada.');
       return;
     }
-    await partner.finalizePreSale(id, paymentMethod);
+    await partner.finalizePreSale(id, paymentMethod, currentSalespersonId, activeOperatorPin);
   }
 
   async function handleCancelSale(id: string) {
@@ -423,7 +432,7 @@ export function PartnerPanel({
       window.alert('Acesso negado: você não pode cancelar vendas de outra filial.');
       return;
     }
-    await partner.cancelSale(id);
+    await partner.cancelSale(id, currentSalespersonId, activeOperatorPin);
   }
 
   async function handleDeleteSale(id: string) {
@@ -432,7 +441,7 @@ export function PartnerPanel({
       window.alert('Acesso negado: você não pode excluir vendas de outra filial.');
       return;
     }
-    await partner.deleteSale(id);
+    await partner.deleteSale(id, currentSalespersonId, activeOperatorPin);
   }
 
   async function handleCreateRma(rma: Omit<RmaRequest, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'status'>) {
@@ -459,6 +468,7 @@ export function PartnerPanel({
     setOperatorPinError('');
     if (selectedOperatorId === 'owner' || !selectedOperatorId) {
       setCurrentSalespersonId(null);
+      setActiveOperatorPin(null);
       setShowOperatorModal(false);
       return;
     }
@@ -474,6 +484,7 @@ export function PartnerPanel({
     }
 
     setCurrentSalespersonId(targetSp.id);
+    setActiveOperatorPin(operatorPinInput || null);
     if (targetSp.branch_id) {
       setSelectedBranchId(targetSp.branch_id);
     }

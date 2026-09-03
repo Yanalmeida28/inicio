@@ -13,24 +13,36 @@ type PublicCatalogPageProps = {
   branchSlug?: string | null;
 };
 
-type CatalogRecord = {
+type PublicStoreSettings = {
+  id: string;
   user_id: string;
-  business_name?: string | null;
-  catalog_slug?: string | null;
-  catalog_enabled?: boolean;
-  logo_url?: string | null;
-  banner_url?: string | null;
-  primary_color?: string;
-  nav_color?: string;
-  name?: string;
-  business_hours?: string | null;
+  catalog_slug: string | null;
+  catalog_enabled: boolean;
+  logo_url: string | null;
+  banner_url: string | null;
+  primary_color: string | null;
+  nav_color: string | null;
+  business_hours: string | null;
+};
+
+type PublicPartnerProfile = {
+  id: string;
+  business_name: string;
+  account_name: string | null;
+};
+
+type PublicPartnerBranch = {
+  id: string;
+  user_id: string;
+  name: string;
+  address: string | null;
 };
 
 export function PublicCatalogPage({ slug, branchSlug }: PublicCatalogPageProps) {
   const [loading, setLoading] = useState(true);
-  const [profile, setProfile] = useState<PartnerProfile | null>(null);
-  const [settings, setSettings] = useState<StoreSettings | null>(null);
-  const [branch, setBranch] = useState<PartnerBranch | null>(null);
+  const [profile, setProfile] = useState<PublicPartnerProfile | null>(null);
+  const [settings, setSettings] = useState<PublicStoreSettings | null>(null);
+  const [branch, setBranch] = useState<PublicPartnerBranch | null>(null);
   const [products, setProducts] = useState<PartnerProduct[]>([]);
   const [error, setError] = useState<string | null>(null);
 
@@ -44,28 +56,28 @@ export function PublicCatalogPage({ slug, branchSlug }: PublicCatalogPageProps) 
 
       try {
         const { data: profileData, error: profileError } = await supabase
-          .from('partner_profiles')
-          .select('*')
+          .from('public_catalog_partner_profiles')
+          .select('id, business_name, account_name')
           .eq('business_name', slug)
           .maybeSingle();
 
         const normalizedSlug = slug.trim().toLowerCase();
 
         let resolvedUserId: string | null = null;
-        let resolvedSettings: StoreSettings | null = null;
+        let resolvedSettings: PublicStoreSettings | null = null;
 
         if (!profileError && profileData) {
           resolvedUserId = profileData.id;
         } else {
           const { data: settingsData, error: settingsError } = await supabase
-            .from('store_settings_v2')
-            .select('*')
+            .from('public_catalog_store_settings')
+            .select('id, user_id, catalog_slug, catalog_enabled, logo_url, banner_url, primary_color, nav_color, business_hours')
             .ilike('catalog_slug', normalizedSlug)
             .maybeSingle();
 
           if (!settingsError && settingsData) {
             resolvedUserId = settingsData.user_id;
-            resolvedSettings = settingsData as StoreSettings;
+            resolvedSettings = settingsData as PublicStoreSettings;
           }
         }
 
@@ -76,13 +88,13 @@ export function PublicCatalogPage({ slug, branchSlug }: PublicCatalogPageProps) 
         }
 
         const { data: settingsData, error: settingsError } = await supabase
-          .from('store_settings_v2')
-          .select('*')
+          .from('public_catalog_store_settings')
+          .select('id, user_id, catalog_slug, catalog_enabled, logo_url, banner_url, primary_color, nav_color, business_hours')
           .eq('user_id', resolvedUserId)
           .maybeSingle();
 
         if (!settingsError && settingsData) {
-          resolvedSettings = settingsData as StoreSettings;
+          resolvedSettings = settingsData as PublicStoreSettings;
         }
 
         if (!resolvedSettings?.catalog_enabled) {
@@ -93,32 +105,32 @@ export function PublicCatalogPage({ slug, branchSlug }: PublicCatalogPageProps) 
 
         if (!settingsError && settingsData) {
           const { data: profileRecord, error: profileLookupError } = await supabase
-            .from('partner_profiles')
-            .select('*')
+            .from('public_catalog_partner_profiles')
+            .select('id, business_name, account_name')
             .eq('id', resolvedUserId)
             .maybeSingle();
 
           if (!profileLookupError && profileRecord) {
-            setProfile(profileRecord as PartnerProfile);
+            setProfile(profileRecord as PublicPartnerProfile);
           }
         }
 
         if (branchSlug) {
           const { data: branchData } = await supabase
-            .from('partner_branches')
-            .select('*')
+            .from('public_catalog_partner_branches')
+            .select('id, user_id, name, address')
             .eq('user_id', resolvedUserId)
             .ilike('name', branchSlug)
             .maybeSingle();
 
           if (branchData) {
-            setBranch(branchData as PartnerBranch);
+            setBranch(branchData as PublicPartnerBranch);
           }
         }
 
         let query = supabase
-          .from('partner_products')
-          .select('*')
+          .from('public_catalog_products')
+          .select('id, user_id, branch_id, name, sale_price, wholesale_price, image_url, stock, min_stock, category, sku, is_service, created_at, updated_at')
           .eq('user_id', resolvedUserId)
           .eq('is_service', false)
           .gt('stock', 0);
@@ -149,12 +161,12 @@ export function PublicCatalogPage({ slug, branchSlug }: PublicCatalogPageProps) 
     loadCatalog();
   }, [branch, branchSlug, slug]);
 
-  const primaryBrandName = profile?.name ?? settings?.user_id ? 'Loja' : DEFAULT_CATALOG.name;
+  const primaryBrandName = profile?.business_name ?? profile?.account_name ?? 'Loja';
   const logoUrl = settings?.logo_url ?? null;
   const summary = useMemo(() => ({
     title: primaryBrandName,
-    address: branch?.address ?? settings?.internal_notice ?? DEFAULT_CATALOG.description,
-  }), [branch, primaryBrandName, settings]);
+    address: branch?.address ?? DEFAULT_CATALOG.description,
+  }), [branch, primaryBrandName]);
 
   if (loading) {
     return <div style={{ padding: 32, textAlign: 'center' }}>Carregando catálogo...</div>;
