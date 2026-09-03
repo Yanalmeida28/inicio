@@ -1014,7 +1014,7 @@ function CustomersSubTab({ customers, sales, selectedBranchId, onAdd, onUpdate, 
                       <div>
                         <span>{formattedDoc}</span>
                         {normDoc && (
-                          <small style={{ display: 'block', color: '#8ba3b5', fontSize: '11px' }}>
+                          <small style={{ display: 'block', color: '#8ba3b5', fontSize: '12px' }}>
                             {isPj ? 'PJ' : 'PF'}
                           </small>
                         )}

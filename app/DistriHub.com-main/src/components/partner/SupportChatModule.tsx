@@ -72,7 +72,7 @@ export function SupportChatModule({ user }: { user: User | null }) {
           </div>
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
             {quickMessages.map((text) => (
-              <button key={text} type="button" className="rma-advance-btn" onClick={() => setMessage(text)} style={{ fontSize: '12px', minWidth: 'auto' }}>
+              <button key={text} type="button" className="rma-advance-btn" onClick={() => setMessage(text)} style={{ fontSize: '13px', minWidth: 'auto' }}>
                 <Sparkles size={12} /> {text}
               </button>
             ))}
