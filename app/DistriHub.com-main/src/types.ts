@@ -112,6 +112,7 @@ export interface PartnerProduct {
 export interface PartnerSalesperson {
   id: string;
   user_id: string;
+  auth_user_id?: string | null;
   name: string;
   role: SalespersonRole;
   commission_rate: number;
@@ -122,6 +123,14 @@ export interface PartnerSalesperson {
   branch_id?: string | null;
   created_at: string;
   updated_at?: string;
+}
+
+export interface PartnerIdentity {
+  authUserId: string;
+  companyUserId: string;
+  role: SalespersonRole;
+  salespersonId: string | null;
+  branchId: string | null;
 }
 
 export interface SaleItem {

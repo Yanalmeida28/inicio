@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { User } from '@supabase/supabase-js';
 import type {
   PartnerProduct, PartnerCustomer, PartnerSale, StockMovement,
   StoreSettings, RmaRequest, RmaStatus, SaleItem,
   PartnerBranch, PartnerCategory, PartnerSupplier, PartnerSalesperson,
   PartnerCombo, PartnerModifier, PartnerInvoice, PartnerProfile,
-  B2BOrder,
+  B2BOrder, PartnerIdentity,
 } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { normalizeDocument } from '../utils';
@@ -63,13 +62,13 @@ const emptyState = {
   suppliers: [], salespeople: [], combos: [], modifiers: [], invoices: [], orders: [],
 };
 
-export function usePartnerData(user: User | null): PartnerData {
+export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
   const [data, setData] = useState<PartnerData & { loading: boolean }>({
     ...emptyState, loading: false,
   });
 
   const loadData = useCallback(async () => {
-    if (!isSupabaseConfigured || !supabase || !user) return;
+    if (!isSupabaseConfigured || !supabase || !identity) return;
     setData((prev) => ({ ...prev, loading: true }));
 
     const tables = [
@@ -79,14 +78,16 @@ export function usePartnerData(user: User | null): PartnerData {
       'partner_invoices', 'b2b_orders',
     ];
 
-    const results = await Promise.all(
-      tables.map((t) =>
-        supabase.from(t).select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
-      ),
-    );
+    const branchScopedTables = new Set(['partner_products', 'partner_customers', 'partner_sales']);
+    const results = await Promise.all(tables.map((table) => {
+      let query = supabase.from(table).select('*').eq('user_id', identity.companyUserId).order('created_at', { ascending: false });
+      if (identity.branchId && branchScopedTables.has(table)) query = query.eq('branch_id', identity.branchId);
+      if (identity.salespersonId && table === 'partner_salespeople') query = query.eq('id', identity.salespersonId);
+      return query;
+    }));
 
-    const settingsRes = await supabase.from('store_settings_v2').select('*').eq('user_id', user.id).maybeSingle();
-    const profileRes = await supabase.from('partner_profiles').select('*').eq('id', user.id).maybeSingle();
+    const settingsRes = await supabase.from('store_settings_v2').select('*').eq('user_id', identity.companyUserId).maybeSingle();
+    const profileRes = await supabase.from('partner_profiles').select('*').eq('id', identity.companyUserId).maybeSingle();
 
     setData({
       products: (results[0].data as PartnerProduct[]) ?? [],
@@ -106,7 +107,7 @@ export function usePartnerData(user: User | null): PartnerData {
       orders: (results[13].data as B2BOrder[]) ?? [],
       loading: false,
     });
-  }, [user]);
+  }, [identity]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -115,7 +116,7 @@ export function usePartnerData(user: User | null): PartnerData {
     operatorId?: string | null,
     operatorPin?: string | null,
   ) => {
-    if (!user) return;
+    if (!identity) return;
     if (!product.branch_id) {
       throw new Error('Produto sem filial não pode ser cadastrado.');
     }
@@ -128,7 +129,7 @@ export function usePartnerData(user: User | null): PartnerData {
       icms_rate: product.icms_rate ?? 0,
       pis_rate: product.pis_rate ?? 0,
       cofins_rate: product.cofins_rate ?? 0,
-      id: crypto.randomUUID(), user_id: user.id, created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+      id: crypto.randomUUID(), user_id: identity.companyUserId, created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
     };
     setData((prev) => ({ ...prev, products: [np, ...prev.products] }));
     if (isSupabaseConfigured && supabase) {
@@ -149,9 +150,9 @@ export function usePartnerData(user: User | null): PartnerData {
         p_image_url: np.image_url ?? null,
       });
       if (rpcErr) throw rpcErr;
-      await supabase.from('stock_movements').insert({ user_id: user.id, product_id: np.id, product_name: np.name, type: 'entrada', quantity: np.stock, reason: 'Cadastro inicial' });
+      await supabase.from('stock_movements').insert({ user_id: identity.companyUserId, product_id: np.id, product_name: np.name, type: 'entrada', quantity: np.stock, reason: 'Cadastro inicial' });
     }
-  }, [user]);
+  }, [identity]);
 
   const updateProduct = useCallback(async (
     id: string,
@@ -205,7 +206,7 @@ export function usePartnerData(user: User | null): PartnerData {
     operatorId?: string | null,
     operatorPin?: string | null,
   ) => {
-    if (!user) return;
+    if (!identity) return;
     if (!customer.branch_id) {
       throw new Error('Cliente sem filial não pode ser cadastrado.');
     }
@@ -213,7 +214,7 @@ export function usePartnerData(user: User | null): PartnerData {
     if (normalizedDocument && data.customers.some((item) => normalizeDocument(item.document ?? '') === normalizedDocument)) {
       throw new Error('Já existe um cliente com este CPF/CNPJ neste lojista.');
     }
-    const nc: PartnerCustomer = { ...customer, document: normalizedDocument, id: crypto.randomUUID(), user_id: user.id, created_at: new Date().toISOString() };
+    const nc: PartnerCustomer = { ...customer, document: normalizedDocument, id: crypto.randomUUID(), user_id: identity.companyUserId, created_at: new Date().toISOString() };
     setData((prev) => ({ ...prev, customers: [nc, ...prev.customers] }));
     if (isSupabaseConfigured && supabase) {
       const { error: rpcErr } = await supabase.rpc('execute_partner_customer_mutation', {
@@ -236,7 +237,7 @@ export function usePartnerData(user: User | null): PartnerData {
       });
       if (rpcErr) throw rpcErr;
     }
-  }, [user, data.customers]);
+  }, [identity, data.customers]);
 
   const updateCustomer = useCallback(async (
     id: string,
@@ -302,15 +303,15 @@ export function usePartnerData(user: User | null): PartnerData {
     operatorId?: string | null,
     operatorPin?: string | null,
   ) => {
-    if (!user) return;
+    if (!identity) return;
     const branchId = sale.branch_id ?? null;
     if (!branchId) {
       throw new Error('Venda sem filial selecionada.');
     }
     const effectiveSpId = operatorId ?? sale.salesperson_id ?? null;
-    const ns: PartnerSale = { ...sale, id: crypto.randomUUID(), user_id: user.id, status: 'concluida', created_at: new Date().toISOString(), imei: sale.imei ?? null, serial_number: sale.serial_number ?? null, payment_method: sale.payment_method ?? null, branch_id: branchId, salesperson_id: effectiveSpId, origin: 'pdv', online_payment: false, payment_status: 'pago' };
+    const ns: PartnerSale = { ...sale, id: crypto.randomUUID(), user_id: identity.companyUserId, status: 'concluida', created_at: new Date().toISOString(), imei: sale.imei ?? null, serial_number: sale.serial_number ?? null, payment_method: sale.payment_method ?? null, branch_id: branchId, salesperson_id: effectiveSpId, origin: 'pdv', online_payment: false, payment_status: 'pago' };
     setData((prev) => {
-      const newMovements: StockMovement[] = sale.items.map((item) => ({ id: crypto.randomUUID(), user_id: user.id, product_id: item.product_id, product_name: item.name, type: 'saida' as const, quantity: item.quantity, reason: 'Venda', created_at: new Date().toISOString() }));
+      const newMovements: StockMovement[] = sale.items.map((item) => ({ id: crypto.randomUUID(), user_id: identity.companyUserId, product_id: item.product_id, product_name: item.name, type: 'saida' as const, quantity: item.quantity, reason: 'Venda', created_at: new Date().toISOString() }));
       const updatedProducts = prev.products.map((p) => {
         if (p.branch_id !== branchId) return p;
         const si = sale.items.find((i) => i.product_id === p.id);
@@ -336,19 +337,19 @@ export function usePartnerData(user: User | null): PartnerData {
       });
       if (rpcErr) throw rpcErr;
       for (const item of sale.items) {
-        await supabase.from('stock_movements').insert({ user_id: user.id, product_id: item.product_id, product_name: item.name, type: 'saida', quantity: item.quantity, reason: 'Venda' });
+        await supabase.from('stock_movements').insert({ user_id: identity.companyUserId, product_id: item.product_id, product_name: item.name, type: 'saida', quantity: item.quantity, reason: 'Venda' });
       }
     }
-  }, [user]);
+  }, [identity]);
 
   const createPreSale = useCallback(async (
     sale: { customer_id: string | null; customer_name: string; items: SaleItem[]; total: number; imei?: string; serial_number?: string; salesperson_id?: string | null; branch_id?: string | null },
     operatorId?: string | null,
     operatorPin?: string | null,
   ) => {
-    if (!user) return;
+    if (!identity) return;
     const effectiveSpId = operatorId ?? sale.salesperson_id ?? null;
-    const ns: PartnerSale = { ...sale, id: crypto.randomUUID(), user_id: user.id, status: 'pre_venda', created_at: new Date().toISOString(), imei: sale.imei ?? null, serial_number: sale.serial_number ?? null, payment_method: null, branch_id: sale.branch_id ?? null, salesperson_id: effectiveSpId, origin: 'pdv', online_payment: false, payment_status: 'pendente' };
+    const ns: PartnerSale = { ...sale, id: crypto.randomUUID(), user_id: identity.companyUserId, status: 'pre_venda', created_at: new Date().toISOString(), imei: sale.imei ?? null, serial_number: sale.serial_number ?? null, payment_method: null, branch_id: sale.branch_id ?? null, salesperson_id: effectiveSpId, origin: 'pdv', online_payment: false, payment_status: 'pendente' };
     setData((prev) => ({ ...prev, sales: [ns, ...prev.sales] }));
     if (isSupabaseConfigured && supabase) {
       const { error: rpcErr } = await supabase.rpc('execute_partner_sale_mutation', {
@@ -368,7 +369,7 @@ export function usePartnerData(user: User | null): PartnerData {
       });
       if (rpcErr) throw rpcErr;
     }
-  }, [user]);
+  }, [identity]);
 
   const finalizePreSale = useCallback(async (
     id: string,
@@ -415,28 +416,28 @@ export function usePartnerData(user: User | null): PartnerData {
 
   const updateStoreSettings = useCallback(async (settings: Partial<StoreSettings>) => {
     setData((prev) => prev.storeSettings ? { ...prev, storeSettings: { ...prev.storeSettings, ...settings, updated_at: new Date().toISOString() } } : prev);
-    if (isSupabaseConfigured && supabase && user) {
+    if (isSupabaseConfigured && supabase && identity) {
       if (data.storeSettings) {
         await supabase.from('store_settings_v2').update({ ...settings, updated_at: new Date().toISOString() }).eq('id', data.storeSettings.id);
       } else {
-        await supabase.from('store_settings_v2').insert({ user_id: user.id, ...settings });
+        await supabase.from('store_settings_v2').insert({ user_id: identity.companyUserId, ...settings });
       }
     }
-  }, [user, data.storeSettings]);
+  }, [identity, data.storeSettings]);
 
   const updateProfile = useCallback(async (profileUpdate: Partial<PartnerProfile>) => {
     setData((prev) => prev.profile ? { ...prev, profile: { ...prev.profile, ...profileUpdate } } : prev);
-    if (isSupabaseConfigured && supabase && user) {
-      await supabase.from('partner_profiles').update(profileUpdate).eq('id', user.id);
+    if (isSupabaseConfigured && supabase && identity) {
+      await supabase.from('partner_profiles').update(profileUpdate).eq('id', identity.companyUserId);
     }
-  }, [user]);
+  }, [identity]);
 
   const createRma = useCallback(async (rma: Omit<RmaRequest, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'status'>) => {
-    if (!user) return;
-    const nr: RmaRequest = { ...rma, id: crypto.randomUUID(), user_id: user.id, status: 'aguardando_troca', created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+    if (!identity) return;
+    const nr: RmaRequest = { ...rma, id: crypto.randomUUID(), user_id: identity.companyUserId, status: 'aguardando_troca', created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
     setData((prev) => ({ ...prev, rmaRequests: [nr, ...prev.rmaRequests] }));
     if (isSupabaseConfigured && supabase) await supabase.from('rma_requests_v2').insert(nr);
-  }, [user]);
+  }, [identity]);
 
   const updateRmaStatus = useCallback(async (id: string, status: RmaStatus) => {
     setData((prev) => ({ ...prev, rmaRequests: prev.rmaRequests.map((r) => r.id === id ? { ...r, status, updated_at: new Date().toISOString() } : r) }));
@@ -449,18 +450,18 @@ export function usePartnerData(user: User | null): PartnerData {
   }, []);
 
   const addBranch = useCallback(async (name: string, address: string) => {
-    if (!user) return;
-    const nb: PartnerBranch = { id: crypto.randomUUID(), user_id: user.id, name, address, is_active: true, created_at: new Date().toISOString() };
+    if (!identity) return;
+    const nb: PartnerBranch = { id: crypto.randomUUID(), user_id: identity.companyUserId, name, address, is_active: true, created_at: new Date().toISOString() };
     setData((prev) => ({ ...prev, branches: [...prev.branches, nb] }));
     if (isSupabaseConfigured && supabase) await supabase.from('partner_branches').insert(nb);
-  }, [user]);
+  }, [identity]);
 
   const addCategory = useCallback(async (name: string) => {
-    if (!user) return;
-    const nc: PartnerCategory = { id: crypto.randomUUID(), user_id: user.id, name, created_at: new Date().toISOString() };
+    if (!identity) return;
+    const nc: PartnerCategory = { id: crypto.randomUUID(), user_id: identity.companyUserId, name, created_at: new Date().toISOString() };
     setData((prev) => ({ ...prev, categories: [nc, ...prev.categories] }));
     if (isSupabaseConfigured && supabase) await supabase.from('partner_categories').insert(nc);
-  }, [user]);
+  }, [identity]);
 
   const deleteCategory = useCallback(async (id: string) => {
     setData((prev) => ({ ...prev, categories: prev.categories.filter((c) => c.id !== id) }));
@@ -468,18 +469,18 @@ export function usePartnerData(user: User | null): PartnerData {
   }, []);
 
   const addSupplier = useCallback(async (supplier: Omit<PartnerSupplier, 'id' | 'user_id' | 'created_at' | 'payable_balance'>) => {
-    if (!user) return;
-    const ns: PartnerSupplier = { ...supplier, id: crypto.randomUUID(), user_id: user.id, payable_balance: 0, created_at: new Date().toISOString() };
+    if (!identity) return;
+    const ns: PartnerSupplier = { ...supplier, id: crypto.randomUUID(), user_id: identity.companyUserId, payable_balance: 0, created_at: new Date().toISOString() };
     setData((prev) => ({ ...prev, suppliers: [ns, ...prev.suppliers] }));
     if (isSupabaseConfigured && supabase) await supabase.from('partner_suppliers').insert(ns);
-  }, [user]);
+  }, [identity]);
 
   const addSalesperson = useCallback(async (sp: Omit<PartnerSalesperson, 'id' | 'user_id' | 'created_at'>) => {
-    if (!user) return;
-    const nsp: PartnerSalesperson = { ...sp, id: crypto.randomUUID(), user_id: user.id, created_at: new Date().toISOString() };
+    if (!identity) return;
+    const nsp: PartnerSalesperson = { ...sp, id: crypto.randomUUID(), user_id: identity.companyUserId, created_at: new Date().toISOString() };
     setData((prev) => ({ ...prev, salespeople: [nsp, ...prev.salespeople] }));
     if (isSupabaseConfigured && supabase) await supabase.from('partner_salespeople').insert(nsp);
-  }, [user]);
+  }, [identity]);
 
   const updateSalesperson = useCallback(async (id: string, updates: Partial<PartnerSalesperson>) => {
     setData((prev) => ({ ...prev, salespeople: prev.salespeople.map((s) => s.id === id ? { ...s, ...updates } : s) }));
@@ -535,11 +536,11 @@ export function usePartnerData(user: User | null): PartnerData {
   }, []);
 
   const addCombo = useCallback(async (combo: Omit<PartnerCombo, 'id' | 'user_id' | 'created_at'>) => {
-    if (!user) return;
-    const nc: PartnerCombo = { ...combo, id: crypto.randomUUID(), user_id: user.id, created_at: new Date().toISOString() };
+    if (!identity) return;
+    const nc: PartnerCombo = { ...combo, id: crypto.randomUUID(), user_id: identity.companyUserId, created_at: new Date().toISOString() };
     setData((prev) => ({ ...prev, combos: [nc, ...prev.combos] }));
     if (isSupabaseConfigured && supabase) await supabase.from('partner_combos').insert(nc);
-  }, [user]);
+  }, [identity]);
 
   const deleteCombo = useCallback(async (id: string) => {
     setData((prev) => ({ ...prev, combos: prev.combos.filter((c) => c.id !== id) }));
@@ -547,11 +548,11 @@ export function usePartnerData(user: User | null): PartnerData {
   }, []);
 
   const addModifier = useCallback(async (mod: Omit<PartnerModifier, 'id' | 'user_id' | 'created_at'>) => {
-    if (!user) return;
-    const nm: PartnerModifier = { ...mod, id: crypto.randomUUID(), user_id: user.id, created_at: new Date().toISOString() };
+    if (!identity) return;
+    const nm: PartnerModifier = { ...mod, id: crypto.randomUUID(), user_id: identity.companyUserId, created_at: new Date().toISOString() };
     setData((prev) => ({ ...prev, modifiers: [nm, ...prev.modifiers] }));
     if (isSupabaseConfigured && supabase) await supabase.from('partner_modifiers').insert(nm);
-  }, [user]);
+  }, [identity]);
 
   const deleteModifier = useCallback(async (id: string) => {
     setData((prev) => ({ ...prev, modifiers: prev.modifiers.filter((m) => m.id !== id) }));

@@ -191,6 +191,7 @@ function App() {
           <PartnerPanel
             onBack={() => setView('hub')}
             user={auth.user}
+            identity={auth.identity}
             segment={segment}
             initialTab={partnerInitialTab}
             onConsumeInitialTab={() => setPartnerInitialTab(undefined)}

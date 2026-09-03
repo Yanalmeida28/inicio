@@ -150,13 +150,19 @@ export function ServiceOrdersModule({
         return;
       }
 
-      const { data, error } = await supabase
+      let query = supabase
         .from('service_orders')
         .select('*')
         .eq('user_id', userId)
         .order('created_at', {
           ascending: false,
         });
+
+      if (selectedBranchId) {
+        query = query.eq('branch_id', selectedBranchId);
+      }
+
+      const { data, error } = await query;
 
       if (error) {
         console.error(
@@ -170,7 +176,7 @@ export function ServiceOrdersModule({
     }
 
     loadOrders();
-  }, [userId]);
+  }, [userId, selectedBranchId]);
 
   const filteredOrders = orders.filter((order) =>
     `${order.customer_name ?? ''} ${

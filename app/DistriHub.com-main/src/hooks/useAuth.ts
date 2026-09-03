@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useReducer } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import type { PartnerProfile } from '../types';
+import type { PartnerIdentity, PartnerProfile, PartnerSalesperson } from '../types';
 
 type AuthState = {
   session: Session | null;
   user: User | null;
   profile: PartnerProfile | null;
+  identity: PartnerIdentity | null;
   loading: boolean;
   error: string | null;
   passwordRecovery: boolean;
@@ -30,7 +31,8 @@ type UseAuthReturn = AuthState & {
 type AuthAction =
   | { type: 'RESET' }
   | { type: 'SET_SESSION'; session: Session | null; user: User | null; passwordRecovery?: boolean }
-  | { type: 'SET_PROFILE'; profile: PartnerProfile | null };
+  | { type: 'SET_PROFILE'; profile: PartnerProfile | null }
+  | { type: 'SET_IDENTITY'; identity: PartnerIdentity | null };
 
 function authReducer(state: AuthState, action: AuthAction): AuthState {
   switch (action.type) {
@@ -39,6 +41,7 @@ function authReducer(state: AuthState, action: AuthAction): AuthState {
         session: null,
         user: null,
         profile: null,
+        identity: null,
         loading: false,
         error: null,
         passwordRecovery: false,
@@ -56,6 +59,8 @@ function authReducer(state: AuthState, action: AuthAction): AuthState {
         ...state,
         profile: action.profile,
       };
+    case 'SET_IDENTITY':
+      return { ...state, identity: action.identity };
     default:
       return state;
   }
@@ -70,6 +75,31 @@ export function useAuth(): UseAuthReturn {
     error: null,
     passwordRecovery: false,
   });
+
+  const resolveIdentity = useCallback(async (authUserId: string): Promise<PartnerIdentity> => {
+    if (!supabase) {
+      return { authUserId, companyUserId: authUserId, role: 'administrador', salespersonId: null, branchId: null };
+    }
+
+    const { data } = await supabase
+      .from('partner_salespeople')
+      .select('id, user_id, role, branch_id')
+      .eq('auth_user_id', authUserId)
+      .maybeSingle();
+
+    const salesperson = data as Pick<PartnerSalesperson, 'id' | 'user_id' | 'role' | 'branch_id'> | null;
+    if (!salesperson) {
+      return { authUserId, companyUserId: authUserId, role: 'administrador', salespersonId: null, branchId: null };
+    }
+
+    return {
+      authUserId,
+      companyUserId: salesperson.user_id,
+      role: salesperson.role,
+      salespersonId: salesperson.id,
+      branchId: salesperson.branch_id ?? null,
+    };
+  }, []);
 
   const loadProfile = useCallback(async (userId: string): Promise<PartnerProfile | null> => {
     if (!supabase) return null;
@@ -98,8 +128,13 @@ export function useAuth(): UseAuthReturn {
       });
 
       if (session?.user) {
-        loadProfile(session.user.id).then((profile) => {
-          dispatch({ type: 'SET_PROFILE', profile });
+        dispatch({ type: 'SET_IDENTITY', identity: null });
+        dispatch({ type: 'SET_PROFILE', profile: null });
+        resolveIdentity(session.user.id).then((identity) => {
+          dispatch({ type: 'SET_IDENTITY', identity });
+          loadProfile(identity.companyUserId).then((profile) => {
+            dispatch({ type: 'SET_PROFILE', profile });
+          });
         });
       }
     });
@@ -113,15 +148,20 @@ export function useAuth(): UseAuthReturn {
       });
 
       if (session?.user) {
-        const profile = await loadProfile(session.user.id);
+        dispatch({ type: 'SET_IDENTITY', identity: null });
+        dispatch({ type: 'SET_PROFILE', profile: null });
+        const identity = await resolveIdentity(session.user.id);
+        dispatch({ type: 'SET_IDENTITY', identity });
+        const profile = await loadProfile(identity.companyUserId);
         dispatch({ type: 'SET_PROFILE', profile });
       } else {
         dispatch({ type: 'SET_PROFILE', profile: null });
+        dispatch({ type: 'SET_IDENTITY', identity: null });
       }
     });
 
     return () => listener.subscription.unsubscribe();
-  }, [loadProfile]);
+  }, [loadProfile, resolveIdentity]);
 
   const signUp = useCallback(async (data: SignUpData): Promise<{ error: string | null }> => {
     if (!isSupabaseConfigured || !supabase) return { error: 'Supabase não configurado.' };

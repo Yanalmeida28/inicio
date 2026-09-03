@@ -51,11 +51,13 @@ import type {
   PartnerSale,
   RmaRequest,
   SaleItem,
+  PartnerIdentity,
 } from '../types';
 
 type PartnerPanelProps = {
   onBack: () => void;
   user: User | null;
+  identity: PartnerIdentity | null;
   segment: BusinessSegment;
   initialTab?: string;
   onConsumeInitialTab?: () => void;
@@ -202,6 +204,7 @@ const logisticaBlockedTabs: Tab[] = [
 export function PartnerPanel({
   onBack,
   user,
+  identity,
   segment,
   initialTab,
   onConsumeInitialTab,
@@ -219,19 +222,23 @@ export function PartnerPanel({
   const [operatorPinInput, setOperatorPinInput] = useState('');
   const [operatorPinError, setOperatorPinError] = useState('');
 
-  const partner = usePartnerData(user);
+  const partner = usePartnerData(identity);
 
-  const activeSalesperson = currentSalespersonId
+  const activeSalesperson = identity?.salespersonId
+    ? partner.salespeople.find((s) => s.id === identity.salespersonId) ?? {
+        id: identity.salespersonId, user_id: identity.companyUserId, name: 'Funcionário', role: identity.role,
+        commission_rate: 0, phone: null, email: null, is_active: true, branch_id: identity.branchId,
+        created_at: '',
+      }
+    : currentSalespersonId
     ? partner.salespeople.find((s) => s.id === currentSalespersonId)
     : null;
 
   const isEmployeeRestricted = Boolean(
-    activeSalesperson &&
-    activeSalesperson.branch_id &&
-    activeSalesperson.role !== 'administrador'
+    identity?.salespersonId && identity.branchId && identity.role !== 'administrador'
   );
 
-  const lockedBranchId = isEmployeeRestricted ? activeSalesperson!.branch_id! : null;
+  const lockedBranchId = isEmployeeRestricted ? identity!.branchId! : null;
   const effectiveBranchId = lockedBranchId ?? selectedBranchId;
 
   const effectiveRole: SalespersonRole = activeSalesperson
@@ -501,7 +508,7 @@ export function PartnerPanel({
 
   const defaultSettings: StoreSettings = {
     id: 'default',
-    user_id: user?.id ?? '',
+    user_id: identity?.companyUserId ?? '',
     logo_url: null,
     banner_url: null,
     primary_color: '#3193e5',
@@ -809,7 +816,7 @@ export function PartnerPanel({
 
             {activeTab === 'os' && (
               <ServiceOrdersModule
-                userId={user?.id}
+                userId={identity?.companyUserId}
                 segment={segment}
                 branches={
                   partner.branches
@@ -869,7 +876,7 @@ export function PartnerPanel({
 
             {activeTab === 'administrativo' && (
               <AdminModule
-                userId={user?.id}
+                userId={identity?.companyUserId}
                 sales={filteredSales}
                 products={
                   filteredProducts
