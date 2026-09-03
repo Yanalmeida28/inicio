@@ -118,6 +118,8 @@ export interface PartnerSalesperson {
   phone: string | null;
   email: string | null;
   is_active: boolean;
+  pin?: string | null;
+  branch_id?: string | null;
   created_at: string;
   updated_at?: string;
 }

@@ -132,6 +132,7 @@ export function CadastrosModule({
         {subTab === 'vendedores' && (
           <SalespeopleSubTab
             salespeople={salespeople}
+            branches={branches}
             onAdd={onAddSalesperson}
             onUpdate={onUpdateSalesperson}
             onDelete={onDeleteSalesperson}
@@ -1598,8 +1599,9 @@ const roleColors: Record<SalespersonRole, string> = {
   logistica: '#a78bfa',
 };
 
-function SalespeopleSubTab({ salespeople, onAdd, onUpdate, onDelete }: {
+function SalespeopleSubTab({ salespeople, branches, onAdd, onUpdate, onDelete }: {
   salespeople: PartnerSalesperson[];
+  branches: PartnerBranch[];
   onAdd: (sp: Omit<PartnerSalesperson, 'id' | 'user_id' | 'created_at'>) => Promise<void>;
   onUpdate: (id: string, updates: Partial<PartnerSalesperson>) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
@@ -1608,18 +1610,30 @@ function SalespeopleSubTab({ salespeople, onAdd, onUpdate, onDelete }: {
   const [rate, setRate] = useState('');
   const [pin, setPin] = useState('');
   const [role, setRole] = useState<SalespersonRole>('vendedor');
+  const [branchId, setBranchId] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [editRate, setEditRate] = useState('');
   const [editPin, setEditPin] = useState('');
   const [editRole, setEditRole] = useState<SalespersonRole>('vendedor');
+  const [editBranchId, setEditBranchId] = useState('');
   const [editActive, setEditActive] = useState(true);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) return;
-    await onAdd({ name, commission_rate: Number(rate) || 0, active: true, pin: pin || null, role });
-    setName(''); setRate(''); setPin(''); setRole('vendedor');
+    await onAdd({
+      name: name.trim(),
+      commission_rate: Number(rate) || 0,
+      active: true,
+      pin: pin || null,
+      role,
+      branch_id: branchId || null,
+      phone: null,
+      email: null,
+      is_active: true,
+    });
+    setName(''); setRate(''); setPin(''); setRole('vendedor'); setBranchId('');
   }
 
   function startEdit(s: PartnerSalesperson) {
@@ -1628,7 +1642,8 @@ function SalespeopleSubTab({ salespeople, onAdd, onUpdate, onDelete }: {
     setEditRate(String(s.commission_rate));
     setEditPin(s.pin ?? '');
     setEditRole(s.role);
-    setEditActive(s.active);
+    setEditBranchId(s.branch_id ?? '');
+    setEditActive(s.active ?? s.is_active ?? true);
   }
 
   function cancelEdit() {
@@ -1641,7 +1656,9 @@ function SalespeopleSubTab({ salespeople, onAdd, onUpdate, onDelete }: {
       commission_rate: Number(editRate) || 0,
       pin: editPin || null,
       role: editRole,
+      branch_id: editBranchId || null,
       active: editActive,
+      is_active: editActive,
     });
     setEditingId(null);
   }
@@ -1663,93 +1680,116 @@ function SalespeopleSubTab({ salespeople, onAdd, onUpdate, onDelete }: {
             <input value={pin} onChange={(e) => setPin(e.target.value)} placeholder="4 dígitos" maxLength={4} />
           </label>
         </div>
-        <label>
-          Função / Permissões
-          <select value={role} onChange={(e) => setRole(e.target.value as SalespersonRole)}>
-            <option value="administrador">Administrador (Acesso Total)</option>
-            <option value="gerente">Gerente (Operacional & Vendas)</option>
-            <option value="caixa">Caixa (Finalizar Vendas & Pré-Vendas)</option>
-            <option value="vendedor">Vendedor / Balcão (PDV, Vendas, Clientes)</option>
-            <option value="tecnico">Técnico (Apenas Ordens de Serviço)</option>
-            <option value="atendente">Atendente (Atendimento e Pré-Vendas)</option>
-            <option value="logistica">Logística / Entregador (Gestão de Entregas)</option>
-          </select>
-        </label>
-        <button type="submit" className="module-submit-btn"><Plus size={16} /> Adicionar</button>
+        <div className="form-row">
+          <label>
+            Função / Permissões
+            <select value={role} onChange={(e) => setRole(e.target.value as SalespersonRole)}>
+              <option value="administrador">Administrador (Acesso Total)</option>
+              <option value="gerente">Gerente (Operacional & Vendas)</option>
+              <option value="caixa">Caixa (Finalizar Vendas & Pré-Vendas)</option>
+              <option value="vendedor">Vendedor / Balcão (PDV, Vendas, Clientes)</option>
+              <option value="tecnico">Técnico (Apenas Ordens de Serviço)</option>
+              <option value="atendente">Atendente (Atendimento e Pré-Vendas)</option>
+              <option value="logistica">Logística / Entregador (Gestão de Entregas)</option>
+            </select>
+          </label>
+          <label>
+            Filial Vinculada
+            <select value={branchId} onChange={(e) => setBranchId(e.target.value)}>
+              <option value="">Todas as Filiais (Acesso Livre / Admin)</option>
+              {branches.map((b) => (
+                <option key={b.id} value={b.id}>{b.name}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <button type="submit" className="module-submit-btn"><Plus size={16} /> Adicionar Funcionário</button>
       </form>
       <div className="stock-table-wrap">
         <table className="rma-table">
-          <thead><tr><th>Nome</th><th>Função</th><th>Comissão</th><th>PIN</th><th>Status</th><th></th></tr></thead>
+          <thead><tr><th>Nome</th><th>Função</th><th>Filial Vinculada</th><th>Comissão</th><th>PIN</th><th>Status</th><th></th></tr></thead>
           <tbody>
             {salespeople.length === 0 ? (
-              <tr><td colSpan={6} className="empty-row">Nenhum vendedor cadastrado.</td></tr>
+              <tr><td colSpan={7} className="empty-row">Nenhum vendedor cadastrado.</td></tr>
             ) : (
-              salespeople.map((s) => (
-                <tr key={s.id}>
-                  {editingId === s.id ? (
-                    <>
-                      <td>
-                        <input className="rma-edit-input" value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Nome" style={{ width: '100%' }} />
-                      </td>
-                      <td>
-                        <select className="rma-edit-input" value={editRole} onChange={(e) => setEditRole(e.target.value as SalespersonRole)}>
-                          <option value="administrador">Administrador</option>
-                          <option value="gerente">Gerente</option>
-                          <option value="caixa">Caixa</option>
-                          <option value="vendedor">Vendedor / Balcão</option>
-                          <option value="tecnico">Técnico</option>
-                          <option value="atendente">Atendente</option>
-                          <option value="logistica">Logística / Entregador</option>
-                        </select>
-                      </td>
-                      <td>
-                        <input className="rma-edit-input" type="number" step="0.01" value={editRate} onChange={(e) => setEditRate(e.target.value)} style={{ width: '70px' }} />
-                      </td>
-                      <td>
-                        <input className="rma-edit-input" value={editPin} onChange={(e) => setEditPin(e.target.value)} placeholder="PIN" maxLength={4} style={{ width: '70px' }} />
-                      </td>
-                      <td>
-                        <label className="checkbox-label" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          <input type="checkbox" checked={editActive} onChange={(e) => setEditActive(e.target.checked)} />
-                          {editActive ? 'Ativo' : 'Inativo'}
-                        </label>
-                      </td>
-                      <td>
-                        <div className="row-action-group">
-                          <button className="rma-advance-btn" onClick={() => saveEdit(s.id)} title="Salvar">
-                            <Check size={14} />
-                          </button>
-                          <button className="rma-advance-btn" onClick={cancelEdit} title="Cancelar">
-                            <X size={14} />
-                          </button>
-                        </div>
-                      </td>
-                    </>
-                  ) : (
-                    <>
-                      <td><strong>{s.name}</strong></td>
-                      <td>
-                        <span className="rma-status-badge" style={{ color: roleColors[s.role], borderColor: roleColors[s.role] }}>
-                          {roleLabels[s.role]}
-                        </span>
-                      </td>
-                      <td>{s.commission_rate}%</td>
-                      <td>{s.pin ? '****' : '—'}</td>
-                      <td>{s.active ? 'Ativo' : 'Inativo'}</td>
-                      <td>
-                        <div className="row-action-group">
-                          <button className="rma-advance-btn" onClick={() => startEdit(s)} title="Editar">
-                            <History size={14} />
-                          </button>
-                          <button className="rma-advance-btn danger" onClick={() => onDelete(s.id)} title="Excluir">
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      </td>
-                    </>
-                  )}
-                </tr>
-              ))
+              salespeople.map((s) => {
+                const spBranch = branches.find((b) => b.id === s.branch_id);
+                return (
+                  <tr key={s.id}>
+                    {editingId === s.id ? (
+                      <>
+                        <td>
+                          <input className="rma-edit-input" value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Nome" style={{ width: '100%' }} />
+                        </td>
+                        <td>
+                          <select className="rma-edit-input" value={editRole} onChange={(e) => setEditRole(e.target.value as SalespersonRole)}>
+                            <option value="administrador">Administrador</option>
+                            <option value="gerente">Gerente</option>
+                            <option value="caixa">Caixa</option>
+                            <option value="vendedor">Vendedor / Balcão</option>
+                            <option value="tecnico">Técnico</option>
+                            <option value="atendente">Atendente</option>
+                            <option value="logistica">Logística / Entregador</option>
+                          </select>
+                        </td>
+                        <td>
+                          <select className="rma-edit-input" value={editBranchId} onChange={(e) => setEditBranchId(e.target.value)}>
+                            <option value="">Todas as Filiais</option>
+                            {branches.map((b) => (
+                              <option key={b.id} value={b.id}>{b.name}</option>
+                            ))}
+                          </select>
+                        </td>
+                        <td>
+                          <input className="rma-edit-input" type="number" step="0.01" value={editRate} onChange={(e) => setEditRate(e.target.value)} style={{ width: '60px' }} />
+                        </td>
+                        <td>
+                          <input className="rma-edit-input" value={editPin} onChange={(e) => setEditPin(e.target.value)} placeholder="PIN" maxLength={4} style={{ width: '60px' }} />
+                        </td>
+                        <td>
+                          <label className="checkbox-label" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <input type="checkbox" checked={editActive} onChange={(e) => setEditActive(e.target.checked)} />
+                            {editActive ? 'Ativo' : 'Inativo'}
+                          </label>
+                        </td>
+                        <td>
+                          <div className="row-action-group">
+                            <button className="rma-advance-btn" onClick={() => saveEdit(s.id)} title="Salvar">
+                              <Check size={14} />
+                            </button>
+                            <button className="rma-advance-btn" onClick={cancelEdit} title="Cancelar">
+                              <X size={14} />
+                            </button>
+                          </div>
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        <td><strong>{s.name}</strong></td>
+                        <td>
+                          <span className="rma-status-badge" style={{ color: roleColors[s.role], borderColor: roleColors[s.role] }}>
+                            {roleLabels[s.role]}
+                          </span>
+                        </td>
+                        <td>{spBranch ? spBranch.name : <small style={{ color: '#889eaf' }}>Todas as filiais</small>}</td>
+                        <td>{s.commission_rate}%</td>
+                        <td>{s.pin ? '****' : '—'}</td>
+                        <td>{s.active ?? s.is_active ? 'Ativo' : 'Inativo'}</td>
+                        <td>
+                          <div className="row-action-group">
+                            <button className="rma-advance-btn" onClick={() => startEdit(s)} title="Editar">
+                              <History size={14} />
+                            </button>
+                            <button className="rma-advance-btn danger" onClick={() => onDelete(s.id)} title="Excluir">
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </td>
+                      </>
+                    )}
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
