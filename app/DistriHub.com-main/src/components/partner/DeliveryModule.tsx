@@ -33,21 +33,27 @@ const statusConfig: Record<DeliveryStatus, { label: string; color: string; icon:
 
 export function DeliveryModule({ sales, salespeople, selectedBranchId }: Props) {
   const drivers = salespeople.filter((s) => s.role === 'logistica' && s.active);
+  const [deliveryUpdates, setDeliveryUpdates] = useState<Record<string, Pick<Delivery, 'status' | 'driverId'>>>({});
 
-  const [deliveries, setDeliveries] = useState<Delivery[]>(
-    sales
-      .filter((s) => s.status !== 'cancelada')
+  const deliveries = useMemo(
+    () => sales
+      .filter((sale) => sale.delivery_type === 'entrega' && sale.status !== 'cancelada')
+      .filter((sale) => !selectedBranchId || sale.branch_id === selectedBranchId)
       .slice(0, 20)
-      .map((s) => ({
-        saleId: s.id,
-        customerName: s.customer_name ?? 'Cliente',
-        address: '',
-        items: s.items.length,
-        total: s.total,
-        status: 'pendente' as DeliveryStatus,
-        driverId: null,
-        phone: '',
-      }))
+      .map((sale) => {
+        const updates = deliveryUpdates[sale.id];
+        return {
+          saleId: sale.id,
+          customerName: sale.customer_name ?? 'Cliente',
+          address: '',
+          items: sale.items.length,
+          total: sale.total,
+          status: updates?.status ?? 'pendente',
+          driverId: updates?.driverId ?? null,
+          phone: '',
+        };
+      }),
+    [sales, selectedBranchId, deliveryUpdates],
   );
 
   const [filter, setFilter] = useState<DeliveryStatus | 'all'>('all');
@@ -61,11 +67,11 @@ export function DeliveryModule({ sales, salespeople, selectedBranchId }: Props) 
   const assignedCount = useMemo(() => deliveries.filter((d) => d.driverId).length, [deliveries]);
 
   function updateStatus(saleId: string, status: DeliveryStatus) {
-    setDeliveries((prev) => prev.map((d) => d.saleId === saleId ? { ...d, status } : d));
+    setDeliveryUpdates((prev) => ({ ...prev, [saleId]: { status, driverId: prev[saleId]?.driverId ?? null } }));
   }
 
   function assignDriver(saleId: string, driverId: string) {
-    setDeliveries((prev) => prev.map((d) => d.saleId === saleId ? { ...d, driverId: driverId || null } : d));
+    setDeliveryUpdates((prev) => ({ ...prev, [saleId]: { status: prev[saleId]?.status ?? 'pendente', driverId: driverId || null } }));
   }
 
   const stats = {

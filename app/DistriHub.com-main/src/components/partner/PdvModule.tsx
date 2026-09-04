@@ -3,7 +3,7 @@ import {
   Search, Trash2, ShoppingCart, Check, Printer, MessageCircle, Mail,
   ScanLine, X, Tag, QrCode, Ban, Lock, ClipboardList, Wallet, Lock as LockIcon,
 } from 'lucide-react';
-import type { PartnerProduct, PartnerCustomer, PartnerSale, PartnerSalesperson, SalespersonRole } from '../../types';
+import type { DeliveryType, PartnerProduct, PartnerCustomer, PartnerSale, PartnerSalesperson, SaleItem, SalespersonRole } from '../../types';
 import { money } from '../../utils';
 
 type PriceTable = 'varejo' | 'atacado';
@@ -23,6 +23,8 @@ type Props = {
     customer_name: string;
     items: { product_id: string; name: string; quantity: number; unit_price: number }[];
     total: number;
+    customer_type: ClientType;
+    delivery_type: DeliveryType;
     imei?: string;
     serial_number?: string;
     payment_method?: string;
@@ -34,6 +36,8 @@ type Props = {
     customer_name: string;
     items: { product_id: string; name: string; quantity: number; unit_price: number }[];
     total: number;
+    customer_type: ClientType;
+    delivery_type: DeliveryType;
     imei?: string;
     serial_number?: string;
     salesperson_id?: string | null;
@@ -125,7 +129,7 @@ function PdvCheckout({ products, customers, sales, salespeople, segment, selecte
   segment: string;
   selectedBranchId: string | null;
   canCheckout: boolean;
-  onCreateSale: (sale: { customer_id: string | null; customer_name: string; items: SaleItem[]; total: number; imei?: string; serial_number?: string; payment_method?: string; salesperson_id?: string | null; branch_id?: string | null }) => Promise<void>;
+  onCreateSale: (sale: { customer_id: string | null; customer_name: string; items: SaleItem[]; total: number; customer_type: ClientType; delivery_type: DeliveryType; imei?: string; serial_number?: string; payment_method?: string; salesperson_id?: string | null; branch_id?: string | null }) => Promise<void>;
   onCancelSale: (id: string) => Promise<void>;
   onDeleteSale: (id: string) => Promise<void>;
 }) {
@@ -137,8 +141,11 @@ function PdvCheckout({ products, customers, sales, salespeople, segment, selecte
   const [imei, setImei] = useState('');
   const [serial, setSerial] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('pix');
+  const [deliveryType, setDeliveryType] = useState<DeliveryType>('balcao');
   const [salespersonId, setSalespersonId] = useState('');
   const [completed, setCompleted] = useState(false);
+  const [isCheckingOut, setIsCheckingOut] = useState(false);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [priceTable, setPriceTable] = useState<PriceTable>('varejo');
   const [cancelTarget, setCancelTarget] = useState<PartnerSale | null>(null);
   const [pinInput, setPinInput] = useState('');
@@ -178,16 +185,6 @@ function PdvCheckout({ products, customers, sales, salespeople, segment, selecte
     }
   }
 
-  function switchPriceTable(table: PriceTable) {
-    setPriceTable(table);
-    setClientType(table);
-    setCart((prev) => prev.map((item) => {
-      const product = products.find((p) => p.id === item.product_id);
-      if (!product) return item;
-      return { ...item, unit_price: getPriceForProduct(product, table) };
-    }));
-  }
-
   const filtered = useMemo(() => {
     const term = search.toLowerCase();
     return products.filter((p) => {
@@ -206,6 +203,7 @@ function PdvCheckout({ products, customers, sales, salespeople, segment, selecte
       return [...prev, { product_id: product.id, name: product.name, quantity: 1, unit_price: price }];
     });
     setCompleted(false);
+    setCheckoutError(null);
   }
 
   function changeQty(id: string, delta: number) {
@@ -228,19 +226,29 @@ function PdvCheckout({ products, customers, sales, salespeople, segment, selecte
     }
     const customer = customers.find((c) => c.id === customerId);
     const fallbackName = clientType === 'atacado' ? 'Cliente Atacado' : 'Cliente Varejo';
-    await onCreateSale({
-      customer_id: customerId || null,
-      customer_name: customerName || customer?.name || fallbackName,
-      items: cart,
-      total,
-      imei: imei || undefined,
-      serial_number: serial || undefined,
-      payment_method: paymentMethod,
-      salesperson_id: salespersonId || null,
-      branch_id: selectedBranchId,
-    });
-    setCart([]); setCustomerId(''); setCustomerName(''); setImei(''); setSerial(''); setSalespersonId('');
-    setCompleted(true);
+    setIsCheckingOut(true);
+    setCheckoutError(null);
+    try {
+      await onCreateSale({
+        customer_id: customerId || null,
+        customer_name: customerName || customer?.name || fallbackName,
+        items: cart,
+        total,
+        customer_type: clientType,
+        delivery_type: deliveryType,
+        imei: imei || undefined,
+        serial_number: serial || undefined,
+        payment_method: paymentMethod,
+        salesperson_id: salespersonId || null,
+        branch_id: selectedBranchId,
+      });
+      setCart([]); setCustomerId(''); setCustomerName(''); setImei(''); setSerial(''); setSalespersonId('');
+      setCompleted(true);
+    } catch (error) {
+      setCheckoutError(error instanceof Error ? error.message : 'Não foi possível finalizar a venda.');
+    } finally {
+      setIsCheckingOut(false);
+    }
   }
 
   function requestCancelSale(sale: PartnerSale) {
@@ -278,21 +286,6 @@ function PdvCheckout({ products, customers, sales, salespeople, segment, selecte
               placeholder="Buscar produto por nome ou SKU..."
               autoFocus
             />
-          </div>
-
-          <div className="pdv-price-toggle">
-            <button
-              className={`price-toggle-btn ${priceTable === 'varejo' ? 'active' : ''}`}
-              onClick={() => switchPriceTable('varejo')}
-            >
-              <Tag size={15} /> Tabela Varejo
-            </button>
-            <button
-              className={`price-toggle-btn ${priceTable === 'atacado' ? 'active' : ''}`}
-              onClick={() => switchPriceTable('atacado')}
-            >
-              <Tag size={15} /> Tabela Atacado
-            </button>
           </div>
 
           <div className="pdv-product-grid">
@@ -352,21 +345,21 @@ function PdvCheckout({ products, customers, sales, salespeople, segment, selecte
             <>
               <div className="pdv-form">
                 <label>
-                  Tipo de Cliente
+                  Tabela de preços
                   <div className="pdv-client-type-toggle">
                     <button
                       type="button"
                       className={`price-toggle-btn ${clientType === 'varejo' ? 'active' : ''}`}
                       onClick={() => handleClientTypeChange('varejo')}
                     >
-                      <Tag size={15} /> Cliente Varejo
+                      <Tag size={15} /> Varejo
                     </button>
                     <button
                       type="button"
                       className={`price-toggle-btn ${clientType === 'atacado' ? 'active' : ''}`}
                       onClick={() => handleClientTypeChange('atacado')}
                     >
-                      <Tag size={15} /> Cliente Atacado
+                      <Tag size={15} /> Atacado
                     </button>
                   </div>
                 </label>
@@ -389,6 +382,21 @@ function PdvCheckout({ products, customers, sales, salespeople, segment, selecte
                     <input value={serial} onChange={(e) => setSerial(e.target.value)} placeholder="Opcional" />
                   </label>
                 </div>
+                <label>
+                  Tipo de atendimento
+                  <div className="pdv-client-type-toggle">
+                    {(['balcao', 'entrega', 'retirada'] as DeliveryType[]).map((type) => (
+                      <button
+                        key={type}
+                        type="button"
+                        className={`price-toggle-btn ${deliveryType === type ? 'active' : ''}`}
+                        onClick={() => setDeliveryType(type)}
+                      >
+                        {type === 'balcao' ? 'Balcão' : type === 'entrega' ? 'Entrega' : 'Retirada'}
+                      </button>
+                    ))}
+                  </div>
+                </label>
                 <div className="form-row">
                   <label>
                     Forma de Pagamento
@@ -415,8 +423,8 @@ function PdvCheckout({ products, customers, sales, salespeople, segment, selecte
               </div>
 
               {canCheckout ? (
-                <button className="module-submit-btn pdv-checkout-btn" onClick={handleCheckout}>
-                  <Check size={18} /> Finalizar Venda
+                <button className="module-submit-btn pdv-checkout-btn" onClick={handleCheckout} disabled={isCheckingOut}>
+                  <Check size={18} /> {isCheckingOut ? 'Finalizando...' : 'Finalizar Venda'}
                 </button>
               ) : (
                 <div className="pdv-restricted-checkout">
@@ -444,6 +452,7 @@ function PdvCheckout({ products, customers, sales, salespeople, segment, selecte
                   <Check size={15} /> Venda finalizada! Cupom e etiqueta disponíveis para impressão/envio.
                 </div>
               )}
+              {checkoutError && <p className="otp-error-msg">{checkoutError}</p>}
             </>
           )}
         </div>
@@ -538,7 +547,7 @@ function PreVendaTab({ products, customers, sales, salespeople, segment, selecte
   segment: string;
   selectedBranchId: string | null;
   canCheckout: boolean;
-  onCreatePreSale: (sale: { customer_id: string | null; customer_name: string; items: SaleItem[]; total: number; imei?: string; serial_number?: string; salesperson_id?: string | null; branch_id?: string | null }) => Promise<void>;
+  onCreatePreSale: (sale: { customer_id: string | null; customer_name: string; items: SaleItem[]; total: number; customer_type: ClientType; delivery_type: DeliveryType; imei?: string; serial_number?: string; salesperson_id?: string | null; branch_id?: string | null }) => Promise<void>;
   onFinalizePreSale: (id: string, paymentMethod: string) => Promise<void>;
   onCancelSale: (id: string) => Promise<void>;
   onDeleteSale: (id: string) => Promise<void>;
@@ -551,8 +560,11 @@ function PreVendaTab({ products, customers, sales, salespeople, segment, selecte
   const [imei, setImei] = useState('');
   const [serial, setSerial] = useState('');
   const [priceTable, setPriceTable] = useState<PriceTable>('varejo');
+  const [deliveryType, setDeliveryType] = useState<DeliveryType>('balcao');
   const [salespersonId, setSalespersonId] = useState('');
   const [saved, setSaved] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [finalizeTarget, setFinalizeTarget] = useState<PartnerSale | null>(null);
   const [finalizePayment, setFinalizePayment] = useState('pix');
   const [cancelTarget, setCancelTarget] = useState<PartnerSale | null>(null);
@@ -594,16 +606,6 @@ function PreVendaTab({ products, customers, sales, salespeople, segment, selecte
     }
   }
 
-  function switchPriceTable(table: PriceTable) {
-    setPriceTable(table);
-    setClientType(table);
-    setCart((prev) => prev.map((item) => {
-      const product = products.find((p) => p.id === item.product_id);
-      if (!product) return item;
-      return { ...item, unit_price: getPriceForProduct(product, table) };
-    }));
-  }
-
   const filtered = useMemo(() => {
     const term = search.toLowerCase();
     return products.filter((p) => {
@@ -622,6 +624,7 @@ function PreVendaTab({ products, customers, sales, salespeople, segment, selecte
       return [...prev, { product_id: product.id, name: product.name, quantity: 1, unit_price: price }];
     });
     setSaved(false);
+    setSaveError(null);
   }
 
   function changeQty(id: string, delta: number) {
@@ -644,19 +647,29 @@ function PreVendaTab({ products, customers, sales, salespeople, segment, selecte
     }
     const customer = customers.find((c) => c.id === customerId);
     const fallbackName = clientType === 'atacado' ? 'Cliente Atacado' : 'Cliente Varejo';
-    await onCreatePreSale({
-      customer_id: customerId || null,
-      customer_name: customerName || customer?.name || fallbackName,
-      items: cart,
-      total,
-      imei: imei || undefined,
-      serial_number: serial || undefined,
-      salesperson_id: salespersonId || null,
-      branch_id: selectedBranchId,
-    });
-    setCart([]); setCustomerId(''); setCustomerName(''); setImei(''); setSerial(''); setSalespersonId('');
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
+    setIsSaving(true);
+    setSaveError(null);
+    try {
+      await onCreatePreSale({
+        customer_id: customerId || null,
+        customer_name: customerName || customer?.name || fallbackName,
+        items: cart,
+        total,
+        customer_type: clientType,
+        delivery_type: deliveryType,
+        imei: imei || undefined,
+        serial_number: serial || undefined,
+        salesperson_id: salespersonId || null,
+        branch_id: selectedBranchId,
+      });
+      setCart([]); setCustomerId(''); setCustomerName(''); setImei(''); setSerial(''); setSalespersonId('');
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : 'Não foi possível salvar a pré-venda.');
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   function requestFinalize(sale: PartnerSale) {
@@ -705,21 +718,6 @@ function PreVendaTab({ products, customers, sales, salespeople, segment, selecte
               placeholder="Buscar produto para orçamento..."
               autoFocus
             />
-          </div>
-
-          <div className="pdv-price-toggle">
-            <button
-              className={`price-toggle-btn ${priceTable === 'varejo' ? 'active' : ''}`}
-              onClick={() => switchPriceTable('varejo')}
-            >
-              <Tag size={15} /> Tabela Varejo
-            </button>
-            <button
-              className={`price-toggle-btn ${priceTable === 'atacado' ? 'active' : ''}`}
-              onClick={() => switchPriceTable('atacado')}
-            >
-              <Tag size={15} /> Tabela Atacado
-            </button>
           </div>
 
           <div className="pdv-product-grid">
@@ -778,21 +776,21 @@ function PreVendaTab({ products, customers, sales, salespeople, segment, selecte
             <>
               <div className="pdv-form">
                 <label>
-                  Tipo de Cliente
+                  Tabela de preços
                   <div className="pdv-client-type-toggle">
                     <button
                       type="button"
                       className={`price-toggle-btn ${clientType === 'varejo' ? 'active' : ''}`}
                       onClick={() => handleClientTypeChange('varejo')}
                     >
-                      <Tag size={15} /> Cliente Varejo
+                      <Tag size={15} /> Varejo
                     </button>
                     <button
                       type="button"
                       className={`price-toggle-btn ${clientType === 'atacado' ? 'active' : ''}`}
                       onClick={() => handleClientTypeChange('atacado')}
                     >
-                      <Tag size={15} /> Cliente Atacado
+                      <Tag size={15} /> Atacado
                     </button>
                   </div>
                 </label>
@@ -822,6 +820,21 @@ function PreVendaTab({ products, customers, sales, salespeople, segment, selecte
                     {salespeople.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                   </select>
                 </label>
+                <label>
+                  Tipo de atendimento
+                  <div className="pdv-client-type-toggle">
+                    {(['balcao', 'entrega', 'retirada'] as DeliveryType[]).map((type) => (
+                      <button
+                        key={type}
+                        type="button"
+                        className={`price-toggle-btn ${deliveryType === type ? 'active' : ''}`}
+                        onClick={() => setDeliveryType(type)}
+                      >
+                        {type === 'balcao' ? 'Balcão' : type === 'entrega' ? 'Entrega' : 'Retirada'}
+                      </button>
+                    ))}
+                  </div>
+                </label>
               </div>
 
               <div className="pdv-total-bar">
@@ -829,8 +842,8 @@ function PreVendaTab({ products, customers, sales, salespeople, segment, selecte
                 <strong>{money.format(total)}</strong>
               </div>
 
-              <button className="module-submit-btn pdv-checkout-btn" onClick={handleSavePreSale}>
-                {saved ? <><Check size={18} /> Pré-Venda Salva!</> : <><ClipboardList size={18} /> Salvar Pré-Venda</>}
+              <button className="module-submit-btn pdv-checkout-btn" onClick={handleSavePreSale} disabled={isSaving}>
+                {saved ? <><Check size={18} /> Pré-Venda Salva!</> : <><ClipboardList size={18} /> {isSaving ? 'Salvando...' : 'Salvar Pré-Venda'}</>}
               </button>
 
               {saved && (
@@ -838,6 +851,7 @@ function PreVendaTab({ products, customers, sales, salespeople, segment, selecte
                   <Check size={15} /> Pré-venda salva com status Pendente. Aguardando finalização no caixa.
                 </div>
               )}
+              {saveError && <p className="otp-error-msg">{saveError}</p>}
             </>
           )}
         </div>

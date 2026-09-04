@@ -1,5 +1,7 @@
 export type BusinessSegment = 'assistencia' | 'varejo' | 'servicos';
 export type PersonType = 'PF' | 'PJ';
+export type CustomerType = 'varejo' | 'atacado';
+export type DeliveryType = 'balcao' | 'entrega' | 'retirada';
 
 export interface Product {
   id: number;
@@ -81,7 +83,8 @@ export interface PartnerCustomer {
   city?: string | null;
   device_model?: string | null;
   notes?: string | null;
-  customer_type?: 'varejo' | 'atacado';
+  customer_type?: CustomerType;
+  credit_limit?: number | null;
   branch_id?: string | null;
   created_at: string;
   updated_at?: string;
@@ -96,6 +99,7 @@ export interface PartnerSupplier {
   email?: string | null;
   address?: string | null;
   city?: string | null;
+  notes?: string | null;
   payable_balance: number;
   created_at: string;
   updated_at?: string;
@@ -122,12 +126,12 @@ export interface PartnerProduct {
   category: string | null;
   is_service: boolean;
   branch_id: string | null;
-  ncm: string | null;
-  cfop: string | null;
-  cst_csosn: string | null;
-  icms_rate: number;
-  pis_rate: number;
-  cofins_rate: number;
+  ncm?: string | null;
+  cfop?: string | null;
+  cst_csosn?: string | null;
+  icms_rate?: number;
+  pis_rate?: number;
+  cofins_rate?: number;
   created_at: string;
   updated_at: string;
 }
@@ -142,6 +146,7 @@ export interface PartnerSalesperson {
   phone: string | null;
   email: string | null;
   is_active: boolean;
+  active?: boolean;
   pin?: string | null;
   branch_id?: string | null;
   created_at: string;
@@ -175,6 +180,8 @@ export interface PartnerSale {
   payment_method: string | null;
   salesperson_id: string | null;
   branch_id: string | null;
+  customer_type: CustomerType;
+  delivery_type: DeliveryType;
   status: 'aberta' | 'concluida' | 'pre_venda' | 'cancelada' | 'devolucao';
   origin: 'pdv' | 'b2b' | 'manual' | 'catalogo';
   online_payment: boolean;
@@ -246,6 +253,11 @@ export interface RmaRequest {
   created_at: string;
   updated_at: string;
 }
+
+export type RmaPayload = Omit<RmaRequest, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'status' | 'branch_id' | 'customer_name'> & {
+  branch_id?: string | null;
+  customer_name?: string;
+};
 
 export interface PartnerCombo {
   id: string;

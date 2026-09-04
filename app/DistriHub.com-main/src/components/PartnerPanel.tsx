@@ -49,8 +49,11 @@ import type {
   PartnerProduct,
   PartnerCustomer,
   PartnerSale,
+  RmaPayload,
   RmaRequest,
   SaleItem,
+  CustomerType,
+  DeliveryType,
   PartnerIdentity,
 } from '../types';
 
@@ -382,7 +385,7 @@ export function PartnerPanel({
     await partner.deleteCustomer(id, currentSalespersonId, activeOperatorPin);
   }
 
-  async function handleCreateSale(sale: { customer_id: string | null; customer_name: string; items: SaleItem[]; total: number; imei?: string; serial_number?: string; payment_method?: string; salesperson_id?: string | null; branch_id?: string | null }) {
+  async function handleCreateSale(sale: { customer_id: string | null; customer_name: string; items: SaleItem[]; total: number; customer_type: CustomerType; delivery_type: DeliveryType; imei?: string; serial_number?: string; payment_method?: string; salesperson_id?: string | null; branch_id?: string | null }) {
     const targetBranch = isEmployeeRestricted ? effectiveBranchId : (sale.branch_id || effectiveBranchId);
     if (!targetBranch) {
       window.alert('Selecione uma filial para realizar a venda.');
@@ -403,7 +406,7 @@ export function PartnerPanel({
     );
   }
 
-  async function handleCreatePreSale(sale: { customer_id: string | null; customer_name: string; items: SaleItem[]; total: number; imei?: string; serial_number?: string; salesperson_id?: string | null; branch_id?: string | null }) {
+  async function handleCreatePreSale(sale: { customer_id: string | null; customer_name: string; items: SaleItem[]; total: number; customer_type: CustomerType; delivery_type: DeliveryType; imei?: string; serial_number?: string; salesperson_id?: string | null; branch_id?: string | null }) {
     const targetBranch = isEmployeeRestricted ? effectiveBranchId : (sale.branch_id || effectiveBranchId);
     if (!targetBranch) {
       window.alert('Selecione uma filial para criar a pré-venda.');
@@ -451,7 +454,7 @@ export function PartnerPanel({
     await partner.deleteSale(id, currentSalespersonId, activeOperatorPin);
   }
 
-  async function handleCreateRma(rma: Omit<RmaRequest, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'status'>) {
+  async function handleCreateRma(rma: RmaPayload) {
     const targetBranch = isEmployeeRestricted ? effectiveBranchId : (rma.branch_id || effectiveBranchId);
     await partner.createRma({ ...rma, branch_id: targetBranch || null });
   }

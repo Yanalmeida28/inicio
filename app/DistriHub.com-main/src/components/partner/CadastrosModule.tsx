@@ -1100,7 +1100,7 @@ function CustomersSubTab({ customers, sales, selectedBranchId, onAdd, onUpdate, 
       )}
 
       {profileCustomerId && profileCustomer && (
-        <CustomerProfileModal customer={profileCustomer} sales={sales} onClose={() => setProfileCustomerId(null)} />
+        <CustomerProfileModal customer={profileCustomer} sales={sales} onUpdate={onUpdate} onClose={() => setProfileCustomerId(null)} />
       )}
     </div>
   );
@@ -1108,9 +1108,10 @@ function CustomersSubTab({ customers, sales, selectedBranchId, onAdd, onUpdate, 
 
 type CustomerTab = 'cadastrais' | 'enderecos' | 'observacoes' | 'financeiros' | 'contatos' | 'historico';
 
-function CustomerProfileModal({ customer, sales, onClose }: {
+function CustomerProfileModal({ customer, sales, onUpdate, onClose }: {
   customer: PartnerCustomer;
   sales: PartnerSale[];
+  onUpdate: (id: string, updates: Partial<PartnerCustomer>) => Promise<void>;
   onClose: () => void;
 }) {
   const [tab, setTab] = useState<CustomerTab>('cadastrais');
@@ -1118,7 +1119,9 @@ function CustomerProfileModal({ customer, sales, onClose }: {
     (customer.document ?? '').replace(/\D/g, '').length <= 11 ? 'pf' : 'pj'
   );
   const [ieIsento, setIeIsento] = useState(false);
-  const [creditLimit, setCreditLimit] = useState('0');
+  const [creditLimit, setCreditLimit] = useState(String(customer.credit_limit ?? 0));
+  const [isSavingCreditLimit, setIsSavingCreditLimit] = useState(false);
+  const [creditLimitError, setCreditLimitError] = useState<string | null>(null);
   const [allowCrediario, setAllowCrediario] = useState(false);
   const [ativo, setAtivo] = useState(true);
   const [adminLoja, setAdminLoja] = useState(false);
@@ -1138,6 +1141,24 @@ function CustomerProfileModal({ customer, sales, onClose }: {
     { id: 'contatos', label: 'Contatos', icon: Phone },
     { id: 'historico', label: 'Histórico de Compras & Notas Fiscais', icon: History },
   ];
+
+  async function saveCreditLimit() {
+    const parsedCreditLimit = Number(creditLimit);
+    if (!Number.isFinite(parsedCreditLimit) || parsedCreditLimit < 0) {
+      setCreditLimitError('Informe um limite de crédito válido.');
+      return;
+    }
+    setIsSavingCreditLimit(true);
+    setCreditLimitError(null);
+    try {
+      await onUpdate(customer.id, { credit_limit: parsedCreditLimit });
+      onClose();
+    } catch (error) {
+      setCreditLimitError(error instanceof Error ? error.message : 'Não foi possível salvar o limite de crédito.');
+    } finally {
+      setIsSavingCreditLimit(false);
+    }
+  }
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -1374,8 +1395,9 @@ function CustomerProfileModal({ customer, sales, onClose }: {
               </div>
               <label>
                 <span className="social-label"><Wallet size={14} /> Limite de Crédito (R$)</span>
-                <input type="number" step="0.01" value={creditLimit} onChange={(e) => setCreditLimit(e.target.value)} placeholder="0,00" />
+                <input type="number" min="0" step="0.01" value={creditLimit} onChange={(e) => setCreditLimit(e.target.value)} placeholder="0,00" />
               </label>
+              {creditLimitError && <p className="otp-error-msg">{creditLimitError}</p>}
               <div className="customer-compliance-grid">
                 <label className="checkbox-label">
                   <input type="checkbox" checked={convenio} onChange={(e) => setConvenio(e.target.checked)} />
@@ -1442,6 +1464,8 @@ function CustomerProfileModal({ customer, sales, onClose }: {
                         <th>Nº do Pedido / Nota Fiscal</th>
                         <th>Tipo</th>
                         <th>Formas de Pagamento</th>
+                        <th>Tabela</th>
+                        <th>Atendimento</th>
                         <th>Valor Total (R$)</th>
                         <th>Status</th>
                         <th>Detalhes</th>
@@ -1465,6 +1489,8 @@ function CustomerProfileModal({ customer, sales, onClose }: {
                               <td><strong>#{displaySaleId.toUpperCase()}</strong></td>
                               <td><span className="rma-status-badge" style={{ color: statusColor, borderColor: statusColor }}>{docType}</span></td>
                               <td>{s.payment_method ?? '—'}</td>
+                              <td>{s.customer_type === 'atacado' ? 'Atacado' : 'Varejo'}</td>
+                              <td>{s.delivery_type === 'entrega' ? 'Entrega' : s.delivery_type === 'retirada' ? 'Retirada' : 'Balcão'}</td>
                               <td><strong>{money.format(saleTotal)}</strong></td>
                               <td><span className="rma-status-badge" style={{ color: statusColor, borderColor: statusColor }}>{statusLabel}</span></td>
                               <td>
@@ -1475,7 +1501,7 @@ function CustomerProfileModal({ customer, sales, onClose }: {
                             </tr>
                             {isExpanded && (
                               <tr className="expanded-detail-row">
-                                <td colSpan={7}>
+                                <td colSpan={9}>
                                   <div className="sale-detail-content">
                                     <div className="sale-detail-items">
                                       <h4>Itens Comprados</h4>
@@ -1523,8 +1549,8 @@ function CustomerProfileModal({ customer, sales, onClose }: {
         </div>
 
         <div className="fiscal-modal-actions">
-          <button className="module-submit-btn" onClick={onClose}>
-            <Save size={16} /> Salvar Alterações
+          <button className="module-submit-btn" onClick={saveCreditLimit} disabled={isSavingCreditLimit}>
+            <Save size={16} /> {isSavingCreditLimit ? 'Salvando...' : 'Salvar Alterações'}
           </button>
         </div>
       </div>

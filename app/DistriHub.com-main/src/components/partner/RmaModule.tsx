@@ -3,7 +3,7 @@ import {
   ArrowRightCircle, Camera, FileText, Package, Printer, QrCode, Upload,
   Wallet, X, Pencil, Trash2, AlertCircle,
 } from 'lucide-react';
-import type { RmaRequest, RmaStatus, SalespersonRole } from '../../types';
+import type { RmaPayload, RmaRequest, RmaStatus, SalespersonRole } from '../../types';
 import { rmaStatusLabels, rmaStatusColors, rmaStatusFlow } from '../../data';
 import { money } from '../../utils';
 
@@ -12,7 +12,7 @@ type RmaModuleProps = {
   walletBalance: number;
   warrantyTerms: string;
   currentRole: SalespersonRole;
-  onCreate: (rma: Omit<RmaRequest, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'status'>) => void;
+  onCreate: (rma: RmaPayload) => void;
   onUpdateStatus: (id: string, status: RmaStatus) => void;
   onDelete: (id: string) => Promise<void>;
 };

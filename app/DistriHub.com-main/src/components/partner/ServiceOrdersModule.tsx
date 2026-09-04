@@ -576,7 +576,7 @@ export function ServiceOrdersModule({
                 value={equipmentType}
                 onChange={(event) => setEquipmentType(event.target.value)}
                 placeholder="Celular, notebook, ar-condicionado, veículo..."
-                style={{ ...inputDarkStyle, placeholder: { color: '#9ca3af' } }}
+                style={inputDarkStyle}
                 className="dark-os-input"
               />
             </label>

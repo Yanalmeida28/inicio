@@ -461,7 +461,7 @@ function CrmReport({ customers, sales }: { customers: PartnerCustomer[]; sales: 
     return new Date(c.birthday).getMonth() === currentMonth;
   });
 
-  function sendBirthdayWhatsApp(phone: string | null, name: string) {
+  function sendBirthdayWhatsApp(phone: string | null | undefined, name: string) {
     if (!phone) return;
     const digits = phone.replace(/\D/g, '');
     const msg = `Olá ${name}! Parabéns pelo seu aniversário! 🎉 Aproveite um cupom especial de desconto na sua próxima visita!`;

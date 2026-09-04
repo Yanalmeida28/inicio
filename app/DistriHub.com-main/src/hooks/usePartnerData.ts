@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import type {
   PartnerProduct, PartnerCustomer, PartnerSale, StockMovement,
-  StoreSettings, RmaRequest, RmaStatus, SaleItem,
+  StoreSettings, RmaPayload, RmaRequest, RmaStatus, SaleItem,
   PartnerBranch, PartnerCategory, PartnerSupplier, PartnerSalesperson,
   PartnerCombo, PartnerModifier, PartnerInvoice, PartnerProfile,
-  B2BOrder, PartnerIdentity,
+  B2BOrder, PartnerIdentity, CustomerType, DeliveryType,
 } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { normalizeDocument } from '../utils';
@@ -33,12 +33,12 @@ type PartnerData = {
   addCustomer: (customer: Omit<PartnerCustomer, 'id' | 'user_id' | 'created_at'>, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
   updateCustomer: (id: string, updates: Partial<PartnerCustomer>, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
   deleteCustomer: (id: string, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
-  createSale: (sale: { customer_id: string | null; customer_name: string; items: SaleItem[]; total: number; imei?: string; serial_number?: string; payment_method?: string; salesperson_id?: string | null; branch_id?: string | null }, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
-  createPreSale: (sale: { customer_id: string | null; customer_name: string; items: SaleItem[]; total: number; imei?: string; serial_number?: string; salesperson_id?: string | null; branch_id?: string | null }, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
+  createSale: (sale: SalePayload, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
+  createPreSale: (sale: SalePayload, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
   finalizePreSale: (id: string, paymentMethod: string, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
   updateStoreSettings: (settings: Partial<StoreSettings>) => Promise<void>;
   updateProfile: (profile: Partial<PartnerProfile>) => Promise<void>;
-  createRma: (rma: Omit<RmaRequest, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'status'>) => Promise<void>;
+  createRma: (rma: RmaPayload) => Promise<void>;
   updateRmaStatus: (id: string, status: RmaStatus) => Promise<void>;
   deleteRma: (id: string) => Promise<void>;
   addBranch: (name: string, address: string) => Promise<void>;
@@ -55,6 +55,20 @@ type PartnerData = {
   addModifier: (mod: Omit<PartnerModifier, 'id' | 'user_id' | 'created_at'>) => Promise<void>;
   deleteModifier: (id: string) => Promise<void>;
   payInvoice: (id: string) => Promise<void>;
+};
+
+type SalePayload = {
+  customer_id: string | null;
+  customer_name: string;
+  items: SaleItem[];
+  total: number;
+  customer_type: CustomerType;
+  delivery_type: DeliveryType;
+  imei?: string;
+  serial_number?: string;
+  payment_method?: string;
+  salesperson_id?: string | null;
+  branch_id?: string | null;
 };
 
 type PartnerDataState = Pick<PartnerData,
@@ -275,6 +289,7 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
         p_device_model: nc.device_model ?? null,
         p_notes: nc.notes ?? null,
         p_customer_type: nc.customer_type ?? 'varejo',
+        p_credit_limit: nc.credit_limit ?? 0,
       });
       if (rpcErr) throw rpcErr;
     }
@@ -316,6 +331,7 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
         p_device_model: merged.device_model ?? null,
         p_notes: merged.notes ?? null,
         p_customer_type: merged.customer_type ?? 'varejo',
+        p_credit_limit: merged.credit_limit ?? 0,
       });
       if (rpcErr) throw rpcErr;
     }
@@ -343,7 +359,7 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
   }, []);
 
   const createSale = useCallback(async (
-    sale: { customer_id: string | null; customer_name: string; items: SaleItem[]; total: number; imei?: string; serial_number?: string; payment_method?: string; salesperson_id?: string | null; branch_id?: string | null },
+    sale: SalePayload,
     operatorId?: string | null,
     operatorPin?: string | null,
   ) => {
@@ -354,15 +370,6 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
     }
     const effectiveSpId = operatorId ?? sale.salesperson_id ?? null;
     const ns: PartnerSale = { ...sale, id: crypto.randomUUID(), user_id: identity.companyUserId, status: 'concluida', created_at: new Date().toISOString(), imei: sale.imei ?? null, serial_number: sale.serial_number ?? null, payment_method: sale.payment_method ?? null, branch_id: branchId, salesperson_id: effectiveSpId, origin: 'pdv', online_payment: false, payment_status: 'pago' };
-    setData((prev) => {
-      const newMovements: StockMovement[] = sale.items.map((item) => ({ id: crypto.randomUUID(), user_id: identity.companyUserId, product_id: item.product_id, product_name: item.name, type: 'saida' as const, quantity: item.quantity, reason: 'Venda', created_at: new Date().toISOString() }));
-      const updatedProducts = prev.products.map((p) => {
-        if (p.branch_id !== branchId) return p;
-        const si = sale.items.find((i) => i.product_id === p.id);
-        return si ? { ...p, stock: Math.max(0, p.stock - si.quantity) } : p;
-      });
-      return { ...prev, sales: [ns, ...prev.sales], movements: [...newMovements, ...prev.movements], products: updatedProducts };
-    });
     if (isSupabaseConfigured && supabase) {
       const { error: rpcErr } = await supabase.rpc('execute_partner_sale_mutation', {
         p_salesperson_id: effectiveSpId,
@@ -378,23 +385,34 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
         p_branch_id: ns.branch_id,
         p_status: 'concluida',
         p_origin: 'pdv',
+        p_customer_type: ns.customer_type,
+        p_delivery_type: ns.delivery_type,
       });
       if (rpcErr) throw rpcErr;
       for (const item of sale.items) {
-        await supabase.from('stock_movements').insert({ user_id: identity.companyUserId, product_id: item.product_id, product_name: item.name, type: 'saida', quantity: item.quantity, reason: 'Venda' });
+        const { error: movementError } = await supabase.from('stock_movements').insert({ user_id: identity.companyUserId, product_id: item.product_id, product_name: item.name, type: 'saida', quantity: item.quantity, reason: 'Venda' });
+        if (movementError) throw movementError;
       }
     }
+    setData((prev) => {
+      const newMovements: StockMovement[] = sale.items.map((item) => ({ id: crypto.randomUUID(), user_id: identity.companyUserId, product_id: item.product_id, product_name: item.name, type: 'saida' as const, quantity: item.quantity, reason: 'Venda', created_at: new Date().toISOString() }));
+      const updatedProducts = prev.products.map((p) => {
+        if (p.branch_id !== branchId) return p;
+        const item = sale.items.find((currentItem) => currentItem.product_id === p.id);
+        return item ? { ...p, stock: Math.max(0, p.stock - item.quantity) } : p;
+      });
+      return { ...prev, sales: [ns, ...prev.sales], movements: [...newMovements, ...prev.movements], products: updatedProducts };
+    });
   }, [identity]);
 
   const createPreSale = useCallback(async (
-    sale: { customer_id: string | null; customer_name: string; items: SaleItem[]; total: number; imei?: string; serial_number?: string; salesperson_id?: string | null; branch_id?: string | null },
+    sale: SalePayload,
     operatorId?: string | null,
     operatorPin?: string | null,
   ) => {
     if (!identity) return;
     const effectiveSpId = operatorId ?? sale.salesperson_id ?? null;
     const ns: PartnerSale = { ...sale, id: crypto.randomUUID(), user_id: identity.companyUserId, status: 'pre_venda', created_at: new Date().toISOString(), imei: sale.imei ?? null, serial_number: sale.serial_number ?? null, payment_method: null, branch_id: sale.branch_id ?? null, salesperson_id: effectiveSpId, origin: 'pdv', online_payment: false, payment_status: 'pendente' };
-    setData((prev) => ({ ...prev, sales: [ns, ...prev.sales] }));
     if (isSupabaseConfigured && supabase) {
       const { error: rpcErr } = await supabase.rpc('execute_partner_sale_mutation', {
         p_salesperson_id: effectiveSpId,
@@ -410,9 +428,12 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
         p_branch_id: ns.branch_id,
         p_status: 'pre_venda',
         p_origin: 'pdv',
+        p_customer_type: ns.customer_type,
+        p_delivery_type: ns.delivery_type,
       });
       if (rpcErr) throw rpcErr;
     }
+    setData((prev) => ({ ...prev, sales: [ns, ...prev.sales] }));
   }, [identity]);
 
   const finalizePreSale = useCallback(async (
@@ -421,19 +442,9 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
     operatorId?: string | null,
     operatorPin?: string | null,
   ) => {
-    setData((prev) => {
-      const sale = prev.sales.find((s) => s.id === id);
-      if (!sale || !sale.branch_id) return prev;
-      const newMovements: StockMovement[] = sale.items.map((item) => ({ id: crypto.randomUUID(), user_id: sale.user_id, product_id: item.product_id, product_name: item.name, type: 'saida' as const, quantity: item.quantity, reason: 'Venda (Pré-venda)', created_at: new Date().toISOString() }));
-      const updatedProducts = prev.products.map((p) => {
-        if (p.branch_id !== sale.branch_id) return p;
-        const si = sale.items.find((i) => i.product_id === p.id);
-        return si ? { ...p, stock: Math.max(0, p.stock - si.quantity) } : p;
-      });
-      return { ...prev, sales: prev.sales.map((s) => s.id === id ? { ...s, status: 'concluida' as const, payment_method: paymentMethod } : s), movements: [...newMovements, ...prev.movements], products: updatedProducts };
-    });
+    const sale = data.sales.find((currentSale) => currentSale.id === id);
+    if (!sale || !sale.branch_id) throw new Error('Pré-venda não encontrada ou sem filial válida.');
     if (isSupabaseConfigured && supabase) {
-      const sale = data.sales.find((s) => s.id === id);
       const { error: rpcErr } = await supabase.rpc('execute_partner_sale_mutation', {
         p_salesperson_id: operatorId ?? sale?.salesperson_id ?? null,
         p_pin: operatorPin ?? null,
@@ -448,14 +459,24 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
         p_branch_id: sale?.branch_id ?? null,
         p_status: 'concluida',
         p_origin: sale?.origin ?? 'pdv',
+        p_customer_type: sale.customer_type,
+        p_delivery_type: sale.delivery_type,
       });
       if (rpcErr) throw rpcErr;
-      if (sale && sale.branch_id) {
-        for (const item of sale.items) {
-          await supabase.from('stock_movements').insert({ user_id: sale.user_id, product_id: item.product_id, product_name: item.name, type: 'saida', quantity: item.quantity, reason: 'Venda (Pré-venda)' });
-        }
+      for (const item of sale.items) {
+        const { error: movementError } = await supabase.from('stock_movements').insert({ user_id: sale.user_id, product_id: item.product_id, product_name: item.name, type: 'saida', quantity: item.quantity, reason: 'Venda (Pré-venda)' });
+        if (movementError) throw movementError;
       }
     }
+    setData((prev) => {
+      const newMovements: StockMovement[] = sale.items.map((item) => ({ id: crypto.randomUUID(), user_id: sale.user_id, product_id: item.product_id, product_name: item.name, type: 'saida' as const, quantity: item.quantity, reason: 'Venda (Pré-venda)', created_at: new Date().toISOString() }));
+      const updatedProducts = prev.products.map((product) => {
+        if (product.branch_id !== sale.branch_id) return product;
+        const item = sale.items.find((currentItem) => currentItem.product_id === product.id);
+        return item ? { ...product, stock: Math.max(0, product.stock - item.quantity) } : product;
+      });
+      return { ...prev, sales: prev.sales.map((currentSale) => currentSale.id === id ? { ...currentSale, status: 'concluida', payment_method: paymentMethod } : currentSale), movements: [...newMovements, ...prev.movements], products: updatedProducts };
+    });
   }, [data.sales]);
 
   const updateStoreSettings = useCallback(async (settings: Partial<StoreSettings>) => {
@@ -491,9 +512,9 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
     }
   }, [identity]);
 
-  const createRma = useCallback(async (rma: Omit<RmaRequest, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'status'>) => {
+  const createRma = useCallback(async (rma: RmaPayload) => {
     if (!identity) return;
-    const nr: RmaRequest = { ...rma, id: crypto.randomUUID(), user_id: identity.companyUserId, status: 'aguardando_troca', created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+    const nr: RmaRequest = { ...rma, branch_id: rma.branch_id ?? null, customer_name: rma.customer_name ?? 'Cliente não informado', id: crypto.randomUUID(), user_id: identity.companyUserId, status: 'aguardando_troca', created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
     setData((prev) => ({ ...prev, rmaRequests: [nr, ...prev.rmaRequests] }));
     if (isSupabaseConfigured && supabase) await supabase.from('rma_requests_v2').insert(nr);
   }, [identity]);
