@@ -904,7 +904,7 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
   --dh-blue-soft: rgba(37,99,235,.08);
   --dh-blue-soft-strong: rgba(37,99,235,.14);
   --dh-text: #172033;
-  --dh-text-secondary: #64748B;
+  --dh-text-secondary: #475569;
   --dh-border: #E2E8F0;
   --dh-success: #15803D;
   --dh-success-bg: rgba(21,128,61,.09);
@@ -958,7 +958,7 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
 
 /* ---------- Subtabs ---------- */
 .partner-panel .subtab-bar { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--dh-border); margin-bottom: 18px; padding-bottom: 0; }
-.partner-panel .subtab { display: inline-flex; align-items: center; gap: 7px; padding: 9px 14px; border-radius: var(--dh-radius-sm) var(--dh-radius-sm) 0 0; color: var(--dh-text-secondary); font-size: 13.5px; font-weight: 600; background: transparent; border-bottom: 2px solid transparent; transition: color .15s, background .15s, border-color .15s; }
+.partner-panel .subtab { display: inline-flex; align-items: center; gap: 7px; padding: 9px 14px; border-radius: var(--dh-radius-sm) var(--dh-radius-sm) 0 0; color: var(--dh-text); font-size: 13.5px; font-weight: 600; background: transparent; border-bottom: 2px solid transparent; transition: color .15s, background .15s, border-color .15s; }
 .partner-panel .subtab:hover { color: var(--dh-navy); background: var(--dh-blue-soft); }
 .partner-panel .subtab.active { color: var(--dh-blue); border-color: var(--dh-blue); background: var(--dh-blue-soft); }
 .partner-panel .pdv-subtabs { border-bottom: 1px solid var(--dh-border); }
@@ -1046,7 +1046,7 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
   transition: background .15s, color .15s;
 }
 .partner-panel .partner-icon-btn:hover { background: #F1F5F9; color: var(--dh-navy); }
-.partner-panel button:disabled { opacity: .6; cursor: not-allowed; }
+.partner-panel button:disabled { opacity: .78; cursor: not-allowed; }
 
 /* ---------- Forms ---------- */
 .partner-panel .rma-form { display: grid; gap: 14px; }
@@ -1069,7 +1069,7 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
 }
 .partner-panel input:disabled,
 .partner-panel select:disabled,
-.partner-panel textarea:disabled { background: #F1F5F9 !important; color: #94A3B8 !important; }
+.partner-panel textarea:disabled { background: #F1F5F9 !important; color: #475569 !important; }
 .partner-panel .checkbox-label { display: flex; align-items: center; gap: 8px; font-weight: 500; }
 .partner-panel .chip-list { display: flex; flex-wrap: wrap; gap: 8px; }
 .partner-panel .chip { background: var(--dh-blue-soft); color: var(--dh-blue); border: 1px solid rgba(37,99,235,.2); border-radius: 999px; padding: 6px 12px; font-size: 12.5px; font-weight: 600; }
@@ -1398,11 +1398,11 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
   color: #1D4ED8 !important;
 }
 .partner-panel .pdv-receipt-btn:disabled {
-  opacity: .45 !important;
+  opacity: .78 !important;
   cursor: not-allowed !important;
   background: #F8FAFC !important;
   border-color: #E2E8F0 !important;
-  color: #94A3B8 !important;
+  color: #475569 !important;
 }
 
 /* Toggles de Opções: Varejo / Atacado, Balcão / Entrega / Retirada, PF / PJ */

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useReducer } from 'react';
+import { useCallback, useEffect, useReducer, useRef } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import type { PartnerIdentity, PartnerProfile, PartnerSalesperson } from '../types';
@@ -79,6 +79,7 @@ export function useAuth(): UseAuthReturn {
     error: null,
     passwordRecovery: false,
   });
+  const signupInProgressRef = useRef(false);
 
   const resolveIdentity = useCallback(async (authUserId: string): Promise<PartnerIdentity> => {
     if (!supabase) {
@@ -163,6 +164,7 @@ export function useAuth(): UseAuthReturn {
         dispatch({ type: 'SET_IDENTITY', identity: null });
         dispatch({ type: 'SET_PROFILE', profile: null });
         dispatch({ type: 'SET_ERROR', error: null });
+        if (signupInProgressRef.current) return;
         resolveIdentity(session.user.id)
           .then(async (identity) => {
             dispatch({ type: 'SET_IDENTITY', identity });
@@ -186,6 +188,7 @@ export function useAuth(): UseAuthReturn {
         dispatch({ type: 'SET_IDENTITY', identity: null });
         dispatch({ type: 'SET_PROFILE', profile: null });
         dispatch({ type: 'SET_ERROR', error: null });
+        if (signupInProgressRef.current) return;
         try {
           const identity = await resolveIdentity(session.user.id);
           dispatch({ type: 'SET_IDENTITY', identity });
@@ -207,23 +210,38 @@ export function useAuth(): UseAuthReturn {
   const signUp = useCallback(async (data: SignUpData): Promise<{ error: string | null }> => {
     if (!isSupabaseConfigured || !supabase) return { error: 'Supabase não configurado.' };
 
-    const { data: authData, error } = await supabase.auth.signUp({
-      email: data.email,
-      password: data.password,
-    });
+    signupInProgressRef.current = true;
+    try {
+      const { data: authData, error } = await supabase.auth.signUp({
+        email: data.email,
+        password: data.password,
+      });
 
-    if (error) return { error: error.message };
-    if (!authData.user) return { error: 'Falha ao criar conta.' };
+      if (error) return { error: error.message };
+      if (!authData.user) return { error: 'Falha ao criar conta.' };
 
-    await supabase.from('partner_profiles').insert({
-      id: authData.user.id,
-      business_name: data.businessName,
-      whatsapp: data.whatsapp,
-      segment: 'assistencia',
-    });
+      const { error: profileError } = await supabase.from('partner_profiles').insert({
+        id: authData.user.id,
+        business_name: data.businessName,
+        whatsapp: data.whatsapp,
+        segment: 'assistencia',
+      });
 
-    return { error: null };
-  }, []);
+      if (profileError) return { error: profileError.message };
+
+      const identity = await resolveIdentity(authData.user.id);
+      const profile = await loadProfile(identity.companyUserId);
+      dispatch({ type: 'SET_IDENTITY', identity });
+      dispatch({ type: 'SET_PROFILE', profile });
+      dispatch({ type: 'SET_ERROR', error: null });
+
+      return { error: null };
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : 'Não foi possível concluir o cadastro da conta.' };
+    } finally {
+      signupInProgressRef.current = false;
+    }
+  }, [loadProfile, resolveIdentity]);
 
   const signIn = useCallback(async (email: string, password: string): Promise<{ error: string | null }> => {
     if (!isSupabaseConfigured || !supabase) return { error: 'Supabase não configurado.' };
