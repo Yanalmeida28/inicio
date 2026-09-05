@@ -1332,3 +1332,163 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
 .partner-panel .partner-sidebar p { color: rgba(255,255,255,.62); }
 .partner-panel .partner-sidebar strong { color: #ffffff; }
 .partner-panel .partner-sidebar .partner-loading { color: rgba(255,255,255,.72); }
+
+/* =====================================================================
+   AJUSTES DE REVISÃO VISUAL, CONTRASTE, ALINHAMENTO E BOTÕES — DISTRiHUB
+   ===================================================================== */
+
+/* 1. PDV / Vendas — Contraste de Labels, Unidades, Campos e Informações Auxiliares */
+.partner-panel .pdv-form label {
+  color: var(--dh-text) !important;
+  font-weight: 600;
+  font-size: 13px;
+}
+.partner-panel .pdv-form input,
+.partner-panel .pdv-form select {
+  background: var(--dh-surface) !important;
+  color: var(--dh-text) !important;
+  border: 1px solid var(--dh-border) !important;
+}
+.partner-panel .pdv-form input::placeholder,
+.partner-panel .pdv-form select::placeholder {
+  color: #64748B !important;
+}
+.partner-panel .pdv-form input:focus,
+.partner-panel .pdv-form select:focus {
+  border-color: var(--dh-blue) !important;
+  box-shadow: 0 0 0 3px var(--dh-blue-soft) !important;
+}
+.partner-panel .pdv-product-card small {
+  color: var(--dh-text-secondary) !important;
+}
+.partner-panel .pdv-stock {
+  color: var(--dh-success) !important;
+  font-weight: 700;
+}
+.partner-panel .pdv-cart-item strong {
+  color: var(--dh-navy) !important;
+}
+.partner-panel .pdv-cart-item small {
+  color: var(--dh-text-secondary) !important;
+}
+.partner-panel .pdv-item-controls b {
+  color: var(--dh-text) !important;
+}
+.partner-panel .pdv-total-bar span {
+  color: var(--dh-text-secondary) !important;
+}
+.partner-panel .pdv-total-bar strong {
+  color: var(--dh-navy) !important;
+}
+
+/* 2. Clientes — Varejo / Atacado e Toggles de Opções */
+.partner-panel .price-toggle-btn {
+  background: var(--dh-surface) !important;
+  border: 1px solid var(--dh-border) !important;
+  color: var(--dh-navy) !important;
+  border-radius: var(--dh-radius-sm);
+  font-weight: 600;
+  padding: 8px 14px;
+  font-size: 13px;
+  transition: background .15s, border-color .15s, color .15s;
+}
+.partner-panel .price-toggle-btn:hover {
+  border-color: var(--dh-blue) !important;
+  color: var(--dh-blue) !important;
+  background: var(--dh-blue-soft) !important;
+}
+.partner-panel .price-toggle-btn.active {
+  background: var(--dh-blue) !important;
+  border-color: var(--dh-blue) !important;
+  color: #ffffff !important;
+}
+.partner-panel .pdv-client-type-toggle button,
+.partner-panel .fiscal-doctype-toggle button {
+  background: var(--dh-surface);
+  border: 1px solid var(--dh-border);
+  color: var(--dh-navy);
+  border-radius: var(--dh-radius-sm);
+  font-weight: 600;
+}
+.partner-panel .pdv-client-type-toggle button.active,
+.partner-panel .fiscal-doctype-toggle button.active {
+  background: var(--dh-blue) !important;
+  border-color: var(--dh-blue) !important;
+  color: #ffffff !important;
+}
+.partner-panel .social-label {
+  color: var(--dh-navy) !important;
+  font-weight: 700;
+}
+
+/* 3. PDV / Carrinho — Enquadramento dos Botões abaixo de Finalizar */
+.partner-panel .pdv-receipt-actions {
+  display: grid !important;
+  grid-template-columns: repeat(2, 1fr) !important;
+  gap: 8px !important;
+  width: 100% !important;
+  margin-top: 10px;
+  box-sizing: border-box;
+}
+.partner-panel .pdv-receipt-btn {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+  padding: 9px 10px !important;
+  border: 1px solid var(--dh-border) !important;
+  border-radius: var(--dh-radius-sm) !important;
+  color: var(--dh-navy) !important;
+  background: var(--dh-surface) !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  min-height: 40px !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+  transition: background .15s, border-color .15s, color .15s !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+.partner-panel .pdv-receipt-btn:not(:disabled):hover {
+  border-color: var(--dh-blue) !important;
+  color: var(--dh-blue) !important;
+  background: var(--dh-blue-soft) !important;
+}
+.partner-panel .pdv-receipt-btn:disabled {
+  opacity: .5 !important;
+  cursor: not-allowed !important;
+  background: #F1F5F9 !important;
+  border-color: #E2E8F0 !important;
+  color: #94A3B8 !important;
+}
+
+/* 4. Auditoria Geral — Textos Auxiliares e Resumos nos Módulos */
+.partner-panel .orders-summary-card small,
+.partner-panel .orders-summary-card span {
+  color: var(--dh-text-secondary) !important;
+  font-weight: 500;
+}
+.partner-panel .orders-summary-card strong,
+.partner-panel .orders-summary-card b {
+  color: var(--dh-navy) !important;
+}
+.partner-panel .rma-form label span {
+  color: var(--dh-navy) !important;
+}
+.partner-panel .otp-description,
+.partner-panel .otp-modal p {
+  color: var(--dh-text-secondary) !important;
+}
+
+/* 5. Responsividade para telas menores */
+@media (max-width: 640px) {
+  .partner-panel .pdv-receipt-actions {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 6px !important;
+  }
+  .partner-panel .pdv-receipt-btn {
+    font-size: 12px !important;
+    padding: 8px 6px !important;
+  }
+}
