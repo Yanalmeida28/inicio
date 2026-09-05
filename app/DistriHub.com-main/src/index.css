@@ -1337,112 +1337,54 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
    AJUSTES DE REVISÃO VISUAL, CONTRASTE, ALINHAMENTO E BOTÕES — DISTRiHUB
    ===================================================================== */
 
-/* 1. PDV / Vendas — Contraste de Labels, Unidades, Campos e Informações Auxiliares */
-.partner-panel .pdv-form label {
-  color: var(--dh-text) !important;
-  font-weight: 600;
-  font-size: 13px;
-}
-.partner-panel .pdv-form input,
-.partner-panel .pdv-form select {
-  background: var(--dh-surface) !important;
-  color: var(--dh-text) !important;
-  border: 1px solid var(--dh-border) !important;
-}
-.partner-panel .pdv-form input::placeholder,
-.partner-panel .pdv-form select::placeholder {
-  color: #64748B !important;
-}
-.partner-panel .pdv-form input:focus,
-.partner-panel .pdv-form select:focus {
-  border-color: var(--dh-blue) !important;
-  box-shadow: 0 0 0 3px var(--dh-blue-soft) !important;
-}
-.partner-panel .pdv-product-card small {
-  color: var(--dh-text-secondary) !important;
-}
-.partner-panel .pdv-stock {
-  color: var(--dh-success) !important;
-  font-weight: 700;
-}
-.partner-panel .pdv-cart-item strong {
-  color: var(--dh-navy) !important;
-}
-.partner-panel .pdv-cart-item small {
-  color: var(--dh-text-secondary) !important;
-}
-.partner-panel .pdv-item-controls b {
-  color: var(--dh-text) !important;
+/* 1. PDV / Carrinho — Bloco do TOTAL da venda (Sem tom verde, destaque profissional) */
+.partner-panel .pdv-total-bar {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  padding: 16px 20px !important;
+  border: 1.5px solid #2563EB !important;
+  border-radius: var(--dh-radius, 12px) !important;
+  background: #F0F7FF !important;
+  box-shadow: 0 2px 10px rgba(37, 99, 235, 0.08) !important;
+  margin: 12px 0 !important;
 }
 .partner-panel .pdv-total-bar span {
-  color: var(--dh-text-secondary) !important;
+  color: #0F2747 !important;
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: .02em !important;
 }
 .partner-panel .pdv-total-bar strong {
-  color: var(--dh-navy) !important;
+  font-family: 'Manrope', sans-serif !important;
+  font-size: 26px !important;
+  font-weight: 800 !important;
+  color: #2563EB !important;
 }
 
-/* 2. Clientes — Varejo / Atacado e Toggles de Opções */
-.partner-panel .price-toggle-btn {
-  background: var(--dh-surface) !important;
-  border: 1px solid var(--dh-border) !important;
-  color: var(--dh-navy) !important;
-  border-radius: var(--dh-radius-sm);
-  font-weight: 600;
-  padding: 8px 14px;
-  font-size: 13px;
-  transition: background .15s, border-color .15s, color .15s;
-}
-.partner-panel .price-toggle-btn:hover {
-  border-color: var(--dh-blue) !important;
-  color: var(--dh-blue) !important;
-  background: var(--dh-blue-soft) !important;
-}
-.partner-panel .price-toggle-btn.active {
-  background: var(--dh-blue) !important;
-  border-color: var(--dh-blue) !important;
-  color: #ffffff !important;
-}
-.partner-panel .pdv-client-type-toggle button,
-.partner-panel .fiscal-doctype-toggle button {
-  background: var(--dh-surface);
-  border: 1px solid var(--dh-border);
-  color: var(--dh-navy);
-  border-radius: var(--dh-radius-sm);
-  font-weight: 600;
-}
-.partner-panel .pdv-client-type-toggle button.active,
-.partner-panel .fiscal-doctype-toggle button.active {
-  background: var(--dh-blue) !important;
-  border-color: var(--dh-blue) !important;
-  color: #ffffff !important;
-}
-.partner-panel .social-label {
-  color: var(--dh-navy) !important;
-  font-weight: 700;
-}
-
-/* 3. PDV / Carrinho — Enquadramento dos Botões abaixo de Finalizar */
+/* 2. Botões e Controles com Contorno Azul (Ações Secundárias e Toggles) */
 .partner-panel .pdv-receipt-actions {
   display: grid !important;
   grid-template-columns: repeat(2, 1fr) !important;
   gap: 8px !important;
   width: 100% !important;
-  margin-top: 10px;
-  box-sizing: border-box;
+  margin-top: 12px !important;
+  box-sizing: border-box !important;
 }
 .partner-panel .pdv-receipt-btn {
-  display: flex !important;
+  display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
   gap: 6px !important;
-  padding: 9px 10px !important;
-  border: 1px solid var(--dh-border) !important;
-  border-radius: var(--dh-radius-sm) !important;
-  color: var(--dh-navy) !important;
-  background: var(--dh-surface) !important;
+  padding: 9px 12px !important;
+  border: 1px solid #2563EB !important;
+  border-radius: var(--dh-radius-sm, 8px) !important;
+  color: #2563EB !important;
+  background: #FFFFFF !important;
   font-size: 13px !important;
   font-weight: 600 !important;
-  min-height: 40px !important;
+  min-height: 42px !important;
   width: 100% !important;
   box-sizing: border-box !important;
   transition: background .15s, border-color .15s, color .15s !important;
@@ -1451,38 +1393,266 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
   text-overflow: ellipsis !important;
 }
 .partner-panel .pdv-receipt-btn:not(:disabled):hover {
-  border-color: var(--dh-blue) !important;
-  color: var(--dh-blue) !important;
-  background: var(--dh-blue-soft) !important;
+  background: #EFF6FF !important;
+  border-color: #2563EB !important;
+  color: #1D4ED8 !important;
 }
 .partner-panel .pdv-receipt-btn:disabled {
-  opacity: .5 !important;
+  opacity: .45 !important;
   cursor: not-allowed !important;
-  background: #F1F5F9 !important;
+  background: #F8FAFC !important;
   border-color: #E2E8F0 !important;
   color: #94A3B8 !important;
 }
 
-/* 4. Auditoria Geral — Textos Auxiliares e Resumos nos Módulos */
+/* Toggles de Opções: Varejo / Atacado, Balcão / Entrega / Retirada, PF / PJ */
+.partner-panel .price-toggle-btn,
+.partner-panel .pdv-client-type-toggle button,
+.partner-panel .fiscal-doctype-toggle button,
+.partner-panel .fiscal-doc-big-btn,
+.partner-panel .fiscal-delivery-btn,
+.partner-panel .thermal-size-toggle button {
+  background: #FFFFFF !important;
+  border: 1px solid #2563EB !important;
+  color: #0F2747 !important;
+  border-radius: var(--dh-radius-sm, 8px) !important;
+  font-weight: 600 !important;
+  padding: 9px 16px !important;
+  font-size: 13px !important;
+  transition: background .15s, border-color .15s, color .15s !important;
+  cursor: pointer !important;
+}
+.partner-panel .price-toggle-btn:hover,
+.partner-panel .pdv-client-type-toggle button:hover,
+.partner-panel .fiscal-doctype-toggle button:hover,
+.partner-panel .fiscal-doc-big-btn:hover,
+.partner-panel .fiscal-delivery-btn:hover,
+.partner-panel .thermal-size-toggle button:hover {
+  background: #EFF6FF !important;
+  border-color: #2563EB !important;
+  color: #2563EB !important;
+}
+.partner-panel .price-toggle-btn.active,
+.partner-panel .pdv-client-type-toggle button.active,
+.partner-panel .fiscal-doctype-toggle button.active,
+.partner-panel .fiscal-doc-big-btn.active,
+.partner-panel .fiscal-delivery-btn.active,
+.partner-panel .thermal-size-toggle button.active {
+  background: #2563EB !important;
+  border-color: #2563EB !important;
+  color: #FFFFFF !important;
+}
+
+/* Botões Secundários Gerais (Exportar, Modais, Ações) */
+.partner-panel .partner-secondary-btn,
+.partner-panel .rma-advance-btn,
+.partner-panel .admin-export-btn {
+  background: #FFFFFF !important;
+  border: 1px solid #2563EB !important;
+  color: #0F2747 !important;
+  border-radius: var(--dh-radius-sm, 8px) !important;
+  font-weight: 600 !important;
+  transition: background .15s, border-color .15s, color .15s !important;
+}
+.partner-panel .partner-secondary-btn:hover,
+.partner-panel .rma-advance-btn:hover,
+.partner-panel .admin-export-btn:hover {
+  background: #EFF6FF !important;
+  border-color: #2563EB !important;
+  color: #2563EB !important;
+}
+.partner-panel .rma-advance-btn.active {
+  background: #2563EB !important;
+  border-color: #2563EB !important;
+  color: #FFFFFF !important;
+}
+.partner-panel .rma-advance-btn.danger {
+  border-color: rgba(185, 28, 28, 0.35) !important;
+  color: #B91C1C !important;
+  background: rgba(185, 28, 28, 0.08) !important;
+}
+.partner-panel .rma-advance-btn.danger:hover {
+  background: rgba(185, 28, 28, 0.16) !important;
+}
+
+/* 3. Formulários, Inputs e Labels no PDV e Módulos */
+.partner-panel .pdv-form label {
+  color: #0F2747 !important;
+  font-weight: 600;
+  font-size: 13px;
+}
+.partner-panel .pdv-form input,
+.partner-panel .pdv-form select {
+  background: #FFFFFF !important;
+  color: #172033 !important;
+  border: 1px solid #E2E8F0 !important;
+}
+.partner-panel .pdv-form input::placeholder,
+.partner-panel .pdv-form select::placeholder {
+  color: #64748B !important;
+}
+.partner-panel .pdv-form input:focus,
+.partner-panel .pdv-form select:focus {
+  border-color: #2563EB !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12) !important;
+}
+.partner-panel .pdv-product-card small {
+  color: #64748B !important;
+}
+.partner-panel .pdv-stock {
+  color: #15803D !important;
+  font-weight: 700;
+}
+.partner-panel .pdv-cart-item strong {
+  color: #0F2747 !important;
+}
+.partner-panel .pdv-cart-item small {
+  color: #64748B !important;
+}
+.partner-panel .pdv-item-controls b {
+  color: #172033 !important;
+}
+.partner-panel .social-label {
+  color: #0F2747 !important;
+  font-weight: 700;
+}
 .partner-panel .orders-summary-card small,
 .partner-panel .orders-summary-card span {
-  color: var(--dh-text-secondary) !important;
+  color: #64748B !important;
   font-weight: 500;
 }
 .partner-panel .orders-summary-card strong,
 .partner-panel .orders-summary-card b {
-  color: var(--dh-navy) !important;
+  color: #0F2747 !important;
 }
 .partner-panel .rma-form label span {
-  color: var(--dh-navy) !important;
+  color: #0F2747 !important;
 }
 .partner-panel .otp-description,
 .partner-panel .otp-modal p {
-  color: var(--dh-text-secondary) !important;
+  color: #64748B !important;
 }
 
-/* 5. Responsividade para telas menores */
-@media (max-width: 640px) {
+/* 4. Prevenção Total de Overflow Horizontal na Página */
+html, body {
+  overflow-x: hidden !important;
+  width: 100% !important;
+  max-width: 100vw !important;
+}
+.app-shell, .partner-panel, .partner-body, .partner-content {
+  overflow-x: hidden !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+/* Tabelas com Scroll Somente no Container */
+.stock-table-wrap,
+.rma-table-wrap {
+  overflow-x: auto !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  -webkit-overflow-scrolling: touch !important;
+  box-sizing: border-box !important;
+}
+.stock-table-wrap table,
+.rma-table-wrap table {
+  min-width: 600px;
+}
+
+/* Subtabs e Filtros com Scroll Limpo no Celular */
+.subtab-bar,
+.pdv-subtabs,
+.admin-audit-filters {
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  overflow-x: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  scrollbar-width: none !important;
+  max-width: 100% !important;
+  padding-bottom: 2px !important;
+}
+.subtab-bar::-webkit-scrollbar,
+.pdv-subtabs::-webkit-scrollbar {
+  display: none;
+}
+.subtab-bar .subtab,
+.pdv-subtabs .pdv-subtab {
+  flex-shrink: 0 !important;
+  white-space: nowrap !important;
+}
+
+/* Modais Responsivas no Mobile */
+.partner-panel .modal-content,
+.partner-panel .modal-card,
+.partner-panel .customer-profile-modal,
+.partner-panel .fiscal-emit-modal,
+.partner-panel .thermal-label-modal {
+  max-width: calc(100vw - 24px) !important;
+  max-height: calc(100vh - 32px) !important;
+  overflow-y: auto !important;
+  margin: 12px auto !important;
+  padding: 16px !important;
+  box-sizing: border-box !important;
+}
+
+/* 5. Responsividade Específica para Telas Pequenas (<= 768px) */
+@media (max-width: 768px) {
+  .partner-panel .pdv-layout {
+    grid-template-columns: 1fr !important;
+    gap: 16px !important;
+  }
+  .partner-panel .pdv-right {
+    padding: 14px !important;
+  }
+  .partner-panel .pdv-product-grid {
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)) !important;
+    gap: 8px !important;
+  }
+  .partner-panel .pdv-product-card {
+    padding: 10px 12px !important;
+  }
+  .partner-panel .form-row,
+  .partner-panel .orders-filter-row,
+  .partner-panel .admin-dashboard-row,
+  .partner-panel .admin-dre-grid,
+  .partner-panel .subscription-details-grid,
+  .partner-panel .plan-cards-grid,
+  .partner-panel .admin-data-mgmt-grid {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+  .partner-panel .admin-kpi-grid,
+  .partner-panel .replenishment-kpi-grid,
+  .partner-panel .fiscal-summary-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 10px !important;
+  }
+  .partner-panel .partner-header-inner {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 12px !important;
+  }
+  .partner-panel .module-header {
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 12px !important;
+  }
+  .partner-panel input,
+  .partner-panel select,
+  .partner-panel textarea {
+    font-size: 14px !important;
+    min-height: 42px !important;
+  }
+}
+
+/* Responsividade Refinada para Telas Muito Pequenas (<= 480px / 320px - 390px) */
+@media (max-width: 480px) {
+  .partner-panel .admin-kpi-grid,
+  .partner-panel .replenishment-kpi-grid,
+  .partner-panel .fiscal-summary-grid {
+    grid-template-columns: 1fr !important;
+  }
   .partner-panel .pdv-receipt-actions {
     grid-template-columns: repeat(2, 1fr) !important;
     gap: 6px !important;
@@ -1490,5 +1660,18 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
   .partner-panel .pdv-receipt-btn {
     font-size: 12px !important;
     padding: 8px 6px !important;
+    min-height: 40px !important;
+  }
+  .partner-panel .price-toggle-btn,
+  .partner-panel .pdv-client-type-toggle button,
+  .partner-panel .fiscal-doctype-toggle button {
+    padding: 8px 10px !important;
+    font-size: 12px !important;
+  }
+  .partner-panel .pdv-total-bar {
+    padding: 12px 14px !important;
+  }
+  .partner-panel .pdv-total-bar strong {
+    font-size: 22px !important;
   }
 }
