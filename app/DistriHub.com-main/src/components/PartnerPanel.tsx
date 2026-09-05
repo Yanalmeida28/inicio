@@ -475,6 +475,15 @@ export function PartnerPanel({
     await partner.updateBranch(id, { name, address });
   }
 
+  async function handleDeleteBranch(id: string) {
+    if (isEmployeeRestricted) {
+      window.alert('Funcionários não têm permissão para excluir filiais.');
+      return;
+    }
+    await partner.deleteBranch(id);
+    if (selectedBranchId === id) setSelectedBranchId('');
+  }
+
   function openOperatorModal() {
     setSelectedOperatorId(currentSalespersonId ?? 'owner');
     setOperatorPinInput('');
@@ -694,6 +703,7 @@ export function PartnerPanel({
               handleAddBranch
             }
             onUpdateBranch={handleUpdateBranch}
+            onDeleteBranch={handleDeleteBranch}
             isEmployeeLocked={isEmployeeRestricted}
             lockedBranchName={lockedBranch?.name}
           />

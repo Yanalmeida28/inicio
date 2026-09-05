@@ -1,5 +1,5 @@
 import { Fragment, useState } from 'react';
-import { Building2, CheckCircle2, Lock, MapPin, Pencil, Plus, X } from 'lucide-react';
+import { Building2, CheckCircle2, Lock, MapPin, Pencil, Plus, Trash2, X } from 'lucide-react';
 import type { PartnerBranch } from '../../types';
 
 type MultiStoreModuleProps = {
@@ -8,12 +8,13 @@ type MultiStoreModuleProps = {
   onSelectBranch: (id: string) => void;
   onAddBranch: (name: string, address: string) => Promise<void>;
   onUpdateBranch: (id: string, name: string, address: string) => Promise<void>;
+  onDeleteBranch: (id: string) => Promise<void>;
   isEmployeeLocked?: boolean;
   lockedBranchName?: string;
 };
 
 export function MultiStoreModule({
-  branches, selectedBranchId, onSelectBranch, onAddBranch, onUpdateBranch,
+  branches, selectedBranchId, onSelectBranch, onAddBranch, onUpdateBranch, onDeleteBranch,
   isEmployeeLocked = false, lockedBranchName,
 }: MultiStoreModuleProps) {
   const [showAddForm, setShowAddForm] = useState(false);
@@ -28,6 +29,8 @@ export function MultiStoreModule({
   const [editState, setEditState] = useState('');
   const [editCep, setEditCep] = useState('');
   const [saving, setSaving] = useState(false);
+  const [deletingBranchId, setDeletingBranchId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
@@ -36,8 +39,16 @@ export function MultiStoreModule({
       return;
     }
     if (!newName.trim() || !newAddress.trim()) return;
-    await onAddBranch(newName, newAddress);
-    setNewName(''); setNewAddress(''); setShowAddForm(false);
+    setError(null);
+    setSaving(true);
+    try {
+      await onAddBranch(newName, newAddress);
+      setNewName(''); setNewAddress(''); setShowAddForm(false);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Não foi possível salvar a filial.');
+    } finally {
+      setSaving(false);
+    }
   }
 
   function startEdit(branch: PartnerBranch) {
@@ -55,6 +66,7 @@ export function MultiStoreModule({
     e.preventDefault();
     if (!editingBranch || !editName.trim() || !editAddress.trim()) return;
     setSaving(true);
+    setError(null);
     try {
       const formattedAddress = [
         editAddress.trim(), editNumber.trim(), editNeighborhood.trim(),
@@ -62,8 +74,27 @@ export function MultiStoreModule({
       ].filter(Boolean).join(' - ');
       await onUpdateBranch(editingBranch.id, editName.trim(), formattedAddress);
       setEditingBranch(null);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Não foi possível salvar as alterações da filial.');
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleDelete(branch: PartnerBranch) {
+    if (!window.confirm(`Tem certeza que deseja excluir a filial '${branch.name}'?`)) return;
+    setDeletingBranchId(branch.id);
+    setError(null);
+    try {
+      await onDeleteBranch(branch.id);
+      setEditingBranch(null);
+    } catch (error) {
+      const databaseError = error as { code?: string; message?: string };
+      setError(databaseError.code === '23503'
+        ? 'Não é possível excluir esta filial porque existem registros vinculados a ela. Para preservar o histórico, mantenha a filial cadastrada.'
+        : databaseError.message ?? 'Não foi possível excluir a filial. Tente novamente.');
+    } finally {
+      setDeletingBranchId(null);
     }
   }
 
@@ -119,9 +150,14 @@ export function MultiStoreModule({
               )}
             </button>
             {branch.id !== 'consolidado' && !isEmployeeLocked && (
-              <button type="button" className="branch-edit-btn" onClick={() => startEdit(branch)} title={`Editar filial ${branch.name}`}>
-                <Pencil size={14} /> Editar
-              </button>
+              <div className="branch-card-actions">
+                <button type="button" className="branch-edit-btn" disabled={Boolean(deletingBranchId)} onClick={() => startEdit(branch)} title={`Editar filial ${branch.name}`}>
+                  <Pencil size={14} /> Editar
+                </button>
+                <button type="button" className="branch-delete-btn" disabled={Boolean(deletingBranchId)} onClick={() => handleDelete(branch)} title={`Excluir filial ${branch.name}`}>
+                  <Trash2 size={14} /> {deletingBranchId === branch.id ? 'Excluindo...' : 'Excluir'}
+                </button>
+              </div>
             )}
             </Fragment>
           ))}
@@ -146,9 +182,11 @@ export function MultiStoreModule({
               <input value={newAddress} onChange={(e) => setNewAddress(e.target.value)} placeholder="Ex: Rua X, 123 - São Paulo/SP" required />
             </label>
           </div>
-          <button type="submit" className="module-submit-btn">Adicionar filial</button>
+          <button type="submit" className="module-submit-btn" disabled={saving}>{saving ? 'Salvando...' : 'Adicionar filial'}</button>
         </form>
       )}
+
+      {error && <p className="branch-action-error" role="alert">{error}</p>}
 
       {editingBranch && (
         <div className="modal-overlay" onClick={() => setEditingBranch(null)}>

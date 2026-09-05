@@ -1072,6 +1072,10 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
 .partner-panel .fiscal-doc-big-btn:disabled { opacity: .78 !important; color: #475569 !important; border-color: #CBD5E1 !important; }
 .branch-edit-btn { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 34px; padding: 6px 10px; color: #0F2747; background: #FFFFFF; border: 1px solid #2563EB; border-radius: 8px; font-size: 12px; font-weight: 600; }
 .branch-edit-btn:hover { background: #EFF6FF; color: #2563EB; }
+.branch-card-actions { display: flex; gap: 6px; margin-top: 6px; }
+.branch-delete-btn { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 34px; padding: 6px 10px; color: #B91C1C; background: #FFFFFF; border: 1px solid rgba(185,28,28,.45); border-radius: 8px; font-size: 12px; font-weight: 600; }
+.branch-delete-btn:hover { background: rgba(185,28,28,.08); }
+.branch-action-error { color: #B91C1C !important; background: rgba(185,28,28,.08); border: 1px solid rgba(185,28,28,.25); border-radius: 8px; padding: 10px 12px; font-size: 13px; }
 .branch-edit-modal { max-width: 580px; }
 .branch-edit-actions { display: flex; justify-content: flex-end; gap: 8px; }
 

@@ -43,6 +43,7 @@ type PartnerData = {
   deleteRma: (id: string) => Promise<void>;
   addBranch: (name: string, address: string) => Promise<void>;
   updateBranch: (id: string, updates: Pick<PartnerBranch, 'name' | 'address'>) => Promise<void>;
+  deleteBranch: (id: string) => Promise<void>;
   addCategory: (name: string) => Promise<void>;
   deleteCategory: (id: string) => Promise<void>;
   addSupplier: (supplier: Omit<PartnerSupplier, 'id' | 'user_id' | 'created_at' | 'payable_balance'>) => Promise<void>;
@@ -532,25 +533,44 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
 
   const addBranch = useCallback(async (name: string, address: string) => {
     if (!identity) return;
+    if (identity.salespersonId) throw new Error('Funcionários não têm permissão para adicionar filiais.');
     const nb: PartnerBranch = { id: crypto.randomUUID(), user_id: identity.companyUserId, name, address, is_active: true, created_at: new Date().toISOString() };
+    if (isSupabaseConfigured && supabase) {
+      const { error } = await supabase.from('partner_branches').insert(nb);
+      if (error) throw error;
+    }
     setData((prev) => ({ ...prev, branches: [...prev.branches, nb] }));
-    if (isSupabaseConfigured && supabase) await supabase.from('partner_branches').insert(nb);
   }, [identity]);
 
   const updateBranch = useCallback(async (id: string, updates: Pick<PartnerBranch, 'name' | 'address'>) => {
     if (!identity) return;
+    if (identity.salespersonId) throw new Error('Funcionários não têm permissão para alterar filiais.');
     if (isSupabaseConfigured && supabase) {
       const { error } = await supabase
         .from('partner_branches')
-        .update({ ...updates, updated_at: new Date().toISOString() })
+        .update(updates)
         .eq('id', id)
         .eq('user_id', identity.companyUserId);
       if (error) throw error;
     }
     setData((prev) => ({
       ...prev,
-      branches: prev.branches.map((branch) => branch.id === id ? { ...branch, ...updates, updated_at: new Date().toISOString() } : branch),
+      branches: prev.branches.map((branch) => branch.id === id ? { ...branch, ...updates } : branch),
     }));
+  }, [identity]);
+
+  const deleteBranch = useCallback(async (id: string) => {
+    if (!identity) return;
+    if (identity.salespersonId) throw new Error('Funcionários não têm permissão para excluir filiais.');
+    if (isSupabaseConfigured && supabase) {
+      const { error } = await supabase
+        .from('partner_branches')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', identity.companyUserId);
+      if (error) throw error;
+    }
+    setData((prev) => ({ ...prev, branches: prev.branches.filter((branch) => branch.id !== id) }));
   }, [identity]);
 
   const addCategory = useCallback(async (name: string) => {
@@ -670,7 +690,7 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
     modifiers: data.modifiers, invoices: data.invoices, loading: data.loading,
     addProduct, updateProduct, deleteProduct, addCustomer, updateCustomer, deleteCustomer, createSale,
     createPreSale, finalizePreSale,
-    updateStoreSettings, updateProfile, createRma, updateRmaStatus, deleteRma, addBranch, updateBranch,
+    updateStoreSettings, updateProfile, createRma, updateRmaStatus, deleteRma, addBranch, updateBranch, deleteBranch,
     addCategory, deleteCategory, addSupplier, addSalesperson,
     updateSalesperson, deleteSalesperson, cancelSale, deleteSale,
     addCombo, deleteCombo, addModifier, deleteModifier, payInvoice,
