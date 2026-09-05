@@ -1048,6 +1048,33 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
 .partner-panel .partner-icon-btn:hover { background: #F1F5F9; color: var(--dh-navy); }
 .partner-panel button:disabled { opacity: .78; cursor: not-allowed; }
 
+/* Contraste de navegação e suporte em superfícies claras. */
+.partner-panel .admin-sidebar-section-header,
+.partner-panel .admin-sidebar-item { color: #172033 !important; }
+.partner-panel .admin-sidebar-section-header svg,
+.partner-panel .admin-sidebar-item svg { color: #475569; }
+.partner-panel .admin-sidebar-section-header:hover,
+.partner-panel .admin-sidebar-section-header.expanded,
+.partner-panel .admin-sidebar-item:hover { background: #F0F7FF !important; color: #0F2747 !important; }
+.partner-panel .admin-sidebar-section-header:hover svg,
+.partner-panel .admin-sidebar-section-header.expanded svg,
+.partner-panel .admin-sidebar-item:hover svg { color: #2563EB; }
+.partner-panel .admin-sidebar-item.active { background: #2563EB !important; color: #FFFFFF !important; border-left-color: #2563EB !important; }
+.partner-panel .admin-sidebar-item.active svg { color: #FFFFFF !important; }
+.partner-panel .support-chat-messages { background: #F0F7FF; border-color: var(--dh-border); }
+.partner-panel .support-message { background: #FFFFFF; color: #172033; border: 1px solid var(--dh-border); }
+.partner-panel .support-message.cliente { background: #DBEAFE; border-color: #93C5FD; }
+.partner-panel .support-message span { color: #0F2747; }
+.partner-panel .support-message small { color: #475569; }
+.partner-panel .support-chat-form input { background: #FFFFFF; color: #172033; border-color: #CBD5E1; }
+.partner-panel .support-chat-form input::placeholder { color: #64748B; opacity: 1; }
+.partner-panel .fiscal-dispatch-toggle:disabled,
+.partner-panel .fiscal-doc-big-btn:disabled { opacity: .78 !important; color: #475569 !important; border-color: #CBD5E1 !important; }
+.branch-edit-btn { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 34px; padding: 6px 10px; color: #0F2747; background: #FFFFFF; border: 1px solid #2563EB; border-radius: 8px; font-size: 12px; font-weight: 600; }
+.branch-edit-btn:hover { background: #EFF6FF; color: #2563EB; }
+.branch-edit-modal { max-width: 580px; }
+.branch-edit-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
 /* ---------- Forms ---------- */
 .partner-panel .rma-form { display: grid; gap: 14px; }
 .partner-panel .form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; }

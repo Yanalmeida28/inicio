@@ -467,6 +467,14 @@ export function PartnerPanel({
     await partner.addBranch(name, address);
   }
 
+  async function handleUpdateBranch(id: string, name: string, address: string) {
+    if (isEmployeeRestricted) {
+      window.alert('Funcionários não têm permissão para alterar filiais.');
+      return;
+    }
+    await partner.updateBranch(id, { name, address });
+  }
+
   function openOperatorModal() {
     setSelectedOperatorId(currentSalespersonId ?? 'owner');
     setOperatorPinInput('');
@@ -685,6 +693,7 @@ export function PartnerPanel({
             onAddBranch={
               handleAddBranch
             }
+            onUpdateBranch={handleUpdateBranch}
             isEmployeeLocked={isEmployeeRestricted}
             lockedBranchName={lockedBranch?.name}
           />

@@ -42,6 +42,7 @@ type PartnerData = {
   updateRmaStatus: (id: string, status: RmaStatus) => Promise<void>;
   deleteRma: (id: string) => Promise<void>;
   addBranch: (name: string, address: string) => Promise<void>;
+  updateBranch: (id: string, updates: Pick<PartnerBranch, 'name' | 'address'>) => Promise<void>;
   addCategory: (name: string) => Promise<void>;
   deleteCategory: (id: string) => Promise<void>;
   addSupplier: (supplier: Omit<PartnerSupplier, 'id' | 'user_id' | 'created_at' | 'payable_balance'>) => Promise<void>;
@@ -536,6 +537,22 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
     if (isSupabaseConfigured && supabase) await supabase.from('partner_branches').insert(nb);
   }, [identity]);
 
+  const updateBranch = useCallback(async (id: string, updates: Pick<PartnerBranch, 'name' | 'address'>) => {
+    if (!identity) return;
+    if (isSupabaseConfigured && supabase) {
+      const { error } = await supabase
+        .from('partner_branches')
+        .update({ ...updates, updated_at: new Date().toISOString() })
+        .eq('id', id)
+        .eq('user_id', identity.companyUserId);
+      if (error) throw error;
+    }
+    setData((prev) => ({
+      ...prev,
+      branches: prev.branches.map((branch) => branch.id === id ? { ...branch, ...updates, updated_at: new Date().toISOString() } : branch),
+    }));
+  }, [identity]);
+
   const addCategory = useCallback(async (name: string) => {
     if (!identity) return;
     const nc: PartnerCategory = { id: crypto.randomUUID(), user_id: identity.companyUserId, name, created_at: new Date().toISOString() };
@@ -653,7 +670,7 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
     modifiers: data.modifiers, invoices: data.invoices, loading: data.loading,
     addProduct, updateProduct, deleteProduct, addCustomer, updateCustomer, deleteCustomer, createSale,
     createPreSale, finalizePreSale,
-    updateStoreSettings, updateProfile, createRma, updateRmaStatus, deleteRma, addBranch,
+    updateStoreSettings, updateProfile, createRma, updateRmaStatus, deleteRma, addBranch, updateBranch,
     addCategory, deleteCategory, addSupplier, addSalesperson,
     updateSalesperson, deleteSalesperson, cancelSale, deleteSale,
     addCombo, deleteCombo, addModifier, deleteModifier, payInvoice,
