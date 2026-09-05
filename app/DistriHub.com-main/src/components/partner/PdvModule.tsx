@@ -408,7 +408,7 @@ function PdvCheckout({ products, customers, sales, salespeople, segment, selecte
                     </select>
                   </label>
                   <label>
-                    Vendedor / Técnico
+                    Colaborador
                     <select value={salespersonId} onChange={(e) => setSalespersonId(e.target.value)}>
                       <option value="">Selecione...</option>
                       {salespeople.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -814,7 +814,7 @@ function PreVendaTab({ products, customers, sales, salespeople, segment, selecte
                   </label>
                 </div>
                 <label>
-                  Vendedor / Técnico
+                  Colaborador
                   <select value={salespersonId} onChange={(e) => setSalespersonId(e.target.value)}>
                     <option value="">Selecione...</option>
                     {salespeople.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}

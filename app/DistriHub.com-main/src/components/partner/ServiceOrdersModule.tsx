@@ -7,7 +7,6 @@ import {
   Plus,
   Search,
   Trash2,
-  Wrench,
   X,
 } from 'lucide-react';
 
@@ -57,10 +56,10 @@ const money = (value: number) =>
 
 const inputDarkStyle: React.CSSProperties = {
   width: '100%',
-  backgroundColor: '#111827',
-  color: '#f9fafb',
-  border: '1px solid #374151',
-  borderRadius: 10,
+  backgroundColor: '#FFFFFF',
+  color: '#172033',
+  border: '1px solid #E2E8F0',
+  borderRadius: 8,
   padding: '10px 12px',
   fontSize: 14,
   outline: 'none',
@@ -71,7 +70,7 @@ const labelDarkStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   gap: 8,
-  color: '#e5e7eb',
+  color: '#172033',
   fontWeight: 600,
   fontSize: 14,
 };
@@ -555,15 +554,15 @@ export function ServiceOrdersModule({
             }}
           >
             <label style={labelDarkStyle}>
-              <span style={{ color: '#f3f4f6' }}>Cliente</span>
+              <span style={{ color: '#172033' }}>Cliente</span>
               <select
                 value={customerId}
                 onChange={(event) => setCustomerId(event.target.value)}
                 style={{ ...inputDarkStyle, WebkitAppearance: 'none', appearance: 'none' }}
               >
-                <option value="" style={{ backgroundColor: '#111827', color: '#f3f4f6' }}>Sem cliente</option>
+                <option value="" style={{ backgroundColor: '#FFFFFF', color: '#172033' }}>Sem cliente</option>
                 {customers.map((item) => (
-                  <option key={item.id} value={item.id} style={{ backgroundColor: '#111827', color: '#f3f4f6' }}>
+                  <option key={item.id} value={item.id} style={{ backgroundColor: '#FFFFFF', color: '#172033' }}>
                     {item.name}
                   </option>
                 ))}
@@ -571,7 +570,7 @@ export function ServiceOrdersModule({
             </label>
 
             <label style={labelDarkStyle}>
-              <span style={{ color: '#f3f4f6' }}>Tipo de equipamento</span>
+              <span style={{ color: '#172033' }}>Tipo de equipamento</span>
               <input
                 value={equipmentType}
                 onChange={(event) => setEquipmentType(event.target.value)}
@@ -582,7 +581,7 @@ export function ServiceOrdersModule({
             </label>
 
             <label style={labelDarkStyle}>
-              <span style={{ color: '#f3f4f6' }}>Identificação do Equipamento</span>
+              <span style={{ color: '#172033' }}>Identificação do Equipamento</span>
               <input
                 value={identification}
                 onChange={(event) => setIdentification(event.target.value)}
@@ -592,7 +591,7 @@ export function ServiceOrdersModule({
             </label>
 
             <label style={labelDarkStyle}>
-              <span style={{ color: '#f3f4f6' }}>Nº de Série</span>
+              <span style={{ color: '#172033' }}>Nº de Série</span>
               <input
                 value={serial}
                 onChange={(event) => setSerial(event.target.value)}
@@ -602,8 +601,8 @@ export function ServiceOrdersModule({
             </label>
           </div>
 
-          <div style={{ marginTop: 24, padding: 18, borderRadius: 14, backgroundColor: '#0f172a', border: '1px solid #334155' }}>
-            <h3 style={{ margin: '0 0 16px', display: 'flex', alignItems: 'center', gap: 8, color: '#f3f4f6' }}>
+          <div style={{ marginTop: 24, padding: 18, borderRadius: 14, backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+            <h3 style={{ margin: '0 0 16px', display: 'flex', alignItems: 'center', gap: 8, color: '#172033' }}>
               <ClipboardList size={18} />
               Laudo e Vistoria de Entrada
             </h3>
@@ -616,7 +615,7 @@ export function ServiceOrdersModule({
               }}
             >
               <label style={labelDarkStyle}>
-                <span style={{ color: '#f3f4f6' }}>Acessórios Deixados</span>
+                <span style={{ color: '#172033' }}>Acessórios Deixados</span>
                 <textarea
                   value={accessories}
                   onChange={(event) => setAccessories(event.target.value)}
@@ -627,7 +626,7 @@ export function ServiceOrdersModule({
               </label>
 
               <label style={labelDarkStyle}>
-                <span style={{ color: '#f3f4f6' }}>Estado físico</span>
+                <span style={{ color: '#172033' }}>Estado físico</span>
                 <textarea
                   value={condition}
                   onChange={(event) => setCondition(event.target.value)}
@@ -638,7 +637,7 @@ export function ServiceOrdersModule({
               </label>
 
               <label style={labelDarkStyle}>
-                <span style={{ color: '#f3f4f6' }}>Avarias identificadas</span>
+                <span style={{ color: '#172033' }}>Avarias identificadas</span>
                 <textarea
                   value={damage}
                   onChange={(event) => setDamage(event.target.value)}
@@ -649,7 +648,7 @@ export function ServiceOrdersModule({
               </label>
 
               <label style={labelDarkStyle}>
-                <span style={{ color: '#f3f4f6' }}>Observações</span>
+                <span style={{ color: '#172033' }}>Observações</span>
                 <textarea
                   value={notes}
                   onChange={(event) => setNotes(event.target.value)}
@@ -673,8 +672,8 @@ export function ServiceOrdersModule({
                 style={{
                   padding: 18,
                   borderRadius: 14,
-                  backgroundColor: '#0f172a',
-                  border: '1px solid #334155',
+                  backgroundColor: '#F8FAFC',
+                  border: '1px solid #E2E8F0',
                 }}
               >
                 <div
@@ -753,8 +752,8 @@ export function ServiceOrdersModule({
                 style={{
                   padding: 18,
                   borderRadius: 14,
-                  backgroundColor: '#0f172a',
-                  border: '1px solid #334155',
+                  backgroundColor: '#F8FAFC',
+                  border: '1px solid #E2E8F0',
                 }}
               >
                 <div
@@ -847,7 +846,7 @@ export function ServiceOrdersModule({
             >
               <div>
                 <label style={labelDarkStyle}>
-                  <span style={{ color: '#f3f4f6' }}>Buscar no estoque da filial</span>
+                  <span style={{ color: '#172033' }}>Buscar no estoque da filial</span>
                   <input
                     value={productSearch}
                     onChange={(event) => setProductSearch(event.target.value)}
@@ -876,9 +875,9 @@ export function ServiceOrdersModule({
                         padding: 10,
                         marginTop: 7,
                         borderRadius: 9,
-                        backgroundColor: '#111827',
-                        border: '1px solid #374151',
-                        color: '#f3f4f6',
+                        backgroundColor: '#FFFFFF',
+                        border: '1px solid #E2E8F0',
+                        color: '#172033',
                       }}
                     >
                       <b>{product.name}</b>
@@ -1011,7 +1010,7 @@ export function ServiceOrdersModule({
             }}
           >
             <label style={labelDarkStyle}>
-              <span style={{ color: '#f3f4f6' }}>Mão de obra</span>
+              <span style={{ color: '#172033' }}>Mão de obra</span>
               <input
                 type="number"
                 min={0}
@@ -1039,7 +1038,7 @@ export function ServiceOrdersModule({
             >
               {saving
                 ? 'Salvando...'
-                : 'Abrir Ordem de Serviço'}
+                : 'Salvar'}
             </button>
           </div>
         </div>
@@ -1066,9 +1065,9 @@ export function ServiceOrdersModule({
             placeholder="Pesquisar OS"
             style={{
               flex: 1,
-              backgroundColor: '#111827',
-              color: '#f3f4f6',
-              border: '1px solid #374151',
+              backgroundColor: '#FFFFFF',
+              color: '#172033',
+              border: '1px solid #E2E8F0',
               borderRadius: 10,
               padding: '10px 12px',
             }}
@@ -1119,8 +1118,6 @@ export function ServiceOrdersModule({
               opacity: 0.6,
             }}
           >
-            <Wrench size={30} />
-
             <p>
               Nenhuma OS encontrada.
             </p>

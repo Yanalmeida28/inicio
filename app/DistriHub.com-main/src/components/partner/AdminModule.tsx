@@ -100,7 +100,7 @@ const sidebarSections: {
       { id: 'importar', label: 'Importar produtos (XLS/XML)', tab: 'cadastros' },
       { id: 'fornecedores', label: 'Fornecedores', tab: 'cadastros' },
       { id: 'estoque', label: 'Edição/Ajuste de Estoque', tab: 'cadastros' },
-      { id: 'vendedores', label: 'Vendedores', tab: 'cadastros' },
+      { id: 'vendedores', label: 'Colaboradores', tab: 'cadastros' },
       { id: 'clientes', label: 'Clientes', tab: 'cadastros' },
     ],
   },

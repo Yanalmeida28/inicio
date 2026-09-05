@@ -889,6 +889,274 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
 /* ===== Subscription Card ===== */
 .subscription-card { display: flex; flex-direction: column; gap: 16px; }
 .subscription-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+
+/* =====================================================================
+   ENTERPRISE CLEAN THEME — Painel do Lojista (.partner-panel)
+   Redesign visual apenas; nenhuma classe, prop ou lógica foi alterada.
+   ===================================================================== */
+.partner-panel {
+  --dh-bg: #F8FAFC;
+  --dh-surface: #FFFFFF;
+  --dh-navy: #0F2747;
+  --dh-navy-soft: #16335C;
+  --dh-blue: #2563EB;
+  --dh-blue-hover: #1D4ED8;
+  --dh-blue-soft: rgba(37,99,235,.08);
+  --dh-blue-soft-strong: rgba(37,99,235,.14);
+  --dh-text: #172033;
+  --dh-text-secondary: #64748B;
+  --dh-border: #E2E8F0;
+  --dh-success: #15803D;
+  --dh-success-bg: rgba(21,128,61,.09);
+  --dh-warning: #B45309;
+  --dh-warning-bg: rgba(180,83,9,.1);
+  --dh-danger: #B91C1C;
+  --dh-danger-bg: rgba(185,28,28,.09);
+  --dh-radius: 12px;
+  --dh-radius-sm: 8px;
+  --dh-shadow: 0 1px 2px rgba(15,23,42,.04), 0 1px 6px rgba(15,23,42,.04);
+  background: var(--dh-bg);
+  color: var(--dh-text);
+  font-family: 'DM Sans', sans-serif;
+}
+.partner-panel.sidebar-layout { background: var(--dh-bg); }
+.partner-panel h1, .partner-panel h2, .partner-panel h3, .partner-panel h4 { font-family: 'Manrope', sans-serif; color: var(--dh-navy); letter-spacing: -.01em; }
+.partner-panel p { color: var(--dh-text-secondary); }
+.partner-panel small { color: var(--dh-text-secondary); }
+.partner-panel strong { color: var(--dh-text); }
+.partner-panel a { color: var(--dh-blue); }
+.partner-panel ::selection { background: var(--dh-blue-soft-strong); }
+.partner-panel *:focus-visible { outline: 2px solid var(--dh-blue); outline-offset: 2px; }
+
+/* ---------- Loading / feedback ---------- */
+.partner-panel .partner-loading { color: var(--dh-text-secondary); font-size: 13.5px; }
+
+/* ---------- Sidebar ---------- */
+.partner-panel .partner-sidebar { background: var(--dh-navy); border-right: 1px solid rgba(255,255,255,.06); }
+.partner-panel .sidebar-header { border-bottom: 1px solid rgba(255,255,255,.08); }
+.partner-panel .sidebar-brand-mark { background: rgba(255,255,255,.1); color: #ffffff; }
+.partner-panel .sidebar-brand strong { color: #ffffff; }
+.partner-panel .sidebar-brand small { color: rgba(255,255,255,.6); }
+.partner-panel .partner-back-btn { color: rgba(255,255,255,.72); background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1); border-radius: var(--dh-radius-sm); padding: 7px 12px; display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; transition: background .15s, color .15s; }
+.partner-panel .partner-back-btn:hover { background: rgba(255,255,255,.14); color: #ffffff; }
+.partner-panel .sidebar-nav { gap: 3px; }
+.partner-panel .sidebar-nav-item { color: rgba(255,255,255,.68); font-weight: 600; font-size: 14px; border-radius: var(--dh-radius-sm); position: relative; }
+.partner-panel .sidebar-nav-item:hover { color: #ffffff; background: rgba(255,255,255,.08); }
+.partner-panel .sidebar-nav-item.active { color: #ffffff; background: var(--dh-blue); }
+.partner-panel .sidebar-nav-item.active::before { content: ''; position: absolute; left: -10px; top: 8px; bottom: 8px; width: 3px; border-radius: 3px; background: #ffffff; opacity: .85; }
+.partner-panel .sidebar-footer { border-top: 1px solid rgba(255,255,255,.08); }
+.partner-panel .sidebar-mobile-bar { background: var(--dh-navy); border-bottom: 1px solid rgba(255,255,255,.08); }
+.partner-panel .sidebar-mobile-title { color: #ffffff; }
+.partner-panel .sidebar-toggle { background: rgba(255,255,255,.1); color: #ffffff; }
+
+/* ---------- Module shell ---------- */
+.partner-panel .panel-module { color: var(--dh-text); }
+.partner-panel .module-header { display: flex; align-items: center; gap: 12px; padding-bottom: 18px; margin-bottom: 18px; border-bottom: 1px solid var(--dh-border); }
+.partner-panel .module-header h3 { font-size: 19px; margin: 0; }
+.partner-panel .module-header p { margin: 2px 0 0; font-size: 13px; }
+.partner-panel .module-icon { display: grid; place-items: center; width: 40px; height: 40px; border-radius: var(--dh-radius-sm); background: var(--dh-blue-soft); color: var(--dh-blue); flex-shrink: 0; }
+
+/* ---------- Subtabs ---------- */
+.partner-panel .subtab-bar { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--dh-border); margin-bottom: 18px; padding-bottom: 0; }
+.partner-panel .subtab { display: inline-flex; align-items: center; gap: 7px; padding: 9px 14px; border-radius: var(--dh-radius-sm) var(--dh-radius-sm) 0 0; color: var(--dh-text-secondary); font-size: 13.5px; font-weight: 600; background: transparent; border-bottom: 2px solid transparent; transition: color .15s, background .15s, border-color .15s; }
+.partner-panel .subtab:hover { color: var(--dh-navy); background: var(--dh-blue-soft); }
+.partner-panel .subtab.active { color: var(--dh-blue); border-color: var(--dh-blue); background: var(--dh-blue-soft); }
+.partner-panel .pdv-subtabs { border-bottom: 1px solid var(--dh-border); }
+.partner-panel .pdv-subtab-badge { background: var(--dh-blue); color: #fff; }
+
+/* ---------- Cards ---------- */
+.partner-panel .partner-card,
+.partner-panel .module-card,
+.partner-panel .report-card,
+.partner-panel .fin-card,
+.partner-panel .admin-kpi-card,
+.partner-panel .admin-dashboard-card,
+.partner-panel .admin-data-card,
+.partner-panel .branch-card,
+.partner-panel .combo-card,
+.partner-panel .subscription-card,
+.partner-panel .security-card,
+.partner-panel .orders-summary-card,
+.partner-panel .fiscal-summary-card,
+.partner-panel .fiscal-dispatch-card,
+.partner-panel .rma-wallet-card,
+.partner-panel .replenishment-suggestion,
+.partner-panel .catalog-submodule-card,
+.partner-panel .pdv-product-card,
+.partner-panel .customer-profile-summary {
+  background: var(--dh-surface) !important;
+  border: 1px solid var(--dh-border) !important;
+  border-radius: var(--dh-radius);
+  box-shadow: var(--dh-shadow);
+}
+.partner-panel .partner-card strong,
+.partner-panel .module-card strong,
+.partner-panel .report-card strong,
+.partner-panel .fin-card strong,
+.partner-panel .branch-card strong,
+.partner-panel .combo-card strong,
+.partner-panel .catalog-submodule-card strong,
+.partner-panel .security-info strong { color: var(--dh-text) !important; }
+.partner-panel .report-card strong { font-size: 24px; font-family: 'Manrope', sans-serif; }
+.partner-panel .report-cards { display: grid; gap: 14px; }
+.partner-panel .report-section-title { color: var(--dh-navy); font-weight: 700; display: flex; align-items: center; gap: 8px; margin: 22px 0 12px; }
+
+/* ---------- Buttons ---------- */
+.partner-panel .partner-primary-btn,
+.partner-panel .module-submit-btn,
+.partner-panel .module-save-btn,
+.partner-panel .pdv-checkout-btn,
+.partner-panel .admin-export-btn,
+.partner-panel .fiscal-emit-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  background: var(--dh-blue); color: #ffffff; border: 1px solid var(--dh-blue);
+  border-radius: var(--dh-radius-sm); padding: 10px 16px; font-size: 13.5px; font-weight: 700;
+  transition: background .15s, transform .1s; min-height: 40px;
+}
+.partner-panel .partner-primary-btn:hover,
+.partner-panel .module-submit-btn:hover,
+.partner-panel .module-save-btn:hover,
+.partner-panel .pdv-checkout-btn:hover,
+.partner-panel .admin-export-btn:hover,
+.partner-panel .fiscal-emit-btn:hover { background: var(--dh-blue-hover); border-color: var(--dh-blue-hover); }
+.partner-panel .partner-primary-btn:disabled,
+.partner-panel .module-submit-btn:disabled,
+.partner-panel .module-save-btn:disabled,
+.partner-panel .pdv-checkout-btn:disabled { background: #94A3B8; border-color: #94A3B8; cursor: not-allowed; transform: none; }
+.partner-panel .partner-secondary-btn,
+.partner-panel .module-action-btn,
+.partner-panel .rma-advance-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  background: var(--dh-surface); color: var(--dh-navy); border: 1px solid var(--dh-border);
+  border-radius: var(--dh-radius-sm); padding: 8px 13px; font-size: 13px; font-weight: 600;
+  transition: background .15s, border-color .15s; min-height: 36px;
+}
+.partner-panel .partner-secondary-btn:hover,
+.partner-panel .module-action-btn:hover,
+.partner-panel .rma-advance-btn:hover { background: #F1F5F9; border-color: #CBD5E1; }
+.partner-panel .rma-advance-btn.compact { padding: 6px 9px; min-height: 30px; }
+.partner-panel .rma-advance-btn.danger,
+.partner-panel .danger { color: var(--dh-danger) !important; border-color: rgba(185,28,28,.35) !important; background: var(--dh-danger-bg) !important; }
+.partner-panel .rma-advance-btn.danger:hover,
+.partner-panel .danger:hover { background: rgba(185,28,28,.16) !important; }
+.partner-panel .partner-icon-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; border-radius: var(--dh-radius-sm);
+  background: var(--dh-surface); color: var(--dh-text-secondary); border: 1px solid var(--dh-border);
+  transition: background .15s, color .15s;
+}
+.partner-panel .partner-icon-btn:hover { background: #F1F5F9; color: var(--dh-navy); }
+.partner-panel button:disabled { opacity: .6; cursor: not-allowed; }
+
+/* ---------- Forms ---------- */
+.partner-panel .rma-form { display: grid; gap: 14px; }
+.partner-panel .form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; }
+.partner-panel label { color: var(--dh-text); font-size: 13px; font-weight: 600; display: grid; gap: 6px; }
+.partner-panel .social-label { color: var(--dh-text-secondary); font-weight: 600; font-size: 12.5px; text-transform: uppercase; letter-spacing: .03em; }
+.partner-panel input,
+.partner-panel select,
+.partner-panel textarea {
+  background: var(--dh-surface) !important; color: var(--dh-text) !important;
+  border: 1px solid var(--dh-border) !important; border-radius: var(--dh-radius-sm) !important;
+  padding: 10px 12px !important; font-size: 14px; transition: border-color .15s, box-shadow .15s;
+}
+.partner-panel input::placeholder,
+.partner-panel textarea::placeholder { color: #94A3B8 !important; }
+.partner-panel input:focus,
+.partner-panel select:focus,
+.partner-panel textarea:focus {
+  border-color: var(--dh-blue) !important; box-shadow: 0 0 0 3px var(--dh-blue-soft) !important; outline: none;
+}
+.partner-panel input:disabled,
+.partner-panel select:disabled,
+.partner-panel textarea:disabled { background: #F1F5F9 !important; color: #94A3B8 !important; }
+.partner-panel .checkbox-label { display: flex; align-items: center; gap: 8px; font-weight: 500; }
+.partner-panel .chip-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.partner-panel .chip { background: var(--dh-blue-soft); color: var(--dh-blue); border: 1px solid rgba(37,99,235,.2); border-radius: 999px; padding: 6px 12px; font-size: 12.5px; font-weight: 600; }
+
+/* ---------- Tables ---------- */
+.partner-panel .stock-table-wrap,
+.partner-panel .rma-table-wrap { border: 1px solid var(--dh-border); border-radius: var(--dh-radius); overflow: auto; background: var(--dh-surface); }
+.partner-panel .rma-table,
+.partner-panel .orders-table,
+.partner-panel .fiscal-table,
+.partner-panel .admin-top-items-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.partner-panel .rma-table thead th,
+.partner-panel .orders-table thead th,
+.partner-panel .fiscal-table thead th,
+.partner-panel .admin-top-items-table thead th {
+  text-align: left; padding: 12px 16px; background: #F8FAFC; color: var(--dh-text-secondary);
+  font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+  border-bottom: 1px solid var(--dh-border); white-space: nowrap;
+}
+.partner-panel .rma-table td,
+.partner-panel .orders-table td,
+.partner-panel .fiscal-table td,
+.partner-panel .admin-top-items-table td { padding: 12px 16px; border-bottom: 1px solid var(--dh-border); color: var(--dh-text); }
+.partner-panel .rma-table tbody tr:hover,
+.partner-panel .orders-table tbody tr:hover { background: #F8FAFC; }
+.partner-panel .rma-table tbody tr:last-child td,
+.partner-panel .orders-table tbody tr:last-child td { border-bottom: none; }
+.partner-panel .empty-row { text-align: center; color: var(--dh-text-secondary) !important; padding: 24px !important; }
+.partner-panel .row-action-group { display: flex; gap: 6px; align-items: center; }
+.partner-panel .rma-edit-input { background: var(--dh-surface); border: 1px solid var(--dh-border); border-radius: 6px; padding: 6px 8px; color: var(--dh-text); }
+
+/* ---------- Badges ---------- */
+.partner-panel .rma-status-badge { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 999px; font-size: 11.5px; font-weight: 700; border: 1px solid currentColor; background: rgba(255,255,255,.6); }
+.partner-panel .tag-service { color: var(--dh-blue); background: var(--dh-blue-soft); border-radius: 999px; padding: 2px 8px; font-size: 10.5px; font-weight: 700; margin-left: 6px; }
+.partner-panel .growth-badge { border-radius: 999px; padding: 2px 8px; font-size: 11px; font-weight: 700; }
+.partner-panel .growth-badge.neutral { color: var(--dh-text-secondary); background: #F1F5F9; }
+.partner-panel .text-green { color: var(--dh-success) !important; }
+.partner-panel .text-red { color: var(--dh-danger) !important; }
+.partner-panel .order-origin-badge,
+.partner-panel .subscription-status-badge,
+.partner-panel .dispatch-badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; background: var(--dh-blue-soft); color: var(--dh-blue); }
+
+/* ---------- Modals ---------- */
+.partner-panel .modal-backdrop,
+.partner-panel .modal-overlay { background: rgba(15,23,42,.5) !important; }
+.partner-panel .modal-content,
+.partner-panel .modal-card,
+.partner-panel .customer-profile-modal,
+.partner-panel .fiscal-emit-modal,
+.partner-panel .thermal-label-modal {
+  background: var(--dh-surface) !important; color: var(--dh-text);
+  border-radius: var(--dh-radius); border: 1px solid var(--dh-border);
+  box-shadow: 0 20px 50px rgba(15,23,42,.18);
+}
+.partner-panel .modal-header { border-bottom: 1px solid var(--dh-border); padding-bottom: 14px; margin-bottom: 14px; }
+.partner-panel .modal-header h3, .partner-panel .modal-header h2 { color: var(--dh-navy); }
+.partner-panel .modal-close { color: var(--dh-text-secondary); background: #F1F5F9; border-radius: var(--dh-radius-sm); }
+.partner-panel .modal-close:hover { color: var(--dh-text); background: #E2E8F0; }
+
+/* ---------- Wallet / financial ---------- */
+.partner-panel .financial-dashboard { display: grid; gap: 14px; }
+.partner-panel .wallet-icon { border-radius: var(--dh-radius-sm); }
+.partner-panel .wallet-hint { color: var(--dh-text-secondary); }
+
+/* ---------- PDV ---------- */
+.partner-panel .pdv-layout { display: grid; gap: 18px; }
+.partner-panel .pdv-search-bar { background: var(--dh-surface); border: 1px solid var(--dh-border); border-radius: var(--dh-radius-sm); }
+.partner-panel .pdv-product-card { text-align: left; transition: border-color .15s, transform .1s; }
+.partner-panel .pdv-product-card:hover { border-color: var(--dh-blue) !important; transform: translateY(-1px); }
+.partner-panel .pdv-cart-item { border-bottom: 1px solid var(--dh-border); }
+.partner-panel .pdv-total-bar { border-top: 1px solid var(--dh-border); }
+.partner-panel .pdv-client-type-toggle button,
+.partner-panel .fiscal-doctype-toggle button { background: var(--dh-surface); border: 1px solid var(--dh-border); color: var(--dh-text-secondary); border-radius: var(--dh-radius-sm); font-weight: 600; }
+.partner-panel .pdv-client-type-toggle button.active,
+.partner-panel .fiscal-doctype-toggle button.active { background: var(--dh-blue); border-color: var(--dh-blue); color: #fff; }
+
+/* ---------- Section divider ---------- */
+.partner-panel .section-divider { border-bottom: 1px solid var(--dh-border); margin: 22px 0 16px; padding-bottom: 8px; }
+.partner-panel .section-divider-label { color: var(--dh-navy); font-weight: 700; font-size: 13px; display: inline-flex; align-items: center; gap: 6px; text-transform: uppercase; letter-spacing: .03em; }
+
+/* ---------- Responsivo ---------- */
+@media (max-width: 900px) {
+  .partner-panel .rma-table,
+  .partner-panel .orders-table { font-size: 12.5px; }
+  .partner-panel .rma-table td,
+  .partner-panel .rma-table th { padding: 10px; }
+}
 .subscription-status-badge { display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 20px; border: 1px solid; font: 600 14px Manrope; }
 .subscription-status-dot { width: 8px; height: 8px; border-radius: 50%; }
 .subscription-plan-name { font: 700 20px Manrope; color: #e2eaf0; }
@@ -976,3 +1244,42 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
   .admin-dre-grid { grid-template-columns: 1fr; }
   .admin-kpi-grid { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* =====================================================================
+   ENTERPRISE CLEAN THEME — Correções de legibilidade (tabelas e Super Admin)
+   Estas regras têm especificidade maior que as originais para vencer o
+   cascade sem remover nenhuma regra existente.
+   ===================================================================== */
+.partner-panel .rma-table td { color: var(--dh-text); border-bottom-color: var(--dh-border); }
+.partner-panel .rma-table td strong { color: var(--dh-text); }
+.partner-panel .admin-dre-bold td { color: var(--dh-text); border-top-color: var(--dh-border); }
+.partner-panel .color-input-wrap span { color: var(--dh-text-secondary); }
+.partner-panel .stock-section-header span { color: var(--dh-text); }
+.partner-panel .picker-item { background: var(--dh-surface); border-color: var(--dh-border); color: var(--dh-text); }
+.partner-panel .picker-item.selected { background: var(--dh-blue-soft); border-color: var(--dh-blue); color: var(--dh-blue); }
+.partner-panel .admin-financial-kpi,
+.partner-panel .admin-financial-chart,
+.partner-panel .admin-financial-summary { background: var(--dh-surface); border-color: var(--dh-border); }
+.partner-panel .admin-financial-summary div { border-bottom-color: var(--dh-border); }
+
+/* ---------- Super Admin (Painel de Super Admin) ---------- */
+.partner-panel .partner-header { background: var(--dh-surface); border-bottom: 1px solid var(--dh-border); }
+.partner-panel .partner-title h2 { color: var(--dh-navy); }
+.partner-panel .partner-title p { color: var(--dh-text-secondary); }
+.partner-panel .partner-tabs { border-bottom: 1px solid var(--dh-border); }
+.partner-panel .partner-tab { color: var(--dh-text-secondary); }
+.partner-panel .partner-tab:hover { color: var(--dh-navy); }
+.partner-panel .partner-tab.active { color: var(--dh-blue); border-color: var(--dh-blue); }
+.partner-panel .partner-header .partner-back-btn { color: var(--dh-text-secondary); background: var(--dh-surface); border: 1px solid var(--dh-border); }
+.partner-panel .partner-header .partner-back-btn:hover { background: #F1F5F9; color: var(--dh-navy); }
+
+.super-admin-gate { background: var(--dh-bg, #F8FAFC); }
+.super-admin-gate-card { background: #FFFFFF; border-color: #E2E8F0; box-shadow: 0 20px 50px rgba(15,23,42,.1); }
+.super-admin-gate-header h2 { color: #0F2747; }
+.super-admin-gate-header p { color: #64748B; }
+.super-admin-gate-form input { background: #FFFFFF; border-color: #E2E8F0; color: #172033; }
+.super-admin-gate-form input:focus { border-color: #2563EB; box-shadow: 0 0 0 3px rgba(37,99,235,.12); }
+.super-admin-recovery-success h3 { color: #0F2747; }
+.super-admin-recovery-success p { color: #64748B; }
+.super-admin-forgot-link { color: #64748B; }
+.super-admin-forgot-link:hover { color: #2563EB; }

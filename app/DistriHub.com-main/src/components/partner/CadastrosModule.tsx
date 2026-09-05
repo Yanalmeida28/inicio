@@ -25,6 +25,8 @@ type Props = {
   modifiers: PartnerModifier[];
   customers: PartnerCustomer[];
   sales: PartnerSale[];
+  /** Todas as vendas da empresa (sem filtro de filial ativa), usadas no histórico de compras do cliente. */
+  allSales: PartnerSale[];
   segment: string;
   onAddProduct: (p: Omit<PartnerProduct, 'id' | 'user_id' | 'created_at' | 'updated_at'>) => Promise<void>;
   onDeleteProduct: (id: string) => Promise<void>;
@@ -53,14 +55,14 @@ const subTabs: { id: SubTab; label: string; icon: typeof Package }[] = [
   { id: 'modificadores', label: 'Modificadores', icon: Layers },
   { id: 'clientes', label: 'Clientes', icon: Users },
   { id: 'fornecedores', label: 'Fornecedores', icon: Building2 },
-  { id: 'vendedores', label: 'Vendedores / Técnicos', icon: UserCheck },
+  { id: 'vendedores', label: 'Colaboradores', icon: UserCheck },
   { id: 'reposicao', label: 'Reposição de Estoque', icon: Activity },
   { id: 'importar', label: 'Importar / Exportar', icon: Upload },
 ];
 
 export function CadastrosModule({
   products, branches, selectedBranchId, categories, suppliers, salespeople, combos, modifiers, customers, sales,
-  segment, onAddProduct, onDeleteProduct,
+  allSales, segment, onAddProduct, onDeleteProduct,
   onAddCategory, onDeleteCategory, onAddSupplier, onAddSalesperson,
   onUpdateSalesperson, onDeleteSalesperson,
   onAddCombo, onDeleteCombo, onAddModifier, onDeleteModifier, onAddCustomer,
@@ -119,7 +121,7 @@ export function CadastrosModule({
         {subTab === 'clientes' && (
           <CustomersSubTab
             customers={customers}
-            sales={sales}
+            sales={allSales}
             selectedBranchId={selectedBranchId}
             onAdd={onAddCustomer}
             onUpdate={onUpdateCustomer}
@@ -1703,7 +1705,7 @@ function SalespeopleSubTab({ salespeople, branches, onAdd, onUpdate, onDelete }:
       <form className="rma-form" onSubmit={handleSubmit}>
         <div className="form-row">
           <label>
-            Nome do Vendedor / Técnico
+            Nome do colaborador
             <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex: João Silva" required />
           </label>
           <label>
@@ -1738,14 +1740,14 @@ function SalespeopleSubTab({ salespeople, branches, onAdd, onUpdate, onDelete }:
             </select>
           </label>
         </div>
-        <button type="submit" className="module-submit-btn"><Plus size={16} /> Adicionar Funcionário</button>
+        <button type="submit" className="module-submit-btn"><Plus size={16} /> Adicionar colaborador</button>
       </form>
       <div className="stock-table-wrap">
         <table className="rma-table">
           <thead><tr><th>Nome</th><th>Função</th><th>Filial Vinculada</th><th>Comissão</th><th>PIN</th><th>Status</th><th></th></tr></thead>
           <tbody>
             {salespeople.length === 0 ? (
-              <tr><td colSpan={7} className="empty-row">Nenhum vendedor cadastrado.</td></tr>
+              <tr><td colSpan={7} className="empty-row">Nenhum colaborador cadastrado.</td></tr>
             ) : (
               salespeople.map((s) => {
                 const spBranch = branches.find((b) => b.id === s.branch_id);
@@ -1789,7 +1791,7 @@ function SalespeopleSubTab({ salespeople, branches, onAdd, onUpdate, onDelete }:
                         </td>
                         <td>
                           <div className="row-action-group">
-                            <button className="rma-advance-btn" onClick={() => saveEdit(s.id)} title="Salvar">
+                            <button className="rma-advance-btn" onClick={() => saveEdit(s.id)} title="Salvar alterações">
                               <Check size={14} />
                             </button>
                             <button className="rma-advance-btn" onClick={cancelEdit} title="Cancelar">

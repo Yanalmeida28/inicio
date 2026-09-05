@@ -187,10 +187,10 @@ function SalesReport({ sales, products, salespeople }: { sales: PartnerSale[]; p
       <h4 className="report-section-title"><UserCheck size={16} /> Vendas por Vendedor</h4>
       <div className="stock-table-wrap">
         <table className="rma-table">
-          <thead><tr><th>Vendedor / Técnico</th><th>Função</th><th>Total Vendido</th><th>Comissão</th></tr></thead>
+          <thead><tr><th>Colaborador</th><th>Função</th><th>Total Vendido</th><th>Comissão</th></tr></thead>
           <tbody>
             {salespeopleWithSales.length === 0 ? (
-              <tr><td colSpan={4} className="empty-row">Nenhum vendedor com vendas registradas.</td></tr>
+              <tr><td colSpan={4} className="empty-row">Nenhum colaborador com vendas registradas.</td></tr>
             ) : (
               salespeopleWithSales.map((sp) => (
                 <tr key={sp.id}>

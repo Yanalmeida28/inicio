@@ -715,6 +715,7 @@ export function PartnerPanel({
                   filteredCustomers
                 }
                 sales={filteredSales}
+                allSales={partner.sales}
                 segment={segment}
                 onAddProduct={
                   handleAddProduct
