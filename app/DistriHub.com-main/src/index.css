@@ -1283,3 +1283,52 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
 .super-admin-recovery-success p { color: #64748B; }
 .super-admin-forgot-link { color: #64748B; }
 .super-admin-forgot-link:hover { color: #2563EB; }
+
+/* =====================================================================
+   ENTERPRISE CLEAN THEME — Correção de contraste (fundos escuros remanescentes)
+   Estes contêineres ainda herdavam o fundo azul-marinho/escuro do tema antigo
+   enquanto o texto interno já usa cores escuras (fundo claro), causando baixo
+   contraste. Convertidos para o mesmo padrão de card claro já usado no resto
+   do painel. Nenhum layout, espaçamento ou lógica foi alterado.
+   ===================================================================== */
+.partner-panel .rma-form { background: var(--dh-surface); border: 1px solid var(--dh-border); border-radius: var(--dh-radius); padding: 20px; }
+.partner-panel .pdv-right { background: var(--dh-surface); border: 1px solid var(--dh-border); border-radius: var(--dh-radius); }
+.partner-panel .orders-filter-bar { background: var(--dh-surface); border: 1px solid var(--dh-border); }
+.partner-panel .admin-collapsible-sidebar,
+.partner-panel .admin-chart-container,
+.partner-panel .admin-chart-empty,
+.partner-panel .admin-filter-bar { background: var(--dh-surface); border: 1px solid var(--dh-border); }
+.partner-panel .customer-info-block,
+.partner-panel .customer-profile-header { background: var(--dh-surface); border: 1px solid var(--dh-border); }
+.partner-panel .customer-avatar { background: #F1F5F9; color: var(--dh-text-secondary); }
+.partner-panel .route-card,
+.partner-panel .delivery-info-banner { background: var(--dh-surface); border: 1px solid var(--dh-border); }
+.partner-panel .ranking-item,
+.partner-panel .payment-breakdown-card,
+.partner-panel .bar-chart { background: var(--dh-surface); border: 1px solid var(--dh-border); }
+.partner-panel .fiscal-dispatch-summary,
+.partner-panel .thermal-label-content { background: var(--dh-surface); border: 1px solid var(--dh-border); }
+.partner-panel .catalog-qr-card,
+.partner-panel .catalog-qr-preview { background: var(--dh-surface); border: 1px solid var(--dh-border); }
+.partner-panel .catalog-slug-prefix { background: #F1F5F9; color: var(--dh-text-secondary); border-color: var(--dh-border); }
+.partner-panel .branch-card.active { background: var(--dh-blue-soft); border-color: var(--dh-blue); }
+
+.partner-panel .fiscal-doc-big-btn,
+.partner-panel .fiscal-delivery-btn,
+.partner-panel .fiscal-dispatch-toggle {
+  background: var(--dh-surface); border-color: var(--dh-border); color: var(--dh-text-secondary);
+}
+.partner-panel .fiscal-doc-big-btn:hover,
+.partner-panel .fiscal-delivery-btn:hover,
+.partner-panel .fiscal-dispatch-toggle:hover:not(:disabled) { border-color: var(--dh-blue); }
+.partner-panel .fiscal-doc-big-btn.active,
+.partner-panel .fiscal-delivery-btn.active,
+.partner-panel .fiscal-dispatch-toggle.active { background: var(--dh-blue-soft); border-color: var(--dh-blue); color: var(--dh-blue); }
+.partner-panel .thermal-size-toggle button { background: var(--dh-surface); border-color: var(--dh-border); color: var(--dh-text-secondary); }
+.partner-panel .thermal-size-toggle button.active { background: var(--dh-blue-soft); border-color: var(--dh-blue); color: var(--dh-blue); }
+
+/* ---------- Reforço de contraste dentro da sidebar navy ---------- */
+.partner-panel .partner-sidebar small,
+.partner-panel .partner-sidebar p { color: rgba(255,255,255,.62); }
+.partner-panel .partner-sidebar strong { color: #ffffff; }
+.partner-panel .partner-sidebar .partner-loading { color: rgba(255,255,255,.72); }
