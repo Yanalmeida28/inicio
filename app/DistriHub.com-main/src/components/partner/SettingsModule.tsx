@@ -38,7 +38,7 @@ const plans: Plan[] = [
     price: 99.90,
     icon: Zap,
     highlighted: true,
-    features: ['Até 3 lojas', 'Catálogo online público', 'Relatórios & CRM avançado', 'Gestão de entregas', 'Cupons de desconto'],
+    features: ['Até 3 lojas', 'Gestão de estoque', 'Relatórios & CRM avançado', 'Gestão de entregas', 'Cupons de desconto'],
   },
   {
     id: 'enterprise',

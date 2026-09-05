@@ -1561,7 +1561,6 @@ html, body {
 }
 
 /* Subtabs e Filtros com Scroll Limpo no Celular */
-.subtab-bar,
 .pdv-subtabs,
 .admin-audit-filters {
   display: flex !important;
@@ -1572,11 +1571,9 @@ html, body {
   max-width: 100% !important;
   padding-bottom: 2px !important;
 }
-.subtab-bar::-webkit-scrollbar,
 .pdv-subtabs::-webkit-scrollbar {
   display: none;
 }
-.subtab-bar .subtab,
 .pdv-subtabs .pdv-subtab {
   flex-shrink: 0 !important;
   white-space: nowrap !important;
@@ -1598,6 +1595,19 @@ html, body {
 
 /* 5. Responsividade Específica para Telas Pequenas (<= 768px) */
 @media (max-width: 768px) {
+  .partner-panel .cadastros-subtab-bar {
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    max-width: 100%;
+    padding-bottom: 2px;
+  }
+  .partner-panel .cadastros-subtab-bar::-webkit-scrollbar { display: none; }
+  .partner-panel .cadastros-subtab-bar .subtab {
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
   .partner-panel .pdv-layout {
     grid-template-columns: 1fr !important;
     gap: 16px !important;
@@ -1674,4 +1684,51 @@ html, body {
   .partner-panel .pdv-total-bar strong {
     font-size: 22px !important;
   }
+}
+
+/* Contraste consistente para conteúdo e controles em superfícies claras. */
+.partner-panel .module-header p,
+.partner-panel .module-card p,
+.partner-panel .partner-card p,
+.partner-panel .report-card p,
+.partner-panel .admin-dashboard-card p,
+.partner-panel .admin-data-card p,
+.partner-panel .rma-form label,
+.partner-panel .pdv-form label,
+.partner-panel .orders-filter-field > span,
+.partner-panel .branch-selector-label,
+.partner-panel .empty-row,
+.partner-panel .helper-text,
+.partner-panel .form-hint {
+  color: #475569 !important;
+}
+.partner-panel input,
+.partner-panel select,
+.partner-panel textarea,
+.partner-panel .rma-table td,
+.partner-panel .rma-table th,
+.partner-panel .module-card-title,
+.partner-panel .filter-label,
+.partner-panel .admin-permissions-info {
+  color: #172033 !important;
+}
+.partner-panel input::placeholder,
+.partner-panel textarea::placeholder {
+  color: #64748B !important;
+  opacity: 1;
+}
+.partner-panel .module-action-btn,
+.partner-panel .rma-advance-btn,
+.partner-panel .admin-export-btn,
+.partner-panel .pdv-receipt-btn {
+  background: #FFFFFF !important;
+  border-color: #2563EB !important;
+  color: #0F2747 !important;
+}
+.partner-panel .module-action-btn:hover,
+.partner-panel .rma-advance-btn:hover,
+.partner-panel .admin-export-btn:hover,
+.partner-panel .pdv-receipt-btn:hover {
+  background: rgba(37,99,235,.08) !important;
+  color: #0F2747 !important;
 }

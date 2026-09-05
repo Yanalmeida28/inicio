@@ -132,7 +132,7 @@ export function OpenOrdersModule({ sales, customers, salespeople, currentRole, o
         <span className="module-icon"><ClipboardList size={20} /></span>
         <div>
           <h3>Pedidos em Aberto</h3>
-          <p>Acompanhe e finalize pré-vendas e pedidos do catálogo online</p>
+          <p>Acompanhe e finalize pré-vendas e pedidos online</p>
         </div>
       </div>
 
@@ -208,7 +208,7 @@ export function OpenOrdersModule({ sales, customers, salespeople, currentRole, o
               <select value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)}>
                 <option value="all">Todas</option>
                 <option value="pdv">PDV</option>
-                <option value="catalogo">Catálogo Online</option>
+                <option value="catalogo">Pedidos Online</option>
               </select>
             </label>
           </div>
@@ -248,7 +248,7 @@ export function OpenOrdersModule({ sales, customers, salespeople, currentRole, o
                     </td>
                     <td>{s.payment_method ?? '—'}</td>
                     <td>
-                      <span className="order-origin-badge">{s.origin === 'catalogo' ? 'Catálogo' : 'PDV'}</span>
+                      <span className="order-origin-badge">{s.origin === 'catalogo' ? 'Online' : 'PDV'}</span>
                     </td>
                     <td>{new Date(s.created_at).toLocaleString('pt-BR')}</td>
                     <td><strong>{money.format(s.total)}</strong></td>

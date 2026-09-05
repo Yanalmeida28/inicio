@@ -1,7 +1,6 @@
 import { useState } from 'react';
-import { Check, ImagePlus, Palette, Printer, Upload, Wand2, Globe } from 'lucide-react';
+import { Check, ImagePlus, Palette, Printer, Upload, Wand2 } from 'lucide-react';
 import type { StoreSettings } from '../../types';
-import { OnlineCatalogModule } from './OnlineCatalogModule';
 
 type WhiteLabelModuleProps = {
   settings: StoreSettings;
@@ -179,13 +178,6 @@ export function WhiteLabelModule({ settings, onUpdate }: WhiteLabelModuleProps) 
           rows={3}
         />
       </div>
-
-      {/* Section 3: Catálogo Online */}
-      <div className="section-divider">
-        <span className="section-divider-label"><Globe size={14} /> Catálogo Online</span>
-      </div>
-
-      <OnlineCatalogModule settings={settings} onUpdate={onUpdate} />
 
       <button className="module-save-btn" onClick={handleSave}>
         {saved ? <><Check size={16} /> Salvo!</> : 'Salvar personalização'}

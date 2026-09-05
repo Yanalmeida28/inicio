@@ -58,7 +58,7 @@ export function HubHome({ onAccessPanel, onAccessSuperAdmin, superAdminActive }:
             </h1>
             <p>
               DistriHub conecta distribuidoras, lojistas e assistências técnicas em uma única
-              plataforma. Catálogo B2B, ERP multi-loja, PDV ultrarrápido, gestão financeira e
+              plataforma. Vendas B2B, ERP multi-loja, PDV ultrarrápido, gestão financeira e
               logística de entrega — tudo integrado.
             </p>
             <div className="hub-hero-actions" />
@@ -69,8 +69,8 @@ export function HubHome({ onAccessPanel, onAccessSuperAdmin, superAdminActive }:
             <div className="hub-card-float hub-card-1">
               <PackageCheck size={22} />
               <div>
-                <strong>Catálogo B2B</strong>
-                <small>Atacado direto</small>
+                <strong>Vendas B2B</strong>
+                <small>Atacado integrado</small>
               </div>
             </div>
             <div className="hub-card-float hub-card-2">
@@ -95,7 +95,7 @@ export function HubHome({ onAccessPanel, onAccessSuperAdmin, superAdminActive }:
         <div className="page-container">
           <div className="hub-section-head">
             <h2>Um sistema para cada etapa</h2>
-            <p>Do catálogo ao PDV, do estoque ao financeiro — tudo conectado</p>
+            <p>Do PDV ao estoque, do financeiro à logística — tudo conectado</p>
           </div>
           <div className="hub-feature-grid">
             <div className="hub-feature">
@@ -164,7 +164,7 @@ export function HubHome({ onAccessPanel, onAccessSuperAdmin, superAdminActive }:
               <div className="hub-agile-card">
                 <span className="hub-agile-icon"><Zap size={22} /></span>
                 <h4>Agilidade &amp; Performance Absoluta</h4>
-                <p>PDV e catálogo B2B otimizados para resposta em milissegundos. Venda mais rápido no balcão e elimine filas sem travamentos.</p>
+                <p>PDV e vendas B2B otimizados para resposta em milissegundos. Venda mais rápido no balcão e elimine filas sem travamentos.</p>
               </div>
               <div className="hub-agile-card">
                 <span className="hub-agile-icon"><ShieldCheck size={22} /></span>

@@ -83,7 +83,7 @@ export function CadastrosModule({
         </div>
       </div>
 
-      <div className="subtab-bar">
+      <div className="subtab-bar cadastros-subtab-bar">
         {subTabs.map(({ id, label, icon: Icon }) => (
           <button
             key={id}

@@ -12,7 +12,6 @@ import { NavBar } from './components/NavBar';
 import { CartDrawer } from './components/CartDrawer';
 import { Footer } from './components/Footer';
 import { HubHome } from './components/HubHome';
-import { PublicCatalogPage } from './components/PublicCatalogPage';
 import { supabase, isSupabaseConfigured } from './lib/supabase';
 
 const PartnerPanel = lazy(() => import('./components/PartnerPanel').then((module) => ({ default: module.PartnerPanel })));
@@ -20,21 +19,6 @@ const AuthScreen = lazy(() => import('./components/AuthScreen').then((module) =>
 const AdminPanel = lazy(() => import('./components/AdminPanel').then((module) => ({ default: module.AdminPanel })));
 
 type View = 'hub' | 'partner' | 'auth' | 'admin' | 'super-admin';
-
-function resolveCatalogRoute() {
-  const pathname = window.location.pathname;
-  const search = new URLSearchParams(window.location.search);
-
-  if (!pathname.startsWith('/catalogo')) {
-    return null;
-  }
-
-  const slugFromPath = pathname.replace(/^\/catalogo\/?/, '').trim();
-  const slug = slugFromPath || search.get('loja');
-  const filial = search.get('filial');
-
-  return slug ? { slug, filial } : null;
-}
 
 function LoadingScreen({ label }: { label: string }) {
   return (
@@ -55,7 +39,6 @@ function App() {
   const superAdminAuth = useSuperAdminAuth();
 
   const [view, setView] = useState<View>('hub');
-  const [catalogRoute, setCatalogRoute] = useState<{ slug: string; filial: string | null } | null>(resolveCatalogRoute);
   const [partnerInitialTab, setPartnerInitialTab] = useState<string | undefined>(undefined);
   const [superAdminUnlocked, setSuperAdminUnlocked] = useState(false);
   const [superAdminPassword, setSuperAdminPassword] = useState('');
@@ -80,20 +63,6 @@ function App() {
   useEffect(() => {
     if (auth.passwordRecovery) setView('auth');
   }, [auth.passwordRecovery]);
-
-  useEffect(() => {
-    const onRouteChange = () => {
-      setCatalogRoute(resolveCatalogRoute());
-    };
-
-    window.addEventListener('popstate', onRouteChange);
-    window.addEventListener('hashchange', onRouteChange);
-
-    return () => {
-      window.removeEventListener('popstate', onRouteChange);
-      window.removeEventListener('hashchange', onRouteChange);
-    };
-  }, []);
 
   const segment: BusinessSegment = auth.profile?.segment ?? 'assistencia';
 
@@ -157,10 +126,6 @@ function App() {
   function handleNavigateFromAdmin(tab: string) {
     setPartnerInitialTab(tab);
     setView('partner');
-  }
-
-  if (catalogRoute) {
-    return <PublicCatalogPage slug={catalogRoute.slug} branchSlug={catalogRoute.filial} />;
   }
 
   return (
