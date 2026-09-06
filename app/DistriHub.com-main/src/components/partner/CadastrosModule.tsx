@@ -526,18 +526,56 @@ function XmlSubTab({ selectedBranchId, onAddProduct }: {
 }) {
   const [fileName, setFileName] = useState('');
   const [parsed, setParsed] = useState<{ name: string; sku: string; qty: number; cost: number }[] | null>(null);
+  const [parseError, setParseError] = useState<string | null>(null);
   const [imported, setImported] = useState(false);
 
-  function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+  function readXmlValue(parent: Element, name: string) {
+    return Array.from(parent.getElementsByTagName('*')).find((element) => element.localName === name)?.textContent?.trim() ?? '';
+  }
+
+  function parseDecimal(value: string) {
+    const normalized = value.replace(/\./g, '').replace(',', '.');
+    const parsedValue = Number(normalized);
+    return Number.isFinite(parsedValue) ? parsedValue : 0;
+  }
+
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     setFileName(file.name);
-    setParsed([
-      { name: 'Display Galaxy A14', sku: 'DH-SA14-015', qty: 10, cost: 45.0 },
-      { name: 'Bateria iPhone 11', sku: 'DH-IP11-034', qty: 5, cost: 35.0 },
-      { name: 'Conector de Carga Redmi 9', sku: 'DH-R9-021', qty: 20, cost: 9.5 },
-    ]);
+    setParseError(null);
+    setParsed(null);
     setImported(false);
+    try {
+      const xmlText = await file.text();
+      const xmlDocument = new DOMParser().parseFromString(xmlText, 'application/xml');
+      if (xmlDocument.getElementsByTagName('parsererror').length > 0) {
+        throw new Error('O arquivo selecionado não contém um XML válido.');
+      }
+      const items = Array.from(xmlDocument.getElementsByTagName('*'))
+        .filter((element) => element.localName === 'det')
+        .map((det) => {
+          const product = Array.from(det.children).find((child) => child.localName === 'prod');
+          if (!product) return null;
+          const quantity = parseDecimal(readXmlValue(product, 'qCom'));
+          const total = parseDecimal(readXmlValue(product, 'vProd'));
+          const unitCost = parseDecimal(readXmlValue(product, 'vUnCom')) || (quantity > 0 ? total / quantity : 0);
+          const ean = readXmlValue(product, 'cEAN');
+          const productCode = readXmlValue(product, 'cProd');
+          return {
+            name: readXmlValue(product, 'xProd'),
+            sku: productCode || (ean && ean !== 'SEM GTIN' ? ean : ''),
+            qty: quantity,
+            cost: unitCost,
+          };
+        })
+        .filter((item): item is { name: string; sku: string; qty: number; cost: number } => Boolean(item?.name && item.qty > 0 && item.cost >= 0));
+      if (items.length === 0) throw new Error('Nenhum item válido foi encontrado na NF-e.');
+      setParsed(items);
+    } catch (error) {
+      setFileName('');
+      setParseError(error instanceof Error ? error.message : 'Não foi possível ler o XML da NF-e.');
+    }
   }
 
   async function handleImport() {
@@ -575,6 +613,7 @@ function XmlSubTab({ selectedBranchId, onAddProduct }: {
           <input type="file" accept=".xml,application/xml,text/xml" onChange={handleFile} hidden />
         </div>
       </label>
+      {parseError && <div className="xml-error-message"><AlertTriangle size={16} /> {parseError}</div>}
       {parsed && (
         <div className="stock-table-wrap">
           <table className="rma-table">

@@ -1786,8 +1786,9 @@ html, body {
    ===================================================================== */
 
 /* --- Navegação das 10 sub-abas: compacta e legível --- */
-.partner-panel .cadastros-scope .cadastros-subtab-bar { gap: 2px; margin-bottom: 14px; }
+.partner-panel .cadastros-scope .cadastros-subtab-bar { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 2px; margin-bottom: 14px; }
 .partner-panel .cadastros-scope .cadastros-subtab-bar .subtab { padding: 7px 11px; font-size: 13px; gap: 6px; min-height: 36px; }
+.partner-panel .cadastros-scope .cadastros-subtab-bar .subtab { justify-content: center; min-width: 0; white-space: nowrap; }
 .partner-panel .cadastros-scope .cadastros-subtab-bar .subtab.active { font-weight: 700; }
 
 /* --- Estrutura: menos espaço vazio, mesma hierarquia --- */
@@ -1814,6 +1815,7 @@ html, body {
 .partner-panel .cadastros-scope .xml-info-banner p { color: var(--dh-text-secondary); font-size: 12.5px; }
 .partner-panel .cadastros-scope .media-upload { background: var(--dh-surface); border: 1px dashed #94A3B8; color: var(--dh-text-secondary); font-weight: 600; }
 .partner-panel .cadastros-scope .media-upload:hover { border-color: var(--dh-blue); color: var(--dh-blue); }
+.partner-panel .cadastros-scope .xml-error-message { display: flex; align-items: center; gap: 8px; margin-top: 10px; padding: 10px 12px; border: 1px solid rgba(185,28,28,.3); border-radius: var(--dh-radius-sm); background: var(--dh-danger-bg); color: var(--dh-danger); font-size: 13px; }
 
 /* --- Combos / Kits e Modificadores --- */
 .partner-panel .cadastros-scope .combo-list { gap: 8px; margin-top: 12px; }
@@ -1858,6 +1860,7 @@ html, body {
 
 /* --- Mobile ≤ 768px: navegação compacta, toque confortável, sem quebras --- */
 @media (max-width: 768px) {
+  .partner-panel .cadastros-scope .cadastros-subtab-bar { display: flex; }
   .partner-panel .cadastros-scope .cadastros-subtab-bar .subtab { padding: 8px 10px; font-size: 12.5px; min-height: 40px; }
   .partner-panel .cadastros-scope .rma-form { padding: 14px; }
   .partner-panel .cadastros-scope .rma-form.inline { flex-direction: column; align-items: stretch; }
