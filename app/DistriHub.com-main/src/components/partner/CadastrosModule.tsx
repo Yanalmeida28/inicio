@@ -1,9 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import {
   Boxes, FileText, Package, Plus, Tag, Trash2, Upload, Users, Wrench,
-  Building2, UserCheck, Layers, QrCode, X, History, Download,
-  IdCard, MapPin, Wallet, Phone, Mail, Save, Camera, UserCircle,
-  Printer, MessageCircle, Check, TrendingUp, AlertTriangle, Activity,
+  Building2, UserCheck, Layers, QrCode, X, History,
+  IdCard, MapPin, Wallet, Phone, Save, Camera, UserCircle,
+  Check, TrendingUp, AlertTriangle, Activity,
 } from 'lucide-react';
 import type {
   PartnerProduct, PartnerCategory, PartnerSupplier,
@@ -11,6 +11,7 @@ import type {
   PartnerSale, SalespersonRole, PartnerBranch,
   PersonType,
 } from '../../types';
+import type { PartnerCustomerUpdate } from '../../hooks/usePartnerData';
 import { formatCnpj, formatCpf, isValidCnpj, isValidCpf, money, normalizeDocument } from '../../utils';
 import { ImportExportModule, ExportButtons } from './ImportExportModule';
 
@@ -41,7 +42,8 @@ type Props = {
   onAddModifier: (m: Omit<PartnerModifier, 'id' | 'user_id' | 'created_at'>) => Promise<void>;
   onDeleteModifier: (id: string) => Promise<void>;
   onAddCustomer: (c: Omit<PartnerCustomer, 'id' | 'user_id' | 'created_at'>) => Promise<void>;
-  onUpdateCustomer: (id: string, updates: Partial<PartnerCustomer>) => Promise<void>;
+  onUpdateCustomer: (id: string, updates: PartnerCustomerUpdate) => Promise<void>;
+  onLoadCustomer: (id: string) => Promise<PartnerCustomer>;
   onDeleteCustomer: (id: string) => Promise<void>;
 };
 
@@ -66,7 +68,7 @@ export function CadastrosModule({
   onAddCategory, onDeleteCategory, onAddSupplier, onAddSalesperson,
   onUpdateSalesperson, onDeleteSalesperson,
   onAddCombo, onDeleteCombo, onAddModifier, onDeleteModifier, onAddCustomer,
-  onUpdateCustomer, onDeleteCustomer,
+  onUpdateCustomer, onLoadCustomer, onDeleteCustomer,
 }: Props) {
   const [subTab, setSubTab] = useState<SubTab>('produtos');
   const filteredProducts = selectedBranchId
@@ -74,7 +76,7 @@ export function CadastrosModule({
     : [];
 
   return (
-    <div className="panel-module">
+    <div className="panel-module cadastros-scope">
       <div className="module-header">
         <span className="module-icon"><Boxes size={20} /></span>
         <div>
@@ -122,6 +124,8 @@ export function CadastrosModule({
           <CustomersSubTab
             customers={customers}
             sales={allSales}
+            salespeople={salespeople}
+            onLoadCustomer={onLoadCustomer}
             selectedBranchId={selectedBranchId}
             onAdd={onAddCustomer}
             onUpdate={onUpdateCustomer}
@@ -329,13 +333,13 @@ function ProductsSubTab({ products, allProducts, branches, selectedBranchId, cat
                   <td>{p.is_service ? '—' : p.stock}</td>
                   <td>
                     {!p.is_service && p.stock <= (p.min_stock || 0) && p.stock > 0 && (
-                      <span className="rma-status-badge" style={{ color: '#e6a06d', borderColor: '#e6a06d' }}>Estoque baixo</span>
+                      <span className="rma-status-badge" style={{ color: '#B45309', borderColor: '#B45309' }}>Estoque baixo</span>
                     )}
                     {!p.is_service && p.stock === 0 && (
-                      <span className="rma-status-badge" style={{ color: '#e3829b', borderColor: '#e3829b' }}>Sem estoque</span>
+                      <span className="rma-status-badge" style={{ color: '#B91C1C', borderColor: '#B91C1C' }}>Sem estoque</span>
                     )}
                     {!p.is_service && p.stock > (p.min_stock || 0) && (
-                      <span className="rma-status-badge" style={{ color: '#5bbc87', borderColor: '#5bbc87' }}>OK</span>
+                      <span className="rma-status-badge" style={{ color: '#15803D', borderColor: '#15803D' }}>OK</span>
                     )}
                   </td>
                   <td>
@@ -741,9 +745,11 @@ function ModifiersSubTab({ modifiers, products, onAdd, onDelete }: {
   );
 }
 
-function CustomersSubTab({ customers, sales, selectedBranchId, onAdd, onUpdate, onDelete }: {
+function CustomersSubTab({ customers, sales, salespeople, selectedBranchId, onAdd, onUpdate, onDelete, onLoadCustomer }: {
   customers: PartnerCustomer[];
   sales: PartnerSale[];
+  salespeople: PartnerSalesperson[];
+  onLoadCustomer: (id: string) => Promise<PartnerCustomer>;
   selectedBranchId: string | null;
   onAdd: (c: Omit<PartnerCustomer, 'id' | 'user_id' | 'created_at'>) => Promise<void>;
   onUpdate: (id: string, updates: Partial<PartnerCustomer>) => Promise<void>;
@@ -1022,7 +1028,7 @@ function CustomersSubTab({ customers, sales, selectedBranchId, onAdd, onUpdate, 
                       <div>
                         <span>{formattedDoc}</span>
                         {normDoc && (
-                          <small style={{ display: 'block', color: '#8ba3b5', fontSize: '12px' }}>
+                          <small style={{ display: 'block', color: '#475569', fontSize: '12px' }}>
                             {isPj ? 'PJ' : 'PF'}
                           </small>
                         )}
@@ -1044,10 +1050,10 @@ function CustomersSubTab({ customers, sales, selectedBranchId, onAdd, onUpdate, 
                           } catch (error) {
                             window.alert(error instanceof Error ? error.message : 'Não foi possível excluir o cliente.');
                           }
-                        }} title="Excluir Cliente" style={{ color: '#fca5a5' }}>
+                        }} title="Excluir Cliente" style={{ color: '#B91C1C' }}>
                           <Trash2 size={14} /> Excluir
                         </button>
-                        <button className="rma-advance-btn" onClick={() => setProfileCustomerId(c.id)} title="Detalhes do Cliente">
+                        <button className="rma-advance-btn" onClick={async () => { try { await onLoadCustomer(c.id); setProfileCustomerId(c.id); } catch (error) { window.alert(error instanceof Error ? error.message : 'Não foi possível carregar os dados do cliente.'); } }} title="Detalhes do Cliente">
                           <UserCircle size={14} /> Detalhes
                         </button>
                         <button className="rma-advance-btn" onClick={() => setHistoryCustomerId(c.id)} title="Histórico de Compras">
@@ -1102,460 +1108,156 @@ function CustomersSubTab({ customers, sales, selectedBranchId, onAdd, onUpdate, 
       )}
 
       {profileCustomerId && profileCustomer && (
-        <CustomerProfileModal customer={profileCustomer} sales={sales} onUpdate={onUpdate} onClose={() => setProfileCustomerId(null)} />
+        <CustomerProfileModal customer={profileCustomer} sales={sales} salespeople={salespeople} onUpdate={onUpdate} onClose={() => setProfileCustomerId(null)} />
       )}
     </div>
   );
 }
 
 type CustomerTab = 'cadastrais' | 'enderecos' | 'observacoes' | 'financeiros' | 'contatos' | 'historico';
+type CustomerForm = Omit<PartnerCustomer, 'id' | 'user_id' | 'created_at' | 'updated_at'>;
 
-function CustomerProfileModal({ customer, sales, onUpdate, onClose }: {
+function CustomerProfileModal({ customer, sales, salespeople, onUpdate, onClose }: {
   customer: PartnerCustomer;
   sales: PartnerSale[];
-  onUpdate: (id: string, updates: Partial<PartnerCustomer>) => Promise<void>;
+  salespeople: PartnerSalesperson[];
+  onUpdate: (id: string, updates: PartnerCustomerUpdate) => Promise<void>;
   onClose: () => void;
 }) {
   const [tab, setTab] = useState<CustomerTab>('cadastrais');
-  const [docType, setDocType] = useState<'pf' | 'pj'>(
-    (customer.document ?? '').replace(/\D/g, '').length <= 11 ? 'pf' : 'pj'
-  );
-  const [ieIsento, setIeIsento] = useState(false);
-  const [creditLimit, setCreditLimit] = useState(String(customer.credit_limit ?? 0));
-  const [isSavingCreditLimit, setIsSavingCreditLimit] = useState(false);
-  const [creditLimitError, setCreditLimitError] = useState<string | null>(null);
-  const [allowCrediario, setAllowCrediario] = useState(false);
-  const [ativo, setAtivo] = useState(true);
-  const [adminLoja, setAdminLoja] = useState(false);
-  const [convenio, setConvenio] = useState(false);
-  const [simplesNacional, setSimplesNacional] = useState(false);
-  const [reterISS, setReterISS] = useState(false);
-  const [expandedSaleId, setExpandedSaleId] = useState<string | null>(null);
-
-  const customerSales = sales.filter((s) => s.customer_id === customer.id);
-  const totalPurchases = customerSales.reduce((s, x) => s + x.total, 0);
-
+  const [form, setForm] = useState<CustomerForm>(() => ({
+    ...customer,
+    name: customer.name,
+    branch_id: customer.branch_id ?? null,
+  }));
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [removePhoto, setRemovePhoto] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+  const customerSales = sales.filter((sale) => sale.customer_id === customer.id);
+  const totalPurchases = customerSales.reduce((total, sale) => total + sale.total, 0);
   const tabs: { id: CustomerTab; label: string; icon: typeof UserCircle }[] = [
     { id: 'cadastrais', label: 'Dados Cadastrais', icon: IdCard },
     { id: 'enderecos', label: 'Outros Endereços', icon: MapPin },
     { id: 'observacoes', label: 'Observações', icon: FileText },
     { id: 'financeiros', label: 'Dados Financeiros', icon: Wallet },
     { id: 'contatos', label: 'Contatos', icon: Phone },
-    { id: 'historico', label: 'Histórico de Compras & Notas Fiscais', icon: History },
+    { id: 'historico', label: 'Histórico', icon: History },
   ];
 
-  async function saveCreditLimit() {
-    const parsedCreditLimit = Number(creditLimit);
-    if (!Number.isFinite(parsedCreditLimit) || parsedCreditLimit < 0) {
-      setCreditLimitError('Informe um limite de crédito válido.');
-      return;
-    }
-    setIsSavingCreditLimit(true);
-    setCreditLimitError(null);
+  function setField<K extends keyof CustomerForm>(field: K, value: CustomerForm[K]) {
+    setForm((current) => ({ ...current, [field]: value }));
+    setSuccess(false);
+  }
+
+  function textField(field: keyof CustomerForm, label: string, placeholder = '') {
+    return (
+      <label>
+        <span className="social-label">{label}</span>
+        <input value={String(form[field] ?? '')} onChange={(event) => setField(field, event.target.value as CustomerForm[typeof field])} placeholder={placeholder} />
+      </label>
+    );
+  }
+
+  async function handleSave(event: React.FormEvent) {
+    event.preventDefault();
+    const creditLimit = Number(form.credit_limit ?? 0);
+    if (!form.name?.trim()) { setError('Nome ou razão social é obrigatório.'); return; }
+    if (!Number.isFinite(creditLimit) || creditLimit < 0) { setError('O limite de crédito não pode ser negativo.'); return; }
+    setIsSaving(true); setError(null); setSuccess(false);
     try {
-      await onUpdate(customer.id, { credit_limit: parsedCreditLimit });
+      await onUpdate(customer.id, { ...form, name: form.name.trim(), credit_limit: creditLimit, photo_file: photoFile, remove_photo: removePhoto });
+      setSuccess(true);
       onClose();
-    } catch (error) {
-      setCreditLimitError(error instanceof Error ? error.message : 'Não foi possível salvar o limite de crédito.');
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Não foi possível salvar o cliente.');
     } finally {
-      setIsSavingCreditLimit(false);
+      setIsSaving(false);
     }
   }
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-content customer-profile-modal" onClick={(e) => e.stopPropagation()}>
+      <form className="modal-content customer-profile-modal" onClick={(event) => event.stopPropagation()} onSubmit={handleSave}>
         <div className="modal-header">
-          <h3>Perfil do Cliente — {customer.name}</h3>
-          <button onClick={onClose}><X size={18} /></button>
+          <h3>Perfil do Cliente - {customer.name}</h3>
+          <button type="button" onClick={onClose}><X size={18} /></button>
         </div>
-
-        {/* Avatar + basic info */}
         <div className="customer-profile-header">
           <div className="customer-avatar">
-            <Camera size={24} />
-            <small>Foto</small>
+            {photoFile ? <img src={URL.createObjectURL(photoFile)} alt="Prévia da foto" /> : <Camera size={24} />}
+            <small>{photoFile ? 'Nova foto' : 'Foto'}</small>
+            <input type="file" accept="image/*" onChange={(event) => { setPhotoFile(event.target.files?.[0] ?? null); setRemovePhoto(false); }} />
+            {customer.photo_url && <button type="button" onClick={() => { setRemovePhoto(true); setPhotoFile(null); }}>Remover</button>}
           </div>
           <div className="customer-profile-summary">
-            <strong>{customer.name}</strong>
-            <small>
-              {customer.document
-                ? (customer.person_type === 'PJ' || normalizeDocument(customer.document).length > 11
-                    ? formatCnpj(customer.document)
-                    : formatCpf(customer.document))
-                : '—'}{' '}
-              • {customer.customer_type === 'atacado' ? 'Atacado' : 'Varejo'}
-            </small>
+            <strong>{form.name}</strong>
+            <small>{form.document || 'Sem documento'} - {form.customer_group ?? 'Varejo'}</small>
             <small>Total em compras: {money.format(totalPurchases)} ({customerSales.length} pedidos)</small>
           </div>
         </div>
-
-        {/* Tabs */}
         <div className="subtab-bar customer-profile-tabs">
-          {tabs.map(({ id, label, icon: Icon }) => (
-            <button key={id} className={`subtab ${tab === id ? 'active' : ''}`} onClick={() => setTab(id)}>
-              <Icon size={14} /> {label}
-            </button>
-          ))}
+          {tabs.map(({ id, label, icon: Icon }) => <button type="button" key={id} className={`subtab ${tab === id ? 'active' : ''}`} onClick={() => setTab(id)}><Icon size={14} /> {label}</button>)}
         </div>
-
         <div className="customer-profile-body">
-          {tab === 'cadastrais' && (
-            <div className="rma-form">
-              <div className="fiscal-doctype-toggle">
-                <button type="button" className={`price-toggle-btn ${docType === 'pf' ? 'active' : ''}`} onClick={() => setDocType('pf')}>
-                  <UserCircle size={15} /> Pessoa Física (PF)
-                </button>
-                <button type="button" className={`price-toggle-btn ${docType === 'pj' ? 'active' : ''}`} onClick={() => setDocType('pj')}>
-                  <Building2 size={15} /> Pessoa Jurídica (PJ)
-                </button>
-              </div>
-              <div className="form-row">
-                <label>
-                  <span className="social-label"><UserCircle size={14} /> {docType === 'pf' ? 'Nome Completo' : 'Razão Social'}</span>
-                  <input defaultValue={customer.name} placeholder="Nome / Razão Social" />
-                </label>
-                <label>
-                  <span className="social-label"><Building2 size={14} /> Nome Fantasia</span>
-                  <input placeholder="Nome Fantasia (opcional)" />
-                </label>
-              </div>
-              <div className="form-row">
-                <label>
-                  <span className="social-label"><IdCard size={14} /> {docType === 'pf' ? 'CPF' : 'CNPJ'}</span>
-                  <input
-                    defaultValue={
-                      customer.document
-                        ? (docType === 'pj' ? formatCnpj(customer.document) : formatCpf(customer.document))
-                        : ''
-                    }
-                    placeholder={docType === 'pf' ? '000.000.000-00' : '00.000.000/0000-00'}
-                  />
-                </label>
-                <label>
-                  <span className="social-label"><IdCard size={14} /> Identidade RG</span>
-                  <input placeholder="00.000.000-0" />
-                </label>
-              </div>
-              <div className="form-row">
-                <label>
-                  <span className="social-label"><FileText size={14} /> Inscrição Municipal</span>
-                  <input placeholder="0000000" />
-                </label>
-                {docType === 'pj' ? (
-                  <label>
-                    <span className="social-label"><FileText size={14} /> Inscrição Estadual (IE)</span>
-                    <input
-                      value={ieIsento ? 'ISENTO' : ''}
-                      onChange={(e) => { if (!ieIsento) {} }}
-                      placeholder="000.000.000.000"
-                      disabled={ieIsento}
-                    />
-                  </label>
-                ) : (
-                  <label>
-                    <span className="social-label"><FileText size={14} /> Inscrição Estadual (IE)</span>
-                    <input placeholder="000.000.000.000" />
-                  </label>
-                )}
-                <label>
-                  <span className="social-label"><FileText size={14} /> SUFRAMA ID</span>
-                  <input placeholder="00000000" />
-                </label>
-              </div>
-              {docType === 'pj' && (
-                <label className="checkbox-label fiscal-isento-label">
-                  <input type="checkbox" checked={ieIsento} onChange={(e) => setIeIsento(e.target.checked)} />
-                  Isento de Inscrição Estadual
-                </label>
-              )}
-              <div className="form-row">
-                <label>
-                  <span className="social-label"><UserCircle size={14} /> Sexo</span>
-                  <select defaultValue="">
-                    <option value="">Selecione...</option>
-                    <option value="M">Masculino</option>
-                    <option value="F">Feminino</option>
-                    <option value="O">Outro</option>
-                  </select>
-                </label>
-                <label>
-                  <span className="social-label"><UserCircle size={14} /> Data de Nascimento</span>
-                  <input type="date" defaultValue={customer.birthday ?? ''} />
-                </label>
-              </div>
+          {tab === 'cadastrais' && <div className="rma-form">
+            <div className="form-row">
+              {textField('name', form.person_type === 'PJ' ? 'Razão Social' : 'Nome Completo', 'Nome / Razão Social')}
+              {textField('trade_name', 'Nome Fantasia', 'Nome Fantasia')}
             </div>
-          )}
-
-          {tab === 'enderecos' && (
-            <div className="rma-form">
-              <div className="form-row">
-                <label>
-                  <span className="social-label"><MapPin size={14} /> Logradouro</span>
-                  <input defaultValue={customer.address ?? ''} placeholder="Rua / Avenida" />
-                </label>
-                <label>
-                  <span className="social-label"><MapPin size={14} /> Número</span>
-                  <input placeholder="Nº" />
-                </label>
-              </div>
-              <div className="form-row">
-                <label>
-                  <span className="social-label"><MapPin size={14} /> Bairro</span>
-                  <input defaultValue={customer.neighborhood ?? ''} placeholder="Bairro" />
-                </label>
-                <label>
-                  <span className="social-label"><MapPin size={14} /> CEP</span>
-                  <input placeholder="00000-000" />
-                </label>
-              </div>
-              <div className="form-row">
-                <label>
-                  <span className="social-label"><MapPin size={14} /> UF</span>
-                  <select defaultValue="AM">
-                    <option value="AC">AC</option><option value="AL">AL</option><option value="AP">AP</option>
-                    <option value="AM">AM</option><option value="BA">BA</option><option value="CE">CE</option>
-                    <option value="DF">DF</option><option value="ES">ES</option><option value="GO">GO</option>
-                    <option value="MA">MA</option><option value="MT">MT</option><option value="MS">MS</option>
-                    <option value="MG">MG</option><option value="PA">PA</option><option value="PB">PB</option>
-                    <option value="PR">PR</option><option value="PE">PE</option><option value="PI">PI</option>
-                    <option value="RJ">RJ</option><option value="RN">RN</option><option value="RS">RS</option>
-                    <option value="RO">RO</option><option value="RR">RR</option><option value="SC">SC</option>
-                    <option value="SP">SP</option><option value="SE">SE</option><option value="TO">TO</option>
-                  </select>
-                </label>
-                <label>
-                  <span className="social-label"><MapPin size={14} /> Cidade</span>
-                  <input defaultValue={customer.city ?? ''} placeholder="Manaus" />
-                </label>
-              </div>
-              <div className="form-row">
-                <label>
-                  <span className="social-label"><MapPin size={14} /> Complemento</span>
-                  <input placeholder="Apto, casa, etc." />
-                </label>
-                <label>
-                  <span className="social-label"><MapPin size={14} /> Ponto de Referência</span>
-                  <input placeholder="Próximo a..." />
-                </label>
-              </div>
-              <label>
-                <span className="social-label"><MapPin size={14} /> País</span>
-                <select defaultValue="BRASIL">
-                  <option value="BRASIL">BRASIL</option>
-                </select>
-              </label>
+            <div className="form-row">
+              <label><span className="social-label">Tipo de Pessoa</span><select value={form.person_type ?? 'PF'} onChange={(event) => setField('person_type', event.target.value as PartnerCustomer['person_type'])}><option value="PF">Pessoa Física</option><option value="PJ">Pessoa Jurídica</option></select></label>
+              {textField('document', form.person_type === 'PJ' ? 'CNPJ' : 'CPF', 'Documento')}
+              {textField('rg', 'RG', 'Identidade')}
             </div>
-          )}
-
-          {tab === 'observacoes' && (
-            <div className="rma-form">
-              <label>
-                <span className="social-label"><FileText size={14} /> Observações do Cliente</span>
-                <textarea defaultValue={customer.notes ?? ''} placeholder="Notas gerais sobre o cliente..." rows={4} />
-              </label>
-              <label>
-                <span className="social-label"><FileText size={14} /> Aparelho / Modelo</span>
-                <input defaultValue={customer.device_model ?? ''} placeholder="Ex: iPhone 11 — bateria" />
-              </label>
+            <div className="form-row">
+              {textField('municipal_registration', 'Inscrição Municipal')}
+              <label><span className="social-label">Inscrição Estadual</span><input value={form.ie_isento ? 'ISENTO' : String(form.state_registration ?? '')} disabled={Boolean(form.ie_isento)} onChange={(event) => setField('state_registration', event.target.value)} /></label>
+              {textField('suframa_id', 'SUFRAMA ID')}
             </div>
-          )}
-
-          {tab === 'financeiros' && (
-            <div className="rma-form">
-              <div className="form-row">
-                <label>
-                  <span className="social-label"><Wallet size={14} /> Grupo de Clientes</span>
-                  <select defaultValue="varejo">
-                    <option value="varejo">Varejo</option>
-                    <option value="atacado">Atacado</option>
-                    <option value="premium">Premium</option>
-                  </select>
-                </label>
-                <label>
-                  <span className="social-label"><UserCheck size={14} /> Vendedor Responsável</span>
-                  <select defaultValue="">
-                    <option value="">Selecione...</option>
-                  </select>
-                </label>
-              </div>
-              <div className="form-row">
-                <label>
-                  <span className="social-label"><Wallet size={14} /> Tabela de Preços Padrão</span>
-                  <select defaultValue="varejo">
-                    <option value="varejo">Varejo</option>
-                    <option value="atacado">Atacado</option>
-                  </select>
-                </label>
-                <label>
-                  <span className="social-label"><Wallet size={14} /> Venda em Crediário</span>
-                  <select value={allowCrediario ? 'sim' : 'nao'} onChange={(e) => setAllowCrediario(e.target.value === 'sim')}>
-                    <option value="nao">Não Permitido</option>
-                    <option value="sim">Permitido</option>
-                  </select>
-                </label>
-              </div>
-              <label>
-                <span className="social-label"><Wallet size={14} /> Limite de Crédito (R$)</span>
-                <input type="number" min="0" step="0.01" value={creditLimit} onChange={(e) => setCreditLimit(e.target.value)} placeholder="0,00" />
-              </label>
-              {creditLimitError && <p className="otp-error-msg">{creditLimitError}</p>}
-              <div className="customer-compliance-grid">
-                <label className="checkbox-label">
-                  <input type="checkbox" checked={convenio} onChange={(e) => setConvenio(e.target.checked)} />
-                  Ativar Vendas em Convênio
-                </label>
-                <label className="checkbox-label">
-                  <input type="checkbox" checked={simplesNacional} onChange={(e) => setSimplesNacional(e.target.checked)} />
-                  Cliente optante pelo Simples Nacional
-                </label>
-                <label className="checkbox-label">
-                  <input type="checkbox" checked={reterISS} onChange={(e) => setReterISS(e.target.checked)} />
-                  Reter ISS
-                </label>
-                <label className="checkbox-label">
-                  <input type="checkbox" checked={ativo} onChange={(e) => setAtivo(e.target.checked)} />
-                  Este Cliente está ativo
-                </label>
-                <label className="checkbox-label">
-                  <input type="checkbox" checked={adminLoja} onChange={(e) => setAdminLoja(e.target.checked)} />
-                  Este Cliente é Administrador da Loja Virtual
-                </label>
-              </div>
+            <label className="checkbox-label"><input type="checkbox" checked={Boolean(form.ie_isento)} onChange={(event) => setField('ie_isento', event.target.checked)} /> Isento de Inscrição Estadual</label>
+            <div className="form-row">
+              <label><span className="social-label">Sexo</span><select value={form.sex ?? ''} onChange={(event) => setField('sex', event.target.value)}><option value="">Selecione...</option><option value="M">Masculino</option><option value="F">Feminino</option><option value="O">Outro</option></select></label>
+              <label><span className="social-label">Data de Nascimento</span><input type="date" value={form.birthday ?? ''} onChange={(event) => setField('birthday', event.target.value)} /></label>
             </div>
-          )}
-
-          {tab === 'contatos' && (
-            <div className="rma-form">
-              <div className="form-row">
-                <label>
-                  <span className="social-label"><Phone size={14} /> Celular Principal</span>
-                  <input defaultValue={customer.phone ?? ''} placeholder="(92) 99999-9999" />
-                </label>
-                <label>
-                  <span className="social-label"><Phone size={14} /> Fone Comercial 1</span>
-                  <input placeholder="(92) 3333-3333" />
-                </label>
-              </div>
-              <div className="form-row">
-                <label>
-                  <span className="social-label"><Phone size={14} /> Fone Comercial 2</span>
-                  <input placeholder="(92) 3333-3334" />
-                </label>
-                <label>
-                  <span className="social-label"><Mail size={14} /> E-mail</span>
-                  <input type="email" defaultValue={customer.email ?? ''} placeholder="cliente@email.com" />
-                </label>
-              </div>
+          </div>}
+          {tab === 'enderecos' && <div className="rma-form">
+            <div className="form-row">{textField('address', 'Logradouro', 'Rua / Avenida')}{textField('address_number', 'Número', 'Nº')}</div>
+            <div className="form-row">{textField('zip_code', 'CEP', '00000-000')}{textField('neighborhood', 'Bairro', 'Bairro')}</div>
+            <div className="form-row">{textField('city', 'Cidade', 'Cidade')} {textField('state', 'UF', 'UF')}</div>
+            <div className="form-row">{textField('complement', 'Complemento', 'Apto, casa, sala')}{textField('reference_point', 'Ponto de Referência', 'Próximo a...')}</div>
+            {textField('country', 'País', 'Brasil')}
+          </div>}
+          {tab === 'observacoes' && <div className="rma-form">
+            <label><span className="social-label">Observações do Cliente</span><textarea value={form.notes ?? ''} onChange={(event) => setField('notes', event.target.value)} rows={4} placeholder="Notas gerais sobre o cliente..." /></label>
+            {textField('device_model', 'Aparelho / Modelo', 'Ex: iPhone 11')}
+          </div>}
+          {tab === 'financeiros' && <div className="rma-form">
+            <div className="form-row">
+              <label><span className="social-label">Grupo de Clientes</span><select value={form.customer_group ?? 'Varejo'} onChange={(event) => setField('customer_group', event.target.value as CustomerForm['customer_group'])}><option value="Varejo">Varejo</option><option value="Atacado">Atacado</option><option value="Premium">Premium</option></select></label>
+              <label><span className="social-label">Tipo usado pelo PDV</span><select value={form.customer_type ?? 'varejo'} onChange={(event) => setField('customer_type', event.target.value as CustomerForm['customer_type'])}><option value="varejo">Varejo</option><option value="atacado">Atacado</option></select></label>
             </div>
-          )}
-
-          {tab === 'historico' && (
-            <div className="customer-history-tab">
-              {customerSales.length === 0 ? (
-                <div className="fiscal-empty-state" style={{ padding: '24px' }}>
-                  <History size={28} />
-                  <p>Nenhuma compra registrada para este cliente.</p>
-                </div>
-              ) : (
-                <div className="stock-table-wrap">
-                  <table className="rma-table customer-history-table">
-                    <thead>
-                      <tr>
-                        <th>Data da Compra</th>
-                        <th>Nº do Pedido / Nota Fiscal</th>
-                        <th>Tipo</th>
-                        <th>Formas de Pagamento</th>
-                        <th>Tabela</th>
-                        <th>Atendimento</th>
-                        <th>Valor Total (R$)</th>
-                        <th>Status</th>
-                        <th>Detalhes</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(customerSales || []).map((s) => {
-                        if (!s) return null;
-                        const isExpanded = expandedSaleId === s.id;
-                        const saleTotal = Number(s.total) || 0;
-                        const docType = s.status === 'concluida' ? (saleTotal <= 1000 ? 'NFC-e' : 'NF-e') : 'Pré-venda';
-                        const statusLabel = s.status === 'concluida' ? 'Concluída' : s.status === 'cancelada' ? 'Cancelada' : s.status === 'devolucao' ? 'Devolução' : 'Em Aberto';
-                        const statusColor = s.status === 'concluida' ? '#5bbc87' : s.status === 'cancelada' ? '#e3829b' : s.status === 'devolucao' ? '#e6a06d' : '#5cb5f1';
-                        const saleIdStr = s.id ? String(s.id) : '';
-                        const displaySaleId = saleIdStr ? (saleIdStr.length > 8 ? saleIdStr.slice(0, 8) : saleIdStr) : '—';
-
-                        return (
-                          <React.Fragment key={s.id}>
-                            <tr className={isExpanded ? 'expanded-row' : ''}>
-                              <td>{s.created_at ? new Date(s.created_at).toLocaleDateString('pt-BR') : '—'}</td>
-                              <td><strong>#{displaySaleId.toUpperCase()}</strong></td>
-                              <td><span className="rma-status-badge" style={{ color: statusColor, borderColor: statusColor }}>{docType}</span></td>
-                              <td>{s.payment_method ?? '—'}</td>
-                              <td>{s.customer_type === 'atacado' ? 'Atacado' : 'Varejo'}</td>
-                              <td>{s.delivery_type === 'entrega' ? 'Entrega' : s.delivery_type === 'retirada' ? 'Retirada' : 'Balcão'}</td>
-                              <td><strong>{money.format(saleTotal)}</strong></td>
-                              <td><span className="rma-status-badge" style={{ color: statusColor, borderColor: statusColor }}>{statusLabel}</span></td>
-                              <td>
-                                <button className="rma-advance-btn" onClick={() => setExpandedSaleId(isExpanded ? null : s.id)} title={isExpanded ? 'Recolher' : 'Ver itens'}>
-                                  {isExpanded ? <X size={14} /> : <History size={14} />}
-                                </button>
-                              </td>
-                            </tr>
-                            {isExpanded && (
-                              <tr className="expanded-detail-row">
-                                <td colSpan={9}>
-                                  <div className="sale-detail-content">
-                                    <div className="sale-detail-items">
-                                      <h4>Itens Comprados</h4>
-                                      <table className="rma-table sale-detail-inner-table">
-                                        <thead><tr><th>Produto</th><th>Qtd</th><th>Preço Unit.</th><th>Subtotal</th></tr></thead>
-                                        <tbody>
-                                          {(s.items || []).map((item, idx) => (
-                                            <tr key={idx}>
-                                              <td>{item.name}</td>
-                                              <td>{item.quantity}</td>
-                                              <td>{money.format(item.unit_price)}</td>
-                                              <td><strong>{money.format(item.unit_price * item.quantity)}</strong></td>
-                                            </tr>
-                                          ))}
-                                        </tbody>
-                                      </table>
-                                    </div>
-                                    <div className="sale-detail-actions">
-                                      <h4>Reenviar Documento Fiscal</h4>
-                                      <div className="row-action-group">
-                                        <button className="rma-advance-btn" title="Imprimir">
-                                          <Printer size={14} /> Impressora
-                                        </button>
-                                        <button className="rma-advance-btn" title="Enviar por E-mail">
-                                          <Mail size={14} /> E-mail
-                                        </button>
-                                        <button className="rma-advance-btn whatsapp-btn" title="Enviar por WhatsApp">
-                                          <MessageCircle size={14} /> WhatsApp
-                                        </button>
-                                      </div>
-                                    </div>
-                                  </div>
-                                </td>
-                              </tr>
-                            )}
-                          </React.Fragment>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+            <div className="form-row">
+              <label><span className="social-label">Vendedor Responsável</span><select value={form.salesperson_id ?? ''} onChange={(event) => setField('salesperson_id', event.target.value || null)}><option value="">Nenhum</option>{salespeople.filter((person) => !person.branch_id || person.branch_id === form.branch_id).map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}</select></label>
+              <label><span className="social-label">Tabela de Preços</span><select value={form.price_table ?? 'varejo'} onChange={(event) => setField('price_table', event.target.value)}><option value="varejo">Varejo</option><option value="atacado">Atacado</option><option value="premium">Premium</option></select></label>
             </div>
-          )}
+            <div className="form-row"><label><span className="social-label">Limite de Crédito (R$)</span><input type="number" min="0" step="0.01" value={String(form.credit_limit ?? 0)} onChange={(event) => setField('credit_limit', Number(event.target.value))} /></label><label><span className="social-label">Venda em Crediário</span><select value={form.allow_credit ? 'sim' : 'nao'} onChange={(event) => setField('allow_credit', event.target.value === 'sim')}><option value="nao">Não Permitido</option><option value="sim">Permitido</option></select></label></div>
+            <div className="customer-compliance-grid">
+              <label className="checkbox-label"><input type="checkbox" checked={Boolean(form.convenio)} onChange={(event) => setField('convenio', event.target.checked)} /> Ativar Vendas em Convênio</label>
+              <label className="checkbox-label"><input type="checkbox" checked={Boolean(form.simples_nacional)} onChange={(event) => setField('simples_nacional', event.target.checked)} /> Simples Nacional</label>
+              <label className="checkbox-label"><input type="checkbox" checked={Boolean(form.reter_iss)} onChange={(event) => setField('reter_iss', event.target.checked)} /> Reter ISS</label>
+              <label className="checkbox-label"><input type="checkbox" checked={form.is_active !== false} onChange={(event) => setField('is_active', event.target.checked)} /> Cliente ativo</label>
+              <label className="checkbox-label"><input type="checkbox" checked={Boolean(form.is_store_admin)} onChange={(event) => setField('is_store_admin', event.target.checked)} /> Administrador da Loja Virtual</label>
+            </div>
+          </div>}
+          {tab === 'contatos' && <div className="rma-form"><div className="form-row">{textField('phone', 'Celular Principal', '(92) 99999-9999')}{textField('phone_commercial_1', 'Fone Comercial 1')}</div><div className="form-row">{textField('phone_commercial_2', 'Fone Comercial 2')}<label><span className="social-label">E-mail</span><input type="email" value={form.email ?? ''} onChange={(event) => setField('email', event.target.value)} /></label></div></div>}
+          {tab === 'historico' && <div className="customer-history-tab"><p>Total em compras: <strong>{money.format(totalPurchases)}</strong></p><div className="stock-table-wrap"><table className="rma-table"><thead><tr><th>Data</th><th>Pedido</th><th>Total</th><th>Status</th></tr></thead><tbody>{customerSales.length === 0 ? <tr><td colSpan={4} className="empty-row">Nenhuma compra registrada.</td></tr> : customerSales.map((sale) => <tr key={sale.id}><td>{new Date(sale.created_at).toLocaleDateString('pt-BR')}</td><td>#{sale.id.slice(0, 8).toUpperCase()}</td><td>{money.format(sale.total)}</td><td>{sale.status}</td></tr>)}</tbody></table></div></div>}
         </div>
-
-        <div className="fiscal-modal-actions">
-          <button className="module-submit-btn" onClick={saveCreditLimit} disabled={isSavingCreditLimit}>
-            <Save size={16} /> {isSavingCreditLimit ? 'Salvando...' : 'Salvar Alterações'}
-          </button>
-        </div>
-      </div>
+        {error && <p className="otp-error-msg">{error}</p>}
+        {success && <p style={{ color: '#15803D' }}>Cliente salvo com sucesso.</p>}
+        <div className="fiscal-modal-actions"><button type="submit" className="module-submit-btn" disabled={isSaving}><Save size={16} /> {isSaving ? 'Salvando...' : 'Salvar Alterações'}</button></div>
+      </form>
     </div>
   );
 }
@@ -1627,13 +1329,13 @@ const roleLabels: Record<SalespersonRole, string> = {
 };
 
 const roleColors: Record<SalespersonRole, string> = {
-  administrador: '#5bbc87',
-  gerente: '#c4a44a',
-  caixa: '#5cb5f1',
-  vendedor: '#55adf1',
-  tecnico: '#e6a06d',
-  atendente: '#5fd0a8',
-  logistica: '#a78bfa',
+  administrador: '#15803D',
+  gerente: '#A16207',
+  caixa: '#1D4ED8',
+  vendedor: '#2563EB',
+  tecnico: '#B45309',
+  atendente: '#0F766E',
+  logistica: '#6D28D9',
 };
 
 function SalespeopleSubTab({ salespeople, branches, onAdd, onUpdate, onDelete }: {
@@ -1808,7 +1510,7 @@ function SalespeopleSubTab({ salespeople, branches, onAdd, onUpdate, onDelete }:
                             {roleLabels[s.role]}
                           </span>
                         </td>
-                        <td>{spBranch ? spBranch.name : <small style={{ color: '#889eaf' }}>Todas as filiais</small>}</td>
+                        <td>{spBranch ? spBranch.name : <small style={{ color: '#475569' }}>Todas as filiais</small>}</td>
                         <td>{s.commission_rate}%</td>
                         <td>{s.pin ? '****' : '—'}</td>
                         <td>{s.active ?? s.is_active ? 'Ativo' : 'Inativo'}</td>
@@ -1893,7 +1595,7 @@ function ReplenishmentSubTab({ products, sales }: {
   const classB = abcAnalysis.filter((p) => p.abcClass === 'B');
   const classC = abcAnalysis.filter((p) => p.abcClass === 'C');
 
-  const abcColors: Record<string, string> = { A: '#5bbc87', B: '#e6a06d', C: '#6e8799' };
+  const abcColors: Record<string, string> = { A: '#15803D', B: '#B45309', C: '#475569' };
 
   return (
     <div>
@@ -1922,12 +1624,12 @@ function ReplenishmentSubTab({ products, sales }: {
         </div>
         <div className="report-card">
           <small><Activity size={13} /> Itens Classe B (Médio Giro)</small>
-          <strong style={{ color: '#e6a06d' }}>{classB.length}</strong>
+          <strong style={{ color: '#B45309' }}>{classB.length}</strong>
           <small>20% da receita</small>
         </div>
         <div className="report-card">
           <small><Package size={13} /> Itens Classe C (Baixo Giro)</small>
-          <strong style={{ color: '#6e8799' }}>{classC.length}</strong>
+          <strong style={{ color: '#475569' }}>{classC.length}</strong>
           <small>10% da receita</small>
         </div>
         <div className="report-card">
@@ -2008,11 +1710,11 @@ function ReplenishmentSubTab({ products, sales }: {
                   <td>{p.stock}</td>
                   <td>
                     {p.stock === 0 ? (
-                      <span className="rma-status-badge" style={{ color: '#e3829b', borderColor: '#e3829b' }}>Sem estoque</span>
+                      <span className="rma-status-badge" style={{ color: '#B91C1C', borderColor: '#B91C1C' }}>Sem estoque</span>
                     ) : p.stock <= (p.minStock || 0) ? (
-                      <span className="rma-status-badge" style={{ color: '#e6a06d', borderColor: '#e6a06d' }}>Baixo</span>
+                      <span className="rma-status-badge" style={{ color: '#B45309', borderColor: '#B45309' }}>Baixo</span>
                     ) : (
-                      <span className="rma-status-badge" style={{ color: '#5bbc87', borderColor: '#5bbc87' }}>OK</span>
+                      <span className="rma-status-badge" style={{ color: '#15803D', borderColor: '#15803D' }}>OK</span>
                     )}
                   </td>
                 </tr>

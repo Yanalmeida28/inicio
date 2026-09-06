@@ -31,7 +31,8 @@ type PartnerData = {
   updateProduct: (id: string, updates: Partial<PartnerProduct>, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
   deleteProduct: (id: string, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
   addCustomer: (customer: Omit<PartnerCustomer, 'id' | 'user_id' | 'created_at'>, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
-  updateCustomer: (id: string, updates: Partial<PartnerCustomer>, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
+  updateCustomer: (id: string, updates: PartnerCustomerUpdate, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
+  refreshCustomer: (id: string) => Promise<PartnerCustomer>;
   deleteCustomer: (id: string, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
   createSale: (sale: SalePayload, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
   createPreSale: (sale: SalePayload, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
@@ -58,6 +59,86 @@ type PartnerData = {
   deleteModifier: (id: string) => Promise<void>;
   payInvoice: (id: string) => Promise<void>;
 };
+
+export type PartnerCustomerUpdate = Partial<PartnerCustomer> & {
+  photo_file?: File | null;
+  remove_photo?: boolean;
+};
+
+const customerRpcFields = (customer: PartnerCustomer) => ({
+  p_branch_id: customer.branch_id ?? null,
+  p_name: customer.name,
+  p_trade_name: customer.trade_name ?? null,
+  p_document: customer.document ?? null,
+  p_person_type: customer.person_type ?? null,
+  p_rg: customer.rg ?? null,
+  p_municipal_registration: customer.municipal_registration ?? null,
+  p_state_registration: customer.state_registration ?? null,
+  p_ie_isento: customer.ie_isento ?? false,
+  p_suframa_id: customer.suframa_id ?? null,
+  p_sex: customer.sex ?? null,
+  p_birthday: customer.birthday ?? null,
+  p_phone: customer.phone ?? null,
+  p_phone_commercial_1: customer.phone_commercial_1 ?? null,
+  p_phone_commercial_2: customer.phone_commercial_2 ?? null,
+  p_email: customer.email ?? null,
+  p_address: customer.address ?? null,
+  p_address_number: customer.address_number ?? null,
+  p_zip_code: customer.zip_code ?? null,
+  p_neighborhood: customer.neighborhood ?? null,
+  p_city: customer.city ?? null,
+  p_state: customer.state ?? null,
+  p_complement: customer.complement ?? null,
+  p_reference_point: customer.reference_point ?? null,
+  p_country: customer.country ?? null,
+  p_notes: customer.notes ?? null,
+  p_device_model: customer.device_model ?? null,
+  p_customer_group: customer.customer_group ?? 'Varejo',
+  p_price_table: customer.price_table ?? 'varejo',
+  p_customer_type: customer.customer_type ?? 'varejo',
+  p_credit_limit: customer.credit_limit ?? 0,
+  p_allow_credit: customer.allow_credit ?? false,
+  p_convenio: customer.convenio ?? false,
+  p_simples_nacional: customer.simples_nacional ?? false,
+  p_reter_iss: customer.reter_iss ?? false,
+  p_is_active: customer.is_active ?? true,
+  p_is_store_admin: customer.is_store_admin ?? false,
+  p_photo_url: customer.photo_url ?? null,
+});
+
+const customerRpcParameterNames = [
+  'p_salesperson_id', 'p_pin', 'p_customer_id', 'p_branch_id', 'p_name', 'p_trade_name',
+  'p_document', 'p_person_type', 'p_rg', 'p_municipal_registration', 'p_state_registration',
+  'p_ie_isento', 'p_suframa_id', 'p_sex', 'p_birthday', 'p_phone', 'p_phone_commercial_1',
+  'p_phone_commercial_2', 'p_email', 'p_address', 'p_address_number', 'p_zip_code',
+  'p_neighborhood', 'p_city', 'p_state', 'p_complement', 'p_reference_point', 'p_country',
+  'p_notes', 'p_device_model', 'p_customer_group', 'p_price_table',
+  'p_customer_type', 'p_credit_limit', 'p_allow_credit', 'p_convenio', 'p_simples_nacional',
+  'p_reter_iss', 'p_is_active', 'p_is_store_admin', 'p_photo_url',
+] as const;
+
+function validateCustomerRpcPayload(payload: Record<string, unknown>) {
+  const missing = customerRpcParameterNames.filter((name) => !(name in payload) || payload[name] === undefined);
+  if (missing.length > 0) {
+    throw new Error(`Payload de cliente incompleto: ${missing.join(', ')}`);
+  }
+}
+
+function customerMutationPayload(
+  customer: PartnerCustomer,
+  customerId: string,
+  operatorId: string | null | undefined,
+  operatorPin: string | null | undefined,
+) {
+  const payload = {
+    p_salesperson_id: customer.salesperson_id ?? operatorId ?? null,
+    p_pin: operatorPin ?? null,
+    p_customer_id: customerId,
+    ...customerRpcFields(customer),
+  };
+  validateCustomerRpcPayload(payload);
+  return payload;
+}
 
 type SalePayload = {
   customer_id: string | null;
@@ -274,25 +355,7 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
     }
     const nc: PartnerCustomer = { ...customer, document: normalizedDocument, id: crypto.randomUUID(), user_id: identity.companyUserId, created_at: new Date().toISOString() };
     if (isSupabaseConfigured && supabase) {
-      const { error: rpcErr } = await supabase.rpc('execute_partner_customer_mutation', {
-        p_salesperson_id: operatorId ?? null,
-        p_pin: operatorPin ?? null,
-        p_customer_id: nc.id,
-        p_branch_id: nc.branch_id,
-        p_name: nc.name,
-        p_document: nc.document ?? null,
-        p_person_type: nc.person_type ?? null,
-        p_phone: nc.phone ?? null,
-        p_email: nc.email ?? null,
-        p_birthday: nc.birthday ?? null,
-        p_address: nc.address ?? null,
-        p_neighborhood: nc.neighborhood ?? null,
-        p_city: nc.city ?? null,
-        p_device_model: nc.device_model ?? null,
-        p_notes: nc.notes ?? null,
-        p_customer_type: nc.customer_type ?? 'varejo',
-        p_credit_limit: nc.credit_limit ?? 0,
-      });
+      const { error: rpcErr } = await supabase.rpc('execute_partner_customer_mutation', customerMutationPayload(nc, nc.id, operatorId, operatorPin));
       if (rpcErr) throw rpcErr;
     }
     setData((prev) => ({ ...prev, customers: [nc, ...prev.customers] }));
@@ -300,7 +363,7 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
 
   const updateCustomer = useCallback(async (
     id: string,
-    updates: Partial<PartnerCustomer>,
+    updates: PartnerCustomerUpdate,
     operatorId?: string | null,
     operatorPin?: string | null,
   ) => {
@@ -310,38 +373,84 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
     if (normalizedDocument && data.customers.some((item) => item.id !== id && normalizeDocument(item.document ?? '') === normalizedDocument)) {
       throw new Error('Já existe um cliente com este CPF/CNPJ neste lojista.');
     }
-    const normalizedUpdates = normalizedDocument === undefined ? updates : { ...updates, document: normalizedDocument };
+    const { photo_file: photoFile, remove_photo: removePhoto, ...persistedUpdates } = updates;
+    const normalizedUpdates = normalizedDocument === undefined
+      ? persistedUpdates
+      : { ...persistedUpdates, document: normalizedDocument };
     const currentCust = data.customers.find((customer) => customer.id === id);
     if (!currentCust) throw new Error('Cliente não encontrado no estado atual. Atualize a página e tente novamente.');
     const merged = { ...currentCust, ...normalizedUpdates };
     if (!merged.name) throw new Error('Nome do cliente é obrigatório.');
+    if ((merged.credit_limit ?? 0) < 0) throw new Error('O limite de crédito não pode ser negativo.');
+    if (merged.salesperson_id) {
+      const salesperson = data.salespeople.find((item) => item.id === merged.salesperson_id);
+      if (!salesperson || (salesperson.branch_id && salesperson.branch_id !== merged.branch_id)) {
+        throw new Error('Vendedor responsável inválido para a filial do cliente.');
+      }
+    }
+
+    let uploadedPhotoPath: string | null = null;
+    let authUserId: string | null = null;
     if (isSupabaseConfigured && supabase) {
-      const { error: rpcErr } = await supabase.rpc('execute_partner_customer_mutation', {
-        p_salesperson_id: operatorId ?? null,
-        p_pin: operatorPin ?? null,
-        p_customer_id: id,
-        p_branch_id: merged.branch_id ?? null,
-        p_name: merged.name,
-        p_document: merged.document ?? null,
-        p_person_type: merged.person_type ?? null,
-        p_phone: merged.phone ?? null,
-        p_email: merged.email ?? null,
-        p_birthday: merged.birthday ?? null,
-        p_address: merged.address ?? null,
-        p_neighborhood: merged.neighborhood ?? null,
-        p_city: merged.city ?? null,
-        p_device_model: merged.device_model ?? null,
-        p_notes: merged.notes ?? null,
-        p_customer_type: merged.customer_type ?? 'varejo',
-        p_credit_limit: merged.credit_limit ?? 0,
-      });
-      if (rpcErr) throw rpcErr;
+      if (photoFile || removePhoto) {
+        const { data: authUserData, error: authUserError } = await supabase.auth.getUser();
+        if (authUserError || !authUserData.user) throw new Error('Usuário autenticado não encontrado para enviar a foto.');
+        authUserId = authUserData.user.id;
+      }
+      if (photoFile) {
+        const extension = photoFile.name.split('.').pop()?.toLowerCase() || 'jpg';
+        const candidatePhotoPath = `${authUserId}/customers/${id}/${crypto.randomUUID()}.${extension}`;
+        const { data: uploadedObject, error: uploadError } = await supabase.storage
+          .from('customer-photos')
+          .upload(candidatePhotoPath, photoFile, { upsert: false, contentType: photoFile.type || 'image/jpeg' });
+        if (uploadError) throw new Error(`Não foi possível enviar a foto: ${uploadError.message}`);
+        uploadedPhotoPath = uploadedObject.path;
+        merged.photo_url = uploadedPhotoPath;
+      } else if (removePhoto) {
+        merged.photo_url = null;
+      }
+      const { error: rpcErr } = await supabase.rpc('execute_partner_customer_mutation', customerMutationPayload(merged, id, operatorId, operatorPin));
+      if (rpcErr) {
+        if (uploadedPhotoPath) await supabase.storage.from('customer-photos').remove([uploadedPhotoPath]);
+        throw rpcErr;
+      }
+      const previousPhotoBelongsToCustomer = currentCust.photo_url?.startsWith(`${authUserId}/customers/${id}/`) ?? false;
+      if ((photoFile || removePhoto) && currentCust.photo_url && currentCust.photo_url !== merged.photo_url && previousPhotoBelongsToCustomer) {
+        const { error: removeError } = await supabase.storage.from('customer-photos').remove([currentCust.photo_url]);
+        if (removeError) console.warn('Não foi possível remover a foto antiga do cliente.', removeError);
+      }
+      const { data: savedCustomer, error: reloadError } = await supabase
+        .from('partner_customers')
+        .select('*')
+        .eq('id', id)
+        .eq('user_id', identity?.companyUserId ?? currentCust.user_id)
+        .single();
+      if (reloadError) throw new Error(`Cliente salvo, mas não foi possível recarregar os dados: ${reloadError.message}`);
+      setData((prev) => ({
+        ...prev,
+        customers: prev.customers.map((customer) => customer.id === id ? savedCustomer as PartnerCustomer : customer),
+      }));
+      return;
     }
     setData((prev) => ({
       ...prev,
-      customers: prev.customers.map((customer) => customer.id === id ? { ...customer, ...normalizedUpdates } : customer),
+      customers: prev.customers.map((customer) => customer.id === id ? { ...customer, ...merged } : customer),
     }));
-  }, [data.customers]);
+  }, [data.customers, data.salespeople, identity]);
+
+  const refreshCustomer = useCallback(async (id: string) => {
+    if (!supabase || !identity) throw new Error('Sessão do cliente não disponível.');
+    const { data: savedCustomer, error } = await supabase
+      .from('partner_customers')
+      .select('*')
+      .eq('id', id)
+      .eq('user_id', identity.companyUserId)
+      .single();
+    if (error) throw new Error(`Não foi possível carregar os dados do cliente: ${error.message}`);
+    const customer = savedCustomer as PartnerCustomer;
+    setData((prev) => ({ ...prev, customers: prev.customers.map((item) => item.id === id ? customer : item) }));
+    return customer;
+  }, [identity]);
 
   const deleteCustomer = useCallback(async (
     id: string,
@@ -688,7 +797,7 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
     rmaRequests: data.rmaRequests, branches: data.branches, categories: data.categories,
     suppliers: data.suppliers, salespeople: data.salespeople, combos: data.combos,
     modifiers: data.modifiers, invoices: data.invoices, loading: data.loading,
-    addProduct, updateProduct, deleteProduct, addCustomer, updateCustomer, deleteCustomer, createSale,
+    addProduct, updateProduct, deleteProduct, addCustomer, updateCustomer, refreshCustomer, deleteCustomer, createSale,
     createPreSale, finalizePreSale,
     updateStoreSettings, updateProfile, createRma, updateRmaStatus, deleteRma, addBranch, updateBranch, deleteBranch,
     addCategory, deleteCategory, addSupplier, addSalesperson,

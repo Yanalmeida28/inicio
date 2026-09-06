@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Search, Trash2, ShoppingCart, Check, Printer, MessageCircle, Mail,
   ScanLine, X, Tag, QrCode, Ban, Lock, ClipboardList, Wallet, Lock as LockIcon,
@@ -150,6 +150,16 @@ function PdvCheckout({ products, customers, sales, salespeople, segment, selecte
   const [cancelTarget, setCancelTarget] = useState<PartnerSale | null>(null);
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState(false);
+  const [selectionNotice, setSelectionNotice] = useState<string | null>(null);
+  const [lastAddedId, setLastAddedId] = useState<string | null>(null);
+  const lastClickRef = useRef<{ id: string; time: number }>({ id: '', time: 0 });
+  const addedTimeoutRef = useRef<number | null>(null);
+  const noticeTimeoutRef = useRef<number | null>(null);
+
+  useEffect(() => () => {
+    if (addedTimeoutRef.current !== null) window.clearTimeout(addedTimeoutRef.current);
+    if (noticeTimeoutRef.current !== null) window.clearTimeout(noticeTimeoutRef.current);
+  }, []);
 
   const traceabilityLabel = segment === 'assistencia' ? 'IMEI / Selo' : 'Nº de Série';
 
@@ -186,16 +196,42 @@ function PdvCheckout({ products, customers, sales, salespeople, segment, selecte
   }
 
   const filtered = useMemo(() => {
-    const term = search.toLowerCase();
+    const term = search.trim().toLowerCase();
     return products.filter((p) => {
-      if (!selectedBranchId || p.branch_id !== selectedBranchId) return false;
+      // `products` já chega filtrado pela filial ativa (ou pela filial fixa do funcionário).
+      // Aplica o filtro local apenas quando uma filial específica está selecionada,
+      // mantendo a Visão Consolidada do proprietário funcional.
+      if (selectedBranchId && p.branch_id !== selectedBranchId) return false;
       return !term || p.name.toLowerCase().includes(term) || (p.sku ?? '').toLowerCase().includes(term);
     });
   }, [products, search, selectedBranchId]);
 
   const total = cart.reduce((sum, item) => sum + item.unit_price * item.quantity, 0);
 
+  function showSelectionNotice(message: string) {
+    setSelectionNotice(message);
+    if (noticeTimeoutRef.current !== null) window.clearTimeout(noticeTimeoutRef.current);
+    noticeTimeoutRef.current = window.setTimeout(() => setSelectionNotice(null), 3500);
+  }
+
   function addToCart(product: PartnerProduct) {
+    // Ignora disparo duplicado do mesmo toque/clique (ex.: double-tap acidental no mobile).
+    const now = Date.now();
+    if (lastClickRef.current.id === product.id && now - lastClickRef.current.time < 350) return;
+    lastClickRef.current = { id: product.id, time: now };
+
+    if (!product.is_service) {
+      const inCart = cart.find((i) => i.product_id === product.id)?.quantity ?? 0;
+      if (product.stock <= 0) {
+        showSelectionNotice(`"${product.name}" está sem estoque nesta filial.`);
+        return;
+      }
+      if (inCart + 1 > product.stock) {
+        showSelectionNotice(`Estoque insuficiente: apenas ${product.stock} un. de "${product.name}" disponíveis.`);
+        return;
+      }
+    }
+
     const price = getPriceForProduct(product, priceTable);
     setCart((prev) => {
       const existing = prev.find((i) => i.product_id === product.id);
@@ -204,9 +240,21 @@ function PdvCheckout({ products, customers, sales, salespeople, segment, selecte
     });
     setCompleted(false);
     setCheckoutError(null);
+    setSelectionNotice(null);
+    setLastAddedId(product.id);
+    if (addedTimeoutRef.current !== null) window.clearTimeout(addedTimeoutRef.current);
+    addedTimeoutRef.current = window.setTimeout(() => setLastAddedId(null), 1200);
   }
 
   function changeQty(id: string, delta: number) {
+    if (delta > 0) {
+      const product = products.find((p) => p.id === id);
+      const inCart = cart.find((i) => i.product_id === id)?.quantity ?? 0;
+      if (product && !product.is_service && inCart + 1 > product.stock) {
+        showSelectionNotice(`Estoque insuficiente: apenas ${product.stock} un. de "${product.name}" disponíveis.`);
+        return;
+      }
+    }
     setCart((prev) => prev.flatMap((i) => {
       if (i.product_id !== id) return [i];
       const q = i.quantity + delta;
@@ -284,27 +332,54 @@ function PdvCheckout({ products, customers, sales, salespeople, segment, selecte
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Buscar produto por nome ou SKU..."
+              aria-label="Buscar produto por nome ou SKU"
               autoFocus
             />
           </div>
 
+          {selectionNotice && (
+            <p className="pdv-selection-notice" role="alert">{selectionNotice}</p>
+          )}
+
           <div className="pdv-product-grid">
             {filtered.length === 0 ? (
-              <p className="empty-row">Nenhum produto encontrado.</p>
+              <p className="empty-row">
+                {search.trim()
+                  ? `Nenhum produto encontrado para "${search.trim()}".`
+                  : selectedBranchId
+                    ? 'Nenhum produto cadastrado nesta filial.'
+                    : 'Nenhum produto cadastrado.'}
+              </p>
             ) : (
-              filtered.map((p) => (
-                <button
-                  key={p.id}
-                  className="pdv-product-card"
-                  onClick={() => addToCart(p)}
-                  disabled={!p.is_service && p.stock <= 0}
-                >
-                  <strong>{p.name}</strong>
-                  <small>{p.sku ?? '—'}</small>
-                  <span>{money.format(getPriceForProduct(p, priceTable))}</span>
-                  {!p.is_service && <small className="pdv-stock">{p.stock} un.</small>}
-                </button>
-              ))
+              filtered.map((p) => {
+                const outOfStock = !p.is_service && p.stock <= 0;
+                const inCartQty = cart.find((i) => i.product_id === p.id)?.quantity ?? 0;
+                const justAdded = lastAddedId === p.id;
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    className={`pdv-product-card${justAdded ? ' added' : ''}`}
+                    onClick={() => addToCart(p)}
+                    disabled={outOfStock}
+                  >
+                    <strong>{p.name}</strong>
+                    {p.sku && <small>SKU: {p.sku}</small>}
+                    <span>{money.format(getPriceForProduct(p, priceTable))}</span>
+                    {!p.is_service && (
+                      <small className={`pdv-stock${outOfStock ? ' out' : ''}`}>
+                        {outOfStock ? 'Sem estoque' : `${p.stock} un. em estoque`}
+                      </small>
+                    )}
+                    {justAdded && (
+                      <em className="pdv-added-tag"><Check size={12} /> Adicionado ao carrinho</em>
+                    )}
+                    {!justAdded && inCartQty > 0 && (
+                      <em className="pdv-in-cart-tag">{inCartQty} no carrinho</em>
+                    )}
+                  </button>
+                );
+              })
             )}
           </div>
         </div>

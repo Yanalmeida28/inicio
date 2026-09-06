@@ -1167,9 +1167,19 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
 
 /* ---------- PDV ---------- */
 .partner-panel .pdv-layout { display: grid; gap: 18px; }
-.partner-panel .pdv-search-bar { background: var(--dh-surface); border: 1px solid var(--dh-border); border-radius: var(--dh-radius-sm); }
-.partner-panel .pdv-product-card { text-align: left; transition: border-color .15s, transform .1s; }
-.partner-panel .pdv-product-card:hover { border-color: var(--dh-blue) !important; transform: translateY(-1px); }
+.partner-panel .pdv-search-bar { background: var(--dh-surface); border: 1px solid var(--dh-border); border-radius: var(--dh-radius-sm); color: var(--dh-text-secondary); transition: border-color .15s, box-shadow .15s; }
+.partner-panel .pdv-search-bar:focus-within { border-color: var(--dh-blue); box-shadow: 0 0 0 3px var(--dh-blue-soft); }
+.partner-panel .pdv-search-bar input { border: none !important; background: transparent !important; box-shadow: none !important; padding: 0 !important; min-height: 0 !important; color: var(--dh-text) !important; }
+.partner-panel .pdv-search-bar input:focus { border: none !important; box-shadow: none !important; }
+.partner-panel .pdv-search-bar input::placeholder { color: #64748B !important; }
+.partner-panel .pdv-selection-notice { margin: 0; padding: 9px 12px; border: 1px solid rgba(180,83,9,.35); border-radius: var(--dh-radius-sm); background: var(--dh-warning-bg); color: var(--dh-warning); font-size: 12.5px; font-weight: 600; }
+.partner-panel .pdv-product-card { position: relative; text-align: left; transition: border-color .15s, transform .1s; }
+.partner-panel .pdv-product-card:hover:not(:disabled) { border-color: var(--dh-blue) !important; transform: translateY(-1px); }
+.partner-panel .pdv-product-card:disabled { opacity: .55; cursor: not-allowed; }
+.partner-panel .pdv-product-card span { color: var(--dh-blue); }
+.partner-panel .pdv-product-card.added { border-color: var(--dh-blue) !important; background: var(--dh-blue-soft) !important; }
+.partner-panel .pdv-added-tag { display: inline-flex; align-items: center; gap: 4px; margin-top: 4px; color: var(--dh-blue); font-size: 11px; font-weight: 700; font-style: normal; }
+.partner-panel .pdv-in-cart-tag { display: inline-flex; align-items: center; margin-top: 4px; color: var(--dh-text-secondary); font-size: 11px; font-weight: 600; font-style: normal; }
 .partner-panel .pdv-cart-item { border-bottom: 1px solid var(--dh-border); }
 .partner-panel .pdv-total-bar { border-top: 1px solid var(--dh-border); }
 .partner-panel .pdv-client-type-toggle button,
@@ -1531,8 +1541,12 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
   color: #64748B !important;
 }
 .partner-panel .pdv-stock {
-  color: #15803D !important;
-  font-weight: 700;
+  color: var(--dh-text-secondary) !important;
+  font-weight: 500;
+}
+.partner-panel .pdv-stock.out {
+  color: var(--dh-danger) !important;
+  font-weight: 600;
 }
 .partner-panel .pdv-cart-item strong {
   color: #0F2747 !important;
@@ -1762,4 +1776,91 @@ html, body {
 .partner-panel .pdv-receipt-btn:hover {
   background: rgba(37,99,235,.08) !important;
   color: #0F2747 !important;
+}
+
+/* =====================================================================
+   CADASTROS — Otimização visual escopada (compactação, contraste, mobile)
+   Escopo exclusivo da aba Cadastros (.cadastros-scope). Nenhuma regra
+   aqui afeta PDV, Vendas, Relatórios, RMA, Admin ou demais áreas.
+   Nenhuma funcionalidade foi alterada — apenas apresentação.
+   ===================================================================== */
+
+/* --- Navegação das 10 sub-abas: compacta e legível --- */
+.partner-panel .cadastros-scope .cadastros-subtab-bar { gap: 2px; margin-bottom: 14px; }
+.partner-panel .cadastros-scope .cadastros-subtab-bar .subtab { padding: 7px 11px; font-size: 13px; gap: 6px; min-height: 36px; }
+.partner-panel .cadastros-scope .cadastros-subtab-bar .subtab.active { font-weight: 700; }
+
+/* --- Estrutura: menos espaço vazio, mesma hierarquia --- */
+.partner-panel .cadastros-scope.panel-module { gap: 14px; }
+.partner-panel .cadastros-scope .module-header { padding-bottom: 12px; margin-bottom: 14px; }
+.partner-panel .cadastros-scope .action-row { margin-bottom: 10px; gap: 8px; }
+.partner-panel .cadastros-scope .rma-form { padding: 16px; gap: 12px; margin-bottom: 12px; }
+.partner-panel .cadastros-scope .form-row { gap: 10px; }
+
+/* --- Tabelas: densidade profissional com texto escuro --- */
+.partner-panel .cadastros-scope .rma-table thead th { padding: 9px 12px; }
+.partner-panel .cadastros-scope .rma-table td { padding: 9px 12px; }
+
+/* --- Categorias (chips) --- */
+.partner-panel .cadastros-scope .chip { padding: 4px 10px; font-size: 12px; }
+.partner-panel .cadastros-scope .chip-list { gap: 6px; margin-top: 12px; }
+.partner-panel .cadastros-scope .chip button { color: var(--dh-text-secondary); }
+.partner-panel .cadastros-scope .chip button:hover { color: var(--dh-danger); }
+
+/* --- Entrada via XML (NF-e): banner claro e upload legível --- */
+.partner-panel .cadastros-scope .xml-info-banner { padding: 14px 16px; border: 1px solid var(--dh-border); border-left: 3px solid var(--dh-blue); border-radius: var(--dh-radius-sm); background: var(--dh-blue-soft); }
+.partner-panel .cadastros-scope .xml-info-banner svg { color: var(--dh-blue); flex-shrink: 0; }
+.partner-panel .cadastros-scope .xml-info-banner strong { color: var(--dh-navy); font: 700 13.5px Manrope; }
+.partner-panel .cadastros-scope .xml-info-banner p { color: var(--dh-text-secondary); font-size: 12.5px; }
+.partner-panel .cadastros-scope .media-upload { background: var(--dh-surface); border: 1px dashed #94A3B8; color: var(--dh-text-secondary); font-weight: 600; }
+.partner-panel .cadastros-scope .media-upload:hover { border-color: var(--dh-blue); color: var(--dh-blue); }
+
+/* --- Combos / Kits e Modificadores --- */
+.partner-panel .cadastros-scope .combo-list { gap: 8px; margin-top: 12px; }
+.partner-panel .cadastros-scope .combo-card { padding: 10px 14px; }
+.partner-panel .cadastros-scope .combo-card small { color: var(--dh-text-secondary); font-size: 12px; }
+.partner-panel .cadastros-scope .product-picker small { color: var(--dh-text-secondary); font-weight: 600; }
+.partner-panel .cadastros-scope .product-picker-grid { gap: 6px; }
+.partner-panel .cadastros-scope .picker-item { padding: 7px 11px; font-size: 12.5px; }
+
+/* --- Reposição de Estoque --- */
+.partner-panel .cadastros-scope .admin-permissions-info { padding: 10px 14px; border-color: var(--dh-border); background: var(--dh-blue-soft); color: var(--dh-text-secondary) !important; font-size: 13px; margin-bottom: 12px; }
+.partner-panel .cadastros-scope .admin-permissions-info svg { color: var(--dh-blue); flex-shrink: 0; }
+.partner-panel .cadastros-scope .replenishment-critical-banner { padding: 12px 16px; border: 1px solid rgba(185,28,28,.35); border-radius: var(--dh-radius-sm); background: var(--dh-danger-bg); margin-bottom: 12px; }
+.partner-panel .cadastros-scope .replenishment-critical-banner svg { color: var(--dh-danger); }
+.partner-panel .cadastros-scope .replenishment-critical-banner strong { color: var(--dh-danger); }
+.partner-panel .cadastros-scope .replenishment-critical-banner span { color: var(--dh-text-secondary); }
+.partner-panel .cadastros-scope .replenishment-row-critical { background: rgba(185,28,28,.05); }
+.partner-panel .cadastros-scope .replenishment-suggestion { color: var(--dh-blue); }
+.partner-panel .cadastros-scope .report-cards { gap: 10px; }
+.partner-panel .cadastros-scope .report-card { padding: 14px 16px; }
+.partner-panel .cadastros-scope .report-card small { color: var(--dh-text-secondary); font-size: 11px; }
+.partner-panel .cadastros-scope .report-card small svg { vertical-align: -2px; margin-right: 3px; }
+.partner-panel .cadastros-scope .report-card strong { font-size: 22px; }
+.partner-panel .cadastros-scope .report-section-title { margin: 16px 0 10px; font-size: 14px; }
+.partner-panel .cadastros-scope .admin-empty-hint { color: var(--dh-text-secondary); }
+
+/* --- Clientes: modal de perfil e histórico --- */
+.partner-panel .cadastros-scope .customer-profile-header { padding: 12px 14px; margin-bottom: 12px; }
+.partner-panel .cadastros-scope .customer-profile-summary strong { color: var(--dh-navy); }
+.partner-panel .cadastros-scope .customer-profile-tabs { gap: 2px; margin-bottom: 10px; }
+.partner-panel .cadastros-scope .customer-profile-tabs .subtab { padding: 7px 10px; font-size: 12.5px; }
+.partner-panel .cadastros-scope .customer-info-block strong { color: var(--dh-navy); }
+.partner-panel .cadastros-scope .customer-history-table .expanded-row { background: #F0F7FF; }
+.partner-panel .cadastros-scope .sale-detail-content { background: #F8FAFC; border: 1px solid var(--dh-border); }
+.partner-panel .cadastros-scope .sale-detail-items h4,
+.partner-panel .cadastros-scope .sale-detail-actions h4 { color: var(--dh-navy); }
+.partner-panel .cadastros-scope .sale-detail-inner-table th { color: var(--dh-text-secondary); }
+.partner-panel .cadastros-scope .fiscal-empty-state { color: var(--dh-text-secondary); }
+
+/* --- Mensagem de sucesso legível sobre fundo claro --- */
+.partner-panel .cadastros-scope .sent-message { color: var(--dh-success) !important; }
+
+/* --- Mobile ≤ 768px: navegação compacta, toque confortável, sem quebras --- */
+@media (max-width: 768px) {
+  .partner-panel .cadastros-scope .cadastros-subtab-bar .subtab { padding: 8px 10px; font-size: 12.5px; min-height: 40px; }
+  .partner-panel .cadastros-scope .rma-form { padding: 14px; }
+  .partner-panel .cadastros-scope .rma-form.inline { flex-direction: column; align-items: stretch; }
+  .partner-panel .cadastros-scope .rma-form.inline label { min-width: 0; }
+  .partner-panel .cadastros-scope .row-action-group .rma-advance-btn { min-height: 34px; }
 }

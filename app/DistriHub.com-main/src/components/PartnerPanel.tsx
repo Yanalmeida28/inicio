@@ -778,6 +778,7 @@ export function PartnerPanel({
                 onUpdateCustomer={
                   handleUpdateCustomer
                 }
+                onLoadCustomer={partner.refreshCustomer}
                 onDeleteCustomer={
                   handleDeleteCustomer
                 }
