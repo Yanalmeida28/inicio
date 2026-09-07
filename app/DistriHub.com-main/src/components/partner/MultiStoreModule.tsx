@@ -98,10 +98,10 @@ export function MultiStoreModule({
     }
   }
 
-  const allBranches = isEmployeeLocked
+  const allBranches: PartnerBranch[] = isEmployeeLocked
     ? branches.filter((b) => b.id === selectedBranchId)
     : [
-        { id: 'consolidado', name: 'Visão Consolidada', address: 'Todas as filiais', is_active: true },
+        { id: 'consolidado', user_id: '', created_at: '', name: 'Visão Consolidada', address: 'Todas as filiais', is_active: true },
         ...branches,
       ];
 
@@ -136,7 +136,11 @@ export function MultiStoreModule({
               disabled={isEmployeeLocked}
               onClick={() => {
                 if (isEmployeeLocked) return;
-                branch.id === 'consolidado' ? onSelectBranch('') : onSelectBranch(branch.id);
+                if (branch.id === 'consolidado') {
+                  onSelectBranch('');
+                  return;
+                }
+                onSelectBranch(branch.id);
               }}
               style={isEmployeeLocked ? { cursor: 'default' } : undefined}
             >

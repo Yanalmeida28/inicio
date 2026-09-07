@@ -49,7 +49,7 @@ type Props = {
   onDeleteSale: (id: string) => Promise<void>;
 };
 
-const cashierRoles: SalespersonRole[] = ['administrador', 'gerente', 'caixa'];
+const cashierRoles: SalespersonRole[] = ['administrador', 'gerente', 'caixa', 'vendedor'];
 
 export function PdvModule({
   products, customers, sales, invoices, salespeople, segment, selectedBranchId,

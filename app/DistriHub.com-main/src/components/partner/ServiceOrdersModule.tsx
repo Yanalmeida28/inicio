@@ -82,8 +82,6 @@ export function ServiceOrdersModule({
   customers,
   products,
   selectedBranchId,
-  warrantyTerms = '',
-  onUpdateWarrantyTerms,
 }: Props) {
   const [orders, setOrders] = useState<ServiceOrder[]>([]);
   const [open, setOpen] = useState(false);
@@ -99,11 +97,14 @@ export function ServiceOrdersModule({
   const [damage, setDamage] = useState('');
   const [notes, setNotes] = useState('');
   const [labor, setLabor] = useState('');
+  const [preRepairChecklist, setPreRepairChecklist] = useState({ screen: false, touch: false, camera: false });
+  const [customerAcknowledged, setCustomerAcknowledged] = useState(false);
 
   const [productSearch, setProductSearch] = useState('');
   const [items, setItems] = useState<DraftItem[]>([]);
   const [entryPhotos, setEntryPhotos] = useState<Photo[]>([]);
   const [exitPhotos, setExitPhotos] = useState<Photo[]>([]);
+  const [photoError, setPhotoError] = useState<string | null>(null);
 
   const photos = [...entryPhotos, ...exitPhotos];
 
@@ -142,6 +143,11 @@ export function ServiceOrdersModule({
   const laborTotal = Number(labor) || 0;
 
   const total = partsTotal + laborTotal;
+  const checklistComplete = Object.values(preRepairChecklist).every(Boolean);
+  const possibleRecurrence = Boolean((serial.trim() || identification.trim()) && orders.some((order) => (
+    (serial.trim() && order.serial_number?.trim() === serial.trim()) ||
+    (identification.trim() && order.equipment_identification?.trim() === identification.trim())
+  )));
 
   useEffect(() => {
     async function loadOrders() {
@@ -252,16 +258,57 @@ export function ServiceOrdersModule({
     setDamage('');
     setNotes('');
     setLabor('');
+    setPreRepairChecklist({ screen: false, touch: false, camera: false });
+    setCustomerAcknowledged(false);
     setProductSearch('');
     setItems([]);
     setEntryPhotos([]);
     setExitPhotos([]);
+    setPhotoError(null);
   }
 
-  function addPhotos(files: FileList | null, type: 'entry' | 'exit') {
+  async function compressPhoto(file: File): Promise<File> {
+    const maxBytes = 300 * 1024;
+    if (!file.type.startsWith('image/')) {
+      throw new Error(`O arquivo "${file.name}" não é uma imagem válida.`);
+    }
+
+    const sourceUrl = URL.createObjectURL(file);
+    try {
+      const image = new Image();
+      image.src = sourceUrl;
+      await image.decode();
+      const maxDimension = Math.max(image.width, image.height);
+      const dimensions = [1600, 1400, 1200, 1000, 800, 640, 480, 360];
+
+      for (const dimension of dimensions) {
+        const scale = Math.min(1, dimension / maxDimension);
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(image.width * scale));
+        canvas.height = Math.max(1, Math.round(image.height * scale));
+        const context = canvas.getContext('2d');
+        if (!context) continue;
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+        for (let quality = 0.82; quality >= 0.22; quality -= 0.1) {
+          const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/webp', quality));
+          if (blob && blob.size <= maxBytes) {
+            return new File([blob], `${file.name.replace(/\.[^.]+$/, '')}.webp`, { type: 'image/webp' });
+          }
+        }
+      }
+
+      throw new Error(`Não foi possível comprimir "${file.name}" para até 300 KB. Escolha uma imagem menor.`);
+    } finally {
+      URL.revokeObjectURL(sourceUrl);
+    }
+  }
+
+  async function addPhotos(files: FileList | null, type: 'entry' | 'exit') {
     if (!files) {
       return;
     }
+    setPhotoError(null);
 
     const current = type === 'entry' ? entryPhotos : exitPhotos;
     const setter = type === 'entry' ? setEntryPhotos : setExitPhotos;
@@ -277,7 +324,14 @@ export function ServiceOrdersModule({
       remaining
     );
 
-    const newPhotos: Photo[] = selectedFiles.map(
+    let compressedFiles: File[];
+    try {
+      compressedFiles = await Promise.all(selectedFiles.map((file) => compressPhoto(file)));
+    } catch (error) {
+      setPhotoError(error instanceof Error ? error.message : 'Não foi possível preparar a foto para upload.');
+      return;
+    }
+    const newPhotos: Photo[] = compressedFiles.map(
       (file, index) => ({
         id: crypto.randomUUID(),
         file,
@@ -300,6 +354,16 @@ export function ServiceOrdersModule({
 
     if (!selectedBranchId) {
       alert('Selecione uma filial antes de abrir a OS.');
+      return;
+    }
+
+    if (!checklistComplete) {
+      alert('Complete o checklist pré-reparo antes de salvar a OS.');
+      return;
+    }
+
+    if (!customerAcknowledged) {
+      alert('Confirme que o cliente foi informado sobre as condições de entrada.');
       return;
     }
 
@@ -330,7 +394,7 @@ export function ServiceOrdersModule({
           p_accessories_left: accessories,
           p_physical_condition: condition,
           p_entry_damage: damage,
-          p_entry_notes: notes,
+          p_entry_notes: `${notes.trim()}\n\nChecklist pré-reparo: tela acende; touch; câmera frontal.\nCliente ciente das condições de entrada: sim.`,
           p_labor_total: laborTotal,
           p_items: items.map((item) => ({
             product_id: item.product_id,
@@ -660,7 +724,41 @@ export function ServiceOrdersModule({
             </div>
           </div>
 
+          <div style={{ marginTop: 18, padding: 18, borderRadius: 14, backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+              <div>
+                <h3 style={{ margin: 0, color: '#172033' }}>Checklist pré-reparo</h3>
+                <small style={{ color: '#64748B' }}>Registre a condição funcional antes de iniciar o serviço.</small>
+              </div>
+              <span style={{ padding: '5px 9px', borderRadius: 999, background: checklistComplete ? '#DCFCE7' : '#FEF3C7', color: checklistComplete ? '#15803D' : '#B45309', fontSize: 11, fontWeight: 700 }}>
+                {checklistComplete ? 'Completo' : 'Obrigatório'}
+              </span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))', gap: 10, marginTop: 14 }}>
+              {([['screen', 'Tela acende'], ['touch', 'Touch responde'], ['camera', 'Câmera frontal']] as const).map(([key, label]) => (
+                <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 11, border: '1px solid #E2E8F0', borderRadius: 9, color: '#334155', fontSize: 13, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={preRepairChecklist[key]} onChange={(event) => setPreRepairChecklist((current) => ({ ...current, [key]: event.target.checked }))} />
+                  {label}
+                </label>
+              ))}
+            </div>
+            {possibleRecurrence && (
+              <div style={{ marginTop: 12, padding: 11, borderRadius: 9, background: '#FFFBEB', border: '1px solid #FCD34D', color: '#92400E', fontSize: 12 }}>
+                Possível reincidência: já existe uma OS com a mesma identificação ou número de série nesta filial. Verifique a garantia antes de prosseguir.
+              </div>
+            )}
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 14, color: '#334155', fontSize: 12, cursor: 'pointer' }}>
+              <input type="checkbox" checked={customerAcknowledged} onChange={(event) => setCustomerAcknowledged(event.target.checked)} />
+              Cliente informado e de acordo com as condições registradas, acessórios e avarias de entrada.
+            </label>
+          </div>
+
           <div style={{ marginTop: 22 }}>
+            {photoError && (
+              <div role="alert" style={{ marginBottom: 12, padding: 11, borderRadius: 9, background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C', fontSize: 12 }}>
+                {photoError}
+              </div>
+            )}
             <div
               style={{
                 display: 'grid',
@@ -689,6 +787,7 @@ export function ServiceOrdersModule({
                     <Camera size={18} />
                     Fotos de entrada
                   </h3>
+                  <small style={{ color: '#64748B' }}>Compressão WebP automática, até 300 KB</small>
 
                   <button
                     className="partner-secondary-btn"
@@ -769,6 +868,7 @@ export function ServiceOrdersModule({
                     <Package size={18} />
                     Fotos de saída
                   </h3>
+                  <small style={{ color: '#64748B' }}>Use na conclusão da OS</small>
 
                   <button
                     className="partner-secondary-btn"
