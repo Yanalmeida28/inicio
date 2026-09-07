@@ -272,7 +272,7 @@ function SuperAdminGate({
         </div>
         <form onSubmit={handleSubmit} className="super-admin-gate-form">
           <label>
-            <span className="social-label"><Lock size={14} /> Senha de Super Admin</span>
+            <span className="social-label text-slate-900"><Lock size={14} /> Senha de Super Admin</span>
             <input
               type="password"
               value={password}

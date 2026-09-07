@@ -845,15 +845,15 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
     operatorId?: string | null,
     operatorPin?: string | null,
   ) => {
-    setData((prev) => ({ ...prev, sales: prev.sales.filter((s) => s.id !== id) }));
-    if (isSupabaseConfigured && supabase) {
-      const { error: rpcErr } = await supabase.rpc('execute_partner_sale_delete', {
-        p_salesperson_id: operatorId ?? null,
-        p_pin: operatorPin ?? null,
-        p_sale_id: id,
-      });
-      if (rpcErr) throw rpcErr;
-    }
+    if (!isSupabaseConfigured || !supabase) throw new Error('Supabase não configurado. A venda não foi excluída.');
+    const { data: deleted, error: rpcErr } = await supabase.rpc('execute_partner_sale_delete', {
+      p_salesperson_id: operatorId ?? null,
+      p_pin: operatorPin ?? null,
+      p_sale_id: id,
+    });
+    if (rpcErr) throw rpcErr;
+    if (deleted !== id) throw new Error('A exclusão da venda não foi confirmada pelo servidor.');
+    setData((prev) => ({ ...prev, sales: prev.sales.filter((sale) => sale.id !== id) }));
   }, []);
 
   const addCombo = useCallback(async (combo: Omit<PartnerCombo, 'id' | 'user_id' | 'created_at'>) => {

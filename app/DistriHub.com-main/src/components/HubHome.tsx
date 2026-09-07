@@ -3,7 +3,6 @@ import {
   BarChart3,
   Building2,
   Check,
-  ChevronDown,
   CircleDollarSign,
   PackageCheck,
   ShieldCheck,
@@ -84,10 +83,6 @@ export function HubHome({ onAccessPanel, onAccessSuperAdmin, superAdminActive }:
               Controle estoque, vendas, financeiro e assistência técnica sem planilhas. A DistriHub
               conecta distribuidoras, lojistas e filiais para sua equipe vender mais e operar melhor.
             </p>
-            <div className="hub-hero-actions">
-              <button className="hub-primary-button" onClick={openPanel}>Começar agora <ArrowRight size={16} /></button>
-              <a className="hub-text-button" href="#solucoes">Conhecer soluções <ChevronDown size={15} /></a>
-            </div>
             <div className="hub-proof"><span className="hub-proof-stars">★★★★★</span><strong>4.9/5 por operações B2B</strong><span>•</span><span>Implantação assistida</span></div>
           </div>
           <div className="hub-hero-visual">
@@ -211,7 +206,6 @@ export function HubHome({ onAccessPanel, onAccessSuperAdmin, superAdminActive }:
       <footer className="hub-footer">
         <div className="page-container hub-footer-inner">
           <p>&copy; {new Date().getFullYear()} DistriHub — Plataforma de Gestão ERP, Vendas e Distribuição B2B</p>
-          <div className="hub-footer-actions"><button onClick={openPanel}>Acessar painel</button><button className="hub-super-admin-link" onClick={onAccessSuperAdmin} title="Acesso restrito ao proprietário do sistema"><ShieldCheck size={12} /> Super Admin</button></div>
         </div>
       </footer>
     </main>

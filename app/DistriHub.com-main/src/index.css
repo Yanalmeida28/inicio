@@ -1378,6 +1378,8 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
 .super-admin-gate-header h2 { color: #0F2747; }
 .super-admin-gate-header p { color: #64748B; }
 .super-admin-gate-form input { background: #FFFFFF; border-color: #E2E8F0; color: #172033; }
+.super-admin-gate-form .social-label { color: #172033; }
+.super-admin-gate-form input::placeholder { color: #64748B; opacity: 1; }
 .super-admin-gate-form input:focus { border-color: #2563EB; box-shadow: 0 0 0 3px rgba(37,99,235,.12); }
 .super-admin-recovery-success h3 { color: #0F2747; }
 .super-admin-recovery-success p { color: #64748B; }
