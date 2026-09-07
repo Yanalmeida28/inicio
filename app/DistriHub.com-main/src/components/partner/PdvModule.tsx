@@ -3,7 +3,7 @@ import {
   Search, Trash2, ShoppingCart, Check, Printer, MessageCircle, Mail,
   ScanLine, X, Tag, QrCode, Ban, Lock, ClipboardList, Wallet, Lock as LockIcon,
 } from 'lucide-react';
-import type { DeliveryType, PartnerProduct, PartnerCustomer, PartnerSale, PartnerSalesperson, SaleItem, SalespersonRole } from '../../types';
+import type { DeliveryType, PartnerProduct, PartnerCustomer, PartnerSale, PartnerSalesperson, PartnerInvoice, SaleItem, SalespersonRole } from '../../types';
 import { money } from '../../utils';
 
 type PriceTable = 'varejo' | 'atacado';
@@ -14,6 +14,7 @@ type Props = {
   products: PartnerProduct[];
   customers: PartnerCustomer[];
   sales: PartnerSale[];
+  invoices: PartnerInvoice[];
   salespeople: PartnerSalesperson[];
   segment: string;
   selectedBranchId: string | null;
@@ -51,7 +52,7 @@ type Props = {
 const cashierRoles: SalespersonRole[] = ['administrador', 'gerente', 'caixa'];
 
 export function PdvModule({
-  products, customers, sales, salespeople, segment, selectedBranchId,
+  products, customers, sales, invoices, salespeople, segment, selectedBranchId,
   currentRole, onCreateSale, onCreatePreSale, onFinalizePreSale, onCancelSale, onDeleteSale,
 }: Props) {
   const [subTab, setSubTab] = useState<PdvSubTab>('pdv');
@@ -90,6 +91,7 @@ export function PdvModule({
           products={products}
           customers={customers}
           sales={sales}
+          invoices={invoices}
           salespeople={salespeople}
           segment={segment}
           selectedBranchId={selectedBranchId}
@@ -121,10 +123,11 @@ export function PdvModule({
 
 /* ============ PDV Checkout ============ */
 
-function PdvCheckout({ products, customers, sales, salespeople, segment, selectedBranchId, canCheckout, onCreateSale, onCancelSale, onDeleteSale }: {
+function PdvCheckout({ products, customers, sales, invoices, salespeople, segment, selectedBranchId, canCheckout, onCreateSale, onCancelSale, onDeleteSale }: {
   products: PartnerProduct[];
   customers: PartnerCustomer[];
   sales: PartnerSale[];
+  invoices: PartnerInvoice[];
   salespeople: PartnerSalesperson[];
   segment: string;
   selectedBranchId: string | null;
@@ -207,6 +210,12 @@ function PdvCheckout({ products, customers, sales, salespeople, segment, selecte
   }, [products, search, selectedBranchId]);
 
   const total = cart.reduce((sum, item) => sum + item.unit_price * item.quantity, 0);
+  const selectedCustomer = customers.find((customer) => customer.id === customerId) ?? null;
+  const customerOpenCredit = selectedCustomer
+    ? invoices.filter((invoice) => invoice.customer_id === selectedCustomer.id && invoice.status === 'aberta').reduce((sum, invoice) => sum + (Number(invoice.amount) - Number(invoice.paid_amount ?? 0)), 0)
+    : 0;
+  const customerCreditAvailable = Number(selectedCustomer?.credit_limit ?? 0) - customerOpenCredit;
+  const billedSaleBlocked = paymentMethod === 'faturado' && (!selectedCustomer || !selectedCustomer.allow_credit || total > customerCreditAvailable);
 
   function showSelectionNotice(message: string) {
     setSelectionNotice(message);
@@ -273,6 +282,11 @@ function PdvCheckout({ products, customers, sales, salespeople, segment, selecte
       return;
     }
     const customer = customers.find((c) => c.id === customerId);
+    if (paymentMethod === 'faturado') {
+      if (!customer) { setCheckoutError('Selecione um cliente para usar Faturado B2B.'); return; }
+      if (!customer.allow_credit) { setCheckoutError('Este cliente não possui crédito permitido.'); return; }
+      if (total > customerCreditAvailable) { setCheckoutError('Crédito disponível insuficiente para esta venda.'); return; }
+    }
     const fallbackName = clientType === 'atacado' ? 'Cliente Atacado' : 'Cliente Varejo';
     setIsCheckingOut(true);
     setCheckoutError(null);
@@ -479,7 +493,7 @@ function PdvCheckout({ products, customers, sales, salespeople, segment, selecte
                       <option value="pix">PIX</option>
                       <option value="cartao">Cartão</option>
                       <option value="dinheiro">Dinheiro</option>
-                      <option value="faturado">Faturado</option>
+                      <option value="faturado">Faturado B2B</option>
                     </select>
                   </label>
                   <label>
@@ -496,9 +510,18 @@ function PdvCheckout({ products, customers, sales, salespeople, segment, selecte
                 <span>Total {priceTable === 'atacado' ? '(Atacado)' : '(Varejo)'}</span>
                 <strong>{money.format(total)}</strong>
               </div>
+              {paymentMethod === 'faturado' && selectedCustomer && (
+                <div className="b2b-credit-summary">
+                  <strong>Crédito B2B</strong>
+                  <span>Limite: {money.format(Number(selectedCustomer.credit_limit ?? 0))}</span>
+                  <span>Utilizado: {money.format(customerOpenCredit)}</span>
+                  <span>Disponível: {money.format(Math.max(0, customerCreditAvailable))}</span>
+                  <span>Esta venda: {money.format(total)}</span>
+                </div>
+              )}
 
               {canCheckout ? (
-                <button className="module-submit-btn pdv-checkout-btn" onClick={handleCheckout} disabled={isCheckingOut}>
+                <button className="module-submit-btn pdv-checkout-btn" onClick={handleCheckout} disabled={isCheckingOut || billedSaleBlocked}>
                   <Check size={18} /> {isCheckingOut ? 'Finalizando...' : 'Finalizar Venda'}
                 </button>
               ) : (

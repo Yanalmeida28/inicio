@@ -308,12 +308,16 @@ export interface PartnerInvoice {
   id: string;
   user_id: string;
   number: string;
+  sale_id?: string | null;
+  customer_id?: string | null;
   customer_name: string;
   amount: number;
+  paid_amount?: number;
   status: 'aberta' | 'paga';
   due_date: string | null;
   paid_at: string | null;
   branch_id: string | null;
+  salesperson_id?: string | null;
   created_at: string;
 }
 

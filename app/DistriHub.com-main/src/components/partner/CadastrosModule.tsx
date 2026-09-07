@@ -1227,7 +1227,7 @@ function CustomerProfileModal({ customer, sales, salespeople, onUpdate, onClose 
           <div className="customer-avatar">
             {photoFile ? <img src={URL.createObjectURL(photoFile)} alt="Prévia da foto" /> : <Camera size={24} />}
             <small>{photoFile ? 'Nova foto' : 'Foto'}</small>
-            <input type="file" accept="image/*" onChange={(event) => { setPhotoFile(event.target.files?.[0] ?? null); setRemovePhoto(false); }} />
+            <label className="customer-photo-picker"><Camera size={13} /> Adicionar foto<input type="file" accept="image/*" onChange={(event) => { setPhotoFile(event.target.files?.[0] ?? null); setRemovePhoto(false); }} /></label>
             {customer.photo_url && <button type="button" onClick={() => { setRemovePhoto(true); setPhotoFile(null); }}>Remover</button>}
           </div>
           <div className="customer-profile-summary">
@@ -1295,7 +1295,7 @@ function CustomerProfileModal({ customer, sales, salespeople, onUpdate, onClose 
         </div>
         {error && <p className="otp-error-msg">{error}</p>}
         {success && <p style={{ color: '#15803D' }}>Cliente salvo com sucesso.</p>}
-        <div className="fiscal-modal-actions"><button type="submit" className="module-submit-btn" disabled={isSaving}><Save size={16} /> {isSaving ? 'Salvando...' : 'Salvar Alterações'}</button></div>
+        <div className="fiscal-modal-actions"><button type="button" className="rma-advance-btn" onClick={onClose} disabled={isSaving}>Cancelar</button><button type="submit" className="module-submit-btn" disabled={isSaving}><Save size={16} /> {isSaving ? 'Salvando...' : 'Salvar Alterações'}</button></div>
       </form>
     </div>
   );

@@ -748,7 +748,18 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
 .customer-info-block small { color: #6e8799; font-size: 11px; }
 
 /* ===== Customer Profile Modal ===== */
-.customer-profile-modal { width: min(680px, calc(100% - 32px)); max-height: 90vh; overflow-y: auto; }
+.customer-profile-modal { width: min(980px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow: hidden; display: flex; flex-direction: column; padding: 24px; }
+.customer-profile-modal .modal-header { flex: 0 0 auto; }
+.customer-profile-modal .customer-profile-header { flex: 0 0 auto; }
+.customer-profile-modal .customer-profile-tabs { flex: 0 0 auto; overflow-x: auto; scrollbar-width: thin; }
+.customer-profile-modal .customer-profile-body { min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 2px 2px 8px; }
+.customer-profile-modal .customer-profile-body .rma-form { width: 100%; }
+.customer-profile-modal .customer-avatar { width: 132px; min-width: 132px; height: 132px; border-radius: 10px; overflow: hidden; position: relative; padding: 10px; }
+.customer-profile-modal .customer-avatar img { display: block; width: 100%; height: 84px; object-fit: cover; border-radius: 6px; }
+.customer-profile-modal .customer-photo-picker { display: inline-flex; align-items: center; justify-content: center; gap: 3px; width: 100%; max-width: 112px; min-height: 26px; padding: 3px 4px; border: 1px solid var(--dh-blue); border-radius: 4px; background: #fff; color: var(--dh-navy); font-size: 11px; line-height: 1.1; white-space: nowrap; cursor: pointer; }
+.customer-profile-modal .customer-photo-picker input[type="file"] { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.customer-profile-modal .customer-avatar button { padding: 3px 6px; border: 1px solid var(--dh-border); border-radius: 4px; background: #fff; color: var(--dh-navy); font-size: 11px; }
+.customer-profile-modal .fiscal-modal-actions { flex: 0 0 auto; position: sticky; bottom: 0; background: var(--dh-surface); z-index: 2; }
 .customer-profile-header { display: flex; align-items: center; gap: 16px; padding: 16px; border: 1px solid #1d3445; border-radius: 8px; background: #0e1d2b; margin-bottom: 16px; }
 .customer-avatar { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; width: 72px; height: 72px; border-radius: 50%; border: 2px dashed #2b465a; color: #5b7486; background: #102433; flex-shrink: 0; cursor: pointer; transition: border-color .2s, color .2s; }
 .customer-avatar:hover { border-color: #3b9bed; color: #7bc8f5; }
@@ -1866,4 +1877,17 @@ html, body {
   .partner-panel .cadastros-scope .rma-form.inline { flex-direction: column; align-items: stretch; }
   .partner-panel .cadastros-scope .rma-form.inline label { min-width: 0; }
   .partner-panel .cadastros-scope .row-action-group .rma-advance-btn { min-height: 34px; }
+  .customer-profile-modal { width: calc(100vw - 16px); max-height: calc(100vh - 16px); padding: 14px !important; }
+  .customer-profile-modal .customer-profile-header { align-items: flex-start; }
+  .customer-profile-modal .customer-avatar { width: 112px; min-width: 112px; height: 124px; }
+  .customer-profile-modal .customer-avatar img { height: 72px; }
+  .customer-profile-modal .customer-profile-tabs { margin-left: -2px; margin-right: -2px; }
+}
+
+@media (max-width: 480px) {
+  .customer-profile-modal .customer-profile-header { flex-direction: column; }
+  .customer-profile-modal .customer-avatar { align-self: center; }
+  .customer-profile-modal .customer-profile-tabs .subtab { min-height: 40px; padding: 8px 10px; }
+  .customer-profile-modal .fiscal-modal-actions { flex-direction: column-reverse; }
+  .customer-profile-modal .fiscal-modal-actions button { width: 100%; min-height: 44px; }
 }

@@ -480,7 +480,13 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
       throw new Error('Venda sem filial selecionada.');
     }
     const effectiveSpId = operatorId ?? sale.salesperson_id ?? null;
-    const ns: PartnerSale = { ...sale, id: crypto.randomUUID(), user_id: identity.companyUserId, status: 'concluida', created_at: new Date().toISOString(), imei: sale.imei ?? null, serial_number: sale.serial_number ?? null, payment_method: sale.payment_method ?? null, branch_id: branchId, salesperson_id: effectiveSpId, origin: 'pdv', online_payment: false, payment_status: 'pago' };
+    if (sale.payment_method === 'faturado') {
+      const customer = data.customers.find((item) => item.id === sale.customer_id);
+      if (!customer) throw new Error('Faturado B2B exige um cliente selecionado.');
+      if (!customer.allow_credit) throw new Error('Este cliente não possui crédito permitido.');
+    }
+    const ns: PartnerSale = { ...sale, id: crypto.randomUUID(), user_id: identity.companyUserId, status: 'concluida', created_at: new Date().toISOString(), imei: sale.imei ?? null, serial_number: sale.serial_number ?? null, payment_method: sale.payment_method ?? null, branch_id: branchId, salesperson_id: effectiveSpId, origin: 'pdv', online_payment: false, payment_status: sale.payment_method === 'faturado' ? 'pendente' : 'pago' };
+    let createdInvoice: PartnerInvoice | null = null;
     if (isSupabaseConfigured && supabase) {
       const { error: rpcErr } = await supabase.rpc('execute_partner_sale_mutation', {
         p_salesperson_id: effectiveSpId,
@@ -500,6 +506,16 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
         p_delivery_type: ns.delivery_type,
       });
       if (rpcErr) throw rpcErr;
+      if (sale.payment_method === 'faturado') {
+        const { data: invoice, error: invoiceError } = await supabase
+          .from('partner_invoices')
+          .select('*')
+          .eq('sale_id', ns.id)
+          .eq('user_id', identity.companyUserId)
+          .single();
+        if (invoiceError) throw new Error(`Venda criada, mas o título B2B não foi localizado: ${invoiceError.message}`);
+        createdInvoice = invoice as PartnerInvoice;
+      }
       for (const item of sale.items) {
         const { error: movementError } = await supabase.from('stock_movements').insert({ user_id: identity.companyUserId, product_id: item.product_id, product_name: item.name, type: 'saida', quantity: item.quantity, reason: 'Venda' });
         if (movementError) throw movementError;
@@ -512,9 +528,9 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
         const item = sale.items.find((currentItem) => currentItem.product_id === p.id);
         return item ? { ...p, stock: Math.max(0, p.stock - item.quantity) } : p;
       });
-      return { ...prev, sales: [ns, ...prev.sales], movements: [...newMovements, ...prev.movements], products: updatedProducts };
+      return { ...prev, sales: [ns, ...prev.sales], invoices: createdInvoice ? [createdInvoice, ...prev.invoices] : prev.invoices, movements: [...newMovements, ...prev.movements], products: updatedProducts };
     });
-  }, [identity]);
+  }, [data.customers, identity]);
 
   const createPreSale = useCallback(async (
     sale: SalePayload,
@@ -786,9 +802,20 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
   }, []);
 
   const payInvoice = useCallback(async (id: string) => {
-    setData((prev) => ({ ...prev, invoices: prev.invoices.map((i) => i.id === id ? { ...i, status: 'paga' as const, paid_at: new Date().toISOString() } : i) }));
-    if (isSupabaseConfigured && supabase) await supabase.from('partner_invoices').update({ status: 'paga', paid_at: new Date().toISOString() }).eq('id', id);
-  }, []);
+    if (!isSupabaseConfigured || !supabase || !identity) throw new Error('Supabase não configurado.');
+    const invoice = data.invoices.find((item) => item.id === id);
+    if (!invoice) throw new Error('Título não encontrado.');
+    const paidAt = new Date().toISOString();
+    const { data: updatedInvoice, error } = await supabase
+      .from('partner_invoices')
+      .update({ status: 'paga', paid_amount: invoice.amount, paid_at: paidAt })
+      .eq('id', id)
+      .eq('user_id', identity.companyUserId)
+      .select('*')
+      .single();
+    if (error) throw error;
+    setData((prev) => ({ ...prev, invoices: prev.invoices.map((invoice) => invoice.id === id ? updatedInvoice as PartnerInvoice : invoice) }));
+  }, [data.invoices, identity]);
 
   return {
     products: data.products, customers: data.customers, sales: data.sales,

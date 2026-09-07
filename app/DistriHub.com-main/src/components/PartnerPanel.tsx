@@ -792,6 +792,7 @@ export function PartnerPanel({
                   filteredCustomers
                 }
                 sales={filteredSales}
+                invoices={filteredInvoices}
                 salespeople={
                   filteredSalespeople
                 }
@@ -958,8 +959,8 @@ export function PartnerPanel({
                   filteredInvoices
                 }
                 walletBalance={0}
-                creditLimit={5000}
-                creditUsed={0}
+                creditLimit={partner.customers.reduce((sum, customer) => sum + Number(customer.credit_limit ?? 0), 0)}
+                creditUsed={partner.invoices.filter((invoice) => invoice.status === 'aberta').reduce((sum, invoice) => sum + Number(invoice.amount) - Number(invoice.paid_amount ?? 0), 0)}
                 onPayInvoice={
                   partner.payInvoice
                 }
