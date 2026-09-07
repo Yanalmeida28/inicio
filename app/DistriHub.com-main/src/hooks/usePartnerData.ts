@@ -572,10 +572,6 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
         if (invoiceError) throw new Error(`Venda criada, mas o título B2B não foi localizado: ${invoiceError.message}`);
         createdInvoice = invoice as PartnerInvoice;
       }
-      for (const item of sale.items) {
-        const { error: movementError } = await supabase.from('stock_movements').insert({ user_id: identity.companyUserId, product_id: item.product_id, product_name: item.name, type: 'saida', quantity: item.quantity, reason: 'Venda' });
-        if (movementError) throw movementError;
-      }
     }
     setData((prev) => {
       const newMovements: StockMovement[] = sale.items.map((item) => ({ id: crypto.randomUUID(), user_id: identity.companyUserId, product_id: item.product_id, product_name: item.name, type: 'saida' as const, quantity: item.quantity, reason: 'Venda', created_at: new Date().toISOString() }));
@@ -646,10 +642,6 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
         p_delivery_type: sale.delivery_type,
       });
       if (rpcErr) throw rpcErr;
-      for (const item of sale.items) {
-        const { error: movementError } = await supabase.from('stock_movements').insert({ user_id: sale.user_id, product_id: item.product_id, product_name: item.name, type: 'saida', quantity: item.quantity, reason: 'Venda (Pré-venda)' });
-        if (movementError) throw movementError;
-      }
     }
     setData((prev) => {
       const newMovements: StockMovement[] = sale.items.map((item) => ({ id: crypto.randomUUID(), user_id: sale.user_id, product_id: item.product_id, product_name: item.name, type: 'saida' as const, quantity: item.quantity, reason: 'Venda (Pré-venda)', created_at: new Date().toISOString() }));
@@ -669,7 +661,10 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
     if (identity.salespersonId) {
       throw new Error('Funcionários não podem alterar as configurações da loja.');
     }
-    const { id: _id, user_id: _userId, updated_at: _updatedAt, ...changes } = settings;
+    const changes = { ...settings };
+    delete changes.id;
+    delete changes.user_id;
+    delete changes.updated_at;
     const { data: savedSettings, error } = await supabase
       .from('store_settings_v2')
       .upsert(
@@ -775,7 +770,11 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
 
   const updateSupplier = useCallback(async (id: string, updates: Partial<PartnerSupplier>) => {
     if (!identity || !isSupabaseConfigured || !supabase) throw new Error('Supabase não configurado.');
-    const { id: _id, user_id: _userId, created_at: _createdAt, payable_balance: _payableBalance, ...payload } = updates;
+      const payload = { ...updates };
+      delete payload.id;
+      delete payload.user_id;
+      delete payload.created_at;
+      delete payload.payable_balance;
     const { data: updated, error } = await supabase
       .from('partner_suppliers')
       .update(payload)
@@ -926,14 +925,17 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
     if (!isSupabaseConfigured || !supabase || !identity) throw new Error('Supabase não configurado.');
     const invoice = data.invoices.find((item) => item.id === id);
     if (!invoice) throw new Error('Título não encontrado.');
+    if (identity.salespersonId && invoice.branch_id !== identity.branchId) {
+      throw new Error('Acesso negado: o título não pertence à filial do funcionário.');
+    }
     const paidAt = new Date().toISOString();
-    const { data: updatedInvoice, error } = await supabase
+    let invoiceUpdate = supabase
       .from('partner_invoices')
       .update({ status: 'paga', paid_amount: invoice.amount, paid_at: paidAt })
       .eq('id', id)
-      .eq('user_id', identity.companyUserId)
-      .select('*')
-      .single();
+      .eq('user_id', identity.companyUserId);
+    if (invoice.branch_id) invoiceUpdate = invoiceUpdate.eq('branch_id', invoice.branch_id);
+    const { data: updatedInvoice, error } = await invoiceUpdate.select('*').single();
     if (error) throw error;
     setData((prev) => ({ ...prev, invoices: prev.invoices.map((invoice) => invoice.id === id ? updatedInvoice as PartnerInvoice : invoice) }));
   }, [data.invoices, identity]);
