@@ -2,22 +2,26 @@ import { useCallback, useState } from 'react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 type UseSuperAdminAuthReturn = {
-  verifyPassword: (password: string) => Promise<boolean>;
+  verifyPassword: (password: string) => Promise<{ ok: boolean; error: string | null }>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<boolean>;
   requestRecovery: (email: string) => Promise<{ code: string | null; error: string | null }>;
   resetPassword: (code: string, newPassword: string) => Promise<{ error: string | null }>;
 };
 
 export function useSuperAdminAuth(): UseSuperAdminAuthReturn {
-  const verifyPassword = useCallback(async (password: string): Promise<boolean> => {
+  const verifyPassword = useCallback(async (password: string): Promise<{ ok: boolean; error: string | null }> => {
     if (!isSupabaseConfigured || !supabase) {
-      return false;
+      return { ok: false, error: 'Supabase não configurado.' };
     }
-    const { data, error } = await supabase.rpc('verify_super_admin_password', {
-      input_password: password,
-    });
-    if (error) return false;
-    return data === true;
+    try {
+      const { data, error } = await supabase.rpc('verify_super_admin_password', { input_password: password });
+      if (error) return { ok: false, error: error.message };
+      return data === true
+        ? { ok: true, error: null }
+        : { ok: false, error: 'Credencial inválida. Acesso negado.' };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : 'Não foi possível validar a credencial.' };
+    }
   }, []);
 
   const changePassword = useCallback(

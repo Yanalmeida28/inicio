@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
-  ArrowLeft, Users, Check, X, BarChart3,
+  ArrowLeft, Users, Check, BarChart3,
   Receipt, ShieldCheck, Lock, Eye, EyeOff,
 } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
@@ -23,22 +23,40 @@ export function AdminPanel({ onBack, accessPassword }: AdminPanelProps) {
   const [financialData, setFinancialData] = useState<AdminFinancialMonth[]>([]);
   const [invoices, setInvoices] = useState<PartnerInvoice[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const superAdminAuth = useSuperAdminAuth();
 
   useEffect(() => {
-    if (!isSupabaseConfigured || !supabase) { setLoading(false); return; }
-    (async () => {
-      const [loj, financial, inv] = await Promise.all([
-        supabase.rpc('get_super_admin_company_overview', { input_password: accessPassword }),
-        supabase.rpc('get_super_admin_financial_overview', { input_password: accessPassword }),
-        supabase.from('partner_invoices').select('*').order('created_at', { ascending: false }),
-      ]);
-      setLojistas((loj.data as AdminCompany[]) ?? []);
-      setFinancialData((financial.data as AdminFinancialMonth[]) ?? []);
-      setInvoices((inv.data as PartnerInvoice[]) ?? []);
-      setLoading(false);
-    })();
-  }, []);
+    let cancelled = false;
+    async function loadAdminData() {
+      setLoading(true);
+      setError(null);
+      if (!isSupabaseConfigured || !supabase) {
+        setError('Supabase não configurado. Não foi possível carregar o painel master.');
+        setLoading(false);
+        return;
+      }
+      try {
+        const [loj, financial, inv] = await Promise.all([
+          supabase.rpc('get_super_admin_company_overview', { input_password: accessPassword }),
+          supabase.rpc('get_super_admin_financial_overview', { input_password: accessPassword }),
+          supabase.from('partner_invoices').select('*').order('created_at', { ascending: false }),
+        ]);
+        const failed = [loj, financial, inv].find((result) => result.error);
+        if (failed?.error) throw failed.error;
+        if (cancelled) return;
+        setLojistas((loj.data as AdminCompany[]) ?? []);
+        setFinancialData((financial.data as AdminFinancialMonth[]) ?? []);
+        setInvoices((inv.data as PartnerInvoice[]) ?? []);
+      } catch (loadError) {
+        if (!cancelled) setError(loadError instanceof Error ? loadError.message : 'Não foi possível carregar o painel master.');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    void loadAdminData();
+    return () => { cancelled = true; };
+  }, [accessPassword]);
 
   async function updateLojista(id: string, updates: Partial<AdminCompany>) {
     setLojistas((prev) => prev.map((l) => l.id === id ? { ...l, ...updates, client_status: updates.status ?? l.client_status } : l));
@@ -72,6 +90,7 @@ export function AdminPanel({ onBack, accessPassword }: AdminPanelProps) {
             <p>Gestão da plataforma, clientes, assinaturas e recebimentos</p>
           </div>
           {loading && <span className="partner-loading">Carregando...</span>}
+          {error && <span className="admin-load-error" role="alert">{error}</span>}
         </div>
       </div>
 
@@ -85,6 +104,7 @@ export function AdminPanel({ onBack, accessPassword }: AdminPanelProps) {
         </div>
 
         <div className="partner-content">
+          {error && !loading && <div className="admin-load-error admin-load-error-panel" role="alert">{error}</div>}
           {tab === 'lojistas' && (
             <div className="panel-module">
               <div className="module-header">

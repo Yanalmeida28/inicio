@@ -814,9 +814,9 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
     operatorId?: string | null,
     operatorPin?: string | null,
   ) => {
-    setData((prev) => ({ ...prev, sales: prev.sales.map((s) => s.id === id ? { ...s, status: 'cancelada' as const } : s) }));
     if (isSupabaseConfigured && supabase) {
       const sale = data.sales.find((s) => s.id === id);
+      if (!sale) throw new Error('Venda não encontrada.');
       const { error: rpcErr } = await supabase.rpc('execute_partner_sale_mutation', {
         p_salesperson_id: operatorId ?? sale?.salesperson_id ?? null,
         p_pin: operatorPin ?? null,
@@ -831,10 +831,15 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
         p_branch_id: sale?.branch_id ?? null,
         p_status: 'cancelada',
         p_origin: sale?.origin ?? 'pdv',
+        p_customer_type: sale?.customer_type ?? 'varejo',
+        p_delivery_type: sale?.delivery_type ?? 'balcao',
       });
       if (rpcErr) throw rpcErr;
+      await loadData();
+      return;
     }
-  }, [data.sales]);
+    setData((prev) => ({ ...prev, sales: prev.sales.map((s) => s.id === id ? { ...s, status: 'cancelada' as const } : s) }));
+  }, [data.sales, loadData]);
 
   const deleteSale = useCallback(async (
     id: string,

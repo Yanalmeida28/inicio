@@ -92,14 +92,20 @@ function App() {
     }
   }
 
-  async function handleSuperAdminUnlock(password: string): Promise<boolean> {
-    const ok = await superAdminAuth.verifyPassword(password);
-    if (ok) {
+  async function handleSuperAdminUnlock(password: string): Promise<{ ok: boolean; error: string | null }> {
+    const result = await superAdminAuth.verifyPassword(password);
+    if (result.ok) {
       setSuperAdminPassword(password);
       setSuperAdminUnlocked(true);
       setView('super-admin');
     }
-    return ok;
+    return result;
+  }
+
+  function handleSuperAdminBack() {
+    setSuperAdminPassword('');
+    setSuperAdminUnlocked(false);
+    setView('hub');
   }
 
   async function handleSignIn(email: string, password: string) {
@@ -173,7 +179,7 @@ function App() {
 
       {view === 'super-admin' && !superAdminUnlocked && (
         <SuperAdminGate
-          onBack={() => setView('hub')}
+          onBack={handleSuperAdminBack}
           onUnlock={handleSuperAdminUnlock}
           auth={superAdminAuth}
         />
@@ -181,7 +187,7 @@ function App() {
 
       {view === 'super-admin' && superAdminUnlocked && (
         <Suspense fallback={<LoadingScreen label="Painel master" />}>
-          <AdminPanel onBack={() => setView('hub')} accessPassword={superAdminPassword} />
+          <AdminPanel onBack={handleSuperAdminBack} accessPassword={superAdminPassword} />
         </Suspense>
       )}
 
@@ -221,22 +227,28 @@ function SuperAdminGate({
   auth,
 }: {
   onBack: () => void;
-  onUnlock: (password: string) => Promise<boolean>;
+  onUnlock: (password: string) => Promise<{ ok: boolean; error: string | null }>;
   auth: SuperAdminAuth;
 }) {
   const [password, setPassword] = useState('');
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [showRecovery, setShowRecovery] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSubmitting(true);
-    const ok = await onUnlock(password);
-    setSubmitting(false);
-    if (!ok) {
-      setError(true);
+    try {
+      const result = await onUnlock(password);
+      if (!result.ok) {
+        setError(result.error ?? 'Credencial inválida. Acesso negado.');
+        setPassword('');
+      }
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : 'Não foi possível validar a credencial.');
       setPassword('');
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -245,7 +257,7 @@ function SuperAdminGate({
       <RecoveryFlow
         auth={auth}
         onBack={() => setShowRecovery(false)}
-        onSuccess={() => { setShowRecovery(false); setPassword(''); setError(false); }}
+        onSuccess={() => { setShowRecovery(false); setPassword(''); setError(null); }}
       />
     );
   }
@@ -264,13 +276,13 @@ function SuperAdminGate({
             <input
               type="password"
               value={password}
-              onChange={(e) => { setPassword(e.target.value); setError(false); }}
+              onChange={(e) => { setPassword(e.target.value); setError(null); }}
               placeholder="••••••••••••"
               autoFocus
               required
             />
           </label>
-          {error && <p className="super-admin-gate-error">Credencial inválida. Acesso negado.</p>}
+          {error && <p className="super-admin-gate-error">{error}</p>}
           <button
             type="button"
             className="super-admin-forgot-link"

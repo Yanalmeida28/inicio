@@ -1123,6 +1123,20 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
 .branch-action-error { color: #B91C1C !important; background: rgba(185,28,28,.08); border: 1px solid rgba(185,28,28,.25); border-radius: 8px; padding: 10px 12px; font-size: 13px; }
 .branch-edit-modal { max-width: 580px; }
 .branch-edit-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.admin-panel { background: #F8FAFC; color: #172033; }
+.admin-panel .admin-header { background: #0F2747; border-bottom-color: #0F2747; }
+.admin-panel .partner-header-inner { color: #FFFFFF; }
+.admin-panel .partner-back-btn { color: #FFFFFF; background: rgba(255,255,255,.1); border-color: rgba(255,255,255,.25); }
+.admin-panel .partner-back-btn:hover { color: #FFFFFF; background: rgba(255,255,255,.18); }
+.admin-panel .partner-title h2 { color: #FFFFFF; }.admin-panel .partner-title p { color: #DBEAFE; }
+.admin-panel .partner-loading { color: #DBEAFE; }.admin-load-error { color: #991B1B; font-size: 12px; font-weight: 600; }.admin-header .admin-load-error { margin-left: auto; color: #FECACA; }.admin-load-error-panel { margin-bottom: 16px; padding: 12px 14px; border: 1px solid #FCA5A5; border-radius: 7px; background: #FEF2F2; }
+.admin-panel .partner-tabs { border-bottom-color: #E2E8F0; }.admin-panel .partner-tab { color: #475569; }.admin-panel .partner-tab:hover { color: #0F2747; }.admin-panel .partner-tab.active { color: #2563EB; border-color: #2563EB; }
+.admin-panel .module-header h3, .admin-panel .module-header p, .admin-panel .report-section-title { color: #172033; }.admin-panel .module-header p { color: #475569; }
+.admin-panel .admin-client-summary { color: #475569; }.admin-panel .admin-client-summary strong { color: #0F2747; }
+.admin-panel .stock-table-wrap, .admin-panel .admin-financial-chart, .admin-panel .admin-financial-summary { background: #FFFFFF; border-color: #E2E8F0; }.admin-panel .rma-table th { color: #475569; border-bottom-color: #E2E8F0; }.admin-panel .rma-table td { color: #172033; border-bottom-color: #E2E8F0; }.admin-panel .rma-table td strong { color: #172033; }.admin-panel .rma-table td small { color: #64748B; }.admin-panel .empty-row { color: #475569; }
+.admin-panel .inline-select { color: #172033; background: #FFFFFF; border-color: #CBD5E1; }.admin-panel .inline-select:focus { border-color: #2563EB; }.admin-panel .admin-financial-kpi { background: #FFFFFF; border-color: #E2E8F0; }.admin-panel .admin-financial-kpi small { color: #475569; }.admin-panel .admin-financial-kpi strong { color: #0F2747; }.admin-panel .admin-financial-chart-head h4, .admin-panel .admin-financial-summary h4 { color: #172033; }.admin-panel .admin-financial-chart-head span, .admin-panel .admin-financial-summary div { color: #475569; }.admin-panel .admin-financial-summary strong { color: #172033; }
+.admin-panel .rma-form { background: #FFFFFF; border-color: #E2E8F0; }.admin-panel .rma-form label, .admin-panel .social-label { color: #475569; }.admin-panel .rma-form input, .admin-panel .rma-form select, .admin-panel .rma-form textarea { color: #172033; background: #FFFFFF; border-color: #CBD5E1; }.admin-panel .rma-form input::placeholder, .admin-panel .rma-form textarea::placeholder { color: #64748B; opacity: 1; }.admin-panel .password-toggle { color: #475569; }
+.admin-panel .admin-error-fallback { color: #991B1B; background: #FEF2F2; border-color: #FCA5A5; }.admin-panel .admin-error-fallback h3 { color: #172033; }.admin-panel .admin-error-fallback p, .admin-panel .admin-error-fallback small { color: #475569; }
 
 /* ---------- Forms ---------- */
 .partner-panel .rma-form { display: grid; gap: 14px; }
