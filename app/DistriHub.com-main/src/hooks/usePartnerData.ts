@@ -28,7 +28,7 @@ type PartnerData = {
   loading: boolean;
   error: string | null;
   addProduct: (product: Omit<PartnerProduct, 'id' | 'user_id' | 'created_at' | 'updated_at'>, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
-  replenishStock: (productId: string, branchId: string, quantity: number, unitCost?: number | null, reason?: string) => Promise<{ newStock: number }>;
+  replenishStock: (productId: string, branchId: string, quantity: number, unitCost?: number | null, reason?: string, operatorId?: string | null, operatorPin?: string | null) => Promise<{ newStock: number }>;
   updateProduct: (id: string, updates: Partial<PartnerProduct>, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
   deleteProduct: (id: string, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
   addCustomer: (customer: Omit<PartnerCustomer, 'id' | 'user_id' | 'created_at'>, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
@@ -49,6 +49,8 @@ type PartnerData = {
   addCategory: (name: string) => Promise<void>;
   deleteCategory: (id: string) => Promise<void>;
   addSupplier: (supplier: Omit<PartnerSupplier, 'id' | 'user_id' | 'created_at' | 'payable_balance'>) => Promise<void>;
+  updateSupplier: (id: string, updates: Partial<PartnerSupplier>) => Promise<void>;
+  deleteSupplier: (id: string) => Promise<void>;
   addSalesperson: (sp: Omit<PartnerSalesperson, 'id' | 'user_id' | 'created_at'>) => Promise<void>;
   updateSalesperson: (id: string, updates: Partial<PartnerSalesperson>) => Promise<void>;
   deleteSalesperson: (id: string) => Promise<void>;
@@ -300,6 +302,8 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
     quantity: number,
     unitCost?: number | null,
     reason?: string,
+    operatorId?: string | null,
+    operatorPin?: string | null,
   ) => {
     if (!identity) throw new Error('Usuário não autenticado.');
     if (!isSupabaseConfigured || !supabase) throw new Error('Supabase não configurado.');
@@ -307,15 +311,24 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
     if (!Number.isInteger(quantity) || quantity <= 0) throw new Error('A quantidade de reposição deve ser um número inteiro maior que zero.');
 
     const { data, error } = await supabase.rpc('execute_partner_stock_replenishment', {
-      p_salesperson_id: null,
-      p_pin: null,
+      p_salesperson_id: operatorId ?? null,
+      p_pin: operatorPin ?? null,
       p_product_id: productId,
       p_branch_id: branchId,
       p_quantity: quantity,
       p_unit_cost: unitCost ?? null,
       p_reason: reason?.trim() || null,
     });
-    if (error) throw error;
+    if (error) {
+      console.error('Falha ao repor estoque via execute_partner_stock_replenishment.', {
+        error,
+        productId,
+        branchId,
+        quantity,
+        unitCost,
+      });
+      throw error;
+    }
 
     const result = data as { product_id?: string; new_stock?: number } | null;
     if (!result?.product_id || typeof result.new_stock !== 'number') {
@@ -760,6 +773,35 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
     if (isSupabaseConfigured && supabase) await supabase.from('partner_suppliers').insert(ns);
   }, [identity]);
 
+  const updateSupplier = useCallback(async (id: string, updates: Partial<PartnerSupplier>) => {
+    if (!identity || !isSupabaseConfigured || !supabase) throw new Error('Supabase não configurado.');
+    const { id: _id, user_id: _userId, created_at: _createdAt, payable_balance: _payableBalance, ...payload } = updates;
+    const { data: updated, error } = await supabase
+      .from('partner_suppliers')
+      .update(payload)
+      .eq('id', id)
+      .eq('user_id', identity.companyUserId)
+      .select()
+      .single();
+    if (error) throw error;
+    if (!updated) throw new Error('O fornecedor atualizado não foi confirmado pelo servidor.');
+    setData((prev) => ({ ...prev, suppliers: prev.suppliers.map((supplier) => supplier.id === id ? updated as PartnerSupplier : supplier) }));
+  }, [identity]);
+
+  const deleteSupplier = useCallback(async (id: string) => {
+    if (!identity || !isSupabaseConfigured || !supabase) throw new Error('Supabase não configurado.');
+    const { data: deleted, error } = await supabase
+      .from('partner_suppliers')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', identity.companyUserId)
+      .select('id')
+      .single();
+    if (error) throw error;
+    if (!deleted || deleted.id !== id) throw new Error('A exclusão do fornecedor não foi confirmada pelo servidor.');
+    setData((prev) => ({ ...prev, suppliers: prev.suppliers.filter((supplier) => supplier.id !== id) }));
+  }, [identity]);
+
   const addSalesperson = useCallback(async (sp: Omit<PartnerSalesperson, 'id' | 'user_id' | 'created_at'>) => {
     if (!identity) return;
     if (!isSupabaseConfigured || !supabase) throw new Error('Supabase não configurado. O colaborador não foi salvo.');
@@ -906,7 +948,7 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
     addProduct, replenishStock, updateProduct, deleteProduct, addCustomer, updateCustomer, refreshCustomer, deleteCustomer, createSale,
     createPreSale, finalizePreSale,
     updateStoreSettings, updateProfile, createRma, updateRmaStatus, deleteRma, addBranch, updateBranch, deleteBranch,
-    addCategory, deleteCategory, addSupplier, addSalesperson,
+    addCategory, deleteCategory, addSupplier, updateSupplier, deleteSupplier, addSalesperson,
     updateSalesperson, deleteSalesperson, cancelSale, deleteSale,
     addCombo, deleteCombo, addModifier, deleteModifier, payInvoice,
   };

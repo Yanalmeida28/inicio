@@ -354,6 +354,19 @@ export function PartnerPanel({
     await partner.deleteProduct(id, currentSalespersonId, activeOperatorPin);
   }
 
+  async function handleUpdateProduct(id: string, updates: Partial<PartnerProduct>) {
+    const target = partner.products.find((product) => product.id === id);
+    if (!target) throw new Error('Produto não encontrado.');
+    if (isEmployeeRestricted && target.branch_id && target.branch_id !== effectiveBranchId) {
+      throw new Error('Acesso negado: você não pode alterar produtos de outra filial.');
+    }
+    await partner.updateProduct(id, { ...updates, branch_id: target.branch_id ?? effectiveBranchId }, currentSalespersonId, activeOperatorPin);
+  }
+
+  async function handleReplenishStock(productId: string, branchId: string, quantity: number, unitCost?: number | null, reason?: string) {
+    return partner.replenishStock(productId, branchId, quantity, unitCost, reason, currentSalespersonId, activeOperatorPin);
+  }
+
   async function handleAddCustomer(customer: Omit<PartnerCustomer, 'id' | 'user_id' | 'created_at'>) {
     const targetBranch = isEmployeeRestricted ? effectiveBranchId : (customer.branch_id || effectiveBranchId);
     if (!targetBranch) {
@@ -739,7 +752,8 @@ export function PartnerPanel({
                 onAddProduct={
                   handleAddProduct
                 }
-                onReplenishStock={partner.replenishStock}
+                onUpdateProduct={handleUpdateProduct}
+                onReplenishStock={handleReplenishStock}
                 onDeleteProduct={
                   handleDeleteProduct
                 }
@@ -752,6 +766,8 @@ export function PartnerPanel({
                 onAddSupplier={
                   partner.addSupplier
                 }
+                onUpdateSupplier={partner.updateSupplier}
+                onDeleteSupplier={partner.deleteSupplier}
                 onAddSalesperson={
                   partner.addSalesperson
                 }

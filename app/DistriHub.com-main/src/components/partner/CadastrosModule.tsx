@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import {
   Boxes, FileText, Package, Plus, Tag, Trash2, Upload, Users, Wrench,
   Building2, UserCheck, Layers, QrCode, X, History,
-  IdCard, MapPin, Wallet, Phone, Save, Camera, UserCircle,
+  IdCard, MapPin, Wallet, Phone, Save, Camera, UserCircle, MoreVertical, Pencil,
   Check, TrendingUp, AlertTriangle, Activity,
 } from 'lucide-react';
 import type {
@@ -30,11 +30,14 @@ type Props = {
   allSales: PartnerSale[];
   segment: string;
   onAddProduct: (p: Omit<PartnerProduct, 'id' | 'user_id' | 'created_at' | 'updated_at'>) => Promise<void>;
+  onUpdateProduct: (id: string, updates: Partial<PartnerProduct>) => Promise<void>;
   onReplenishStock: (productId: string, branchId: string, quantity: number, unitCost?: number | null, reason?: string) => Promise<{ newStock: number }>;
   onDeleteProduct: (id: string) => Promise<void>;
   onAddCategory: (name: string) => Promise<void>;
   onDeleteCategory: (id: string) => Promise<void>;
   onAddSupplier: (s: Omit<PartnerSupplier, 'id' | 'user_id' | 'created_at' | 'payable_balance'>) => Promise<void>;
+  onUpdateSupplier: (id: string, updates: Partial<PartnerSupplier>) => Promise<void>;
+  onDeleteSupplier: (id: string) => Promise<void>;
   onAddSalesperson: (sp: Omit<PartnerSalesperson, 'id' | 'user_id' | 'created_at'>) => Promise<void>;
   onUpdateSalesperson: (id: string, updates: Partial<PartnerSalesperson>) => Promise<void>;
   onDeleteSalesperson: (id: string) => Promise<void>;
@@ -65,9 +68,9 @@ const subTabs: { id: SubTab; label: string; icon: typeof Package }[] = [
 
 export function CadastrosModule({
   products, branches, selectedBranchId, categories, suppliers, salespeople, combos, modifiers, customers, sales,
-  allSales, segment, onAddProduct, onDeleteProduct,
+  allSales, segment, onAddProduct, onUpdateProduct, onDeleteProduct,
   onReplenishStock,
-  onAddCategory, onDeleteCategory, onAddSupplier, onAddSalesperson,
+  onAddCategory, onDeleteCategory, onAddSupplier, onUpdateSupplier, onDeleteSupplier, onAddSalesperson,
   onUpdateSalesperson, onDeleteSalesperson,
   onAddCombo, onDeleteCombo, onAddModifier, onDeleteModifier, onAddCustomer,
   onUpdateCustomer, onLoadCustomer, onDeleteCustomer,
@@ -109,6 +112,7 @@ export function CadastrosModule({
             categories={categories}
             segment={segment}
             onAddProduct={onAddProduct}
+            onUpdateProduct={onUpdateProduct}
             onDeleteProduct={onDeleteProduct}
           />
         )}
@@ -135,7 +139,7 @@ export function CadastrosModule({
           />
         )}
         {subTab === 'fornecedores' && (
-          <SuppliersSubTab suppliers={suppliers} onAdd={onAddSupplier} />
+          <SuppliersSubTab suppliers={suppliers} onAdd={onAddSupplier} onUpdate={onUpdateSupplier} onDelete={onDeleteSupplier} />
         )}
         {subTab === 'vendedores' && (
           <SalespeopleSubTab
@@ -163,7 +167,7 @@ export function CadastrosModule({
   );
 }
 
-function ProductsSubTab({ products, allProducts, branches, selectedBranchId, categories, segment, onAddProduct, onDeleteProduct }: {
+function ProductsSubTab({ products, allProducts, branches, selectedBranchId, categories, segment, onAddProduct, onUpdateProduct, onDeleteProduct }: {
   products: PartnerProduct[];
   allProducts: PartnerProduct[];
   branches: PartnerBranch[];
@@ -171,6 +175,7 @@ function ProductsSubTab({ products, allProducts, branches, selectedBranchId, cat
   categories: PartnerCategory[];
   segment: string;
   onAddProduct: (p: Omit<PartnerProduct, 'id' | 'user_id' | 'created_at' | 'updated_at'>) => Promise<void>;
+  onUpdateProduct: (id: string, updates: Partial<PartnerProduct>) => Promise<void>;
   onDeleteProduct: (id: string) => Promise<void>;
 }) {
   const [showForm, setShowForm] = useState(false);
@@ -191,6 +196,10 @@ function ProductsSubTab({ products, allProducts, branches, selectedBranchId, cat
   const [cofinsRate, setCofinsRate] = useState('');
   const [labelProductId, setLabelProductId] = useState<string | null>(null);
   const [availabilityProductId, setAvailabilityProductId] = useState<string | null>(null);
+  const [editProduct, setEditProduct] = useState<PartnerProduct | null>(null);
+  const [openActionId, setOpenActionId] = useState<string | null>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -226,6 +235,26 @@ function ProductsSubTab({ products, allProducts, branches, selectedBranchId, cat
         return sameName && (sameSku || sameFallback);
       })
     : [];
+
+  function beginEdit(product: PartnerProduct) {
+    setEditError(null);
+    setEditProduct(product);
+    setOpenActionId(null);
+  }
+
+  async function saveEdit(updates: Partial<PartnerProduct>) {
+    if (!editProduct) return;
+    setSavingEdit(true);
+    setEditError(null);
+    try {
+      await onUpdateProduct(editProduct.id, updates);
+      setEditProduct(null);
+    } catch (error) {
+      setEditError(error instanceof Error ? error.message : 'Não foi possível salvar o produto.');
+    } finally {
+      setSavingEdit(false);
+    }
+  }
 
   return (
     <div>
@@ -344,17 +373,19 @@ function ProductsSubTab({ products, allProducts, branches, selectedBranchId, cat
                       <span className="rma-status-badge" style={{ color: '#15803D', borderColor: '#15803D' }}>OK</span>
                     )}
                   </td>
-                  <td>
-                    <div className="row-action-group">
-                      <button className="rma-advance-btn" onClick={() => setLabelProductId(p.id)} title="Imprimir Etiqueta">
-                        <QrCode size={14} />
+                  <td className="product-actions-cell">
+                    <div className="product-actions-menu">
+                      <button type="button" className="product-actions-trigger" onClick={() => setOpenActionId(openActionId === p.id ? null : p.id)} aria-label={`Ações de ${p.name}`} aria-expanded={openActionId === p.id}>
+                        <MoreVertical size={18} />
                       </button>
-                      <button className="rma-advance-btn" onClick={() => setAvailabilityProductId(p.id)} title="Ver disponibilidade em outras filiais">
-                        <Building2 size={14} />
-                      </button>
-                      <button className="rma-advance-btn danger" onClick={() => onDeleteProduct(p.id)}>
-                        <Trash2 size={14} />
-                      </button>
+                      {openActionId === p.id && (
+                        <div className="product-actions-popover" role="menu">
+                          <button type="button" onClick={() => beginEdit(p)}><Pencil size={15} /> Editar</button>
+                          <button type="button" onClick={() => { setLabelProductId(p.id); setOpenActionId(null); }}><QrCode size={15} /> Imprimir etiquetas</button>
+                          <button type="button" onClick={() => { setAvailabilityProductId(p.id); setOpenActionId(null); }}><Building2 size={15} /> Consultar em outras filiais</button>
+                          <button type="button" className="danger" onClick={() => { setOpenActionId(null); if (window.confirm(`Excluir o produto "${p.name}"?`)) void onDeleteProduct(p.id); }}><Trash2 size={15} /> Excluir</button>
+                        </div>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -386,6 +417,73 @@ function ProductsSubTab({ products, allProducts, branches, selectedBranchId, cat
           onClose={() => setAvailabilityProductId(null)}
         />
       )}
+
+      {editProduct && (
+        <ProductEditModal
+          product={editProduct}
+          categories={categories}
+          saving={savingEdit}
+          error={editError}
+          onClose={() => !savingEdit && setEditProduct(null)}
+          onSave={saveEdit}
+        />
+      )}
+    </div>
+  );
+}
+
+function ProductEditModal({ product, categories, saving, error, onClose, onSave }: {
+  product: PartnerProduct;
+  categories: PartnerCategory[];
+  saving: boolean;
+  error: string | null;
+  onClose: () => void;
+  onSave: (updates: Partial<PartnerProduct>) => Promise<void>;
+}) {
+  const [name, setName] = useState(product.name);
+  const [sku, setSku] = useState(product.sku ?? '');
+  const [cost, setCost] = useState(String(product.cost_price));
+  const [sale, setSale] = useState(String(product.sale_price));
+  const [wholesale, setWholesale] = useState(String(product.wholesale_price));
+  const [stock, setStock] = useState(String(product.stock));
+  const [minStock, setMinStock] = useState(String(product.min_stock));
+  const [category, setCategory] = useState(product.category ?? '');
+  const [isService, setIsService] = useState(product.is_service);
+  const [ncm, setNcm] = useState(product.ncm ?? '');
+  const [cfop, setCfop] = useState(product.cfop ?? '');
+  const [cstCsosn, setCstCsosn] = useState(product.cst_csosn ?? '');
+  const [icmsRate, setIcmsRate] = useState(String(product.icms_rate ?? 0));
+  const [pisRate, setPisRate] = useState(String(product.pis_rate ?? 0));
+  const [cofinsRate, setCofinsRate] = useState(String(product.cofins_rate ?? 0));
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    if (!name.trim() || !sale) return;
+    await onSave({
+      name: name.trim(), sku: sku.trim() || null, cost_price: Number(cost) || 0,
+      sale_price: Number(sale) || 0, wholesale_price: Number(wholesale) || 0,
+      stock: Math.max(0, Number(stock) || 0), min_stock: Math.max(0, Number(minStock) || 0),
+      category: category || null, is_service: isService, ncm: ncm || null,
+      cfop: cfop || null, cst_csosn: cstCsosn || null, icms_rate: Number(icmsRate) || 0,
+      pis_rate: Number(pisRate) || 0, cofins_rate: Number(cofinsRate) || 0,
+    });
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <form className="modal-card product-edit-modal" onSubmit={submit} onClick={(event) => event.stopPropagation()}>
+        <div className="modal-header"><h4>Editar produto</h4><button type="button" className="modal-close" onClick={onClose} aria-label="Fechar">×</button></div>
+        <div className="product-edit-body">
+          <div className="form-row"><label>Nome<input value={name} onChange={(e) => setName(e.target.value)} required /></label><label>SKU<input value={sku} onChange={(e) => setSku(e.target.value)} /></label></div>
+          <div className="form-row"><label>Preço de custo<input type="number" min="0" step="0.01" value={cost} onChange={(e) => setCost(e.target.value)} /></label><label>Preço varejo<input type="number" min="0" step="0.01" value={sale} onChange={(e) => setSale(e.target.value)} required /></label><label>Preço atacado<input type="number" min="0" step="0.01" value={wholesale} onChange={(e) => setWholesale(e.target.value)} /></label></div>
+          <div className="form-row"><label>Estoque<input type="number" min="0" step="1" value={stock} onChange={(e) => setStock(e.target.value)} /></label><label>Estoque mínimo<input type="number" min="0" step="1" value={minStock} onChange={(e) => setMinStock(e.target.value)} /></label><label>Categoria<select value={category} onChange={(e) => setCategory(e.target.value)}><option value="">Selecione...</option>{categories.map((item) => <option key={item.id} value={item.name}>{item.name}</option>)}</select></label></div>
+          <label className="checkbox-label"><input type="checkbox" checked={isService} onChange={(e) => setIsService(e.target.checked)} /> É um serviço (sem estoque)</label>
+          <div className="form-row"><label>NCM<input value={ncm} onChange={(e) => setNcm(e.target.value)} /></label><label>CFOP<input value={cfop} onChange={(e) => setCfop(e.target.value)} /></label><label>CST/CSOSN<input value={cstCsosn} onChange={(e) => setCstCsosn(e.target.value)} /></label></div>
+          <div className="form-row"><label>ICMS (%)<input type="number" min="0" step="0.01" value={icmsRate} onChange={(e) => setIcmsRate(e.target.value)} /></label><label>PIS (%)<input type="number" min="0" step="0.01" value={pisRate} onChange={(e) => setPisRate(e.target.value)} /></label><label>COFINS (%)<input type="number" min="0" step="0.01" value={cofinsRate} onChange={(e) => setCofinsRate(e.target.value)} /></label></div>
+          {error && <div className="branch-action-error" role="alert">{error}</div>}
+        </div>
+        <div className="product-edit-footer"><button type="button" className="rma-advance-btn" onClick={onClose} disabled={saving}>Cancelar</button><button type="submit" className="module-submit-btn" disabled={saving}>{saving ? 'Salvando...' : 'Salvar alterações'}</button></div>
+      </form>
     </div>
   );
 }
@@ -813,6 +911,7 @@ function CustomersSubTab({ customers, sales, salespeople, selectedBranchId, onAd
   const [customerSearch, setCustomerSearch] = useState('');
   const [historyCustomerId, setHistoryCustomerId] = useState<string | null>(null);
   const [profileCustomerId, setProfileCustomerId] = useState<string | null>(null);
+  const [openCustomerActionId, setOpenCustomerActionId] = useState<string | null>(null);
 
   function resetForm() {
     setName(''); setDocument(''); setPersonType('PF'); setPhone(''); setEmail(''); setBirthday(''); setAddress('');
@@ -1048,8 +1147,9 @@ function CustomersSubTab({ customers, sales, salespeople, selectedBranchId, onAd
       )}
 
       <div className="stock-table-wrap">
-        <table className="rma-table">
-          <thead><tr><th>Nome</th><th>CPF/CNPJ</th><th>WhatsApp</th><th>Bairro/Cidade</th><th>Aniversário</th><th>Ações</th></tr></thead>
+        <table className="rma-table customer-list-table">
+          <colgroup><col className="customer-col-name" /><col className="customer-col-document" /><col className="customer-col-phone" /><col className="customer-col-location" /><col className="customer-col-birthday" /><col className="customer-col-actions" /></colgroup>
+          <thead><tr><th>Nome</th><th>CPF/CNPJ</th><th>WhatsApp</th><th>Bairro/Cidade</th><th>Aniversário</th><th className="customer-actions-heading">Ações</th></tr></thead>
           <tbody>
             {visibleCustomers.length === 0 ? (
               <tr><td colSpan={6} className="empty-row">Nenhum cliente cadastrado.</td></tr>
@@ -1078,28 +1178,19 @@ function CustomersSubTab({ customers, sales, salespeople, selectedBranchId, onAd
                     <td>{c.phone ?? '—'}</td>
                     <td>{[c.neighborhood, c.city].filter(Boolean).join(', ') || '—'}</td>
                     <td>{c.birthday ? new Date(c.birthday).toLocaleDateString('pt-BR') : '—'}</td>
-                    <td>
-                      <div className="row-action-group">
-                        <button className="rma-advance-btn" onClick={() => openEditForm(c)} title="Editar Cliente">
-                          <Save size={14} /> Editar
+                    <td className="customer-actions-cell">
+                      <div className="product-actions-menu">
+                        <button type="button" className="product-actions-trigger" onClick={() => setOpenCustomerActionId(openCustomerActionId === c.id ? null : c.id)} aria-label={`Ações de ${c.name}`} aria-expanded={openCustomerActionId === c.id}>
+                          <MoreVertical size={18} />
                         </button>
-                        <button className="rma-advance-btn" onClick={async () => {
-                          const confirmed = window.confirm(`Deseja excluir o cliente "${c.name}"?`);
-                          if (!confirmed) return;
-                          try {
-                            await onDelete(c.id);
-                          } catch (error) {
-                            window.alert(error instanceof Error ? error.message : 'Não foi possível excluir o cliente.');
-                          }
-                        }} title="Excluir Cliente" style={{ color: '#B91C1C' }}>
-                          <Trash2 size={14} /> Excluir
-                        </button>
-                        <button className="rma-advance-btn" onClick={async () => { try { await onLoadCustomer(c.id); setProfileCustomerId(c.id); } catch (error) { window.alert(error instanceof Error ? error.message : 'Não foi possível carregar os dados do cliente.'); } }} title="Detalhes do Cliente">
-                          <UserCircle size={14} /> Detalhes
-                        </button>
-                        <button className="rma-advance-btn" onClick={() => setHistoryCustomerId(c.id)} title="Histórico de Compras">
-                          <History size={14} /> Histórico
-                        </button>
+                        {openCustomerActionId === c.id && (
+                          <div className="product-actions-popover customer-actions-popover" role="menu">
+                            <button type="button" onClick={() => { openEditForm(c); setOpenCustomerActionId(null); }}><Pencil size={15} /> Editar</button>
+                            <button type="button" onClick={async () => { setOpenCustomerActionId(null); try { await onLoadCustomer(c.id); setProfileCustomerId(c.id); } catch (error) { window.alert(error instanceof Error ? error.message : 'Não foi possível carregar os dados do cliente.'); } }}><UserCircle size={15} /> Detalhes</button>
+                            <button type="button" onClick={() => { setHistoryCustomerId(c.id); setOpenCustomerActionId(null); }}><History size={15} /> Histórico de Compras / Extrato</button>
+                            <button type="button" className="danger" onClick={async () => { setOpenCustomerActionId(null); if (!window.confirm(`Deseja excluir o cliente "${c.name}"?`)) return; try { await onDelete(c.id); } catch (error) { window.alert(error instanceof Error ? error.message : 'Não foi possível excluir o cliente.'); } }}><Trash2 size={15} /> Excluir</button>
+                          </div>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -1303,19 +1394,38 @@ function CustomerProfileModal({ customer, sales, salespeople, onUpdate, onClose 
   );
 }
 
-function SuppliersSubTab({ suppliers, onAdd }: {
+function SuppliersSubTab({ suppliers, onAdd, onUpdate, onDelete }: {
   suppliers: PartnerSupplier[];
   onAdd: (s: Omit<PartnerSupplier, 'id' | 'user_id' | 'created_at' | 'payable_balance'>) => Promise<void>;
+  onUpdate: (id: string, updates: Partial<PartnerSupplier>) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
 }) {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [notes, setNotes] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) return;
-    await onAdd({ name, phone: phone || null, notes: notes || null });
+    if (editingId) {
+      await onUpdate(editingId, { name: name.trim(), phone: phone || null, notes: notes || null });
+    } else {
+      await onAdd({ name, phone: phone || null, notes: notes || null });
+    }
     setName(''); setPhone(''); setNotes('');
+    setEditingId(null);
+  }
+
+  function startEdit(supplier: PartnerSupplier) {
+    setEditingId(supplier.id);
+    setName(supplier.name);
+    setPhone(supplier.phone ?? '');
+    setNotes(supplier.notes ?? '');
+  }
+
+  function cancelEdit() {
+    setEditingId(null); setName(''); setPhone(''); setNotes('');
   }
 
   return (
@@ -1335,20 +1445,21 @@ function SuppliersSubTab({ suppliers, onAdd }: {
           Observações
           <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notas sobre prazos, condições..." rows={2} />
         </label>
-        <button type="submit" className="module-submit-btn"><Plus size={16} /> Adicionar fornecedor</button>
+        <div className="supplier-form-actions"><button type="submit" className="module-submit-btn">{editingId ? <><Save size={16} /> Salvar alterações</> : <><Plus size={16} /> Adicionar fornecedor</>}</button>{editingId && <button type="button" className="rma-advance-btn" onClick={cancelEdit}>Cancelar</button>}</div>
       </form>
       <div className="stock-table-wrap">
         <table className="rma-table">
-          <thead><tr><th>Fornecedor</th><th>Telefone</th><th>Contas a Pagar</th></tr></thead>
+          <thead><tr><th>Fornecedor</th><th>Telefone</th><th>Contas a Pagar</th><th className="supplier-actions-heading">Ações</th></tr></thead>
           <tbody>
             {suppliers.length === 0 ? (
-              <tr><td colSpan={3} className="empty-row">Nenhum fornecedor cadastrado.</td></tr>
+              <tr><td colSpan={4} className="empty-row">Nenhum fornecedor cadastrado.</td></tr>
             ) : (
               suppliers.map((s) => (
                 <tr key={s.id}>
                   <td><strong>{s.name}</strong></td>
                   <td>{s.phone ?? '—'}</td>
                   <td>{money.format(s.payable_balance)}</td>
+                  <td className="supplier-actions-cell"><div className="row-action-group"><button type="button" className="rma-advance-btn" onClick={() => startEdit(s)}><Pencil size={14} /> Editar</button><button type="button" className="rma-advance-btn danger" onClick={async () => { if (!window.confirm(`Excluir o fornecedor "${s.name}"?`)) return; try { await onDelete(s.id); } catch (error) { window.alert(error instanceof Error ? error.message : 'Não foi possível excluir o fornecedor.'); } }}><Trash2 size={14} /> Excluir</button></div></td>
                 </tr>
               ))
             )}
@@ -1671,6 +1782,7 @@ function ReplenishmentSubTab({ products, sales, selectedBranchId, onReplenishSto
       setSelectedProduct(null);
       setQuantity(''); setUnitCost(''); setReason('');
     } catch (saveError) {
+      console.error('Falha ao salvar reposição de estoque.', saveError);
       setError(saveError instanceof Error ? saveError.message : 'Não foi possível salvar a reposição.');
     } finally {
       setSaving(false);
