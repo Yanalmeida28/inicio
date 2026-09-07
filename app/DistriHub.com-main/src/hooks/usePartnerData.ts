@@ -501,15 +501,14 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
     operatorId?: string | null,
     operatorPin?: string | null,
   ) => {
-    if (isSupabaseConfigured && supabase) {
-      const { data: deleted, error: rpcErr } = await supabase.rpc('execute_partner_customer_delete', {
-        p_salesperson_id: operatorId ?? null,
-        p_pin: operatorPin ?? null,
-        p_customer_id: id,
-      });
-      if (rpcErr) throw rpcErr;
-      if (deleted !== true) throw new Error('A exclusão do cliente não foi confirmada pelo servidor.');
-    }
+    if (!isSupabaseConfigured || !supabase) throw new Error('Supabase não configurado. A exclusão não foi realizada.');
+    const { data: deleted, error: rpcErr } = await supabase.rpc('execute_partner_customer_delete', {
+      p_salesperson_id: operatorId ?? null,
+      p_pin: operatorPin ?? null,
+      p_customer_id: id,
+    });
+    if (rpcErr) throw rpcErr;
+    if (deleted !== id) throw new Error('A exclusão do cliente não foi confirmada pelo servidor.');
     setData((prev) => ({ ...prev, customers: prev.customers.filter((customer) => customer.id !== id) }));
   }, []);
 
