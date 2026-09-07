@@ -739,6 +739,7 @@ export function PartnerPanel({
                 onAddProduct={
                   handleAddProduct
                 }
+                onReplenishStock={partner.replenishStock}
                 onDeleteProduct={
                   handleDeleteProduct
                 }

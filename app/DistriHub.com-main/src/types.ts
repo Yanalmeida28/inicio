@@ -221,6 +221,7 @@ export interface StockMovement {
   user_id: string;
   product_id: string;
   product_name: string;
+  branch_id?: string | null;
   type: 'entrada' | 'saida';
   quantity: number;
   reason: string;

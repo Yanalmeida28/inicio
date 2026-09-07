@@ -28,6 +28,7 @@ type PartnerData = {
   loading: boolean;
   error: string | null;
   addProduct: (product: Omit<PartnerProduct, 'id' | 'user_id' | 'created_at' | 'updated_at'>, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
+  replenishStock: (productId: string, branchId: string, quantity: number, unitCost?: number | null, reason?: string) => Promise<{ newStock: number }>;
   updateProduct: (id: string, updates: Partial<PartnerProduct>, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
   deleteProduct: (id: string, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
   addCustomer: (customer: Omit<PartnerCustomer, 'id' | 'user_id' | 'created_at'>, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
@@ -291,6 +292,49 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
       if (rpcErr) throw rpcErr;
       await supabase.from('stock_movements').insert({ user_id: identity.companyUserId, product_id: np.id, product_name: np.name, type: 'entrada', quantity: np.stock, reason: 'Cadastro inicial' });
     }
+  }, [identity]);
+
+  const replenishStock = useCallback(async (
+    productId: string,
+    branchId: string,
+    quantity: number,
+    unitCost?: number | null,
+    reason?: string,
+  ) => {
+    if (!identity) throw new Error('Usuário não autenticado.');
+    if (!isSupabaseConfigured || !supabase) throw new Error('Supabase não configurado.');
+    if (!branchId) throw new Error('Selecione uma filial antes de repor o estoque.');
+    if (!Number.isInteger(quantity) || quantity <= 0) throw new Error('A quantidade de reposição deve ser um número inteiro maior que zero.');
+
+    const { data, error } = await supabase.rpc('execute_partner_stock_replenishment', {
+      p_salesperson_id: null,
+      p_pin: null,
+      p_product_id: productId,
+      p_branch_id: branchId,
+      p_quantity: quantity,
+      p_unit_cost: unitCost ?? null,
+      p_reason: reason?.trim() || null,
+    });
+    if (error) throw error;
+
+    const result = data as { product_id?: string; new_stock?: number } | null;
+    if (!result?.product_id || typeof result.new_stock !== 'number') {
+      throw new Error('A reposição não foi confirmada pelo servidor.');
+    }
+
+    setData((prev) => ({
+      ...prev,
+      products: prev.products.map((product) => product.id === productId
+        ? { ...product, stock: result.new_stock as number, ...(unitCost != null ? { cost_price: unitCost } : {}) }
+        : product),
+      movements: [{
+        id: crypto.randomUUID(), user_id: identity.companyUserId, product_id: productId,
+        product_name: prev.products.find((product) => product.id === productId)?.name ?? 'Produto',
+        branch_id: branchId, type: 'entrada', quantity, reason: reason?.trim() || 'Reposição de estoque',
+        created_at: new Date().toISOString(),
+      }, ...prev.movements],
+    }));
+    return { newStock: result.new_stock };
   }, [identity]);
 
   const updateProduct = useCallback(async (
@@ -719,15 +763,46 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
 
   const addSalesperson = useCallback(async (sp: Omit<PartnerSalesperson, 'id' | 'user_id' | 'created_at'>) => {
     if (!identity) return;
-    const nsp: PartnerSalesperson = { ...sp, id: crypto.randomUUID(), user_id: identity.companyUserId, created_at: new Date().toISOString() };
-    setData((prev) => ({ ...prev, salespeople: [nsp, ...prev.salespeople] }));
-    if (isSupabaseConfigured && supabase) await supabase.from('partner_salespeople').insert(nsp);
+    if (!isSupabaseConfigured || !supabase) throw new Error('Supabase não configurado. O colaborador não foi salvo.');
+
+    const invalidColumns = new Set(['phone', 'email', 'is_active', 'updated_at']);
+    const insertPayload = {
+      ...Object.fromEntries(Object.entries(sp).filter(([key]) => !invalidColumns.has(key))),
+      id: crypto.randomUUID(),
+      user_id: identity.companyUserId,
+      created_at: new Date().toISOString(),
+    };
+    const { data: inserted, error } = await supabase
+      .from('partner_salespeople')
+      .insert(insertPayload)
+      .select()
+      .single();
+    if (error) throw error;
+    if (!inserted) throw new Error('O Supabase não retornou o colaborador criado.');
+
+    const confirmed = inserted as unknown as PartnerSalesperson;
+    setData((prev) => ({ ...prev, salespeople: [confirmed, ...prev.salespeople] }));
   }, [identity]);
 
   const updateSalesperson = useCallback(async (id: string, updates: Partial<PartnerSalesperson>) => {
-    setData((prev) => ({ ...prev, salespeople: prev.salespeople.map((s) => s.id === id ? { ...s, ...updates } : s) }));
-    if (isSupabaseConfigured && supabase) await supabase.from('partner_salespeople').update(updates).eq('id', id);
-  }, []);
+    if (!identity) return;
+    if (!isSupabaseConfigured || !supabase) throw new Error('Supabase não configurado. O colaborador não foi atualizado.');
+
+    const invalidColumns = new Set(['id', 'user_id', 'created_at', 'updated_at', 'phone', 'email', 'is_active']);
+    const updatePayload = Object.fromEntries(Object.entries(updates).filter(([key]) => !invalidColumns.has(key)));
+    const { data: updated, error } = await supabase
+      .from('partner_salespeople')
+      .update(updatePayload)
+      .eq('id', id)
+      .eq('user_id', identity.companyUserId)
+      .select()
+      .single();
+    if (error) throw error;
+    if (!updated) throw new Error('O Supabase não retornou o colaborador atualizado.');
+
+    const confirmed = updated as unknown as PartnerSalesperson;
+    setData((prev) => ({ ...prev, salespeople: prev.salespeople.map((salesperson) => salesperson.id === id ? confirmed : salesperson) }));
+  }, [identity]);
 
   const deleteSalesperson = useCallback(async (id: string) => {
     setData((prev) => ({ ...prev, salespeople: prev.salespeople.filter((s) => s.id !== id) }));
@@ -824,7 +899,7 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
     rmaRequests: data.rmaRequests, branches: data.branches, categories: data.categories,
     suppliers: data.suppliers, salespeople: data.salespeople, combos: data.combos,
     modifiers: data.modifiers, invoices: data.invoices, loading: data.loading,
-    addProduct, updateProduct, deleteProduct, addCustomer, updateCustomer, refreshCustomer, deleteCustomer, createSale,
+    addProduct, replenishStock, updateProduct, deleteProduct, addCustomer, updateCustomer, refreshCustomer, deleteCustomer, createSale,
     createPreSale, finalizePreSale,
     updateStoreSettings, updateProfile, createRma, updateRmaStatus, deleteRma, addBranch, updateBranch, deleteBranch,
     addCategory, deleteCategory, addSupplier, addSalesperson,

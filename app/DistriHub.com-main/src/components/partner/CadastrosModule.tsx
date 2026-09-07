@@ -30,6 +30,7 @@ type Props = {
   allSales: PartnerSale[];
   segment: string;
   onAddProduct: (p: Omit<PartnerProduct, 'id' | 'user_id' | 'created_at' | 'updated_at'>) => Promise<void>;
+  onReplenishStock: (productId: string, branchId: string, quantity: number, unitCost?: number | null, reason?: string) => Promise<{ newStock: number }>;
   onDeleteProduct: (id: string) => Promise<void>;
   onAddCategory: (name: string) => Promise<void>;
   onDeleteCategory: (id: string) => Promise<void>;
@@ -65,6 +66,7 @@ const subTabs: { id: SubTab; label: string; icon: typeof Package }[] = [
 export function CadastrosModule({
   products, branches, selectedBranchId, categories, suppliers, salespeople, combos, modifiers, customers, sales,
   allSales, segment, onAddProduct, onDeleteProduct,
+  onReplenishStock,
   onAddCategory, onDeleteCategory, onAddSupplier, onAddSalesperson,
   onUpdateSalesperson, onDeleteSalesperson,
   onAddCombo, onDeleteCombo, onAddModifier, onDeleteModifier, onAddCustomer,
@@ -145,7 +147,7 @@ export function CadastrosModule({
           />
         )}
         {subTab === 'reposicao' && (
-          <ReplenishmentSubTab products={products} sales={sales} />
+          <ReplenishmentSubTab products={products} sales={sales} selectedBranchId={selectedBranchId} onReplenishStock={onReplenishStock} />
         )}
         {subTab === 'importar' && (
           <ImportExportModule
@@ -1576,10 +1578,19 @@ function SalespeopleSubTab({ salespeople, branches, onAdd, onUpdate, onDelete }:
   );
 }
 
-function ReplenishmentSubTab({ products, sales }: {
+function ReplenishmentSubTab({ products, sales, selectedBranchId, onReplenishStock }: {
   products: PartnerProduct[];
   sales: PartnerSale[];
+  selectedBranchId: string | null;
+  onReplenishStock: (productId: string, branchId: string, quantity: number, unitCost?: number | null, reason?: string) => Promise<{ newStock: number }>;
 }) {
+  const [selectedProduct, setSelectedProduct] = useState<PartnerProduct | null>(null);
+  const [quantity, setQuantity] = useState('');
+  const [unitCost, setUnitCost] = useState('');
+  const [reason, setReason] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const abcAnalysis = useMemo(() => {
     const completedSales = sales.filter((s) => s.status === 'concluida');
     const productStats: Record<string, { name: string; sku: string | null; stock: number; minStock: number; totalSold: number; revenue: number; isService: boolean }> = {};
@@ -1636,6 +1647,36 @@ function ReplenishmentSubTab({ products, sales }: {
 
   const abcColors: Record<string, string> = { A: '#15803D', B: '#B45309', C: '#475569' };
 
+  async function handleReplenish(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selectedProduct || !selectedBranchId) {
+      setError('Selecione uma filial e um produto válidos.');
+      return;
+    }
+    const parsedQuantity = Number(quantity);
+    const parsedCost = unitCost.trim() ? Number(unitCost) : null;
+    if (!Number.isInteger(parsedQuantity) || parsedQuantity <= 0) {
+      setError('Informe uma quantidade inteira maior que zero.');
+      return;
+    }
+    if (parsedCost !== null && (!Number.isFinite(parsedCost) || parsedCost < 0)) {
+      setError('Informe um custo unitário válido.');
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const result = await onReplenishStock(selectedProduct.id, selectedBranchId, parsedQuantity, parsedCost, reason);
+      setSuccess(`${selectedProduct.name} reposto com sucesso. Novo estoque: ${result.newStock}.`);
+      setSelectedProduct(null);
+      setQuantity(''); setUnitCost(''); setReason('');
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Não foi possível salvar a reposição.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <div>
       <div className="admin-permissions-info">
@@ -1654,6 +1695,9 @@ function ReplenishmentSubTab({ products, sales }: {
           </div>
         </div>
       )}
+
+      {success && <div className="sent-message" role="status">{success}</div>}
+      {error && !selectedProduct && <div className="branch-action-error" role="alert">{error}</div>}
 
       <div className="report-cards replenishment-kpi-grid">
         <div className="report-card">
@@ -1688,7 +1732,7 @@ function ReplenishmentSubTab({ products, sales }: {
           <table className="rma-table">
             <thead>
               <tr>
-                <th>Produto</th><th>SKU</th><th>Classe ABC</th><th>Estoque</th><th>Mínimo</th><th>Vendidos</th><th>Receita</th><th>Recomendação</th>
+                <th>Produto</th><th>SKU</th><th>Classe ABC</th><th>Estoque</th><th>Mínimo</th><th>Vendidos</th><th>Receita</th><th>Recomendação</th><th>Ação</th>
               </tr>
             </thead>
             <tbody>
@@ -1712,11 +1756,29 @@ function ReplenishmentSubTab({ products, sales }: {
                         Repor {suggestedQty > 0 ? `+${suggestedQty}` : '—'} un.
                       </span>
                     </td>
+                    <td><button type="button" className="module-submit-btn compact" onClick={() => { setSelectedProduct(products.find((product) => product.id === p.id) ?? null); setError(null); setSuccess(null); }}>Repor estoque</button></td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {selectedProduct && (
+        <div className="modal-overlay replenishment-modal-overlay" onClick={() => !saving && setSelectedProduct(null)}>
+          <form className="modal-card replenishment-modal" onSubmit={handleReplenish} onClick={(event) => event.stopPropagation()}>
+            <div className="modal-header"><h4>Repor estoque</h4><button type="button" className="modal-close" onClick={() => !saving && setSelectedProduct(null)} aria-label="Fechar">×</button></div>
+            <div className="modal-body replenishment-modal-body">
+              <label>Produto<input value={selectedProduct.name} readOnly /></label>
+              <label>Estoque atual<input value={selectedProduct.stock} readOnly /></label>
+              <label>Quantidade a repor<input type="number" min="1" step="1" value={quantity} onChange={(event) => setQuantity(event.target.value)} required autoFocus /></label>
+              <label>Custo unitário (opcional)<input type="number" min="0" step="0.01" value={unitCost} onChange={(event) => setUnitCost(event.target.value)} placeholder="Não alterar custo" /></label>
+              <label>Observação / motivo<textarea value={reason} onChange={(event) => setReason(event.target.value)} rows={3} placeholder="Ex.: Compra do fornecedor" /></label>
+              {error && <div className="branch-action-error" role="alert">{error}</div>}
+            </div>
+            <div className="replenishment-modal-footer"><button type="button" className="rma-advance-btn" onClick={() => setSelectedProduct(null)} disabled={saving}>Cancelar</button><button type="submit" className="module-submit-btn" disabled={saving}>{saving ? 'Salvando...' : 'Concluir e Salvar'}</button></div>
+          </form>
         </div>
       )}
 
@@ -1730,7 +1792,7 @@ function ReplenishmentSubTab({ products, sales }: {
           <table className="rma-table">
             <thead>
               <tr>
-                <th>Produto</th><th>SKU</th><th>Classe</th><th>Vendidos</th><th>Receita</th><th>% Acum.</th><th>Estoque</th><th>Status</th>
+                <th>Produto</th><th>SKU</th><th>Classe</th><th>Vendidos</th><th>Receita</th><th>% Acum.</th><th>Estoque</th><th>Status</th><th>Ação</th>
               </tr>
             </thead>
             <tbody>
@@ -1756,6 +1818,7 @@ function ReplenishmentSubTab({ products, sales }: {
                       <span className="rma-status-badge" style={{ color: '#15803D', borderColor: '#15803D' }}>OK</span>
                     )}
                   </td>
+                  <td><button type="button" className="module-submit-btn compact" onClick={() => { setSelectedProduct(products.find((product) => product.id === p.id) ?? null); setError(null); setSuccess(null); }}>Repor estoque</button></td>
                 </tr>
               ))}
             </tbody>

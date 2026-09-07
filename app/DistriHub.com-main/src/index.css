@@ -440,6 +440,15 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
 .hub-nav { display: flex; align-items: center; gap: 27px; margin-left: auto; color: #8ea0b2; font-size: 13px; }
 .hub-nav a { transition: color .2s; }.hub-nav a:hover { color: #f0f6fb; }
 .hub-menu-button { display: none; width: 38px; height: 38px; place-items: center; color: #dce9f4; background: #112738; border-radius: 7px; }
+.replenishment-modal-overlay { padding: 16px; overflow: hidden; }
+.replenishment-modal { display: flex; flex-direction: column; width: min(520px, 100%); max-height: min(760px, calc(100dvh - 32px)); padding: 0; overflow: hidden; }
+.replenishment-modal-body { overflow-y: auto; flex: 1; padding: 20px; }
+.replenishment-modal-body label { display: flex; flex-direction: column; gap: 6px; color: #334155; font-size: 13px; font-weight: 600; }
+.replenishment-modal-body label + label { margin-top: 14px; }
+.replenishment-modal-body input, .replenishment-modal-body textarea { width: 100%; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 6px; color: #172033; background: #fff; outline: none; font: inherit; font-weight: 400; }
+.replenishment-modal-body input:focus, .replenishment-modal-body textarea:focus { border-color: #3193e5; box-shadow: 0 0 0 3px rgba(49,147,229,.12); }
+.replenishment-modal-footer { display: flex; justify-content: flex-end; gap: 10px; padding: 14px 20px; border-top: 1px solid #e2e8f0; background: #fff; position: sticky; bottom: 0; z-index: 1; }
+@media (max-width: 620px) { .replenishment-modal-overlay { padding: 8px; align-items: end; }.replenishment-modal { max-height: calc(100dvh - 16px); border-radius: 10px; }.replenishment-modal-footer { padding: 12px; }.replenishment-modal-footer button { flex: 1; min-height: 42px; }.replenishment-modal-body { padding: 16px; } }
 .hub-login-btn { padding: 10px 17px; border-radius: 6px; background: #3193e5; color: #fff; font: 700 12px Manrope; transition: .2s; }
 .hub-login-btn:hover { background: #46a8f4; transform: translateY(-1px); }.hub-login-btn.secondary { display: inline-flex; align-items: center; gap: 7px; padding: 9px 12px; color: #a9bdcc; background: transparent; border: 1px solid #294357; }.hub-login-btn.secondary:hover { color: #fff; background: #112738; }
 .hub-hero { padding: 68px 0 75px; background: radial-gradient(circle at 82% 42%, rgba(37,113,169,.25), transparent 38%), #081522; }
