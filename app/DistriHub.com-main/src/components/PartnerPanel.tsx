@@ -408,14 +408,16 @@ export function PartnerPanel({
       window.alert('Acesso negado: você só pode realizar vendas na sua filial vinculada.');
       return;
     }
+    const operatorId = currentSalespersonId ?? identity?.salespersonId ?? null;
+    const operatorPin = activeOperatorPin ?? (operatorId ? partner.salespeople.find((salesperson) => salesperson.id === operatorId)?.pin ?? null : null);
     await partner.createSale(
       {
         ...sale,
         branch_id: targetBranch,
         salesperson_id: activeSalesperson ? activeSalesperson.id : (sale.salesperson_id || null),
       },
-      currentSalespersonId,
-      activeOperatorPin,
+      operatorId,
+      operatorPin,
     );
   }
 
@@ -429,14 +431,16 @@ export function PartnerPanel({
       window.alert('Acesso negado: você só pode criar pré-vendas na sua filial vinculada.');
       return;
     }
+    const operatorId = currentSalespersonId ?? identity?.salespersonId ?? null;
+    const operatorPin = activeOperatorPin ?? (operatorId ? partner.salespeople.find((salesperson) => salesperson.id === operatorId)?.pin ?? null : null);
     await partner.createPreSale(
       {
         ...sale,
         branch_id: targetBranch,
         salesperson_id: activeSalesperson ? activeSalesperson.id : (sale.salesperson_id || null),
       },
-      currentSalespersonId,
-      activeOperatorPin,
+      operatorId,
+      operatorPin,
     );
   }
 
@@ -446,7 +450,9 @@ export function PartnerPanel({
       window.alert('Acesso negado: você só pode finalizar pré-vendas da sua filial vinculada.');
       return;
     }
-    await partner.finalizePreSale(id, paymentMethod, currentSalespersonId, activeOperatorPin);
+    const operatorId = currentSalespersonId ?? identity?.salespersonId ?? null;
+    const operatorPin = activeOperatorPin ?? (operatorId ? partner.salespeople.find((salesperson) => salesperson.id === operatorId)?.pin ?? null : null);
+    await partner.finalizePreSale(id, paymentMethod, operatorId, operatorPin);
   }
 
   async function handleCancelSale(id: string) {
@@ -455,7 +461,9 @@ export function PartnerPanel({
       window.alert('Acesso negado: você não pode cancelar vendas de outra filial.');
       return;
     }
-    await partner.cancelSale(id, currentSalespersonId, activeOperatorPin);
+    const operatorId = currentSalespersonId ?? identity?.salespersonId ?? null;
+    const operatorPin = activeOperatorPin ?? (operatorId ? partner.salespeople.find((salesperson) => salesperson.id === operatorId)?.pin ?? null : null);
+    await partner.cancelSale(id, operatorId, operatorPin);
   }
 
   async function handleDeleteSale(id: string) {
@@ -464,7 +472,9 @@ export function PartnerPanel({
       window.alert('Acesso negado: você não pode excluir vendas de outra filial.');
       return;
     }
-    await partner.deleteSale(id, currentSalespersonId, activeOperatorPin);
+    const operatorId = currentSalespersonId ?? identity?.salespersonId ?? null;
+    const operatorPin = activeOperatorPin ?? (operatorId ? partner.salespeople.find((salesperson) => salesperson.id === operatorId)?.pin ?? null : null);
+    await partner.deleteSale(id, operatorId, operatorPin);
   }
 
   async function handleCreateRma(rma: RmaPayload) {

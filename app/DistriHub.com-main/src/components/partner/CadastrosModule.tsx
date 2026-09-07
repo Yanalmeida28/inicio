@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Boxes, FileText, Package, Plus, Tag, Trash2, Upload, Users, Wrench,
   Building2, UserCheck, Layers, QrCode, X, History,
@@ -65,6 +66,14 @@ const subTabs: { id: SubTab; label: string; icon: typeof Package }[] = [
   { id: 'reposicao', label: 'Reposição de Estoque', icon: Activity },
   { id: 'importar', label: 'Importar / Exportar', icon: Upload },
 ];
+
+function getActionPopoverPosition(event: React.MouseEvent<HTMLButtonElement>, width: number, height: number): React.CSSProperties {
+  const rect = event.currentTarget.getBoundingClientRect();
+  const left = Math.min(Math.max(8, rect.right - width), window.innerWidth - width - 8);
+  const openUp = rect.bottom + height + 8 > window.innerHeight;
+  const top = openUp ? Math.max(8, rect.top - height - 6) : Math.min(window.innerHeight - height - 8, rect.bottom + 6);
+  return { position: 'fixed', left, top, width, zIndex: 1000 };
+}
 
 export function CadastrosModule({
   products, branches, selectedBranchId, categories, suppliers, salespeople, combos, modifiers, customers, sales,
@@ -198,6 +207,7 @@ function ProductsSubTab({ products, allProducts, branches, selectedBranchId, cat
   const [availabilityProductId, setAvailabilityProductId] = useState<string | null>(null);
   const [editProduct, setEditProduct] = useState<PartnerProduct | null>(null);
   const [openActionId, setOpenActionId] = useState<string | null>(null);
+  const [productActionPosition, setProductActionPosition] = useState<React.CSSProperties | null>(null);
   const [savingEdit, setSavingEdit] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
 
@@ -375,16 +385,16 @@ function ProductsSubTab({ products, allProducts, branches, selectedBranchId, cat
                   </td>
                   <td className="product-actions-cell">
                     <div className="product-actions-menu">
-                      <button type="button" className="product-actions-trigger" onClick={() => setOpenActionId(openActionId === p.id ? null : p.id)} aria-label={`Ações de ${p.name}`} aria-expanded={openActionId === p.id}>
+                      <button type="button" className="product-actions-trigger" onClick={(event) => { setOpenActionId(openActionId === p.id ? null : p.id); setProductActionPosition(openActionId === p.id ? null : getActionPopoverPosition(event, 220, 190)); }} aria-label={`Ações de ${p.name}`} aria-expanded={openActionId === p.id}>
                         <MoreVertical size={18} />
                       </button>
-                      {openActionId === p.id && (
-                        <div className="product-actions-popover" role="menu">
+                      {openActionId === p.id && productActionPosition && createPortal(
+                        <div className="product-actions-popover" style={productActionPosition} role="menu">
                           <button type="button" onClick={() => beginEdit(p)}><Pencil size={15} /> Editar</button>
                           <button type="button" onClick={() => { setLabelProductId(p.id); setOpenActionId(null); }}><QrCode size={15} /> Imprimir etiquetas</button>
                           <button type="button" onClick={() => { setAvailabilityProductId(p.id); setOpenActionId(null); }}><Building2 size={15} /> Consultar em outras filiais</button>
                           <button type="button" className="danger" onClick={() => { setOpenActionId(null); if (window.confirm(`Excluir o produto "${p.name}"?`)) void onDeleteProduct(p.id); }}><Trash2 size={15} /> Excluir</button>
-                        </div>
+                        </div>, document.body
                       )}
                     </div>
                   </td>
@@ -912,6 +922,7 @@ function CustomersSubTab({ customers, sales, salespeople, selectedBranchId, onAd
   const [historyCustomerId, setHistoryCustomerId] = useState<string | null>(null);
   const [profileCustomerId, setProfileCustomerId] = useState<string | null>(null);
   const [openCustomerActionId, setOpenCustomerActionId] = useState<string | null>(null);
+  const [customerActionPosition, setCustomerActionPosition] = useState<React.CSSProperties | null>(null);
 
   function resetForm() {
     setName(''); setDocument(''); setPersonType('PF'); setPhone(''); setEmail(''); setBirthday(''); setAddress('');
@@ -1180,16 +1191,16 @@ function CustomersSubTab({ customers, sales, salespeople, selectedBranchId, onAd
                     <td>{c.birthday ? new Date(c.birthday).toLocaleDateString('pt-BR') : '—'}</td>
                     <td className="customer-actions-cell">
                       <div className="product-actions-menu">
-                        <button type="button" className="product-actions-trigger" onClick={() => setOpenCustomerActionId(openCustomerActionId === c.id ? null : c.id)} aria-label={`Ações de ${c.name}`} aria-expanded={openCustomerActionId === c.id}>
+                        <button type="button" className="product-actions-trigger" onClick={(event) => { setOpenCustomerActionId(openCustomerActionId === c.id ? null : c.id); setCustomerActionPosition(openCustomerActionId === c.id ? null : getActionPopoverPosition(event, 245, 204)); }} aria-label={`Ações de ${c.name}`} aria-expanded={openCustomerActionId === c.id}>
                           <MoreVertical size={18} />
                         </button>
-                        {openCustomerActionId === c.id && (
-                          <div className="product-actions-popover customer-actions-popover" role="menu">
+                        {openCustomerActionId === c.id && customerActionPosition && createPortal(
+                          <div className="product-actions-popover customer-actions-popover" style={customerActionPosition} role="menu">
                             <button type="button" onClick={() => { openEditForm(c); setOpenCustomerActionId(null); }}><Pencil size={15} /> Editar</button>
                             <button type="button" onClick={async () => { setOpenCustomerActionId(null); try { await onLoadCustomer(c.id); setProfileCustomerId(c.id); } catch (error) { window.alert(error instanceof Error ? error.message : 'Não foi possível carregar os dados do cliente.'); } }}><UserCircle size={15} /> Detalhes</button>
                             <button type="button" onClick={() => { setHistoryCustomerId(c.id); setOpenCustomerActionId(null); }}><History size={15} /> Histórico de Compras / Extrato</button>
                             <button type="button" className="danger" onClick={async () => { setOpenCustomerActionId(null); if (!window.confirm(`Deseja excluir o cliente "${c.name}"?`)) return; try { await onDelete(c.id); } catch (error) { window.alert(error instanceof Error ? error.message : 'Não foi possível excluir o cliente.'); } }}><Trash2 size={15} /> Excluir</button>
-                          </div>
+                          </div>, globalThis.document.body
                         )}
                       </div>
                     </td>

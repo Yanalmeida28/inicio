@@ -86,6 +86,7 @@ export function ServiceOrdersModule({
   const [orders, setOrders] = useState<ServiceOrder[]>([]);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
 
   const [customerId, setCustomerId] = useState('');
@@ -265,6 +266,7 @@ export function ServiceOrdersModule({
     setEntryPhotos([]);
     setExitPhotos([]);
     setPhotoError(null);
+    setSaveError(null);
   }
 
   async function compressPhoto(file: File): Promise<File> {
@@ -349,21 +351,24 @@ export function ServiceOrdersModule({
 
   async function saveOrder() {
     if (!supabase || !userId) {
+      const error = 'Não foi possível salvar a OS: sessão ou Supabase não configurado.';
+      console.error(error, { hasSupabase: Boolean(supabase), userId });
+      setSaveError(error);
       return;
     }
 
     if (!selectedBranchId) {
-      alert('Selecione uma filial antes de abrir a OS.');
+      setSaveError('Selecione uma filial antes de salvar a OS.');
       return;
     }
 
     if (!checklistComplete) {
-      alert('Complete o checklist pré-reparo antes de salvar a OS.');
+      setSaveError('Complete o checklist pré-reparo antes de salvar a OS.');
       return;
     }
 
     if (!customerAcknowledged) {
-      alert('Confirme que o cliente foi informado sobre as condições de entrada.');
+      setSaveError('Confirme que o cliente foi informado sobre as condições de entrada.');
       return;
     }
 
@@ -496,19 +501,14 @@ export function ServiceOrdersModule({
         ...current,
       ]);
 
-      alert(
-        'Ordem de Serviço criada com sucesso!\n\nAs peças foram baixadas do estoque da filial selecionada.'
-      );
+      setSaveError(null);
+      alert('Ordem de Serviço criada com sucesso!\n\nAs peças foram baixadas do estoque da filial selecionada.');
 
       resetForm();
     } catch (error) {
-      console.error(error);
-
-      alert(
-        error instanceof Error
-          ? error.message
-          : 'Erro ao criar a Ordem de Serviço.'
-      );
+      const message = error instanceof Error ? error.message : 'Erro ao criar a Ordem de Serviço.';
+      console.error('Falha ao salvar Ordem de Serviço.', error);
+      setSaveError(message);
     } finally {
       setSaving(false);
     }
@@ -766,6 +766,7 @@ export function ServiceOrdersModule({
                 gap: 16,
               }}
             >
+              {saveError && <div className="branch-action-error" role="alert" style={{ marginBottom: 14 }}>{saveError}</div>}
               <div
                 style={{
                   padding: 18,
