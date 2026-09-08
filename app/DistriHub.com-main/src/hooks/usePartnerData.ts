@@ -292,7 +292,6 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
         p_image_url: np.image_url ?? null,
       });
       if (rpcErr) throw rpcErr;
-      await supabase.from('stock_movements').insert({ user_id: identity.companyUserId, product_id: np.id, product_name: np.name, type: 'entrada', quantity: np.stock, reason: 'Cadastro inicial' });
     }
   }, [identity]);
 

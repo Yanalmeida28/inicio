@@ -76,11 +76,7 @@ export async function saveFiscalSettings(
     ...settings,
   };
 
-  if (settings.id) {
-    return supabase.from('fiscal_tax_rules').update(payload).eq('id', settings.id).eq('user_id', userId);
-  }
-
-  return supabase.from('fiscal_tax_rules').insert(payload);
+  return supabase.rpc('save_fiscal_branch_settings', { p_settings: payload });
 }
 
 export async function listFiscalDocuments(userId: string, branchId: string | null | undefined) {
@@ -124,26 +120,28 @@ export async function createFiscalDocument(
   }
 
   const payload = {
-    user_id: userId,
-    order_id: input.order_id ?? null,
-    provider: input.provider ?? null,
-    document_type: input.document_type,
-    status: input.status ?? 'pending',
-    series: input.series ?? null,
-    number: input.number ?? null,
-    access_key: input.access_key ?? null,
-    protocol: input.protocol ?? null,
-    provider_document_id: input.provider_document_id ?? null,
-    xml_url: input.xml_url ?? null,
-    pdf_url: input.pdf_url ?? null,
-    rejection_reason: input.rejection_reason ?? null,
-    provider_response: {
+    p_user_id: userId,
+    p_branch_id: branchId,
+    p_document_id: input.id ?? null,
+    p_order_id: input.order_id ?? null,
+    p_provider: input.provider ?? null,
+    p_document_type: input.document_type,
+    p_status: input.status ?? 'pending',
+    p_series: input.series ?? null,
+    p_number: input.number ?? null,
+    p_access_key: input.access_key ?? null,
+    p_protocol: input.protocol ?? null,
+    p_provider_document_id: input.provider_document_id ?? null,
+    p_xml_url: input.xml_url ?? null,
+    p_pdf_url: input.pdf_url ?? null,
+    p_rejection_reason: input.rejection_reason ?? null,
+    p_provider_response: {
       ...(input.provider_response ?? {}),
       branch_id: branchId,
     },
   };
 
-  return supabase.from('fiscal_documents').insert(payload);
+  return supabase.rpc('record_fiscal_document', payload);
 }
 
 export async function getFiscalEvents(userId: string, branchId: string | null | undefined) {
@@ -185,18 +183,16 @@ export async function requestFiscalCancellation(
     return { data: null, error: null };
   }
 
-  return supabase
-    .from('fiscal_documents')
-    .update({
-      status: 'cancelled',
-      rejection_reason: reason ?? 'Cancelamento solicitado pelo usuário.',
-      provider_response: {
-        branch_id: branchId,
-        cancellation_requested: true,
-        cancellation_reason: reason ?? 'Cancelamento solicitado pelo usuário.',
-      },
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', documentId)
-    .eq('user_id', userId);
+  return supabase.rpc('record_fiscal_document', {
+    p_user_id: userId,
+    p_branch_id: branchId,
+    p_document_id: documentId,
+    p_status: 'cancelled',
+    p_rejection_reason: reason ?? 'Cancelamento solicitado pelo usuário.',
+    p_provider_response: {
+      branch_id: branchId,
+      cancellation_requested: true,
+      cancellation_reason: reason ?? 'Cancelamento solicitado pelo usuário.',
+    },
+  });
 }

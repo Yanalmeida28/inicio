@@ -2,68 +2,73 @@ import { useCallback, useState } from 'react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 type UseSuperAdminAuthReturn = {
-  verifyPassword: (password: string) => Promise<{ ok: boolean; error: string | null }>;
-  changePassword: (currentPassword: string, newPassword: string) => Promise<boolean>;
-  requestRecovery: (email: string) => Promise<{ code: string | null; error: string | null }>;
-  resetPassword: (code: string, newPassword: string) => Promise<{ error: string | null }>;
+  verifyPassword: (email: string, password: string) => Promise<{ ok: boolean; error: string | null }>;
+  changePassword: (newPassword: string) => Promise<boolean>;
+  requestRecovery: (email: string) => Promise<{ error: string | null }>;
+  resetPassword: (newPassword: string) => Promise<{ error: string | null }>;
 };
 
 export function useSuperAdminAuth(): UseSuperAdminAuthReturn {
-  const verifyPassword = useCallback(async (password: string): Promise<{ ok: boolean; error: string | null }> => {
+  const verifyPassword = useCallback(async (email: string, password: string): Promise<{ ok: boolean; error: string | null }> => {
     if (!isSupabaseConfigured || !supabase) {
       return { ok: false, error: 'Supabase não configurado.' };
     }
+
     try {
-      const { data, error } = await supabase.rpc('verify_super_admin_password', { input_password: password });
-      if (error) return { ok: false, error: error.message };
-      return data === true
-        ? { ok: true, error: null }
-        : { ok: false, error: 'Credencial inválida. Acesso negado.' };
+      const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+      if (signInError) {
+        return { ok: false, error: signInError.message };
+      }
+
+      const { data: userData, error: userError } = await supabase.auth.getUser();
+      if (userError || !userData.user) {
+        await supabase.auth.signOut();
+        return { ok: false, error: 'Sessão do super admin inválida.' };
+      }
+
+      const { data: isSuperAdmin, error: authError } = await supabase.rpc('is_super_admin');
+      if (authError || isSuperAdmin !== true) {
+        await supabase.auth.signOut();
+        return { ok: false, error: 'Operador não autorizado para o painel master.' };
+      }
+
+      return { ok: true, error: null };
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : 'Não foi possível validar a credencial.' };
     }
   }, []);
 
   const changePassword = useCallback(
-    async (currentPassword: string, newPassword: string): Promise<boolean> => {
+    async (newPassword: string): Promise<boolean> => {
       if (!isSupabaseConfigured || !supabase) return false;
-      const { data, error } = await supabase.rpc('change_super_admin_password', {
-        current_password: currentPassword,
-        new_password: newPassword,
-      });
-      if (error) return false;
-      return data === true;
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      return !error;
     },
     [],
   );
 
   const requestRecovery = useCallback(
-    async (email: string): Promise<{ code: string | null; error: string | null }> => {
+    async (email: string): Promise<{ error: string | null }> => {
       if (!isSupabaseConfigured || !supabase) {
-        return { code: null, error: 'Supabase não configurado.' };
+        return { error: 'Supabase não configurado.' };
       }
-      const { data, error } = await supabase.rpc('request_super_admin_recovery', {
-        input_email: email,
+
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/`,
       });
-      if (error) return { code: null, error: error.message };
-      if (!data) return { code: null, error: 'Não foi possível iniciar a recuperação.' };
-      return { code: null, error: 'A recuperação deve usar o canal seguro configurado.' };
+      return { error: error?.message ?? null };
     },
     [],
   );
 
   const resetPassword = useCallback(
-    async (code: string, newPassword: string): Promise<{ error: string | null }> => {
+    async (newPassword: string): Promise<{ error: string | null }> => {
       if (!isSupabaseConfigured || !supabase) {
         return { error: 'Supabase não configurado.' };
       }
-      const { data, error } = await supabase.rpc('reset_super_admin_password', {
-        recovery_code_input: code,
-        new_password: newPassword,
-      });
-      if (error) return { error: error.message };
-      if (!data) return { error: 'Código de recuperação inválido ou expirado.' };
-      return { error: null };
+
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      return { error: error?.message ?? null };
     },
     [],
   );

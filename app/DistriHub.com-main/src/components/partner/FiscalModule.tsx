@@ -192,11 +192,27 @@ export function FiscalModule({ products, sales, customers, profile, currentRole,
   async function handleEmit() {
     if (!selectedSale || !canEmit || !hasActiveBranch) return;
     if (!profile?.id || !supabase) return;
-    const { error } = await supabase.from('fiscal_documents').insert({
-      user_id: profile.id, order_id: null, document_type: emitType,
-      status: 'pending', series: emitSerie, number: emitNumero || null,
-      provider_response: { sale_id: selectedSale.id, branch_id: selectedBranchId, items: fiscalItems, totals, finalidade: emitFinalidade, presenca: emitPresenca, tipo_cliente: emitTipoCliente, observations: emitObservations },
+
+    const { error } = await supabase.rpc('record_fiscal_document', {
+      p_user_id: profile.id,
+      p_branch_id: selectedBranchId,
+      p_order_id: null,
+      p_document_type: emitType,
+      p_status: 'pending',
+      p_series: emitSerie,
+      p_number: emitNumero || null,
+      p_provider_response: {
+        sale_id: selectedSale.id,
+        branch_id: selectedBranchId,
+        items: fiscalItems,
+        totals,
+        finalidade: emitFinalidade,
+        presenca: emitPresenca,
+        tipo_cliente: emitTipoCliente,
+        observations: emitObservations,
+      },
     });
+
     if (error) return;
     setEmitResult({ type: emitType, success: true });
     setShowEmitModal(false);
@@ -212,10 +228,18 @@ export function FiscalModule({ products, sales, customers, profile, currentRole,
       setInutilStatus('Informe a série, a faixa numérica e uma justificativa com pelo menos 15 caracteres.');
       return;
     }
-    const { error } = await supabase.from('fiscal_inutilizations').insert({
-      user_id: profile.id, document_type: emitType, series: inutilSerie,
-      number_start: Number(inutilInicio), number_end: Number(inutilFim), justification: inutilJustificativa.trim(), status: 'pending',
+
+    const { error } = await supabase.rpc('create_fiscal_inutilization', {
+      p_user_id: profile.id,
+      p_branch_id: selectedBranchId,
+      p_document_type: emitType,
+      p_series: inutilSerie,
+      p_number_start: Number(inutilInicio),
+      p_number_end: Number(inutilFim),
+      p_justification: inutilJustificativa.trim(),
+      p_status: 'pending',
     });
+
     setInutilStatus(error ? error.message : 'Solicitação registrada e aguardando envio à API fiscal.');
     if (!error) { setInutilInicio(''); setInutilFim(''); setInutilJustificativa(''); }
   }

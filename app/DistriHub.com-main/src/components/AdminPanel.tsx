@@ -12,12 +12,11 @@ import type { AdminFinancialMonth } from '../types';
 
 type AdminPanelProps = {
   onBack: () => void;
-  accessPassword: string;
 };
 
 type AdminTab = 'lojistas' | 'financeiro' | 'faturas' | 'seguranca';
 
-export function AdminPanel({ onBack, accessPassword }: AdminPanelProps) {
+export function AdminPanel({ onBack }: AdminPanelProps) {
   const [tab, setTab] = useState<AdminTab>('lojistas');
   const [lojistas, setLojistas] = useState<AdminCompany[]>([]);
   const [financialData, setFinancialData] = useState<AdminFinancialMonth[]>([]);
@@ -37,9 +36,17 @@ export function AdminPanel({ onBack, accessPassword }: AdminPanelProps) {
         return;
       }
       try {
+        const { data: userData, error: userError } = await supabase.auth.getUser();
+        if (userError || !userData.user) throw new Error('Sessão do super admin inválida.');
+
+        const { data: isSuperAdmin, error: authError } = await supabase.rpc('is_super_admin');
+        if (authError || isSuperAdmin !== true) {
+          throw new Error('Operador não autorizado para o painel master.');
+        }
+
         const [loj, financial, inv] = await Promise.all([
-          supabase.rpc('get_super_admin_company_overview', { input_password: accessPassword }),
-          supabase.rpc('get_super_admin_financial_overview', { input_password: accessPassword }),
+          supabase.rpc('get_super_admin_company_overview_auth'),
+          supabase.rpc('get_super_admin_financial_overview_auth'),
           supabase.from('partner_invoices').select('*').order('created_at', { ascending: false }),
         ]);
         const failed = [loj, financial, inv].find((result) => result.error);
@@ -56,13 +63,12 @@ export function AdminPanel({ onBack, accessPassword }: AdminPanelProps) {
     }
     void loadAdminData();
     return () => { cancelled = true; };
-  }, [accessPassword]);
+}, []);
 
   async function updateLojista(id: string, updates: Partial<AdminCompany>) {
     setLojistas((prev) => prev.map((l) => l.id === id ? { ...l, ...updates, client_status: updates.status ?? l.client_status } : l));
     if (isSupabaseConfigured && supabase) {
-      await supabase.rpc('update_super_admin_client', {
-        input_password: accessPassword,
+      await supabase.rpc('update_super_admin_client_auth', {
         client_id: id,
         new_status: updates.status ?? null,
         new_credit_limit: updates.credit_limit ?? null,
@@ -225,10 +231,10 @@ function ChangePasswordSection({ auth }: { auth: ReturnType<typeof useSuperAdmin
       return;
     }
     setLoading(true);
-    const ok = await auth.changePassword(currentPassword, newPassword);
+    const ok = await auth.changePassword(newPassword);
     setLoading(false);
     if (!ok) {
-      setError('Senha atual incorreta. Tente novamente.');
+      setError('Não foi possível atualizar a senha do super admin.');
       return;
     }
     setSuccess(true);
@@ -247,22 +253,6 @@ function ChangePasswordSection({ auth }: { auth: ReturnType<typeof useSuperAdmin
         </div>
       </div>
       <form className="rma-form" onSubmit={handleSubmit} style={{ maxWidth: 480 }}>
-        <label>
-          <span className="social-label"><Lock size={14} /> Senha Atual</span>
-          <div className="password-input-wrap">
-            <input
-              type={showCurrent ? 'text' : 'password'}
-              value={currentPassword}
-              onChange={(e) => { setCurrentPassword(e.target.value); setError(null); setSuccess(false); }}
-              placeholder="••••••••••••"
-              required
-              autoFocus
-            />
-            <button type="button" className="password-toggle" onClick={() => setShowCurrent(!showCurrent)}>
-              {showCurrent ? <EyeOff size={16} /> : <Eye size={16} />}
-            </button>
-          </div>
-        </label>
         <label>
           <span className="social-label"><Lock size={14} /> Nova Senha</span>
           <div className="password-input-wrap">

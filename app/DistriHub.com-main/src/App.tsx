@@ -41,7 +41,6 @@ function App() {
   const [view, setView] = useState<View>('hub');
   const [partnerInitialTab, setPartnerInitialTab] = useState<string | undefined>(undefined);
   const [superAdminUnlocked, setSuperAdminUnlocked] = useState(false);
-  const [superAdminPassword, setSuperAdminPassword] = useState('');
   const { cart, cartCount, cartTotal, cartQuantities, incrementQuantity, decrementQuantity, removeFromCart, setCart } = useCart();
   const {
     selectedBrand,
@@ -92,10 +91,9 @@ function App() {
     }
   }
 
-  async function handleSuperAdminUnlock(password: string): Promise<{ ok: boolean; error: string | null }> {
-    const result = await superAdminAuth.verifyPassword(password);
+  async function handleSuperAdminUnlock(email: string, password: string): Promise<{ ok: boolean; error: string | null }> {
+    const result = await superAdminAuth.verifyPassword(email, password);
     if (result.ok) {
-      setSuperAdminPassword(password);
       setSuperAdminUnlocked(true);
       setView('super-admin');
     }
@@ -103,7 +101,6 @@ function App() {
   }
 
   function handleSuperAdminBack() {
-    setSuperAdminPassword('');
     setSuperAdminUnlocked(false);
     setView('hub');
   }
@@ -173,7 +170,7 @@ function App() {
 
       {view === 'admin' && (
         <Suspense fallback={<LoadingScreen label="Administração" />}>
-          <AdminPanel onBack={() => setView('hub')} accessPassword={superAdminPassword} />
+          <AdminPanel onBack={() => setView('hub')} />
         </Suspense>
       )}
 
@@ -187,7 +184,7 @@ function App() {
 
       {view === 'super-admin' && superAdminUnlocked && (
         <Suspense fallback={<LoadingScreen label="Painel master" />}>
-          <AdminPanel onBack={handleSuperAdminBack} accessPassword={superAdminPassword} />
+          <AdminPanel onBack={handleSuperAdminBack} />
         </Suspense>
       )}
 
@@ -227,9 +224,10 @@ function SuperAdminGate({
   auth,
 }: {
   onBack: () => void;
-  onUnlock: (password: string) => Promise<{ ok: boolean; error: string | null }>;
+  onUnlock: (email: string, password: string) => Promise<{ ok: boolean; error: string | null }>;
   auth: SuperAdminAuth;
 }) {
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -239,7 +237,7 @@ function SuperAdminGate({
     e.preventDefault();
     setSubmitting(true);
     try {
-      const result = await onUnlock(password);
+      const result = await onUnlock(email, password);
       if (!result.ok) {
         setError(result.error ?? 'Credencial inválida. Acesso negado.');
         setPassword('');
@@ -268,17 +266,27 @@ function SuperAdminGate({
         <div className="super-admin-gate-header">
           <span className="super-admin-gate-icon"><ShieldAlert size={28} /></span>
           <h2>Painel Super Admin — Distribuidora</h2>
-          <p>Área restrita ao proprietário do sistema. Insira a credencial de acesso.</p>
+          <p>Área restrita ao proprietário do sistema. Use sua conta autenticada do Super Admin.</p>
         </div>
         <form onSubmit={handleSubmit} className="super-admin-gate-form">
           <label>
-            <span className="social-label text-slate-900"><Lock size={14} /> Senha de Super Admin</span>
+            <span className="social-label text-slate-900"><Mail size={14} /> E-mail do Super Admin</span>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => { setEmail(e.target.value); setError(null); }}
+              placeholder="admin@distrihub.com"
+              autoFocus
+              required
+            />
+          </label>
+          <label>
+            <span className="social-label text-slate-900"><Lock size={14} /> Senha</span>
             <input
               type="password"
               value={password}
               onChange={(e) => { setPassword(e.target.value); setError(null); }}
               placeholder="••••••••••••"
-              autoFocus
               required
             />
           </label>
@@ -326,16 +334,14 @@ function RecoveryFlow({
     e.preventDefault();
     setLoading(true);
     setError(null);
-    const { code: returnedCode, error: err } = await auth.requestRecovery(email);
+    const { error: err } = await auth.requestRecovery(email);
     setLoading(false);
     if (err) {
       setError(err);
       return;
     }
-    if (returnedCode) {
-      setInfo(`Código de recuperação gerado: ${returnedCode}`);
-      setStep('verify');
-    }
+    setInfo('Link de recuperação enviado para o e-mail informado. Use a redefinição segura do Supabase Auth para concluir a troca de senha.');
+    setStep('done');
   }
 
   async function handleReset(e: React.FormEvent) {
@@ -350,7 +356,7 @@ function RecoveryFlow({
     }
     setLoading(true);
     setError(null);
-    const { error: err } = await auth.resetPassword(code, newPassword);
+    const { error: err } = await auth.resetPassword(newPassword);
     setLoading(false);
     if (err) {
       setError(err);

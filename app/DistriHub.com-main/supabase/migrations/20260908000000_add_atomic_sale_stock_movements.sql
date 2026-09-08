@@ -44,7 +44,7 @@ BEGIN
     FROM public.partner_salespeople sp
     WHERE sp.id = p_salesperson_id
       AND sp.active = true
-      AND sp.pin IS NOT DISTINCT FROM p_pin
+      AND public.verify_partner_salesperson_pin(p_pin, sp.pin_hash)
       AND (sp.user_id = (SELECT auth.uid()) OR sp.auth_user_id = (SELECT auth.uid()));
     IF v_company_id IS NULL THEN RAISE EXCEPTION 'Operador invalido ou PIN incorreto'; END IF;
     IF v_role <> 'administrador' AND (v_branch IS NULL OR v_branch <> p_branch_id) THEN RAISE EXCEPTION 'Acesso negado a filial'; END IF;
