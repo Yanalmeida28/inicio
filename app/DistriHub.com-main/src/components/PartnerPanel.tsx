@@ -49,6 +49,8 @@ import type {
   PartnerProduct,
   PartnerCustomer,
   PartnerSale,
+  PartnerSupplier,
+  PartnerSalesperson,
   RmaPayload,
   RmaRequest,
   SaleItem,
@@ -396,6 +398,30 @@ export function PartnerPanel({
       return;
     }
     await partner.deleteCustomer(id, currentSalespersonId, activeOperatorPin);
+  }
+
+  async function handleAddSupplier(supplier: Omit<PartnerSupplier, 'id' | 'user_id' | 'created_at' | 'payable_balance'>) {
+    await partner.addSupplier(supplier, currentSalespersonId, activeOperatorPin);
+  }
+
+  async function handleUpdateSupplier(id: string, updates: Partial<PartnerSupplier>) {
+    await partner.updateSupplier(id, updates, currentSalespersonId, activeOperatorPin);
+  }
+
+  async function handleDeleteSupplier(id: string) {
+    await partner.deleteSupplier(id, currentSalespersonId, activeOperatorPin);
+  }
+
+  async function handleAddSalesperson(sp: Omit<PartnerSalesperson, 'id' | 'user_id' | 'created_at'>) {
+    await partner.addSalesperson(sp, currentSalespersonId, activeOperatorPin);
+  }
+
+  async function handleUpdateSalesperson(id: string, updates: Partial<PartnerSalesperson>) {
+    await partner.updateSalesperson(id, updates, currentSalespersonId, activeOperatorPin);
+  }
+
+  async function handleDeleteSalesperson(id: string) {
+    await partner.deleteSalesperson(id, currentSalespersonId, activeOperatorPin);
   }
 
   async function handleCreateSale(sale: { customer_id: string | null; customer_name: string; items: SaleItem[]; total: number; customer_type: CustomerType; delivery_type: DeliveryType; imei?: string; serial_number?: string; payment_method?: string; salesperson_id?: string | null; branch_id?: string | null }) {
@@ -774,18 +800,18 @@ export function PartnerPanel({
                   partner.deleteCategory
                 }
                 onAddSupplier={
-                  partner.addSupplier
+                  handleAddSupplier
                 }
-                onUpdateSupplier={partner.updateSupplier}
-                onDeleteSupplier={partner.deleteSupplier}
+                onUpdateSupplier={handleUpdateSupplier}
+                onDeleteSupplier={handleDeleteSupplier}
                 onAddSalesperson={
-                  partner.addSalesperson
+                  handleAddSalesperson
                 }
                 onUpdateSalesperson={
-                  partner.updateSalesperson
+                  handleUpdateSalesperson
                 }
                 onDeleteSalesperson={
-                  partner.deleteSalesperson
+                  handleDeleteSalesperson
                 }
                 onAddCombo={
                   partner.addCombo

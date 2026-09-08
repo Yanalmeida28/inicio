@@ -48,12 +48,12 @@ type PartnerData = {
   deleteBranch: (id: string) => Promise<void>;
   addCategory: (name: string) => Promise<void>;
   deleteCategory: (id: string) => Promise<void>;
-  addSupplier: (supplier: Omit<PartnerSupplier, 'id' | 'user_id' | 'created_at' | 'payable_balance'>) => Promise<void>;
-  updateSupplier: (id: string, updates: Partial<PartnerSupplier>) => Promise<void>;
-  deleteSupplier: (id: string) => Promise<void>;
-  addSalesperson: (sp: Omit<PartnerSalesperson, 'id' | 'user_id' | 'created_at'>) => Promise<void>;
-  updateSalesperson: (id: string, updates: Partial<PartnerSalesperson>) => Promise<void>;
-  deleteSalesperson: (id: string) => Promise<void>;
+  addSupplier: (supplier: Omit<PartnerSupplier, 'id' | 'user_id' | 'created_at' | 'payable_balance'>, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
+  updateSupplier: (id: string, updates: Partial<PartnerSupplier>, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
+  deleteSupplier: (id: string, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
+  addSalesperson: (sp: Omit<PartnerSalesperson, 'id' | 'user_id' | 'created_at'>, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
+  updateSalesperson: (id: string, updates: Partial<PartnerSalesperson>, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
+  deleteSalesperson: (id: string, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
   cancelSale: (id: string, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
   deleteSale: (id: string, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
   addCombo: (combo: Omit<PartnerCombo, 'id' | 'user_id' | 'created_at'>) => Promise<void>;
@@ -68,14 +68,20 @@ export type PartnerCustomerUpdate = Partial<PartnerCustomer> & {
   remove_photo?: boolean;
 };
 
+// Somente os campos abaixo existem de fato na tabela partner_customers hoje.
+// Campos como trade_name, rg, municipal_registration, state_registration, ie_isento,
+// suframa_id, sex, phone_commercial_1/2, address_number, zip_code, state, complement,
+// reference_point, country, customer_group, price_table, convenio, simples_nacional,
+// reter_iss, is_active, is_store_admin, photo_url e salesperson_id existem apenas no
+// tipo PartnerCustomer/na UI, sem coluna correspondente no banco — não são enviados
+// à RPC para evitar erro "poderia não encontrar a função" / colunas inexistentes.
 const customerRpcFields = (customer: PartnerCustomer) => ({
   p_branch_id: customer.branch_id ?? null,
   p_name: customer.name,
   p_document: customer.document ?? null,
-  p_person_type: customer.person_type ?? null,
-  p_birthday: customer.birthday ?? null,
   p_phone: customer.phone ?? null,
   p_email: customer.email ?? null,
+  p_birthday: customer.birthday ?? null,
   p_address: customer.address ?? null,
   p_neighborhood: customer.neighborhood ?? null,
   p_city: customer.city ?? null,
@@ -83,49 +89,8 @@ const customerRpcFields = (customer: PartnerCustomer) => ({
   p_notes: customer.notes ?? null,
   p_customer_type: customer.customer_type ?? 'varejo',
   p_credit_limit: customer.credit_limit ?? 0,
-  p_trade_name: customer.trade_name ?? null,
-  p_rg: customer.rg ?? null,
-  p_municipal_registration: customer.municipal_registration ?? null,
-  p_state_registration: customer.state_registration ?? null,
-  p_ie_isento: customer.ie_isento ?? false,
-  p_suframa_id: customer.suframa_id ?? null,
-  p_sex: customer.sex ?? null,
-  p_address_number: customer.address_number ?? null,
-  p_zip_code: customer.zip_code ?? null,
-  p_state: customer.state ?? null,
-  p_complement: customer.complement ?? null,
-  p_reference_point: customer.reference_point ?? null,
-  p_country: customer.country ?? null,
-  p_customer_group: customer.customer_group ?? 'Varejo',
-  p_price_table: customer.price_table ?? 'varejo',
   p_allow_credit: customer.allow_credit ?? false,
-  p_convenio: customer.convenio ? 'sim' : 'nao',
-  p_simples_nacional: customer.simples_nacional ?? false,
-  p_reter_iss: customer.reter_iss ?? false,
-  p_is_active: customer.is_active ?? true,
-  p_is_store_admin: customer.is_store_admin ?? false,
-  p_phone_commercial_1: customer.phone_commercial_1 ?? null,
-  p_phone_commercial_2: customer.phone_commercial_2 ?? null,
-  p_photo_url: customer.photo_url ?? null,
 });
-
-const customerRpcParameterNames = [
-  'p_salesperson_id', 'p_pin', 'p_customer_id', 'p_branch_id', 'p_name', 'p_trade_name',
-  'p_document', 'p_person_type', 'p_rg', 'p_municipal_registration', 'p_state_registration',
-  'p_ie_isento', 'p_suframa_id', 'p_sex', 'p_birthday', 'p_phone', 'p_phone_commercial_1',
-  'p_phone_commercial_2', 'p_email', 'p_address', 'p_address_number', 'p_zip_code',
-  'p_neighborhood', 'p_city', 'p_state', 'p_complement', 'p_reference_point', 'p_country',
-  'p_notes', 'p_device_model', 'p_customer_group', 'p_price_table',
-  'p_customer_type', 'p_credit_limit', 'p_allow_credit', 'p_convenio', 'p_simples_nacional',
-  'p_reter_iss', 'p_is_active', 'p_is_store_admin', 'p_photo_url',
-] as const;
-
-function validateCustomerRpcPayload(payload: Record<string, unknown>) {
-  const missing = customerRpcParameterNames.filter((name) => !(name in payload) || payload[name] === undefined);
-  if (missing.length > 0) {
-    throw new Error(`Payload de cliente incompleto: ${missing.join(', ')}`);
-  }
-}
 
 function customerMutationPayload(
   customer: PartnerCustomer,
@@ -133,14 +98,12 @@ function customerMutationPayload(
   operatorId: string | null | undefined,
   operatorPin: string | null | undefined,
 ) {
-  const payload = {
-    p_salesperson_id: customer.salesperson_id ?? operatorId ?? null,
+  return {
+    p_salesperson_id: operatorId ?? null,
     p_pin: operatorPin ?? null,
     p_customer_id: customerId,
     ...customerRpcFields(customer),
   };
-  validateCustomerRpcPayload(payload);
-  return payload;
 }
 
 type SalePayload = {
@@ -273,7 +236,6 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
       cofins_rate: product.cofins_rate ?? 0,
       id: crypto.randomUUID(), user_id: identity.companyUserId, created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
     };
-    setData((prev) => ({ ...prev, products: [np, ...prev.products] }));
     if (isSupabaseConfigured && supabase) {
       const { error: rpcErr } = await supabase.rpc('execute_partner_product_mutation', {
         p_salesperson_id: operatorId ?? null,
@@ -291,8 +253,10 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
         p_is_service: np.is_service ?? false,
         p_image_url: np.image_url ?? null,
       });
+      // Só refletimos o produto localmente depois da RPC confirmar a gravação.
       if (rpcErr) throw rpcErr;
     }
+    setData((prev) => ({ ...prev, products: [np, ...prev.products] }));
   }, [identity]);
 
   const replenishStock = useCallback(async (
@@ -355,11 +319,10 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
     operatorId?: string | null,
     operatorPin?: string | null,
   ) => {
-    setData((prev) => ({ ...prev, products: prev.products.map((p) => p.id === id ? { ...p, ...updates, updated_at: new Date().toISOString() } : p) }));
+    const currentProd = data.products.find((p) => p.id === id);
+    const merged = { ...currentProd, ...updates };
+    if (!merged.branch_id || !merged.name) throw new Error('Dados insuficientes para atualizar produto.');
     if (isSupabaseConfigured && supabase) {
-      const currentProd = data.products.find((p) => p.id === id);
-      const merged = { ...currentProd, ...updates };
-      if (!merged.branch_id || !merged.name) throw new Error('Dados insuficientes para atualizar produto.');
       const { error: rpcErr } = await supabase.rpc('execute_partner_product_mutation', {
         p_salesperson_id: operatorId ?? null,
         p_pin: operatorPin ?? null,
@@ -376,8 +339,10 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
         p_is_service: merged.is_service ?? false,
         p_image_url: merged.image_url ?? null,
       });
+      // Só refletimos a alteração localmente depois da RPC confirmar a gravação.
       if (rpcErr) throw rpcErr;
     }
+    setData((prev) => ({ ...prev, products: prev.products.map((p) => p.id === id ? { ...p, ...updates, updated_at: new Date().toISOString() } : p) }));
   }, [data.products]);
 
   const deleteProduct = useCallback(async (
@@ -385,7 +350,6 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
     operatorId?: string | null,
     operatorPin?: string | null,
   ) => {
-    setData((prev) => ({ ...prev, products: prev.products.filter((p) => p.id !== id) }));
     if (isSupabaseConfigured && supabase) {
       const { error: rpcErr } = await supabase.rpc('execute_partner_product_delete', {
         p_salesperson_id: operatorId ?? null,
@@ -394,6 +358,7 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
       });
       if (rpcErr) throw rpcErr;
     }
+    setData((prev) => ({ ...prev, products: prev.products.filter((p) => p.id !== id) }));
   }, []);
 
   const addCustomer = useCallback(async (
@@ -760,92 +725,127 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
     if (isSupabaseConfigured && supabase) await supabase.from('partner_categories').delete().eq('id', id);
   }, []);
 
-  const addSupplier = useCallback(async (supplier: Omit<PartnerSupplier, 'id' | 'user_id' | 'created_at' | 'payable_balance'>) => {
+  const addSupplier = useCallback(async (
+    supplier: Omit<PartnerSupplier, 'id' | 'user_id' | 'created_at' | 'payable_balance'>,
+    operatorId?: string | null,
+    operatorPin?: string | null,
+  ) => {
     if (!identity) return;
-    const ns: PartnerSupplier = { ...supplier, id: crypto.randomUUID(), user_id: identity.companyUserId, payable_balance: 0, created_at: new Date().toISOString() };
+    if (!isSupabaseConfigured || !supabase) throw new Error('Supabase não configurado. O fornecedor não foi salvo.');
+    const { data: newId, error: rpcErr } = await supabase.rpc('execute_partner_supplier_mutation', {
+      p_operator_id: operatorId ?? null,
+      p_operator_pin: operatorPin ?? null,
+      p_supplier_id: null,
+      p_name: supplier.name,
+      p_phone: supplier.phone ?? null,
+      p_notes: supplier.notes ?? null,
+    });
+    if (rpcErr) throw rpcErr;
+    const ns: PartnerSupplier = { ...supplier, id: newId as string, user_id: identity.companyUserId, payable_balance: 0, created_at: new Date().toISOString() };
     setData((prev) => ({ ...prev, suppliers: [ns, ...prev.suppliers] }));
-    if (isSupabaseConfigured && supabase) await supabase.from('partner_suppliers').insert(ns);
   }, [identity]);
 
-  const updateSupplier = useCallback(async (id: string, updates: Partial<PartnerSupplier>) => {
+  const updateSupplier = useCallback(async (
+    id: string,
+    updates: Partial<PartnerSupplier>,
+    operatorId?: string | null,
+    operatorPin?: string | null,
+  ) => {
     if (!identity || !isSupabaseConfigured || !supabase) throw new Error('Supabase não configurado.');
-      const payload = { ...updates };
-      delete payload.id;
-      delete payload.user_id;
-      delete payload.created_at;
-      delete payload.payable_balance;
-    const { data: updated, error } = await supabase
-      .from('partner_suppliers')
-      .update(payload)
-      .eq('id', id)
-      .eq('user_id', identity.companyUserId)
-      .select()
-      .single();
-    if (error) throw error;
-    if (!updated) throw new Error('O fornecedor atualizado não foi confirmado pelo servidor.');
-    setData((prev) => ({ ...prev, suppliers: prev.suppliers.map((supplier) => supplier.id === id ? updated as PartnerSupplier : supplier) }));
-  }, [identity]);
+    const current = data.suppliers.find((supplier) => supplier.id === id);
+    if (!current) throw new Error('Fornecedor não encontrado no estado atual. Atualize a página e tente novamente.');
+    const merged = { ...current, ...updates };
+    const { error: rpcErr } = await supabase.rpc('execute_partner_supplier_mutation', {
+      p_operator_id: operatorId ?? null,
+      p_operator_pin: operatorPin ?? null,
+      p_supplier_id: id,
+      p_name: merged.name,
+      p_phone: merged.phone ?? null,
+      p_notes: merged.notes ?? null,
+    });
+    if (rpcErr) throw rpcErr;
+    setData((prev) => ({ ...prev, suppliers: prev.suppliers.map((supplier) => supplier.id === id ? merged : supplier) }));
+  }, [identity, data.suppliers]);
 
-  const deleteSupplier = useCallback(async (id: string) => {
+  const deleteSupplier = useCallback(async (
+    id: string,
+    operatorId?: string | null,
+    operatorPin?: string | null,
+  ) => {
     if (!identity || !isSupabaseConfigured || !supabase) throw new Error('Supabase não configurado.');
-    const { data: deleted, error } = await supabase
-      .from('partner_suppliers')
-      .delete()
-      .eq('id', id)
-      .eq('user_id', identity.companyUserId)
-      .select('id')
-      .single();
-    if (error) throw error;
-    if (!deleted || deleted.id !== id) throw new Error('A exclusão do fornecedor não foi confirmada pelo servidor.');
+    const { error: rpcErr } = await supabase.rpc('execute_partner_supplier_delete', {
+      p_operator_id: operatorId ?? null,
+      p_operator_pin: operatorPin ?? null,
+      p_supplier_id: id,
+    });
+    if (rpcErr) throw rpcErr;
     setData((prev) => ({ ...prev, suppliers: prev.suppliers.filter((supplier) => supplier.id !== id) }));
   }, [identity]);
 
-  const addSalesperson = useCallback(async (sp: Omit<PartnerSalesperson, 'id' | 'user_id' | 'created_at'>) => {
+  const addSalesperson = useCallback(async (
+    sp: Omit<PartnerSalesperson, 'id' | 'user_id' | 'created_at'>,
+    operatorId?: string | null,
+    operatorPin?: string | null,
+  ) => {
     if (!identity) return;
     if (!isSupabaseConfigured || !supabase) throw new Error('Supabase não configurado. O colaborador não foi salvo.');
-
-    const invalidColumns = new Set(['phone', 'email', 'is_active', 'updated_at']);
-    const insertPayload = {
-      ...Object.fromEntries(Object.entries(sp).filter(([key]) => !invalidColumns.has(key))),
-      id: crypto.randomUUID(),
-      user_id: identity.companyUserId,
-      created_at: new Date().toISOString(),
+    const { data: newId, error: rpcErr } = await supabase.rpc('execute_partner_salesperson_mutation', {
+      p_operator_id: operatorId ?? null,
+      p_operator_pin: operatorPin ?? null,
+      p_salesperson_id: null,
+      p_name: sp.name,
+      p_role: sp.role,
+      p_commission_rate: sp.commission_rate ?? 0,
+      p_branch_id: sp.branch_id ?? null,
+      p_active: sp.active ?? true,
+      p_new_pin: sp.pin ?? null,
+    });
+    if (rpcErr) throw rpcErr;
+    const confirmed: PartnerSalesperson = {
+      ...sp, id: newId as string, user_id: identity.companyUserId, created_at: new Date().toISOString(),
     };
-    const { data: inserted, error } = await supabase
-      .from('partner_salespeople')
-      .insert(insertPayload)
-      .select()
-      .single();
-    if (error) throw error;
-    if (!inserted) throw new Error('O Supabase não retornou o colaborador criado.');
-
-    const confirmed = inserted as unknown as PartnerSalesperson;
     setData((prev) => ({ ...prev, salespeople: [confirmed, ...prev.salespeople] }));
   }, [identity]);
 
-  const updateSalesperson = useCallback(async (id: string, updates: Partial<PartnerSalesperson>) => {
+  const updateSalesperson = useCallback(async (
+    id: string,
+    updates: Partial<PartnerSalesperson>,
+    operatorId?: string | null,
+    operatorPin?: string | null,
+  ) => {
     if (!identity) return;
     if (!isSupabaseConfigured || !supabase) throw new Error('Supabase não configurado. O colaborador não foi atualizado.');
+    const current = data.salespeople.find((salesperson) => salesperson.id === id);
+    if (!current) throw new Error('Colaborador não encontrado no estado atual. Atualize a página e tente novamente.');
+    const merged = { ...current, ...updates };
+    const { error: rpcErr } = await supabase.rpc('execute_partner_salesperson_mutation', {
+      p_operator_id: operatorId ?? null,
+      p_operator_pin: operatorPin ?? null,
+      p_salesperson_id: id,
+      p_name: merged.name,
+      p_role: merged.role,
+      p_commission_rate: merged.commission_rate ?? 0,
+      p_branch_id: merged.branch_id ?? null,
+      p_active: merged.active ?? merged.is_active ?? true,
+      p_new_pin: updates.pin ?? null,
+    });
+    if (rpcErr) throw rpcErr;
+    setData((prev) => ({ ...prev, salespeople: prev.salespeople.map((salesperson) => salesperson.id === id ? merged : salesperson) }));
+  }, [identity, data.salespeople]);
 
-    const invalidColumns = new Set(['id', 'user_id', 'created_at', 'updated_at', 'phone', 'email', 'is_active']);
-    const updatePayload = Object.fromEntries(Object.entries(updates).filter(([key]) => !invalidColumns.has(key)));
-    const { data: updated, error } = await supabase
-      .from('partner_salespeople')
-      .update(updatePayload)
-      .eq('id', id)
-      .eq('user_id', identity.companyUserId)
-      .select()
-      .single();
-    if (error) throw error;
-    if (!updated) throw new Error('O Supabase não retornou o colaborador atualizado.');
-
-    const confirmed = updated as unknown as PartnerSalesperson;
-    setData((prev) => ({ ...prev, salespeople: prev.salespeople.map((salesperson) => salesperson.id === id ? confirmed : salesperson) }));
-  }, [identity]);
-
-  const deleteSalesperson = useCallback(async (id: string) => {
+  const deleteSalesperson = useCallback(async (
+    id: string,
+    operatorId?: string | null,
+    operatorPin?: string | null,
+  ) => {
+    if (!isSupabaseConfigured || !supabase) throw new Error('Supabase não configurado. O colaborador não foi excluído.');
+    const { error: rpcErr } = await supabase.rpc('execute_partner_salesperson_delete', {
+      p_operator_id: operatorId ?? null,
+      p_operator_pin: operatorPin ?? null,
+      p_salesperson_id: id,
+    });
+    if (rpcErr) throw rpcErr;
     setData((prev) => ({ ...prev, salespeople: prev.salespeople.filter((s) => s.id !== id) }));
-    if (isSupabaseConfigured && supabase) await supabase.from('partner_salespeople').delete().eq('id', id);
   }, []);
 
   const cancelSale = useCallback(async (

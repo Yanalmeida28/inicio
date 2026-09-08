@@ -208,6 +208,8 @@ function ProductsSubTab({ products, allProducts, branches, selectedBranchId, cat
   const [editProduct, setEditProduct] = useState<PartnerProduct | null>(null);
   const [openActionId, setOpenActionId] = useState<string | null>(null);
   const [productActionPosition, setProductActionPosition] = useState<React.CSSProperties | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
 
@@ -218,17 +220,25 @@ function ProductsSubTab({ products, allProducts, branches, selectedBranchId, cat
       window.alert('Selecione uma filial antes de cadastrar produtos para manter o estoque separado por filial.');
       return;
     }
-    await onAddProduct({
-      name, sku: sku || null, cost_price: Number(cost) || 0, sale_price: Number(sale) || 0,
-      wholesale_price: Number(wholesale) || 0,
-      stock: Number(stock) || 0, min_stock: Number(minStock) || 0,
-      image_url: null, category: category || null, is_service: isService, branch_id: selectedBranchId,
-      ncm: ncm || null, cfop: cfop || null, cst_csosn: cstCsosn || null,
-      icms_rate: Number(icmsRate) || 0, pis_rate: Number(pisRate) || 0, cofins_rate: Number(cofinsRate) || 0,
-    });
-    setName(''); setSku(''); setCost(''); setSale(''); setWholesale(''); setStock(''); setMinStock('5'); setCategory(''); setIsService(false);
-    setNcm(''); setCfop(''); setCstCsosn(''); setIcmsRate(''); setPisRate(''); setCofinsRate('');
-    setShowForm(false);
+    setSaving(true);
+    setFormError(null);
+    try {
+      await onAddProduct({
+        name, sku: sku || null, cost_price: Number(cost) || 0, sale_price: Number(sale) || 0,
+        wholesale_price: Number(wholesale) || 0,
+        stock: Number(stock) || 0, min_stock: Number(minStock) || 0,
+        image_url: null, category: category || null, is_service: isService, branch_id: selectedBranchId,
+        ncm: ncm || null, cfop: cfop || null, cst_csosn: cstCsosn || null,
+        icms_rate: Number(icmsRate) || 0, pis_rate: Number(pisRate) || 0, cofins_rate: Number(cofinsRate) || 0,
+      });
+      setName(''); setSku(''); setCost(''); setSale(''); setWholesale(''); setStock(''); setMinStock('5'); setCategory(''); setIsService(false);
+      setNcm(''); setCfop(''); setCstCsosn(''); setIcmsRate(''); setPisRate(''); setCofinsRate('');
+      setShowForm(false);
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : 'Não foi possível salvar o produto.');
+    } finally {
+      setSaving(false);
+    }
   }
 
   const itemLabel = segment === 'assistencia' ? 'Peça / Serviço' : 'Produto / Serviço';
@@ -349,7 +359,8 @@ function ProductsSubTab({ products, allProducts, branches, selectedBranchId, cat
               <input type="number" step="0.01" value={cofinsRate} onChange={(e) => setCofinsRate(e.target.value)} placeholder="0" />
             </label>
           </div>
-          <button type="submit" className="module-submit-btn">Cadastrar</button>
+          {formError && <p className="form-error-msg" style={{ color: '#e3829b', fontSize: '13px' }}>{formError}</p>}
+          <button type="submit" className="module-submit-btn" disabled={saving}>{saving ? 'Salvando...' : 'Cadastrar'}</button>
         </form>
       )}
 
@@ -1415,17 +1426,27 @@ function SuppliersSubTab({ suppliers, onAdd, onUpdate, onDelete }: {
   const [phone, setPhone] = useState('');
   const [notes, setNotes] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) return;
-    if (editingId) {
-      await onUpdate(editingId, { name: name.trim(), phone: phone || null, notes: notes || null });
-    } else {
-      await onAdd({ name, phone: phone || null, notes: notes || null });
+    setSaving(true);
+    setFormError(null);
+    try {
+      if (editingId) {
+        await onUpdate(editingId, { name: name.trim(), phone: phone || null, notes: notes || null });
+      } else {
+        await onAdd({ name, phone: phone || null, notes: notes || null });
+      }
+      setName(''); setPhone(''); setNotes('');
+      setEditingId(null);
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : 'Não foi possível salvar o fornecedor.');
+    } finally {
+      setSaving(false);
     }
-    setName(''); setPhone(''); setNotes('');
-    setEditingId(null);
   }
 
   function startEdit(supplier: PartnerSupplier) {
@@ -1456,7 +1477,8 @@ function SuppliersSubTab({ suppliers, onAdd, onUpdate, onDelete }: {
           Observações
           <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notas sobre prazos, condições..." rows={2} />
         </label>
-        <div className="supplier-form-actions"><button type="submit" className="module-submit-btn">{editingId ? <><Save size={16} /> Salvar alterações</> : <><Plus size={16} /> Adicionar fornecedor</>}</button>{editingId && <button type="button" className="rma-advance-btn" onClick={cancelEdit}>Cancelar</button>}</div>
+        {formError && <p className="form-error-msg" style={{ color: '#e3829b', fontSize: '13px' }}>{formError}</p>}
+        <div className="supplier-form-actions"><button type="submit" className="module-submit-btn" disabled={saving}>{saving ? 'Salvando...' : editingId ? <><Save size={16} /> Salvar alterações</> : <><Plus size={16} /> Adicionar fornecedor</>}</button>{editingId && <button type="button" className="rma-advance-btn" onClick={cancelEdit} disabled={saving}>Cancelar</button>}</div>
       </form>
       <div className="stock-table-wrap">
         <table className="rma-table">
@@ -1520,22 +1542,33 @@ function SalespeopleSubTab({ salespeople, branches, onAdd, onUpdate, onDelete }:
   const [editRole, setEditRole] = useState<SalespersonRole>('vendedor');
   const [editBranchId, setEditBranchId] = useState('');
   const [editActive, setEditActive] = useState(true);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) return;
-    await onAdd({
-      name: name.trim(),
-      commission_rate: Number(rate) || 0,
-      active: true,
-      pin: pin || null,
-      role,
-      branch_id: branchId || null,
-      phone: null,
-      email: null,
-      is_active: true,
-    });
-    setName(''); setRate(''); setPin(''); setRole('vendedor'); setBranchId('');
+    setSaving(true);
+    setFormError(null);
+    try {
+      await onAdd({
+        name: name.trim(),
+        commission_rate: Number(rate) || 0,
+        active: true,
+        pin: pin || null,
+        role,
+        branch_id: branchId || null,
+        phone: null,
+        email: null,
+        is_active: true,
+      });
+      setName(''); setRate(''); setPin(''); setRole('vendedor'); setBranchId('');
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : 'Não foi possível salvar o colaborador.');
+    } finally {
+      setSaving(false);
+    }
   }
 
   function startEdit(s: PartnerSalesperson) {
@@ -1550,19 +1583,34 @@ function SalespeopleSubTab({ salespeople, branches, onAdd, onUpdate, onDelete }:
 
   function cancelEdit() {
     setEditingId(null);
+    setEditError(null);
   }
 
   async function saveEdit(id: string) {
-    await onUpdate(id, {
-      name: editName.trim(),
-      commission_rate: Number(editRate) || 0,
-      pin: editPin || null,
-      role: editRole,
-      branch_id: editBranchId || null,
-      active: editActive,
-      is_active: editActive,
-    });
-    setEditingId(null);
+    setEditError(null);
+    try {
+      await onUpdate(id, {
+        name: editName.trim(),
+        commission_rate: Number(editRate) || 0,
+        pin: editPin || null,
+        role: editRole,
+        branch_id: editBranchId || null,
+        active: editActive,
+        is_active: editActive,
+      });
+      setEditingId(null);
+    } catch (error) {
+      setEditError(error instanceof Error ? error.message : 'Não foi possível salvar as alterações do colaborador.');
+    }
+  }
+
+  async function handleDelete(id: string, name: string) {
+    if (!window.confirm(`Excluir o colaborador "${name}"?`)) return;
+    try {
+      await onDelete(id);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Não foi possível excluir o colaborador.');
+    }
   }
 
   return (
@@ -1605,7 +1653,8 @@ function SalespeopleSubTab({ salespeople, branches, onAdd, onUpdate, onDelete }:
             </select>
           </label>
         </div>
-        <button type="submit" className="module-submit-btn"><Plus size={16} /> Adicionar colaborador</button>
+        {formError && <p className="form-error-msg" style={{ color: '#e3829b', fontSize: '13px' }}>{formError}</p>}
+        <button type="submit" className="module-submit-btn" disabled={saving}><Plus size={16} /> {saving ? 'Salvando...' : 'Adicionar colaborador'}</button>
       </form>
       <div className="stock-table-wrap">
         <table className="rma-table">
@@ -1663,6 +1712,7 @@ function SalespeopleSubTab({ salespeople, branches, onAdd, onUpdate, onDelete }:
                               <X size={14} />
                             </button>
                           </div>
+                          {editError && <p className="form-error-msg" style={{ color: '#e3829b', fontSize: '12px' }}>{editError}</p>}
                         </td>
                       </>
                     ) : (
@@ -1682,7 +1732,7 @@ function SalespeopleSubTab({ salespeople, branches, onAdd, onUpdate, onDelete }:
                             <button className="rma-advance-btn" onClick={() => startEdit(s)} title="Editar">
                               <History size={14} />
                             </button>
-                            <button className="rma-advance-btn danger" onClick={() => onDelete(s.id)} title="Excluir">
+                            <button className="rma-advance-btn danger" onClick={() => handleDelete(s.id, s.name)} title="Excluir">
                               <Trash2 size={14} />
                             </button>
                           </div>
