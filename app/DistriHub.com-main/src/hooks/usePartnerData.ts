@@ -94,7 +94,7 @@ const customerRpcFields = (customer: PartnerCustomer) => ({
 
 function customerMutationPayload(
   customer: PartnerCustomer,
-  customerId: string,
+  customerId: string | null,
   operatorId: string | null | undefined,
   operatorPin: string | null | undefined,
 ) {
@@ -376,7 +376,10 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
     }
     const nc: PartnerCustomer = { ...customer, document: normalizedDocument, id: crypto.randomUUID(), user_id: identity.companyUserId, created_at: new Date().toISOString() };
     if (isSupabaseConfigured && supabase) {
-      const { error: rpcErr } = await supabase.rpc('execute_partner_customer_mutation', customerMutationPayload(nc, nc.id, operatorId, operatorPin));
+      const { error: rpcErr } = await supabase.rpc(
+  'execute_partner_customer_mutation',
+  customerMutationPayload(nc, null, operatorId, operatorPin)
+);
       if (rpcErr) throw rpcErr;
     }
     setData((prev) => ({ ...prev, customers: [nc, ...prev.customers] }));
