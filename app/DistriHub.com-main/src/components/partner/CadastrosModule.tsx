@@ -1023,8 +1023,33 @@ function CustomersSubTab({ customers, sales, salespeople, selectedBranchId, onAd
       } else {
         await onAdd(payload as Omit<PartnerCustomer, 'id' | 'user_id' | 'created_at'>);
       }
-    } catch (error) {
-      window.alert(error instanceof Error ? error.message : 'Não foi possível salvar o cliente.');
+        } catch (error) {
+      if (error && typeof error === 'object') {
+        const err = error as {
+          message?: unknown;
+          code?: unknown;
+          details?: unknown;
+          hint?: unknown;
+        };
+
+        const parts = [
+          typeof err.message === 'string' ? err.message : null,
+          typeof err.code === 'string' ? `Código: ${err.code}` : null,
+          typeof err.details === 'string' ? `Detalhes: ${err.details}` : null,
+          typeof err.hint === 'string' ? `Dica: ${err.hint}` : null,
+        ].filter(Boolean);
+
+        if (parts.length > 0) {
+          window.alert(parts.join('\n'));
+          return;
+        }
+      }
+
+      window.alert(
+        error instanceof Error
+          ? error.message
+          : 'Não foi possível salvar o cliente.'
+      );
       return;
     }
 
