@@ -462,19 +462,40 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
     }));
   }, [data.customers, data.salespeople, identity]);
 
-  const refreshCustomer = useCallback(async (id: string) => {
-    if (!supabase || !identity) throw new Error('Sessão do cliente não disponível.');
-    const { data: savedCustomer, error } = await supabase
-      .from('partner_customers')
-      .select('*')
-      .eq('id', id)
-      .eq('user_id', identity.companyUserId)
-      .single();
-    if (error) throw new Error(`Não foi possível carregar os dados do cliente: ${error.message}`);
-    const customer = savedCustomer as PartnerCustomer;
-    setData((prev) => ({ ...prev, customers: prev.customers.map((item) => item.id === id ? customer : item) }));
-    return customer;
-  }, [identity]);
+ const refreshCustomer = useCallback(async (id: string) => {
+  if (!supabase || !identity) {
+    throw new Error('Sessão do cliente não disponível.');
+  }
+
+  const { data: savedCustomer, error } = await supabase
+    .from('partner_customers')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(
+      `Não foi possível carregar os dados do cliente: ${error.message}`
+    );
+  }
+
+  const customer =
+    (savedCustomer as PartnerCustomer | null) ??
+    data.customers.find((item) => item.id === id);
+
+  if (!customer) {
+    throw new Error('Cliente não encontrado.');
+  }
+
+  setData((prev) => ({
+    ...prev,
+    customers: prev.customers.map((item) =>
+      item.id === id ? customer : item
+    ),
+  }));
+
+  return customer;
+}, [supabase, identity, data.customers]);
 
   const deleteCustomer = useCallback(async (
     id: string,
