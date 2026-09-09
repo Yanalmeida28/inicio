@@ -342,13 +342,18 @@ function PdvCheckout({ products, customers, sales, invoices, salespeople, segmen
         <div className="pdv-left">
           <div className="pdv-search-bar">
             <Search size={18} />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar produto por nome ou SKU..."
-              aria-label="Buscar produto por nome ou SKU"
-              autoFocus
-            />
+           <input
+  type="search"
+  name="product-search"
+  autoComplete="off"
+  autoCorrect="off"
+  autoCapitalize="none"
+  spellCheck={false}
+  value={search}
+  onChange={(e) => setSearch(e.target.value)}
+  placeholder="Buscar produto por nome ou SKU..."
+  aria-label="Buscar produto por nome ou SKU"
+/>
           </div>
 
           {selectionNotice && (

@@ -1600,7 +1600,7 @@ function SalespeopleSubTab({ salespeople, branches, onAdd, onUpdate, onDelete }:
     setEditingId(s.id);
     setEditName(s.name);
     setEditRate(String(s.commission_rate));
-    setEditPin(s.pin ?? '');
+    setEditPin('');
     setEditRole(s.role);
     setEditBranchId(s.branch_id ?? '');
     setEditActive(s.active ?? s.is_active ?? true);
@@ -1750,7 +1750,7 @@ function SalespeopleSubTab({ salespeople, branches, onAdd, onUpdate, onDelete }:
                         </td>
                         <td>{spBranch ? spBranch.name : <small style={{ color: '#475569' }}>Todas as filiais</small>}</td>
                         <td>{s.commission_rate}%</td>
-                        <td>{s.pin ? '****' : '—'}</td>
+                        <td>{s.pin_configured ? 'Configurado' : 'Não configurado'}</td>
                         <td>{s.active ?? s.is_active ? 'Ativo' : 'Inativo'}</td>
                         <td>
                           <div className="row-action-group">

@@ -854,7 +854,20 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
       p_new_pin: updates.pin ?? null,
     });
     if (rpcErr) throw rpcErr;
-    setData((prev) => ({ ...prev, salespeople: prev.salespeople.map((salesperson) => salesperson.id === id ? merged : salesperson) }));
+    setData((prev) => ({
+  ...prev,
+  salespeople: prev.salespeople.map((salesperson) =>
+    salesperson.id === id
+      ? {
+          ...merged,
+          pin: null,
+          pin_configured: updates.pin
+            ? true
+            : salesperson.pin_configured ?? false,
+        }
+      : salesperson
+  ),
+}));
   }, [identity, data.salespeople]);
 
   const deleteSalesperson = useCallback(async (

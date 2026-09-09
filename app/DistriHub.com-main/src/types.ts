@@ -174,6 +174,7 @@ export interface PartnerSalesperson {
   is_active: boolean;
   active?: boolean;
   pin?: string | null;
+pin_configured?: boolean;
   branch_id?: string | null;
   created_at: string;
   updated_at?: string;
