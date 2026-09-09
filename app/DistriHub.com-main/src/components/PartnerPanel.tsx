@@ -41,6 +41,7 @@ import { AdminModule } from './partner/AdminModule';
 import { OrderHistoryModule } from './partner/OrderHistoryModule';
 import { SupportChatModule } from './partner/SupportChatModule';
 import { ServiceOrdersModule } from './partner/ServiceOrdersModule';
+import { supabase } from '../lib/supabase';
 
 import type {
   StoreSettings,
@@ -540,32 +541,71 @@ export function PartnerPanel({
     setShowOperatorModal(true);
   }
 
-  function handleConfirmOperator() {
-    setOperatorPinError('');
-    if (selectedOperatorId === 'owner' || !selectedOperatorId) {
-      setCurrentSalespersonId(null);
-      setActiveOperatorPin(null);
-      setShowOperatorModal(false);
-      return;
-    }
+  async function handleConfirmOperator() {
+  setOperatorPinError('');
 
-    const targetSp = partner.salespeople.find((s) => s.id === selectedOperatorId);
-    if (!targetSp) return;
-
-    if (targetSp.pin) {
-      if (operatorPinInput !== targetSp.pin) {
-        setOperatorPinError('PIN incorreto. Digite os 4 dígitos cadastrados para este operador.');
-        return;
-      }
-    }
-
-    setCurrentSalespersonId(targetSp.id);
-    setActiveOperatorPin(operatorPinInput || null);
-    if (targetSp.branch_id) {
-      setSelectedBranchId(targetSp.branch_id);
-    }
+  if (selectedOperatorId === 'owner' || !selectedOperatorId) {
+    setCurrentSalespersonId(null);
+    setActiveOperatorPin(null);
     setShowOperatorModal(false);
+    return;
   }
+
+  const targetSp = partner.salespeople.find(
+    (s) => s.id === selectedOperatorId
+  );
+
+  if (!targetSp) {
+    setOperatorPinError('Operador não encontrado.');
+    return;
+  }
+
+  const pin = operatorPinInput.trim();
+
+  if (!/^\d{4,8}$/.test(pin)) {
+    setOperatorPinError('Digite o PIN de 4 a 8 dígitos.');
+    return;
+  }
+
+  const requestedBranchId =
+  targetSp.branch_id ?? selectedBranchId ?? null;
+
+if (!supabase) {
+  setOperatorPinError(
+    'Não foi possível conectar ao sistema. Tente novamente.'
+  );
+  return;
+}
+
+const { data: operator, error: operatorError } = await supabase.rpc(
+  'resolve_partner_operator',
+  {
+    p_salesperson_id: targetSp.id,
+    p_pin: pin,
+    p_requested_branch_id: requestedBranchId,
+  }
+);
+
+  if (operatorError) {
+    console.error('Erro ao validar operador:', operatorError);
+    setOperatorPinError('PIN incorreto ou operador sem acesso a esta filial.');
+    return;
+  }
+
+  if (!operator || (Array.isArray(operator) && operator.length === 0)) {
+    setOperatorPinError('PIN incorreto ou operador inválido.');
+    return;
+  }
+
+  setCurrentSalespersonId(targetSp.id);
+  setActiveOperatorPin(pin);
+
+  if (targetSp.branch_id) {
+    setSelectedBranchId(targetSp.branch_id);
+  }
+
+  setShowOperatorModal(false);
+}
 
   function handleSelectBranch(id: string) {
     if (isEmployeeRestricted) {
