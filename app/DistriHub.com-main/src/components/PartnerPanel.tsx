@@ -216,7 +216,7 @@ export function PartnerPanel({
   segment,
   initialTab,
   onConsumeInitialTab,
-}: PartnerPanelProps) {
+}:PartnerPanelProps) {
   const [activeTab, setActiveTab] = useState<Tab>('cadastros');
   const [selectedBranchId, setSelectedBranchId] = useState<string>('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -568,32 +568,34 @@ export function PartnerPanel({
   }
 
   const requestedBranchId =
-  targetSp.branch_id ?? selectedBranchId ?? null;
+    targetSp.branch_id ?? selectedBranchId ?? null;
 
-if (!supabase) {
-  setOperatorPinError(
-    'Não foi possível conectar ao sistema. Tente novamente.'
-  );
-  return;
-}
-
-const { data: operator, error: operatorError } = await supabase.rpc(
-  'resolve_partner_operator',
-  {
-    p_salesperson_id: targetSp.id,
-    p_pin: pin,
-    p_requested_branch_id: requestedBranchId,
+  if (!supabase) {
+    setOperatorPinError(
+      'Não foi possível conectar ao sistema. Tente novamente.'
+    );
+    return;
   }
-);
+
+  const { data: operator, error: operatorError } =
+    await supabase.rpc('resolve_partner_operator', {
+      p_salesperson_id: targetSp.id,
+      p_pin: pin,
+      p_requested_branch_id: requestedBranchId,
+    });
 
   if (operatorError) {
     console.error('Erro ao validar operador:', operatorError);
-    setOperatorPinError('PIN incorreto ou operador sem acesso a esta filial.');
+    setOperatorPinError(
+      'PIN incorreto ou operador sem acesso a esta filial.'
+    );
     return;
   }
 
   if (!operator || (Array.isArray(operator) && operator.length === 0)) {
-    setOperatorPinError('PIN incorreto ou operador inválido.');
+    setOperatorPinError(
+      'PIN incorreto ou operador inválido.'
+    );
     return;
   }
 
@@ -606,14 +608,6 @@ const { data: operator, error: operatorError } = await supabase.rpc(
 
   setShowOperatorModal(false);
 }
-
-  function handleSelectBranch(id: string) {
-    if (isEmployeeRestricted) {
-      window.alert(`Operação negada: Seu usuário está vinculado à filial "${lockedBranch?.name ?? ''}" e não pode trocar de loja.`);
-      return;
-    }
-    setSelectedBranchId(id);
-  }
 
   const defaultSettings: StoreSettings = {
     id: 'default',
@@ -786,7 +780,7 @@ const { data: operator, error: operatorError } = await supabase.rpc(
               effectiveBranchId || null
             }
             onSelectBranch={
-              handleSelectBranch
+              handleDeleteBranch
             }
             onAddBranch={
               handleAddBranch
@@ -1024,7 +1018,7 @@ const { data: operator, error: operatorError } = await supabase.rpc(
                   effectiveBranchId
                 }
                 onSelectBranch={
-                  handleSelectBranch
+                  handleDeleteBranch
                 }
                 onNavigate={(tab) =>
                   handleTabClick(
@@ -1159,27 +1153,26 @@ const { data: operator, error: operatorError } = await supabase.rpc(
               </label>
 
               {selectedOperatorId && selectedOperatorId !== 'owner' && (
-                <>
-                  {partner.salespeople.find((s) => s.id === selectedOperatorId)?.pin ? (
-                    <label>
-                      <KeyRound size={14} /> PIN de Acesso (4 dígitos)
-                      <input
-                        type="password"
-                        value={operatorPinInput}
-                        onChange={(e) => {
-                          setOperatorPinInput(e.target.value);
-                          setOperatorPinError('');
-                        }}
-                        placeholder="Digite o PIN do funcionário"
-                        maxLength={4}
-                        autoFocus
-                      />
-                    </label>
-                  ) : (
-                    <small style={{ color: '#889eaf' }}>Este operador não possui PIN cadastrado.</small>
-                  )}
-                </>
-              )}
+  <label>
+    <KeyRound size={14} /> PIN de Acesso
+    <input
+      type="password"
+      inputMode="numeric"
+      value={operatorPinInput}
+      onChange={(e) => {
+        const value = e.target.value.replace(/\D/g, '');
+        setOperatorPinInput(value);
+        setOperatorPinError('');
+      }}
+      placeholder="Digite o PIN do funcionário"
+      maxLength={8}
+      autoFocus
+    />
+    <small style={{ color: '#889eaf' }}>
+      Digite o PIN de 4 a 8 dígitos.
+    </small>
+  </label>
+)}
 
               {operatorPinError && (
                 <p className="otp-error-msg" style={{ color: '#e3829b', fontSize: '12px' }}>{operatorPinError}</p>
