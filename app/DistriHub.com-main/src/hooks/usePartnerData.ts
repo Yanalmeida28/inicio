@@ -143,13 +143,12 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
     setData((prev) => ({ ...prev, loading: true, error: null }));
 
     if (identity.salespersonId && !identity.branchId) {
-      setData((prev) => ({
-        ...prev,
-        loading: false,
-        error: 'O funcionário autenticado não possui uma filial atribuída.',
-      }));
-      return;
-    }
+  setData((prev) => ({
+    ...prev,
+    loading: false,
+    error: '',
+  }));
+}
 
     const tables = [
       'partner_products', 'partner_customers', 'partner_sales', 'stock_movements',
