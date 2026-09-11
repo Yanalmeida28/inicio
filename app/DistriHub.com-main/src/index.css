@@ -1748,13 +1748,17 @@ html, body {
   .partner-panel .admin-dre-grid,
   .partner-panel .subscription-details-grid,
   .partner-panel .plan-cards-grid,
-  .partner-panel .admin-data-mgmt-grid {
+  .partner-panel .admin-data-mgmt-grid,
+  .partner-panel .customer-compliance-grid,
+  .partner-panel .ranking-grid {
     grid-template-columns: 1fr !important;
     gap: 12px !important;
   }
   .partner-panel .admin-kpi-grid,
   .partner-panel .replenishment-kpi-grid,
-  .partner-panel .fiscal-summary-grid {
+  .partner-panel .fiscal-summary-grid,
+  .partner-panel .payment-breakdown-grid,
+  .partner-panel .catalog-submodule-grid {
     grid-template-columns: repeat(2, 1fr) !important;
     gap: 10px !important;
   }
@@ -1780,7 +1784,9 @@ html, body {
 @media (max-width: 480px) {
   .partner-panel .admin-kpi-grid,
   .partner-panel .replenishment-kpi-grid,
-  .partner-panel .fiscal-summary-grid {
+  .partner-panel .fiscal-summary-grid,
+  .partner-panel .payment-breakdown-grid,
+  .partner-panel .catalog-submodule-grid {
     grid-template-columns: 1fr !important;
   }
   .partner-panel .pdv-receipt-actions {
@@ -1836,6 +1842,39 @@ html, body {
 .partner-panel textarea::placeholder {
   color: #64748B !important;
   opacity: 1;
+}
+/* Componentes que ficaram fora do patch de tema claro — mesmo fundo escuro
+   original, mas com texto forçado escuro pela regra global de inputs acima,
+   o que deixava o conteúdo ilegível. */
+.partner-panel .admin-date-input,
+.partner-panel .admin-discount-input,
+.partner-panel .catalog-slug-input,
+.partner-panel .inline-input,
+.partner-panel .notice-input {
+  background: var(--dh-surface) !important;
+  border-color: var(--dh-border) !important;
+}
+.partner-panel .catalog-oos-option {
+  background: var(--dh-surface) !important;
+  border-color: var(--dh-border) !important;
+  color: var(--dh-text) !important;
+}
+.partner-panel .period-pill {
+  background: var(--dh-surface) !important;
+  border-color: var(--dh-border) !important;
+  color: var(--dh-text-secondary) !important;
+}
+.partner-panel .period-pill:hover {
+  color: var(--dh-text) !important;
+  border-color: var(--dh-blue) !important;
+}
+.partner-panel .period-pill.active {
+  background: var(--dh-blue-soft) !important;
+  border-color: var(--dh-blue) !important;
+  color: var(--dh-blue) !important;
+}
+.partner-panel .admin-bar-track {
+  background: var(--dh-border) !important;
 }
 .partner-panel .module-action-btn,
 .partner-panel .rma-advance-btn,
