@@ -146,8 +146,9 @@ export function usePartnerData(identity: PartnerIdentity | null): PartnerData {
   setData((prev) => ({
     ...prev,
     loading: false,
-    error: '',
+    error: 'O funcionário autenticado não possui uma filial atribuída.',
   }));
+  return;
 }
 
     const tables = [
