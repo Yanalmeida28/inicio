@@ -80,6 +80,7 @@ export function useAuth(): UseAuthReturn {
     passwordRecovery: false,
   });
   const signupInProgressRef = useRef(false);
+  const identityRequestRef = useRef(0);
 
   const resolveIdentity = useCallback(async (authUserId: string): Promise<PartnerIdentity> => {
     if (!supabase) {
@@ -152,59 +153,101 @@ export function useAuth(): UseAuthReturn {
       return;
     }
 
+    let cancelled = false;
+
+    const applySession = async (session: Session | null, passwordRecovery = false) => {
+      const requestId = ++identityRequestRef.current;
+
+      dispatch({
+        type: 'SET_SESSION',
+        session,
+        user: session?.user ?? null,
+        passwordRecovery,
+      });
+
+      if (!session?.user) {
+        dispatch({ type: 'SET_PROFILE', profile: null });
+        dispatch({ type: 'SET_IDENTITY', identity: null });
+        dispatch({ type: 'SET_ERROR', error: null });
+        return;
+      }
+
+      dispatch({ type: 'SET_IDENTITY', identity: null });
+      dispatch({ type: 'SET_PROFILE', profile: null });
+      dispatch({ type: 'SET_ERROR', error: null });
+
+      if (signupInProgressRef.current) return;
+
+      try {
+        const identity = await resolveIdentity(session.user.id);
+
+        if (cancelled || requestId !== identityRequestRef.current) return;
+
+        const profile = await loadProfile(identity.companyUserId);
+
+        if (cancelled || requestId !== identityRequestRef.current) return;
+
+        dispatch({ type: 'SET_IDENTITY', identity });
+        dispatch({ type: 'SET_PROFILE', profile });
+        dispatch({ type: 'SET_ERROR', error: null });
+      } catch (error: unknown) {
+        if (cancelled || requestId !== identityRequestRef.current) return;
+
+        dispatch({
+          type: 'SET_IDENTITY',
+          identity: null,
+        });
+        dispatch({
+          type: 'SET_PROFILE',
+          profile: null,
+        });
+        dispatch({
+          type: 'SET_ERROR',
+          error:
+            error instanceof Error
+              ? error.message
+              : 'Não foi possível resolver a identidade do usuário.',
+        });
+      }
+    };
+
     supabase.auth.getSession().then(({ data }) => {
-      const session = data.session;
-      dispatch({
-        type: 'SET_SESSION',
-        session,
-        user: session?.user ?? null,
-      });
-
-      if (session?.user) {
-        dispatch({ type: 'SET_IDENTITY', identity: null });
-        dispatch({ type: 'SET_PROFILE', profile: null });
-        dispatch({ type: 'SET_ERROR', error: null });
-        if (signupInProgressRef.current) return;
-        resolveIdentity(session.user.id)
-          .then(async (identity) => {
-            dispatch({ type: 'SET_IDENTITY', identity });
-            dispatch({ type: 'SET_PROFILE', profile: await loadProfile(identity.companyUserId) });
-          })
-          .catch((error: unknown) => {
-            dispatch({ type: 'SET_ERROR', error: error instanceof Error ? error.message : 'Não foi possível resolver a identidade do usuário.' });
-          });
+      if (!cancelled) {
+        void applySession(data.session);
       }
     });
 
-    const { data: listener } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      dispatch({
-        type: 'SET_SESSION',
-        session,
-        user: session?.user ?? null,
-        passwordRecovery: _event === 'PASSWORD_RECOVERY',
-      });
+    const { data: listener } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        if (cancelled) return;
 
-      if (session?.user) {
-        dispatch({ type: 'SET_IDENTITY', identity: null });
-        dispatch({ type: 'SET_PROFILE', profile: null });
-        dispatch({ type: 'SET_ERROR', error: null });
-        if (signupInProgressRef.current) return;
-        try {
-          const identity = await resolveIdentity(session.user.id);
-          dispatch({ type: 'SET_IDENTITY', identity });
-          const profile = await loadProfile(identity.companyUserId);
-          dispatch({ type: 'SET_PROFILE', profile });
-        } catch (error) {
-          dispatch({ type: 'SET_ERROR', error: error instanceof Error ? error.message : 'Não foi possível resolver a identidade do usuário.' });
+        dispatch({
+          type: 'SET_SESSION',
+          session,
+          user: session?.user ?? null,
+          passwordRecovery:
+            event === 'PASSWORD_RECOVERY',
+        });
+
+        if (!session?.user) {
+          identityRequestRef.current += 1;
+          dispatch({ type: 'SET_PROFILE', profile: null });
+          dispatch({ type: 'SET_IDENTITY', identity: null });
+          dispatch({ type: 'SET_ERROR', error: null });
+          return;
         }
-      } else {
-        dispatch({ type: 'SET_PROFILE', profile: null });
-        dispatch({ type: 'SET_IDENTITY', identity: null });
-        dispatch({ type: 'SET_ERROR', error: null });
-      }
-    });
 
-    return () => listener.subscription.unsubscribe();
+        if (signupInProgressRef.current) return;
+
+        void applySession(session, event === 'PASSWORD_RECOVERY');
+      },
+    );
+
+    return () => {
+      cancelled = true;
+      identityRequestRef.current += 1;
+      listener.subscription.unsubscribe();
+    };
   }, [loadProfile, resolveIdentity]);
 
   const signUp = useCallback(async (data: SignUpData): Promise<{ error: string | null }> => {
@@ -270,7 +313,17 @@ export function useAuth(): UseAuthReturn {
 
   const signOut = useCallback(async () => {
     if (!isSupabaseConfigured || !supabase) return;
-    await supabase.auth.signOut();
+
+    identityRequestRef.current += 1;
+
+    const { error } = await supabase.auth.signOut();
+
+    if (error) {
+      dispatch({ type: 'SET_ERROR', error: error.message });
+      return;
+    }
+
+    dispatch({ type: 'RESET' });
   }, []);
 
   const requestPasswordReset = useCallback(async (email: string): Promise<{ error: string | null }> => {

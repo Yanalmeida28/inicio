@@ -60,7 +60,9 @@ function App() {
   const storeWhatsapp = auth.profile?.whatsapp ?? null;
 
   useEffect(() => {
-    if (auth.passwordRecovery) setView('auth');
+    if (auth.passwordRecovery) {
+      setView('auth');
+    }
   }, [auth.passwordRecovery]);
 
   const segment: BusinessSegment = auth.profile?.segment ?? 'assistencia';
@@ -105,9 +107,26 @@ function App() {
     setView('hub');
   }
 
+  async function handlePartnerBack() {
+    setPartnerInitialTab(undefined);
+    setCartOpen(false);
+
+    // Sair da área do parceiro também encerra a sessão do Supabase.
+    // Isso evita voltar ao Hub com uma sessão antiga e, ao clicar
+    // novamente em "Cadastrar ou Entrar", entrar sem refazer a autenticação.
+    await auth.signOut();
+
+    setView('hub');
+  }
+
+  function handleAuthBack() {
+    setView('hub');
+  }
+
   async function handleSignIn(email: string, password: string) {
     const result = await auth.signIn(email, password);
     if (!result.error) {
+      setPartnerInitialTab(undefined);
       setView('partner');
     }
     return result;
@@ -121,6 +140,7 @@ function App() {
   }) {
     const result = await auth.signUp(data);
     if (!result.error) {
+      setPartnerInitialTab(undefined);
       setView('partner');
     }
     return result;
@@ -144,7 +164,7 @@ function App() {
       {view === 'auth' && (
         <Suspense fallback={<LoadingScreen label="Autenticação" />}>
           <AuthScreen
-            onBack={() => setView('hub')}
+            onBack={handleAuthBack}
             onSignIn={handleSignIn}
             onSignUp={handleSignUp}
             onRequestPasswordReset={auth.requestPasswordReset}
@@ -157,7 +177,7 @@ function App() {
       {view === 'partner' && (
         <Suspense fallback={<LoadingScreen label="Área do parceiro" />}>
           <PartnerPanel
-            onBack={() => setView('hub')}
+            onBack={handlePartnerBack}
             user={auth.user}
             identity={auth.identity}
             identityError={auth.error}
@@ -170,7 +190,7 @@ function App() {
 
       {view === 'admin' && (
         <Suspense fallback={<LoadingScreen label="Administração" />}>
-          <AdminPanel onBack={() => setView('hub')} />
+          <AdminPanel onBack={handleSuperAdminBack} />
         </Suspense>
       )}
 
