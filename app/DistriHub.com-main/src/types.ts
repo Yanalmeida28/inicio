@@ -1,8 +1,25 @@
-export type BusinessSegment = 'assistencia' | 'varejo' | 'servicos';
-export type PersonType = 'PF' | 'PJ';
-export type CustomerType = 'varejo' | 'atacado';
-export type CustomerGroup = 'Varejo' | 'Atacado' | 'Premium';
-export type DeliveryType = 'balcao' | 'entrega' | 'retirada';
+export type BusinessSegment =
+  | 'assistencia'
+  | 'varejo'
+  | 'servicos';
+
+export type PersonType =
+  | 'PF'
+  | 'PJ';
+
+export type CustomerType =
+  | 'varejo'
+  | 'atacado';
+
+export type CustomerGroup =
+  | 'Varejo'
+  | 'Atacado'
+  | 'Premium';
+
+export type DeliveryType =
+  | 'balcao'
+  | 'entrega'
+  | 'retirada';
 
 export interface Product {
   id: number;
@@ -58,7 +75,10 @@ export type ServiceOrderApprovalStatus =
   | 'aprovado'
   | 'reprovado';
 
-export type PhotoType = 'entry' | 'exit' | 'legacy';
+export type PhotoType =
+  | 'entry'
+  | 'exit'
+  | 'legacy';
 
 export interface PartnerBranch {
   id: string;
@@ -173,8 +193,14 @@ export interface PartnerSalesperson {
   email: string | null;
   is_active: boolean;
   active?: boolean;
+
+  /**
+   * Mantido apenas por compatibilidade com estruturas legadas.
+   * O sistema atual deve utilizar o PIN protegido no backend.
+   */
   pin?: string | null;
-pin_configured?: boolean;
+
+  pin_configured?: boolean;
   branch_id?: string | null;
   created_at: string;
   updated_at?: string;
@@ -209,10 +235,22 @@ export interface PartnerSale {
   branch_id: string | null;
   customer_type: CustomerType;
   delivery_type: DeliveryType;
-  status: 'aberta' | 'concluida' | 'pre_venda' | 'cancelada' | 'devolucao';
-  origin: 'pdv' | 'b2b' | 'manual' | 'catalogo';
+  status:
+    | 'aberta'
+    | 'concluida'
+    | 'pre_venda'
+    | 'cancelada'
+    | 'devolucao';
+  origin:
+    | 'pdv'
+    | 'b2b'
+    | 'manual'
+    | 'catalogo';
   online_payment: boolean;
-  payment_status: 'pago' | 'pendente' | 'cancelado';
+  payment_status:
+    | 'pago'
+    | 'pendente'
+    | 'cancelado';
   created_at: string;
   updated_at?: string;
 }
@@ -223,7 +261,9 @@ export interface StockMovement {
   product_id: string;
   product_name: string;
   branch_id?: string | null;
-  type: 'entrada' | 'saida';
+  type:
+    | 'entrada'
+    | 'saida';
   quantity: number;
   reason: string;
   created_at: string;
@@ -243,7 +283,9 @@ export interface StoreSettings {
   show_cnpj_on_receipt: boolean;
   catalog_slug?: string | null;
   catalog_enabled?: boolean;
-  catalog_oos_behavior?: 'indisponivel' | 'ocultar';
+  catalog_oos_behavior?:
+    | 'indisponivel'
+    | 'ocultar';
   social_facebook?: string | null;
   social_instagram?: string | null;
   social_whatsapp?: string | null;
@@ -260,7 +302,12 @@ export interface PartnerProfile {
   account_name?: string | null;
   document?: string | null;
   subscription_plan?: string | null;
-  subscription_status?: 'ativa' | 'trial' | 'cancelada' | 'suspensa' | null;
+  subscription_status?:
+    | 'ativa'
+    | 'trial'
+    | 'cancelada'
+    | 'suspensa'
+    | null;
   next_billing_date?: string | null;
   payment_method?: string | null;
   created_at?: string;
@@ -282,16 +329,29 @@ export interface RmaRequest {
   updated_at: string;
 }
 
-export type RmaPayload = Omit<RmaRequest, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'status' | 'branch_id' | 'customer_name'> & {
-  branch_id?: string | null;
-  customer_name?: string;
-};
+export type RmaPayload =
+  Omit<
+    RmaRequest,
+    | 'id'
+    | 'user_id'
+    | 'created_at'
+    | 'updated_at'
+    | 'status'
+    | 'branch_id'
+    | 'customer_name'
+  > & {
+    branch_id?: string | null;
+    customer_name?: string;
+  };
 
 export interface PartnerCombo {
   id: string;
   user_id: string;
   name: string;
-  items: Array<{ product_id: string; quantity: number }>;
+  items: Array<{
+    product_id: string;
+    quantity: number;
+  }>;
   price: number;
   active: boolean;
   created_at: string;
@@ -315,7 +375,9 @@ export interface PartnerInvoice {
   customer_name: string;
   amount: number;
   paid_amount?: number;
-  status: 'aberta' | 'paga';
+  status:
+    | 'aberta'
+    | 'paga';
   due_date: string | null;
   paid_at: string | null;
   branch_id: string | null;
@@ -329,14 +391,20 @@ export interface B2BOrder {
   business_name: string;
   items: unknown[];
   total: number;
-  status: 'pendente' | 'aprovado' | 'cancelado';
+  status:
+    | 'pendente'
+    | 'aprovado'
+    | 'cancelado';
   payment_method: string | null;
   branch_id: string | null;
   created_at: string;
 }
 
 export interface AdminLojista {
-  status: 'pendente' | 'aprovado' | 'reprovado';
+  status:
+    | 'pendente'
+    | 'aprovado'
+    | 'reprovado';
 }
 
 export interface AdminCompany extends AdminLojista {
@@ -456,7 +524,10 @@ export interface ServiceOrderPhoto {
   user_id: string;
   branch_id: string | null;
   photo_type: PhotoType | null;
-  operation_type: 'service_order' | 'rma' | null;
+  operation_type:
+    | 'service_order'
+    | 'rma'
+    | null;
   label: string;
   storage_path: string;
   created_at: string;
