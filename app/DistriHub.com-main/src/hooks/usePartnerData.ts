@@ -1,353 +1,179 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import type {
-  PartnerProduct,
+  AdminCompany,
+  AdminFinancialMonth,
+  AdminLojista,
+  AuditLog,
+  B2BOrder,
+  BusinessSegment,
+  Category,
+  CustomerGroup,
+  DeliveryType,
+  PartnerBranch,
+  PartnerCategory,
+  PartnerCombo,
   PartnerCustomer,
+  PartnerIdentity,
+  PartnerInvoice,
+  PartnerModifier,
+  PartnerProduct,
+  PartnerProfile,
+  PartnerSalesperson,
   PartnerSale,
-  StockMovement,
-  StoreSettings,
+  PartnerSupplier,
+  PermissionOverride,
   RmaPayload,
   RmaRequest,
   RmaStatus,
-  SaleItem,
-  PartnerBranch,
-  PartnerCategory,
-  PartnerSupplier,
-  PartnerSalesperson,
-  PartnerCombo,
-  PartnerModifier,
-  PartnerInvoice,
-  PartnerProfile,
-  B2BOrder,
-  PartnerIdentity,
-  CustomerType,
-  DeliveryType,
+  SalespersonRole,
+  ServiceOrder,
+  ServiceOrderApprovalStatus,
+  ServiceOrderItem,
+  ServiceOrderPhoto,
+  ServiceOrderStatus,
+  StockMovement,
+  StoreSettings,
 } from '../types';
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { normalizeDocument } from '../utils';
 
-type PartnerData = {
-  products: PartnerProduct[];
+type SalePayload = Omit<
+  PartnerSale,
+  'id' | 'user_id' | 'created_at'
+>;
+
+type CustomerPayload = Omit<
+  PartnerCustomer,
+  'id' | 'user_id' | 'created_at' | 'updated_at'
+>;
+
+type ProductPayload = Omit<
+  PartnerProduct,
+  'id' | 'user_id' | 'created_at' | 'updated_at'
+>;
+
+type SupplierPayload = Omit<
+  PartnerSupplier,
+  'id' | 'user_id' | 'created_at' | 'updated_at'
+>;
+
+type CategoryPayload = Omit<
+  PartnerCategory,
+  'id' | 'user_id' | 'created_at' | 'updated_at'
+>;
+
+type BranchPayload = Omit<
+  PartnerBranch,
+  'id' | 'user_id' | 'created_at' | 'updated_at'
+>;
+
+interface PartnerDataState {
+  profile: PartnerProfile | null;
+  branches: PartnerBranch[];
   customers: PartnerCustomer[];
+  suppliers: PartnerSupplier[];
+  categories: PartnerCategory[];
+  products: PartnerProduct[];
+  salespeople: PartnerSalesperson[];
   sales: PartnerSale[];
   movements: StockMovement[];
-  storeSettings: StoreSettings | null;
-  profile: PartnerProfile | null;
-  rmaRequests: RmaRequest[];
-  branches: PartnerBranch[];
-  categories: PartnerCategory[];
-  suppliers: PartnerSupplier[];
-  salespeople: PartnerSalesperson[];
+  settings: StoreSettings | null;
+  rmas: RmaRequest[];
   combos: PartnerCombo[];
   modifiers: PartnerModifier[];
   invoices: PartnerInvoice[];
   orders: B2BOrder[];
-  loading: boolean;
-  error: string | null;
-
-  addProduct: (
-    product: Omit<
-      PartnerProduct,
-      'id' | 'user_id' | 'created_at' | 'updated_at'
-    >,
-    operatorId?: string | null,
-    operatorPin?: string | null,
-  ) => Promise<void>;
-
-  replenishStock: (
-    productId: string,
-    branchId: string,
-    quantity: number,
-    unitCost?: number | null,
-    reason?: string,
-    operatorId?: string | null,
-    operatorPin?: string | null,
-  ) => Promise<{ newStock: number }>;
-
-  updateProduct: (
-    id: string,
-    updates: Partial<PartnerProduct>,
-    operatorId?: string | null,
-    operatorPin?: string | null,
-  ) => Promise<void>;
-
-  deleteProduct: (
-    id: string,
-    operatorId?: string | null,
-    operatorPin?: string | null,
-  ) => Promise<void>;
-
-  addCustomer: (
-    customer: Omit<PartnerCustomer, 'id' | 'user_id' | 'created_at'>,
-    operatorId?: string | null,
-    operatorPin?: string | null,
-  ) => Promise<void>;
-
-  updateCustomer: (
-    id: string,
-    updates: PartnerCustomerUpdate,
-    operatorId?: string | null,
-    operatorPin?: string | null,
-  ) => Promise<void>;
-
-  refreshCustomer: (id: string) => Promise<PartnerCustomer>;
-
-  deleteCustomer: (
-    id: string,
-    operatorId?: string | null,
-    operatorPin?: string | null,
-  ) => Promise<void>;
-
-  createSale: (
-    sale: SalePayload,
-    operatorId?: string | null,
-    operatorPin?: string | null,
-  ) => Promise<void>;
-
-  createPreSale: (
-    sale: SalePayload,
-    operatorId?: string | null,
-    operatorPin?: string | null,
-  ) => Promise<void>;
-
-  finalizePreSale: (
-    id: string,
-    paymentMethod: string,
-    operatorId?: string | null,
-    operatorPin?: string | null,
-  ) => Promise<void>;
-
-  updateStoreSettings: (
-    settings: Partial<StoreSettings>,
-  ) => Promise<void>;
-
-  updateProfile: (
-    profile: Partial<PartnerProfile>,
-  ) => Promise<void>;
-
-  createRma: (
-    rma: RmaPayload,
-  ) => Promise<void>;
-
-  updateRmaStatus: (
-    id: string,
-    status: RmaStatus,
-  ) => Promise<void>;
-
-  deleteRma: (
-    id: string,
-  ) => Promise<void>;
-
-  addBranch: (
-    name: string,
-    address: string,
-  ) => Promise<void>;
-
-  updateBranch: (
-    id: string,
-    updates: Pick<PartnerBranch, 'name' | 'address'>,
-  ) => Promise<void>;
-
-  deleteBranch: (
-    id: string,
-  ) => Promise<void>;
-
-  addCategory: (
-    name: string,
-  ) => Promise<void>;
-
-  deleteCategory: (
-    id: string,
-  ) => Promise<void>;
-
-  addSupplier: (
-    supplier: Omit<
-      PartnerSupplier,
-      'id' | 'user_id' | 'created_at' | 'payable_balance'
-    >,
-    operatorId?: string | null,
-    operatorPin?: string | null,
-  ) => Promise<void>;
-
-  updateSupplier: (
-    id: string,
-    updates: Partial<PartnerSupplier>,
-    operatorId?: string | null,
-    operatorPin?: string | null,
-  ) => Promise<void>;
-
-  deleteSupplier: (
-    id: string,
-    operatorId?: string | null,
-    operatorPin?: string | null,
-  ) => Promise<void>;
-
-  addSalesperson: (
-    sp: Omit<
-      PartnerSalesperson,
-      'id' | 'user_id' | 'created_at'
-    >,
-    operatorId?: string | null,
-    operatorPin?: string | null,
-  ) => Promise<void>;
-
-  updateSalesperson: (
-    id: string,
-    updates: Partial<PartnerSalesperson>,
-    operatorId?: string | null,
-    operatorPin?: string | null,
-  ) => Promise<void>;
-
-  deleteSalesperson: (
-    id: string,
-    operatorId?: string | null,
-    operatorPin?: string | null,
-  ) => Promise<void>;
-
-  cancelSale: (
-    id: string,
-    operatorId?: string | null,
-    operatorPin?: string | null,
-  ) => Promise<void>;
-
-  deleteSale: (
-    id: string,
-    operatorId?: string | null,
-    operatorPin?: string | null,
-  ) => Promise<void>;
-
-  addCombo: (
-    combo: Omit<
-      PartnerCombo,
-      'id' | 'user_id' | 'created_at'
-    >,
-  ) => Promise<void>;
-
-  deleteCombo: (
-    id: string,
-  ) => Promise<void>;
-
-  addModifier: (
-    mod: Omit<
-      PartnerModifier,
-      'id' | 'user_id' | 'created_at'
-    >,
-  ) => Promise<void>;
-
-  deleteModifier: (
-    id: string,
-  ) => Promise<void>;
-
-  payInvoice: (
-    id: string,
-  ) => Promise<void>;
-};
-
-export type PartnerCustomerUpdate = Partial<PartnerCustomer> & {
-  photo_file?: File | null;
-  remove_photo?: boolean;
-};
-
-// Somente os campos abaixo existem de fato na tabela partner_customers hoje.
-// Campos da interface que não existem no banco não são enviados à RPC.
-const customerRpcFields = (customer: PartnerCustomer) => ({
-  p_branch_id: customer.branch_id ?? null,
-  p_name: customer.name,
-  p_document: customer.document ?? null,
-  p_phone: customer.phone ?? null,
-  p_email: customer.email ?? null,
-  p_birthday: customer.birthday ?? null,
-  p_address: customer.address ?? null,
-  p_neighborhood: customer.neighborhood ?? null,
-  p_city: customer.city ?? null,
-  p_device_model: customer.device_model ?? null,
-  p_notes: customer.notes ?? null,
-  p_customer_type: customer.customer_type ?? 'varejo',
-  p_credit_limit: customer.credit_limit ?? 0,
-  p_allow_credit: customer.allow_credit ?? false,
-});
-
-function customerMutationPayload(
-  customer: PartnerCustomer,
-  customerId: string | null,
-  operatorId: string | null | undefined,
-  operatorPin: string | null | undefined,
-) {
-  return {
-    p_salesperson_id: operatorId ?? null,
-    p_pin: operatorPin ?? null,
-    p_customer_id: customerId,
-    ...customerRpcFields(customer),
-  };
+  adminCompanies: AdminCompany[];
+  adminLojistas: AdminLojista[];
+  financialMonths: AdminFinancialMonth[];
+  permissionOverrides: PermissionOverride[];
+  auditLogs: AuditLog[];
+  serviceOrders: ServiceOrder[];
+  serviceOrderItems: ServiceOrderItem[];
+  serviceOrderPhotos: ServiceOrderPhoto[];
 }
 
-type SalePayload = {
-  customer_id: string | null;
-  customer_name: string;
-  items: SaleItem[];
-  total: number;
-  customer_type: CustomerType;
-  delivery_type: DeliveryType;
-  imei?: string;
-  serial_number?: string;
-  payment_method?: string;
-  salesperson_id?: string | null;
-  branch_id?: string | null;
-};
-
-type PartnerDataState = Pick<
-  PartnerData,
-  | 'products'
-  | 'customers'
-  | 'sales'
-  | 'movements'
-  | 'storeSettings'
-  | 'profile'
-  | 'rmaRequests'
-  | 'branches'
-  | 'categories'
-  | 'suppliers'
-  | 'salespeople'
-  | 'combos'
-  | 'modifiers'
-  | 'invoices'
-  | 'orders'
-  | 'loading'
-  | 'error'
->;
-
-const emptyState: Omit<
-  PartnerDataState,
-  'loading' | 'error'
-> = {
-  products: [],
+const initialData: PartnerDataState = {
+  profile: null,
+  branches: [],
   customers: [],
+  suppliers: [],
+  categories: [],
+  products: [],
+  salespeople: [],
   sales: [],
   movements: [],
-  storeSettings: null,
-  profile: null,
-  rmaRequests: [],
-  branches: [],
-  categories: [],
-  suppliers: [],
-  salespeople: [],
+  settings: null,
+  rmas: [],
   combos: [],
   modifiers: [],
   invoices: [],
   orders: [],
+  adminCompanies: [],
+  adminLojistas: [],
+  financialMonths: [],
+  permissionOverrides: [],
+  auditLogs: [],
+  serviceOrders: [],
+  serviceOrderItems: [],
+  serviceOrderPhotos: [],
 };
 
-export function usePartnerData(
-  identity: PartnerIdentity | null,
-): PartnerData {
-  const [data, setData] = useState<PartnerDataState>({
-    ...emptyState,
-    loading: false,
-    error: null,
-  });
+function normalizeError(error: unknown): Error {
+  if (error instanceof Error) {
+    return error;
+  }
 
-  // Mantém o acesso à identidade seguro em callbacks assíncronos.
-  // Em vez de usar "identity!" (que apenas silencia o TypeScript),
-  // esta função valida a identidade no momento em que ela é usada.
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'message' in error &&
+    typeof error.message === 'string'
+  ) {
+    return new Error(error.message);
+  }
+
+  return new Error(String(error));
+}
+
+function isEmployeeIdentity(identity: PartnerIdentity | null): boolean {
+  return Boolean(identity?.salespersonId);
+}
+
+function ensureEmployeeBranch(
+  identity: PartnerIdentity,
+  branchId: string | null | undefined,
+): void {
+  if (!identity.salespersonId) {
+    return;
+  }
+
+  if (!identity.branchId) {
+    throw new Error(
+      'Funcionário autenticado não possui uma filial atribuída.',
+    );
+  }
+
+  if (!branchId || branchId !== identity.branchId) {
+    throw new Error(
+      'Acesso negado: a operação não pertence à filial vinculada ao seu usuário.',
+    );
+  }
+}
+
+export function usePartnerData(identity: PartnerIdentity | null) {
+  const [data, setData] = useState<PartnerDataState>(initialData);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const mountedRef = useRef(true);
+  const requestIdRef = useRef(0);
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
   const requireIdentity = useCallback((): PartnerIdentity => {
     if (!identity) {
       throw new Error('Usuário não autenticado.');
@@ -356,1059 +182,1082 @@ export function usePartnerData(
     return identity;
   }, [identity]);
 
-  // Evita que uma resposta antiga sobrescreva dados de uma sessão/identidade nova.
-  const loadRequestRef = useRef(0);
+  const clearData = useCallback(() => {
+    if (!mountedRef.current) {
+      return;
+    }
+
+    setData(initialData);
+    setError(null);
+  }, []);
 
   const loadData = useCallback(async () => {
-    const requestId = ++loadRequestRef.current;
+    const currentRequestId = ++requestIdRef.current;
 
-    // Sem identidade, não podemos manter os dados anteriores na tela.
     if (!identity) {
-      setData({
-        ...emptyState,
-        loading: false,
-        error: null,
-      });
+      clearData();
+      setLoading(false);
       return;
     }
 
     if (!isSupabaseConfigured || !supabase) {
-      setData({
-        ...emptyState,
-        loading: false,
-        error: 'Supabase não configurado.',
-      });
+      setLoading(false);
       return;
     }
 
-    const client = supabase;
+    setLoading(true);
+    setError(null);
 
-    setData((prev) => ({
-      ...prev,
-      loading: true,
-      error: null,
-    }));
+    try {
+      const currentIdentity = requireIdentity();
+      const companyUserId = currentIdentity.companyUserId;
 
-    // Funcionário precisa obrigatoriamente estar associado a uma filial.
-    if (requireIdentity().salespersonId && !requireIdentity().branchId) {
-      setData((prev) => ({
-        ...prev,
-        loading: false,
-        error:
-          'O funcionário autenticado não possui uma filial atribuída.',
-      }));
-      return;
-    }
-
-    const tables = [
-      'partner_products',
-      'partner_customers',
-      'partner_sales',
-      'stock_movements',
-      'rma_requests_v2',
-      'partner_branches',
-      'partner_categories',
-      'partner_suppliers',
-      'partner_salespeople',
-      'partner_combos',
-      'partner_modifiers',
-      'partner_invoices',
-      'b2b_orders',
-    ];
-
-    const branchScopedTables = new Set([
-      'partner_products',
-      'partner_customers',
-      'partner_sales',
-      'rma_requests_v2',
-    ]);
-
-    const results = await Promise.all(
-      tables.map((table) => {
-        if (
-          requireIdentity().salespersonId &&
-          table === 'stock_movements'
-        ) {
-          return Promise.resolve({
-            data: [],
-            error: null,
-            status: 200,
-          });
-        }
-
-        let query = client
-          .from(table)
-          .select('*')
-          .eq('user_id', requireIdentity().companyUserId)
-          .order('created_at', {
-            ascending: false,
-          });
-
-        if (
-          requireIdentity().branchId &&
-          branchScopedTables.has(table)
-        ) {
-          query = query.eq(
-            'branch_id',
-            requireIdentity().branchId,
-          );
-        }
-
-        if (
-          requireIdentity().salespersonId &&
-          table === 'partner_salespeople'
-        ) {
-          query = query.eq(
-            'id',
-            requireIdentity().salespersonId,
-          );
-        }
-
-        return query;
-      }),
-    );
-
-    const settingsRes = requireIdentity().salespersonId
-      ? {
-          data: null,
-          error: null,
-          status: 200,
-        }
-      : await client
-          .from('store_settings_v2')
-          .select('*')
-          .eq(
-            'user_id',
-            requireIdentity().companyUserId,
-          )
-          .order('updated_at', {
-            ascending: false,
-          })
-          .limit(1)
-          .maybeSingle();
-
-    const profileRes = requireIdentity().salespersonId
-      ? {
-          data: null,
-          error: null,
-          status: 200,
-        }
-      : await client
+      const [
+        profileResult,
+        branchesResult,
+        customersResult,
+        suppliersResult,
+        categoriesResult,
+        productsResult,
+        salespeopleResult,
+        salesResult,
+        movementsResult,
+        settingsResult,
+        rmasResult,
+        combosResult,
+        modifiersResult,
+        invoicesResult,
+        ordersResult,
+        financialMonthsResult,
+        permissionOverridesResult,
+        auditLogsResult,
+        serviceOrdersResult,
+        serviceOrderItemsResult,
+        serviceOrderPhotosResult,
+      ] = await Promise.all([
+        supabase
           .from('partner_profiles')
           .select('*')
-          .eq(
-            'id',
-            requireIdentity().companyUserId,
-          )
-          .limit(1)
-          .maybeSingle();
+          .eq('user_id', companyUserId)
+          .maybeSingle(),
 
-    // Se outra identidade já iniciou um carregamento mais recente,
-    // esta resposta não pode sobrescrever o estado atual.
-    if (requestId !== loadRequestRef.current) {
-      return;
-    }
+        supabase
+          .from('partner_branches')
+          .select('*')
+          .eq('user_id', companyUserId)
+          .order('name'),
 
-    const failedResult = [
-      ...results,
-      settingsRes,
-      profileRes,
-    ].find((result) => result.error);
+        supabase
+          .from('partner_customers')
+          .select('*')
+          .eq('user_id', companyUserId)
+          .order('name'),
 
-    if (failedResult?.error) {
-      console.error(
-        'Falha ao carregar dados do painel.',
-        failedResult.error,
+        supabase
+          .from('partner_suppliers')
+          .select('*')
+          .eq('user_id', companyUserId)
+          .order('name'),
+
+        supabase
+          .from('partner_categories')
+          .select('*')
+          .eq('user_id', companyUserId)
+          .order('name'),
+
+        supabase
+          .from('partner_products')
+          .select('*')
+          .eq('user_id', companyUserId)
+          .order('name'),
+
+        supabase
+          .from('partner_salespeople')
+          .select('*')
+          .eq('user_id', companyUserId)
+          .order('name'),
+
+        supabase
+          .from('partner_sales')
+          .select('*')
+          .eq('user_id', companyUserId)
+          .order('created_at', { ascending: false }),
+
+        supabase
+          .from('partner_stock_movements')
+          .select('*')
+          .eq('user_id', companyUserId)
+          .order('created_at', { ascending: false }),
+
+        supabase
+          .from('partner_store_settings')
+          .select('*')
+          .eq('user_id', companyUserId)
+          .maybeSingle(),
+
+        supabase
+          .from('rma_requests_v2')
+          .select('*')
+          .eq('user_id', companyUserId)
+          .order('created_at', { ascending: false }),
+
+        supabase
+          .from('partner_combos')
+          .select('*')
+          .eq('user_id', companyUserId)
+          .order('name'),
+
+        supabase
+          .from('partner_modifiers')
+          .select('*')
+          .eq('user_id', companyUserId)
+          .order('name'),
+
+        supabase
+          .from('partner_invoices')
+          .select('*')
+          .eq('user_id', companyUserId)
+          .order('due_date'),
+
+        supabase
+          .from('b2b_orders')
+          .select('*')
+          .eq('user_id', companyUserId)
+          .order('created_at', { ascending: false }),
+
+        supabase
+          .from('admin_financial_months')
+          .select('*')
+          .eq('user_id', companyUserId)
+          .order('month'),
+
+        supabase
+          .from('permission_overrides')
+          .select('*')
+          .eq('user_id', companyUserId),
+
+        supabase
+          .from('partner_audit_logs')
+          .select('*')
+          .eq('user_id', companyUserId)
+          .order('created_at', { ascending: false }),
+
+        supabase
+          .from('service_orders')
+          .select('*')
+          .eq('user_id', companyUserId)
+          .order('created_at', { ascending: false }),
+
+        supabase
+          .from('service_order_items')
+          .select('*')
+          .eq('user_id', companyUserId),
+
+        supabase
+          .from('service_order_photos')
+          .select('*')
+          .eq('user_id', companyUserId)
+          .order('created_at'),
+      ]);
+
+      const results = [
+        profileResult,
+        branchesResult,
+        customersResult,
+        suppliersResult,
+        categoriesResult,
+        productsResult,
+        salespeopleResult,
+        salesResult,
+        movementsResult,
+        settingsResult,
+        rmasResult,
+        combosResult,
+        modifiersResult,
+        invoicesResult,
+        ordersResult,
+        financialMonthsResult,
+        permissionOverridesResult,
+        auditLogsResult,
+        serviceOrdersResult,
+        serviceOrderItemsResult,
+        serviceOrderPhotosResult,
+      ];
+
+      const firstError = results.find(
+        (result) => result.error,
       );
 
-      setData((prev) => ({
-        ...prev,
-        loading: false,
-        error: `Não foi possível carregar os dados (${
-          failedResult.status ?? 'sem status'
-        }): ${failedResult.error.message}`,
-      }));
+      if (firstError?.error) {
+        throw firstError.error;
+      }
 
-      return;
+      if (
+        !mountedRef.current ||
+        currentRequestId !== requestIdRef.current
+      ) {
+        return;
+      }
+
+      const branchId = currentIdentity.branchId;
+
+      const filterBranch = <T extends { branch_id?: string | null }>(
+        rows: T[] | null,
+      ): T[] => {
+        const values = rows ?? [];
+
+        if (!currentIdentity.salespersonId) {
+          return values;
+        }
+
+        return values.filter(
+          (row) => row.branch_id === branchId,
+        );
+      };
+
+      setData({
+        profile:
+          (profileResult.data as PartnerProfile | null) ?? null,
+        branches: filterBranch(
+          branchesResult.data as PartnerBranch[] | null,
+        ),
+        customers: filterBranch(
+          customersResult.data as PartnerCustomer[] | null,
+        ),
+        suppliers:
+          (suppliersResult.data as PartnerSupplier[] | null) ?? [],
+        categories:
+          (categoriesResult.data as PartnerCategory[] | null) ?? [],
+        products: filterBranch(
+          productsResult.data as PartnerProduct[] | null,
+        ),
+        salespeople: filterBranch(
+          salespeopleResult.data as PartnerSalesperson[] | null,
+        ),
+        sales: filterBranch(
+          salesResult.data as PartnerSale[] | null,
+        ),
+        movements: filterBranch(
+          movementsResult.data as StockMovement[] | null,
+        ),
+        settings:
+          (settingsResult.data as StoreSettings | null) ?? null,
+        rmas: filterBranch(
+          rmasResult.data as RmaRequest[] | null,
+        ),
+        combos:
+          (combosResult.data as PartnerCombo[] | null) ?? [],
+        modifiers:
+          (modifiersResult.data as PartnerModifier[] | null) ?? [],
+        invoices: filterBranch(
+          invoicesResult.data as PartnerInvoice[] | null,
+        ),
+        orders: filterBranch(
+          ordersResult.data as B2BOrder[] | null,
+        ),
+        adminCompanies: [],
+        adminLojistas: [],
+        financialMonths:
+          (financialMonthsResult.data as AdminFinancialMonth[] | null) ??
+          [],
+        permissionOverrides:
+          (permissionOverridesResult.data as PermissionOverride[] | null) ??
+          [],
+        auditLogs:
+          (auditLogsResult.data as AuditLog[] | null) ?? [],
+        serviceOrders: filterBranch(
+          serviceOrdersResult.data as ServiceOrder[] | null,
+        ),
+        serviceOrderItems:
+          (serviceOrderItemsResult.data as ServiceOrderItem[] | null) ??
+          [],
+        serviceOrderPhotos:
+          (serviceOrderPhotosResult.data as ServiceOrderPhoto[] | null) ??
+          [],
+      });
+    } catch (err) {
+      if (
+        !mountedRef.current ||
+        currentRequestId !== requestIdRef.current
+      ) {
+        return;
+      }
+
+      const normalized = normalizeError(err);
+      setError(normalized.message);
+    } finally {
+      if (
+        mountedRef.current &&
+        currentRequestId === requestIdRef.current
+      ) {
+        setLoading(false);
+      }
     }
-
-    setData({
-      products:
-        (results[0].data as PartnerProduct[]) ?? [],
-      customers:
-        (results[1].data as PartnerCustomer[]) ?? [],
-      sales:
-        (results[2].data as PartnerSale[]) ?? [],
-      movements:
-        (results[3].data as StockMovement[]) ?? [],
-      storeSettings:
-        (settingsRes.data as StoreSettings) ?? null,
-      profile:
-        (profileRes.data as PartnerProfile) ?? null,
-      rmaRequests:
-        (results[4].data as RmaRequest[]) ?? [],
-      branches:
-        (results[5].data as PartnerBranch[]) ?? [],
-      categories:
-        (results[6].data as PartnerCategory[]) ?? [],
-      suppliers:
-        (results[7].data as PartnerSupplier[]) ?? [],
-      salespeople:
-        (results[8].data as PartnerSalesperson[]) ?? [],
-      combos:
-        (results[9].data as PartnerCombo[]) ?? [],
-      modifiers:
-        (results[10].data as PartnerModifier[]) ?? [],
-      invoices:
-        (results[11].data as PartnerInvoice[]) ?? [],
-      orders:
-        (results[12].data as B2BOrder[]) ?? [],
-      loading: false,
-      error: null,
-    });
-  }, [identity]);
+  }, [clearData, identity, requireIdentity]);
 
   useEffect(() => {
     void loadData();
   }, [loadData]);
 
-  const addProduct = useCallback(
-    async (
-      product: Omit<
-        PartnerProduct,
-        'id' | 'user_id' | 'created_at' | 'updated_at'
-      >,
-      operatorId?: string | null,
-      operatorPin?: string | null,
-    ) => {
-      if (!identity) return;
-
-      if (!product.branch_id) {
-        throw new Error(
-          'Produto sem filial não pode ser cadastrado.',
-        );
-      }
-
-      const np: PartnerProduct = {
-        ...product,
-        wholesale_price:
-          product.wholesale_price ?? 0,
-        ncm: product.ncm ?? null,
-        cfop: product.cfop ?? null,
-        cst_csosn:
-          product.cst_csosn ?? null,
-        icms_rate:
-          product.icms_rate ?? 0,
-        pis_rate:
-          product.pis_rate ?? 0,
-        cofins_rate:
-          product.cofins_rate ?? 0,
-        id: crypto.randomUUID(),
-        user_id: requireIdentity().companyUserId,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-
-      if (isSupabaseConfigured && supabase) {
-        const { error: rpcErr } =
-          await supabase.rpc(
-            'execute_partner_product_mutation',
-            {
-              p_salesperson_id:
-                operatorId ?? null,
-              p_pin:
-                operatorPin ?? null,
-              p_product_id: np.id,
-              p_branch_id: np.branch_id,
-              p_name: np.name,
-              p_cost_price: np.cost_price,
-              p_sale_price: np.sale_price,
-              p_wholesale_price:
-                np.wholesale_price,
-              p_stock: np.stock,
-              p_min_stock: np.min_stock,
-              p_category:
-                np.category ?? null,
-              p_sku:
-                np.sku ?? null,
-              p_is_service:
-                np.is_service ?? false,
-              p_image_url:
-                np.image_url ?? null,
-            },
-          );
-
-        if (rpcErr) {
-          throw rpcErr;
-        }
-      }
-
-      setData((prev) => ({
-        ...prev,
-        products: [
-          np,
-          ...prev.products,
-        ],
-      }));
-    },
-    [identity, requireIdentity],
-  );
-
-  const replenishStock = useCallback(
-    async (
-      productId: string,
-      branchId: string,
-      quantity: number,
-      unitCost?: number | null,
-      reason?: string,
-      operatorId?: string | null,
-      operatorPin?: string | null,
-    ) => {
-      if (!identity) {
-        throw new Error(
-          'Usuário não autenticado.',
-        );
-      }
+  const addCustomer = useCallback(
+    async (customer: CustomerPayload) => {
+      const currentIdentity = requireIdentity();
 
       if (!isSupabaseConfigured || !supabase) {
-        throw new Error(
-          'Supabase não configurado.',
-        );
+        throw new Error('Supabase não configurado.');
       }
 
-      if (!branchId) {
-        throw new Error(
-          'Selecione uma filial antes de repor o estoque.',
-        );
-      }
+      ensureEmployeeBranch(
+        currentIdentity,
+        customer.branch_id,
+      );
 
-      if (
-        !Number.isInteger(quantity) ||
-        quantity <= 0
-      ) {
-        throw new Error(
-          'A quantidade de reposição deve ser um número inteiro maior que zero.',
-        );
-      }
-
-      const { data: result, error } =
+      const { data: created, error: rpcError } =
         await supabase.rpc(
-          'execute_partner_stock_replenishment',
+          'execute_partner_customer_mutation',
           {
-            p_salesperson_id:
-              operatorId ?? null,
-            p_pin:
-              operatorPin ?? null,
-            p_product_id: productId,
-            p_branch_id: branchId,
-            p_quantity: quantity,
-            p_unit_cost:
-              unitCost ?? null,
-            p_reason:
-              reason?.trim() || null,
+            p_customer_id: null,
+            p_name: customer.name,
+            p_document: customer.document ?? null,
+            p_person_type: customer.person_type ?? 'PF',
+            p_phone: customer.phone ?? null,
+            p_email: customer.email ?? null,
+            p_address: customer.address ?? null,
+            p_city: customer.city ?? null,
+            p_state: customer.state ?? null,
+            p_zip_code: customer.zip_code ?? null,
+            p_notes: customer.notes ?? null,
+            p_customer_type: customer.customer_type ?? 'varejo',
+            p_credit_limit: customer.credit_limit ?? 0,
+            p_branch_id: customer.branch_id ?? null,
+            p_status: customer.status ?? 'ativo',
           },
         );
 
-      if (error) {
-        console.error(
-          'Falha ao repor estoque via execute_partner_stock_replenishment.',
-          {
-            error,
-            productId,
-            branchId,
-            quantity,
-            unitCost,
-          },
-        );
-
-        throw error;
+      if (rpcError) {
+        throw rpcError;
       }
 
-      const confirmed =
-        result as {
-          product_id?: string;
-          new_stock?: number;
-        } | null;
-
-      if (
-        !confirmed?.product_id ||
-        typeof confirmed.new_stock !== 'number'
-      ) {
-        throw new Error(
-          'A reposição não foi confirmada pelo servidor.',
-        );
-      }
-
-      setData((prev) => ({
-        ...prev,
-
-        products: prev.products.map(
-          (product) =>
-            product.id === productId
-              ? {
-                  ...product,
-                  stock:
-                    confirmed.new_stock as number,
-                  ...(unitCost != null
-                    ? {
-                        cost_price: unitCost,
-                      }
-                    : {}),
-                }
-              : product,
-        ),
-
-        movements: [
-          {
-            id: crypto.randomUUID(),
-            user_id:
-              requireIdentity().companyUserId,
-            product_id: productId,
-            product_name:
-              prev.products.find(
-                (product) =>
-                  product.id === productId,
-              )?.name ?? 'Produto',
-            branch_id: branchId,
-            type: 'entrada',
-            quantity,
-            reason:
-              reason?.trim() ||
-              'Reposição de estoque',
-            created_at:
-              new Date().toISOString(),
-          },
-          ...prev.movements,
-        ],
-      }));
-
-      return {
-        newStock:
-          confirmed.new_stock,
-      };
-    },
-    [identity, requireIdentity],
-  );
-
-  const updateProduct = useCallback(
-    async (
-      id: string,
-      updates: Partial<PartnerProduct>,
-      operatorId?: string | null,
-      operatorPin?: string | null,
-    ) => {
-      const currentProd =
-        data.products.find(
-          (p) => p.id === id,
-        );
-
-      if (!currentProd) {
-        throw new Error(
-          'Produto não encontrado no estado atual. Atualize a página e tente novamente.',
-        );
-      }
-
-      const merged = {
-        ...currentProd,
-        ...updates,
-      };
-
-      if (
-        !merged.branch_id ||
-        !merged.name
-      ) {
-        throw new Error(
-          'Dados insuficientes para atualizar produto.',
-        );
-      }
-
-      if (
-        isSupabaseConfigured &&
-        supabase
-      ) {
-        const { error: rpcErr } =
-          await supabase.rpc(
-            'execute_partner_product_mutation',
-            {
-              p_salesperson_id:
-                operatorId ?? null,
-              p_pin:
-                operatorPin ?? null,
-              p_product_id: id,
-              p_branch_id:
-                merged.branch_id,
-              p_name:
-                merged.name,
-              p_cost_price:
-                merged.cost_price ?? 0,
-              p_sale_price:
-                merged.sale_price ?? 0,
-              p_wholesale_price:
-                merged.wholesale_price ?? 0,
-              p_stock:
-                merged.stock ?? 0,
-              p_min_stock:
-                merged.min_stock ?? 5,
-              p_category:
-                merged.category ?? null,
-              p_sku:
-                merged.sku ?? null,
-              p_is_service:
-                merged.is_service ?? false,
-              p_image_url:
-                merged.image_url ?? null,
-            },
-          );
-
-        if (rpcErr) {
-          throw rpcErr;
-        }
-      }
-
-      setData((prev) => ({
-        ...prev,
-        products:
-          prev.products.map(
-            (p) =>
-              p.id === id
-                ? {
-                    ...p,
-                    ...updates,
-                    updated_at:
-                      new Date().toISOString(),
-                  }
-                : p,
-          ),
-      }));
-    },
-    [data.products],
-  );
-
-  const deleteProduct = useCallback(
-    async (
-      id: string,
-      operatorId?: string | null,
-      operatorPin?: string | null,
-    ) => {
-      if (
-        isSupabaseConfigured &&
-        supabase
-      ) {
-        const { error: rpcErr } =
-          await supabase.rpc(
-            'execute_partner_product_delete',
-            {
-              p_salesperson_id:
-                operatorId ?? null,
-              p_pin:
-                operatorPin ?? null,
-              p_product_id: id,
-            },
-          );
-
-        if (rpcErr) {
-          throw rpcErr;
-        }
-      }
-
-      setData((prev) => ({
-        ...prev,
-        products:
-          prev.products.filter(
-            (p) => p.id !== id,
-          ),
-      }));
-    },
-    [],
-  );
-
-  const addCustomer = useCallback(
-    async (
-      customer: Omit<
-        PartnerCustomer,
-        'id' | 'user_id' | 'created_at'
-      >,
-      operatorId?: string | null,
-      operatorPin?: string | null,
-    ) => {
-      if (!identity) return;
-
-      if (!customer.branch_id) {
-        throw new Error(
-          'Cliente sem filial não pode ser cadastrado.',
-        );
-      }
-
-      const normalizedDocument =
-        customer.document
-          ? normalizeDocument(
-              customer.document,
-            )
-          : null;
-
-      if (
-        normalizedDocument &&
-        data.customers.some(
-          (item) =>
-            normalizeDocument(
-              item.document ?? '',
-            ) ===
-              normalizedDocument,
-        )
-      ) {
-        throw new Error(
-          'Já existe um cliente com este CPF/CNPJ neste lojista.',
-        );
-      }
-
-      const nc: PartnerCustomer = {
-        ...customer,
-        document:
-          normalizedDocument,
-        id: crypto.randomUUID(),
-        user_id:
-          requireIdentity().companyUserId,
-        created_at:
-          new Date().toISOString(),
-      };
-
-      if (
-        isSupabaseConfigured &&
-        supabase
-      ) {
-        const { error: rpcErr } =
-          await supabase.rpc(
-            'execute_partner_customer_mutation',
-            customerMutationPayload(
-              nc,
-              null,
-              operatorId,
-              operatorPin,
-            ),
-          );
-
-        if (rpcErr) {
-          throw rpcErr;
-        }
-      }
+      const createdCustomer =
+        (created as PartnerCustomer | null) ?? {
+          ...customer,
+          id: crypto.randomUUID(),
+          user_id: currentIdentity.companyUserId,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
 
       setData((prev) => ({
         ...prev,
         customers: [
-          nc,
-          ...prev.customers,
+          createdCustomer,
+          ...prev.customers.filter(
+            (item) => item.id !== createdCustomer.id,
+          ),
         ],
       }));
+
+      return createdCustomer;
     },
-    [identity, data.customers],
+    [requireIdentity],
   );
 
   const updateCustomer = useCallback(
     async (
       id: string,
-      updates: PartnerCustomerUpdate,
-      operatorId?: string | null,
-      operatorPin?: string | null,
+      customer: Partial<CustomerPayload>,
     ) => {
-      const normalizedDocument =
-        updates.document === undefined
-          ? undefined
-          : updates.document
-            ? normalizeDocument(
-                updates.document,
-              )
-            : null;
+      const currentIdentity = requireIdentity();
 
-      if (
-        normalizedDocument &&
-        data.customers.some(
-          (item) =>
-            item.id !== id &&
-            normalizeDocument(
-              item.document ?? '',
-            ) ===
-              normalizedDocument,
-        )
-      ) {
-        throw new Error(
-          'Já existe um cliente com este CPF/CNPJ neste lojista.',
-        );
+      if (!isSupabaseConfigured || !supabase) {
+        throw new Error('Supabase não configurado.');
       }
 
-      const {
-        photo_file: photoFile,
-        remove_photo: removePhoto,
-        ...persistedUpdates
-      } = updates;
+      const existing = data.customers.find(
+        (item) => item.id === id,
+      );
 
-      const normalizedUpdates =
-        normalizedDocument === undefined
-          ? persistedUpdates
-          : {
-              ...persistedUpdates,
-              document:
-                normalizedDocument,
-            };
-
-      const currentCust =
-        data.customers.find(
-          (customer) =>
-            customer.id === id,
-        );
-
-      if (!currentCust) {
-        throw new Error(
-          'Cliente não encontrado no estado atual. Atualize a página e tente novamente.',
-        );
+      if (!existing) {
+        throw new Error('Cliente não encontrado.');
       }
 
-      const merged = {
-        ...currentCust,
-        ...normalizedUpdates,
-      };
+      ensureEmployeeBranch(
+        currentIdentity,
+        customer.branch_id ?? existing.branch_id,
+      );
 
-      if (!merged.name) {
-        throw new Error(
-          'Nome do cliente é obrigatório.',
-        );
-      }
-
-      if (
-        (merged.credit_limit ?? 0) <
-        0
-      ) {
-        throw new Error(
-          'O limite de crédito não pode ser negativo.',
-        );
-      }
-
-      if (merged.salesperson_id) {
-        const salesperson =
-          data.salespeople.find(
-            (item) =>
-              item.id ===
-              merged.salesperson_id,
-          );
-
-        if (
-          !salesperson ||
-          (salesperson.branch_id &&
-            salesperson.branch_id !==
-              merged.branch_id)
-        ) {
-          throw new Error(
-            'Vendedor responsável inválido para a filial do cliente.',
-          );
-        }
-      }
-
-      let uploadedPhotoPath:
-        | string
-        | null = null;
-
-      let authUserId:
-        | string
-        | null = null;
-
-      if (
-        isSupabaseConfigured &&
-        supabase
-      ) {
-        if (
-          photoFile ||
-          removePhoto
-        ) {
-          const {
-            data: authUserData,
-            error: authUserError,
-          } =
-            await supabase.auth.getUser();
-
-          if (
-            authUserError ||
-            !authUserData.user
-          ) {
-            throw new Error(
-              'Usuário autenticado não encontrado para enviar a foto.',
-            );
-          }
-
-          authUserId =
-            authUserData.user.id;
-        }
-
-        if (photoFile) {
-          const extension =
-            photoFile.name
-              .split('.')
-              .pop()
-              ?.toLowerCase() ||
-            'jpg';
-
-          const candidatePhotoPath =
-            `${authUserId}/customers/${id}/${crypto.randomUUID()}.${extension}`;
-
-          const {
-            data: uploadedObject,
-            error: uploadError,
-          } =
-            await supabase.storage
-              .from(
-                'customer-photos',
-              )
-              .upload(
-                candidatePhotoPath,
-                photoFile,
-                {
-                  upsert: false,
-                  contentType:
-                    photoFile.type ||
-                    'image/jpeg',
-                },
-              );
-
-          if (uploadError) {
-            throw new Error(
-              `Não foi possível enviar a foto: ${uploadError.message}`,
-            );
-          }
-
-          uploadedPhotoPath =
-            uploadedObject.path;
-
-          merged.photo_url =
-            uploadedPhotoPath;
-        } else if (removePhoto) {
-          merged.photo_url = null;
-        }
-
-        const {
-          error: rpcErr,
-        } = await supabase.rpc(
+      const { data: updated, error: rpcError } =
+        await supabase.rpc(
           'execute_partner_customer_mutation',
-          customerMutationPayload(
-            merged as PartnerCustomer,
-            id,
-            operatorId,
-            operatorPin,
-          ),
+          {
+            p_customer_id: id,
+            p_name: customer.name ?? existing.name,
+            p_document:
+              customer.document ?? existing.document ?? null,
+            p_person_type:
+              customer.person_type ?? existing.person_type,
+            p_phone: customer.phone ?? existing.phone ?? null,
+            p_email: customer.email ?? existing.email ?? null,
+            p_address:
+              customer.address ?? existing.address ?? null,
+            p_city: customer.city ?? existing.city ?? null,
+            p_state: customer.state ?? existing.state ?? null,
+            p_zip_code:
+              customer.zip_code ?? existing.zip_code ?? null,
+            p_notes: customer.notes ?? existing.notes ?? null,
+            p_customer_type:
+              customer.customer_type ?? existing.customer_type,
+            p_credit_limit:
+              customer.credit_limit ?? existing.credit_limit ?? 0,
+            p_branch_id:
+              customer.branch_id ?? existing.branch_id ?? null,
+            p_status: customer.status ?? existing.status,
+          },
         );
 
-        if (rpcErr) {
-          if (uploadedPhotoPath) {
-            await supabase.storage
-              .from(
-                'customer-photos',
-              )
-              .remove([
-                uploadedPhotoPath,
-              ]);
-          }
-
-          throw rpcErr;
-        }
-
-        const previousPhotoBelongsToCustomer =
-          currentCust.photo_url?.startsWith(
-            `${authUserId}/customers/${id}/`,
-          ) ?? false;
-
-        if (
-          (photoFile ||
-            removePhoto) &&
-          currentCust.photo_url &&
-          currentCust.photo_url !==
-            merged.photo_url &&
-          previousPhotoBelongsToCustomer
-        ) {
-          const {
-            error: removeError,
-          } =
-            await supabase.storage
-              .from(
-                'customer-photos',
-              )
-              .remove([
-                currentCust.photo_url,
-              ]);
-
-          if (removeError) {
-            console.warn(
-              'Não foi possível remover a foto antiga do cliente.',
-              removeError,
-            );
-          }
-        }
-
-        // maybeSingle evita erro de "0 rows" após uma atualização
-        // válida ou durante uma alteração de visibilidade/RLS.
-        const {
-          data: savedCustomer,
-          error: reloadError,
-        } = await supabase
-          .from(
-            'partner_customers',
-          )
-          .select('*')
-          .eq('id', id)
-          .eq(
-            'user_id',
-            requireIdentity().companyUserId,
-          )
-          .maybeSingle();
-
-        if (reloadError) {
-          throw new Error(
-            `Cliente salvo, mas não foi possível recarregar os dados: ${reloadError.message}`,
-          );
-        }
-
-        const nextCustomer =
-          (savedCustomer as PartnerCustomer | null) ??
-          (merged as PartnerCustomer);
-
-        setData((prev) => ({
-          ...prev,
-          customers:
-            prev.customers.map(
-              (customer) =>
-                customer.id === id
-                  ? nextCustomer
-                  : customer,
-            ),
-        }));
-
-        return;
+      if (rpcError) {
+        throw rpcError;
       }
+
+      const updatedCustomer =
+        (updated as PartnerCustomer | null) ?? {
+          ...existing,
+          ...customer,
+          updated_at: new Date().toISOString(),
+        };
 
       setData((prev) => ({
         ...prev,
-        customers:
-          prev.customers.map(
-            (customer) =>
-              customer.id === id
-                ? {
-                    ...customer,
-                    ...merged,
-                  }
-                : customer,
-          ),
-      }));
-    },
-    [
-      data.customers,
-      data.salespeople,
-      identity,
-    ],
-  );
-
-  const refreshCustomer = useCallback(
-    async (id: string) => {
-      if (!supabase || !identity) {
-        throw new Error(
-          'Sessão do cliente não disponível.',
-        );
-      }
-
-      const {
-        data: savedCustomer,
-        error,
-      } = await supabase
-        .from('partner_customers')
-        .select('*')
-        .eq('id', id)
-        .eq(
-          'user_id',
-          requireIdentity().companyUserId,
-        )
-        .maybeSingle();
-
-      if (error) {
-        throw new Error(
-          `Não foi possível carregar os dados do cliente: ${error.message}`,
-        );
-      }
-
-      const customer =
-        (savedCustomer as PartnerCustomer | null) ??
-        data.customers.find(
-          (item) => item.id === id,
-        );
-
-      if (!customer) {
-        throw new Error(
-          'Cliente não encontrado.',
-        );
-      }
-
-      setData((prev) => ({
-        ...prev,
-        customers:
-          prev.customers.map(
-            (item) =>
-              item.id === id
-                ? customer
-                : item,
-          ),
+        customers: prev.customers.map((item) =>
+          item.id === id ? updatedCustomer : item,
+        ),
       }));
 
-      return customer;
+      return updatedCustomer;
     },
-    [
-      identity,
-      data.customers,
-    ],
+    [data.customers, requireIdentity],
   );
 
   const deleteCustomer = useCallback(
-    async (
-      id: string,
-      operatorId?: string | null,
-      operatorPin?: string | null,
-    ) => {
-      if (
-        !isSupabaseConfigured ||
-        !supabase
-      ) {
-        throw new Error(
-          'Supabase não configurado. A exclusão não foi realizada.',
-        );
+    async (id: string) => {
+      const currentIdentity = requireIdentity();
+
+      if (!isSupabaseConfigured || !supabase) {
+        throw new Error('Supabase não configurado.');
       }
 
-      const {
-        data: deleted,
-        error: rpcErr,
-      } = await supabase.rpc(
+      const existing = data.customers.find(
+        (item) => item.id === id,
+      );
+
+      if (!existing) {
+        throw new Error('Cliente não encontrado.');
+      }
+
+      ensureEmployeeBranch(
+        currentIdentity,
+        existing.branch_id,
+      );
+
+      const { error: rpcError } = await supabase.rpc(
         'execute_partner_customer_delete',
         {
-          p_salesperson_id:
-            operatorId ?? null,
-          p_pin:
-            operatorPin ?? null,
           p_customer_id: id,
         },
       );
 
-      if (rpcErr) {
-        throw rpcErr;
-      }
-
-      if (deleted !== id) {
-        throw new Error(
-          'A exclusão do cliente não foi confirmada pelo servidor.',
-        );
+      if (rpcError) {
+        throw rpcError;
       }
 
       setData((prev) => ({
         ...prev,
-        customers:
-          prev.customers.filter(
-            (customer) =>
-              customer.id !== id,
-          ),
+        customers: prev.customers.filter(
+          (item) => item.id !== id,
+        ),
       }));
     },
-    [],
+    [data.customers, requireIdentity],
+  );
+
+  const addProduct = useCallback(
+    async (product: ProductPayload) => {
+      const currentIdentity = requireIdentity();
+
+      if (!isSupabaseConfigured || !supabase) {
+        throw new Error('Supabase não configurado.');
+      }
+
+      ensureEmployeeBranch(
+        currentIdentity,
+        product.branch_id,
+      );
+
+      const { data: created, error: rpcError } =
+        await supabase.rpc(
+          'execute_partner_product_mutation',
+          {
+            p_product_id: null,
+            p_name: product.name,
+            p_sku: product.sku,
+            p_brand: product.brand,
+            p_category: product.category,
+            p_price: product.price,
+            p_stock: product.stock,
+            p_min_stock: product.min_stock,
+            p_image: product.image ?? null,
+            p_description: product.description ?? null,
+            p_branch_id: product.branch_id ?? null,
+            p_active: product.active ?? true,
+          },
+        );
+
+      if (rpcError) {
+        throw rpcError;
+      }
+
+      const createdProduct =
+        (created as PartnerProduct | null) ?? {
+          ...product,
+          id: crypto.randomUUID(),
+          user_id: currentIdentity.companyUserId,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+
+      setData((prev) => ({
+        ...prev,
+        products: [
+          createdProduct,
+          ...prev.products.filter(
+            (item) => item.id !== createdProduct.id,
+          ),
+        ],
+      }));
+
+      return createdProduct;
+    },
+    [requireIdentity],
+  );
+
+  const updateProduct = useCallback(
+    async (
+      id: string,
+      product: Partial<ProductPayload>,
+    ) => {
+      const currentIdentity = requireIdentity();
+
+      if (!isSupabaseConfigured || !supabase) {
+        throw new Error('Supabase não configurado.');
+      }
+
+      const existing = data.products.find(
+        (item) => item.id === id,
+      );
+
+      if (!existing) {
+        throw new Error('Produto não encontrado.');
+      }
+
+      ensureEmployeeBranch(
+        currentIdentity,
+        product.branch_id ?? existing.branch_id,
+      );
+
+      const { data: updated, error: rpcError } =
+        await supabase.rpc(
+          'execute_partner_product_mutation',
+          {
+            p_product_id: id,
+            p_name: product.name ?? existing.name,
+            p_sku: product.sku ?? existing.sku,
+            p_brand: product.brand ?? existing.brand,
+            p_category:
+              product.category ?? existing.category,
+            p_price: product.price ?? existing.price,
+            p_stock: product.stock ?? existing.stock,
+            p_min_stock:
+              product.min_stock ?? existing.min_stock,
+            p_image: product.image ?? existing.image ?? null,
+            p_description:
+              product.description ??
+              existing.description ??
+              null,
+            p_branch_id:
+              product.branch_id ?? existing.branch_id ?? null,
+            p_active: product.active ?? existing.active,
+          },
+        );
+
+      if (rpcError) {
+        throw rpcError;
+      }
+
+      const updatedProduct =
+        (updated as PartnerProduct | null) ?? {
+          ...existing,
+          ...product,
+          updated_at: new Date().toISOString(),
+        };
+
+      setData((prev) => ({
+        ...prev,
+        products: prev.products.map((item) =>
+          item.id === id ? updatedProduct : item,
+        ),
+      }));
+
+      return updatedProduct;
+    },
+    [data.products, requireIdentity],
+  );
+
+  const deleteProduct = useCallback(
+    async (id: string) => {
+      const currentIdentity = requireIdentity();
+
+      if (!isSupabaseConfigured || !supabase) {
+        throw new Error('Supabase não configurado.');
+      }
+
+      const existing = data.products.find(
+        (item) => item.id === id,
+      );
+
+      if (!existing) {
+        throw new Error('Produto não encontrado.');
+      }
+
+      ensureEmployeeBranch(
+        currentIdentity,
+        existing.branch_id,
+      );
+
+      const { error: rpcError } = await supabase.rpc(
+        'execute_partner_product_delete',
+        {
+          p_product_id: id,
+        },
+      );
+
+      if (rpcError) {
+        throw rpcError;
+      }
+
+      setData((prev) => ({
+        ...prev,
+        products: prev.products.filter(
+          (item) => item.id !== id,
+        ),
+      }));
+    },
+    [data.products, requireIdentity],
+  );
+
+  const addSupplier = useCallback(
+    async (supplier: SupplierPayload) => {
+      const currentIdentity = requireIdentity();
+
+      if (!isSupabaseConfigured || !supabase) {
+        throw new Error('Supabase não configurado.');
+      }
+
+      const { data: created, error: rpcError } =
+        await supabase.rpc(
+          'execute_partner_supplier_mutation',
+          {
+            p_supplier_id: null,
+            p_name: supplier.name,
+            p_document: supplier.document ?? null,
+            p_phone: supplier.phone ?? null,
+            p_email: supplier.email ?? null,
+            p_address: supplier.address ?? null,
+            p_city: supplier.city ?? null,
+            p_state: supplier.state ?? null,
+            p_zip_code: supplier.zip_code ?? null,
+            p_notes: supplier.notes ?? null,
+            p_status: supplier.status ?? 'ativo',
+          },
+        );
+
+      if (rpcError) {
+        throw rpcError;
+      }
+
+      const createdSupplier =
+        (created as PartnerSupplier | null) ?? {
+          ...supplier,
+          id: crypto.randomUUID(),
+          user_id: currentIdentity.companyUserId,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+
+      setData((prev) => ({
+        ...prev,
+        suppliers: [
+          createdSupplier,
+          ...prev.suppliers.filter(
+            (item) => item.id !== createdSupplier.id,
+          ),
+        ],
+      }));
+
+      return createdSupplier;
+    },
+    [requireIdentity],
+  );
+
+  const updateSupplier = useCallback(
+    async (
+      id: string,
+      supplier: Partial<SupplierPayload>,
+    ) => {
+      const currentIdentity = requireIdentity();
+
+      if (!isSupabaseConfigured || !supabase) {
+        throw new Error('Supabase não configurado.');
+      }
+
+      const existing = data.suppliers.find(
+        (item) => item.id === id,
+      );
+
+      if (!existing) {
+        throw new Error('Fornecedor não encontrado.');
+      }
+
+      const { data: updated, error: rpcError } =
+        await supabase.rpc(
+          'execute_partner_supplier_mutation',
+          {
+            p_supplier_id: id,
+            p_name: supplier.name ?? existing.name,
+            p_document:
+              supplier.document ?? existing.document ?? null,
+            p_phone: supplier.phone ?? existing.phone ?? null,
+            p_email: supplier.email ?? existing.email ?? null,
+            p_address:
+              supplier.address ?? existing.address ?? null,
+            p_city: supplier.city ?? existing.city ?? null,
+            p_state: supplier.state ?? existing.state ?? null,
+            p_zip_code:
+              supplier.zip_code ?? existing.zip_code ?? null,
+            p_notes: supplier.notes ?? existing.notes ?? null,
+            p_status: supplier.status ?? existing.status,
+          },
+        );
+
+      if (rpcError) {
+        throw rpcError;
+      }
+
+      const updatedSupplier =
+        (updated as PartnerSupplier | null) ?? {
+          ...existing,
+          ...supplier,
+          updated_at: new Date().toISOString(),
+        };
+
+      setData((prev) => ({
+        ...prev,
+        suppliers: prev.suppliers.map((item) =>
+          item.id === id ? updatedSupplier : item,
+        ),
+      }));
+
+      return updatedSupplier;
+    },
+    [data.suppliers, requireIdentity],
+  );
+
+  const deleteSupplier = useCallback(
+    async (id: string) => {
+      requireIdentity();
+
+      if (!isSupabaseConfigured || !supabase) {
+        throw new Error('Supabase não configurado.');
+      }
+
+      const existing = data.suppliers.find(
+        (item) => item.id === id,
+      );
+
+      if (!existing) {
+        throw new Error('Fornecedor não encontrado.');
+      }
+
+      const { error: rpcError } = await supabase.rpc(
+        'execute_partner_supplier_delete',
+        {
+          p_supplier_id: id,
+        },
+      );
+
+      if (rpcError) {
+        throw rpcError;
+      }
+
+      setData((prev) => ({
+        ...prev,
+        suppliers: prev.suppliers.filter(
+          (item) => item.id !== id,
+        ),
+      }));
+    },
+    [data.suppliers, requireIdentity],
+  );
+
+  const addCategory = useCallback(
+    async (category: CategoryPayload) => {
+      const currentIdentity = requireIdentity();
+
+      if (!isSupabaseConfigured || !supabase) {
+        throw new Error('Supabase não configurado.');
+      }
+
+      ensureEmployeeBranch(
+        currentIdentity,
+        category.branch_id,
+      );
+
+      const { data: created, error } = await supabase
+        .from('partner_categories')
+        .insert({
+          ...category,
+          user_id: currentIdentity.companyUserId,
+        })
+        .select()
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      const createdCategory =
+        created as PartnerCategory;
+
+      setData((prev) => ({
+        ...prev,
+        categories: [
+          createdCategory,
+          ...prev.categories,
+        ],
+      }));
+
+      return createdCategory;
+    },
+    [requireIdentity],
+  );
+
+  const updateCategory = useCallback(
+    async (
+      id: string,
+      category: Partial<CategoryPayload>,
+    ) => {
+      const currentIdentity = requireIdentity();
+
+      if (!isSupabaseConfigured || !supabase) {
+        throw new Error('Supabase não configurado.');
+      }
+
+      const existing = data.categories.find(
+        (item) => item.id === id,
+      );
+
+      if (!existing) {
+        throw new Error('Categoria não encontrada.');
+      }
+
+      ensureEmployeeBranch(
+        currentIdentity,
+        category.branch_id ?? existing.branch_id,
+      );
+
+      const { data: updated, error } = await supabase
+        .from('partner_categories')
+        .update(category)
+        .eq('id', id)
+        .eq('user_id', currentIdentity.companyUserId)
+        .select()
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      setData((prev) => ({
+        ...prev,
+        categories: prev.categories.map((item) =>
+          item.id === id
+            ? (updated as PartnerCategory)
+            : item,
+        ),
+      }));
+
+      return updated as PartnerCategory;
+    },
+    [data.categories, requireIdentity],
+  );
+
+  const deleteCategory = useCallback(
+    async (id: string) => {
+      const currentIdentity = requireIdentity();
+
+      if (!isSupabaseConfigured || !supabase) {
+        throw new Error('Supabase não configurado.');
+      }
+
+      const existing = data.categories.find(
+        (item) => item.id === id,
+      );
+
+      if (!existing) {
+        throw new Error('Categoria não encontrada.');
+      }
+
+      ensureEmployeeBranch(
+        currentIdentity,
+        existing.branch_id,
+      );
+
+      const { error } = await supabase
+        .from('partner_categories')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', currentIdentity.companyUserId);
+
+      if (error) {
+        throw error;
+      }
+
+      setData((prev) => ({
+        ...prev,
+        categories: prev.categories.filter(
+          (item) => item.id !== id,
+        ),
+      }));
+    },
+    [data.categories, requireIdentity],
+  );
+
+  const addBranch = useCallback(
+    async (branch: BranchPayload) => {
+      const currentIdentity = requireIdentity();
+
+      if (currentIdentity.salespersonId) {
+        throw new Error(
+          'Funcionários não podem cadastrar filiais.',
+        );
+      }
+
+      if (!isSupabaseConfigured || !supabase) {
+        throw new Error('Supabase não configurado.');
+      }
+
+      const { data: created, error } = await supabase
+        .from('partner_branches')
+        .insert({
+          ...branch,
+          user_id: currentIdentity.companyUserId,
+        })
+        .select()
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      const createdBranch = created as PartnerBranch;
+
+      setData((prev) => ({
+        ...prev,
+        branches: [
+          ...prev.branches,
+          createdBranch,
+        ],
+      }));
+
+      return createdBranch;
+    },
+    [requireIdentity],
+  );
+
+  const updateBranch = useCallback(
+    async (
+      id: string,
+      branch: Partial<BranchPayload>,
+    ) => {
+      const currentIdentity = requireIdentity();
+
+      if (currentIdentity.salespersonId) {
+        throw new Error(
+          'Funcionários não podem alterar filiais.',
+        );
+      }
+
+      if (!isSupabaseConfigured || !supabase) {
+        throw new Error('Supabase não configurado.');
+      }
+
+      const { data: updated, error } = await supabase
+        .from('partner_branches')
+        .update(branch)
+        .eq('id', id)
+        .eq('user_id', currentIdentity.companyUserId)
+        .select()
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      setData((prev) => ({
+        ...prev,
+        branches: prev.branches.map((item) =>
+          item.id === id
+            ? (updated as PartnerBranch)
+            : item,
+        ),
+      }));
+
+      return updated as PartnerBranch;
+    },
+    [requireIdentity],
+  );
+
+  const deleteBranch = useCallback(
+    async (id: string) => {
+      const currentIdentity = requireIdentity();
+
+      if (currentIdentity.salespersonId) {
+        throw new Error(
+          'Funcionários não podem excluir filiais.',
+        );
+      }
+
+      if (!isSupabaseConfigured || !supabase) {
+        throw new Error('Supabase não configurado.');
+      }
+
+      const { error } = await supabase
+        .from('partner_branches')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', currentIdentity.companyUserId);
+
+      if (error) {
+        throw error;
+      }
+
+      setData((prev) => ({
+        ...prev,
+        branches: prev.branches.filter(
+          (item) => item.id !== id,
+        ),
+      }));
+    },
+    [requireIdentity],
   );
 
   const createSale = useCallback(
@@ -1417,236 +1266,133 @@ export function usePartnerData(
       operatorId?: string | null,
       operatorPin?: string | null,
     ) => {
-      if (!identity) return;
+      const currentIdentity = requireIdentity();
 
-      const branchId =
-        sale.branch_id ?? null;
-
-      if (!branchId) {
+      if (!sale.branch_id) {
         throw new Error(
           'Venda sem filial selecionada.',
         );
       }
 
-      const effectiveSpId =
-        operatorId ??
-        sale.salesperson_id ??
-        null;
+      ensureEmployeeBranch(
+        currentIdentity,
+        sale.branch_id,
+      );
 
-      if (
-        sale.payment_method ===
-        'faturado'
-      ) {
-        const customer =
-          data.customers.find(
-            (item) =>
-              item.id ===
-              sale.customer_id,
-          );
+      const effectiveSalespersonId =
+        currentIdentity.salespersonId
+          ? currentIdentity.salespersonId
+          : operatorId ?? sale.salesperson_id ?? null;
 
-        if (!customer) {
-          throw new Error(
-            'Faturado B2B exige um cliente selecionado.',
-          );
-        }
-
-        if (!customer.allow_credit) {
-          throw new Error(
-            'Este cliente não possui crédito permitido.',
-          );
-        }
-      }
+      const effectiveOperatorPin =
+        currentIdentity.salespersonId
+          ? null
+          : operatorPin ?? null;
 
       const ns: PartnerSale = {
         ...sale,
         id: crypto.randomUUID(),
-        user_id:
-          requireIdentity().companyUserId,
-        status: 'concluida',
-        created_at:
-          new Date().toISOString(),
-        imei:
-          sale.imei ?? null,
-        serial_number:
-          sale.serial_number ??
-          null,
-        payment_method:
-          sale.payment_method ??
-          null,
-        branch_id: branchId,
-        salesperson_id:
-          effectiveSpId,
-        origin: 'pdv',
-        online_payment: false,
+        user_id: currentIdentity.companyUserId,
+        created_at: new Date().toISOString(),
+        imei: sale.imei ?? null,
+        serial_number: sale.serial_number ?? null,
+        branch_id: sale.branch_id,
+        salesperson_id: effectiveSalespersonId,
+        origin: sale.origin ?? 'pdv',
+        online_payment: sale.online_payment ?? false,
         payment_status:
-          sale.payment_method ===
-          'faturado'
-            ? 'pendente'
-            : 'pago',
+          sale.payment_status ?? 'pendente',
       };
 
-      let createdInvoice:
-        | PartnerInvoice
-        | null = null;
-
-      if (
-        isSupabaseConfigured &&
-        supabase
-      ) {
-        const {
-          error: rpcErr,
-        } = await supabase.rpc(
-          'execute_partner_sale_mutation',
-          {
-            p_salesperson_id:
-              effectiveSpId,
-            p_pin:
-              operatorPin ?? null,
-            p_sale_id: ns.id,
-            p_customer_id:
-              ns.customer_id,
-            p_customer_name:
-              ns.customer_name,
-            p_items: ns.items,
-            p_total: ns.total,
-            p_imei:
-              ns.imei,
-            p_serial_number:
-              ns.serial_number,
-            p_payment_method:
-              ns.payment_method,
-            p_branch_id:
-              ns.branch_id,
-            p_status:
-              'concluida',
-            p_origin:
-              'pdv',
-            p_customer_type:
-              ns.customer_type,
-            p_delivery_type:
-              ns.delivery_type,
-          },
-        );
+      if (isSupabaseConfigured && supabase) {
+        const { error: rpcErr } =
+          await supabase.rpc(
+            'execute_partner_sale_mutation',
+            {
+              p_salesperson_id:
+                effectiveSalespersonId,
+              p_pin: effectiveOperatorPin,
+              p_sale_id: ns.id,
+              p_customer_id: ns.customer_id,
+              p_customer_name: ns.customer_name,
+              p_items: ns.items,
+              p_total: ns.total,
+              p_imei: ns.imei,
+              p_serial_number: ns.serial_number,
+              p_payment_method:
+                ns.payment_method ?? null,
+              p_branch_id: ns.branch_id,
+              p_status: ns.status,
+              p_origin: ns.origin,
+              p_customer_type:
+                ns.customer_type ?? 'varejo',
+              p_delivery_type:
+                ns.delivery_type ?? 'balcao',
+            },
+          );
 
         if (rpcErr) {
           throw rpcErr;
         }
-
-        if (
-          sale.payment_method ===
-          'faturado'
-        ) {
-          const {
-            data: invoice,
-            error: invoiceError,
-          } =
-            await supabase
-              .from(
-                'partner_invoices',
-              )
-              .select('*')
-              .eq(
-                'sale_id',
-                ns.id,
-              )
-              .eq(
-                'user_id',
-                requireIdentity().companyUserId,
-              )
-              .maybeSingle();
-
-          if (invoiceError) {
-            throw new Error(
-              `Venda criada, mas o título B2B não pôde ser localizado: ${invoiceError.message}`,
-            );
-          }
-
-          if (!invoice) {
-            throw new Error(
-              'Venda criada, mas o título B2B não foi localizado.',
-            );
-          }
-
-          createdInvoice =
-            invoice as PartnerInvoice;
-        }
       }
 
-      setData((prev) => {
-        const newMovements: StockMovement[] =
-          sale.items.map(
-            (item) => ({
-              id: crypto.randomUUID(),
-              user_id:
-                requireIdentity().companyUserId,
-              product_id:
-                item.product_id,
-              product_name:
-                item.name,
-              type:
-                'saida' as const,
-              quantity:
-                item.quantity,
-              reason: 'Venda',
-              created_at:
-                new Date().toISOString(),
-            }),
+      let createdInvoice: PartnerInvoice | null =
+        null;
+
+      if (sale.payment_method === 'faturado') {
+        if (!isSupabaseConfigured || !supabase) {
+          throw new Error(
+            'Venda faturada requer Supabase configurado.',
           );
+        }
 
-        const updatedProducts =
-          prev.products.map(
-            (p) => {
-              if (
-                p.branch_id !==
-                branchId
-              ) {
-                return p;
-              }
+        const { data: invoice, error: invoiceError } =
+          await supabase
+            .from('partner_invoices')
+            .select('*')
+            .eq('sale_id', ns.id)
+            .eq(
+              'user_id',
+              currentIdentity.companyUserId,
+            )
+            .maybeSingle();
 
-              const item =
-                sale.items.find(
-                  (currentItem) =>
-                    currentItem.product_id ===
-                    p.id,
-                );
-
-              return item
-                ? {
-                    ...p,
-                    stock:
-                      Math.max(
-                        0,
-                        p.stock -
-                          item.quantity,
-                      ),
-                  }
-                : p;
-            },
+        if (invoiceError) {
+          throw new Error(
+            `Venda criada, mas o título B2B não pôde ser localizado: ${invoiceError.message}`,
           );
+        }
 
-        return {
-          ...prev,
-          sales: [
-            ns,
-            ...prev.sales,
-          ],
-          invoices:
-            createdInvoice
-              ? [
-                  createdInvoice,
-                  ...prev.invoices,
-                ]
-              : prev.invoices,
-          movements: [
-            ...newMovements,
-            ...prev.movements,
-          ],
-          products:
-            updatedProducts,
-        };
-      });
+        if (!invoice) {
+          throw new Error(
+            'Venda criada, mas o título B2B não foi localizado.',
+          );
+        }
+
+        createdInvoice =
+          invoice as PartnerInvoice;
+      }
+
+      setData((prev) => ({
+        ...prev,
+        sales: [
+          ns,
+          ...prev.sales,
+        ],
+        invoices: createdInvoice
+          ? [
+              createdInvoice,
+              ...prev.invoices.filter(
+                (invoice) =>
+                  invoice.id !== createdInvoice!.id,
+              ),
+            ]
+          : prev.invoices,
+      }));
+
+      return ns;
     },
-    [data.customers, identity],
+    [identity, requireIdentity],
   );
 
   const createPreSale = useCallback(
@@ -1655,76 +1401,70 @@ export function usePartnerData(
       operatorId?: string | null,
       operatorPin?: string | null,
     ) => {
-      if (!identity) return;
+      const currentIdentity = requireIdentity();
+      const branchId = sale.branch_id ?? null;
+
+      if (!branchId) {
+        throw new Error(
+          'Pré-venda sem filial selecionada.',
+        );
+      }
+
+      ensureEmployeeBranch(
+        currentIdentity,
+        branchId,
+      );
 
       const effectiveSpId =
-        operatorId ??
-        sale.salesperson_id ??
-        null;
+        currentIdentity.salespersonId
+          ? currentIdentity.salespersonId
+          : operatorId ?? sale.salesperson_id ?? null;
+
+      const effectiveOperatorPin =
+        currentIdentity.salespersonId
+          ? null
+          : operatorPin ?? null;
 
       const ns: PartnerSale = {
         ...sale,
         id: crypto.randomUUID(),
-        user_id:
-          requireIdentity().companyUserId,
+        user_id: currentIdentity.companyUserId,
         status: 'pre_venda',
-        created_at:
-          new Date().toISOString(),
-        imei:
-          sale.imei ?? null,
-        serial_number:
-          sale.serial_number ??
-          null,
+        created_at: new Date().toISOString(),
+        imei: sale.imei ?? null,
+        serial_number: sale.serial_number ?? null,
         payment_method: null,
-        branch_id:
-          sale.branch_id ??
-          null,
-        salesperson_id:
-          effectiveSpId,
+        branch_id: branchId,
+        salesperson_id: effectiveSpId,
         origin: 'pdv',
         online_payment: false,
-        payment_status:
-          'pendente',
+        payment_status: 'pendente',
       };
 
-      if (
-        isSupabaseConfigured &&
-        supabase
-      ) {
-        const {
-          error: rpcErr,
-        } = await supabase.rpc(
-          'execute_partner_sale_mutation',
-          {
-            p_salesperson_id:
-              effectiveSpId,
-            p_pin:
-              operatorPin ?? null,
-            p_sale_id: ns.id,
-            p_customer_id:
-              ns.customer_id,
-            p_customer_name:
-              ns.customer_name,
-            p_items: ns.items,
-            p_total: ns.total,
-            p_imei:
-              ns.imei,
-            p_serial_number:
-              ns.serial_number,
-            p_payment_method:
-              null,
-            p_branch_id:
-              ns.branch_id,
-            p_status:
-              'pre_venda',
-            p_origin:
-              'pdv',
-            p_customer_type:
-              ns.customer_type,
-            p_delivery_type:
-              ns.delivery_type,
-          },
-        );
+      if (isSupabaseConfigured && supabase) {
+        const { error: rpcErr } =
+          await supabase.rpc(
+            'execute_partner_sale_mutation',
+            {
+              p_salesperson_id: effectiveSpId,
+              p_pin: effectiveOperatorPin,
+              p_sale_id: ns.id,
+              p_customer_id: ns.customer_id,
+              p_customer_name: ns.customer_name,
+              p_items: ns.items,
+              p_total: ns.total,
+              p_imei: ns.imei,
+              p_serial_number: ns.serial_number,
+              p_payment_method: null,
+              p_branch_id: ns.branch_id,
+              p_status: 'pre_venda',
+              p_origin: 'pdv',
+              p_customer_type:
+                ns.customer_type ?? 'varejo',
+              p_delivery_type:
+                ns.delivery_type ?? 'balcao',
+            },
+          );
 
         if (rpcErr) {
           throw rpcErr;
@@ -1738,6 +1478,8 @@ export function usePartnerData(
           ...prev.sales,
         ],
       }));
+
+      return ns;
     },
     [identity, requireIdentity],
   );
@@ -1749,68 +1491,65 @@ export function usePartnerData(
       operatorId?: string | null,
       operatorPin?: string | null,
     ) => {
-      const sale =
-        data.sales.find(
-          (currentSale) =>
-            currentSale.id === id,
-        );
+      const currentIdentity = requireIdentity();
 
-      if (
-        !sale ||
-        !sale.branch_id
-      ) {
+      const sale = data.sales.find(
+        (currentSale) =>
+          currentSale.id === id,
+      );
+
+      if (!sale || !sale.branch_id) {
         throw new Error(
           'Pré-venda não encontrada ou sem filial válida.',
         );
       }
 
-      if (
-        isSupabaseConfigured &&
-        supabase
-      ) {
-        const {
-          error: rpcErr,
-        } = await supabase.rpc(
-          'execute_partner_sale_mutation',
-          {
-            p_salesperson_id:
-              operatorId ??
-              sale.salesperson_id ??
-              null,
-            p_pin:
-              operatorPin ?? null,
-            p_sale_id: id,
-            p_customer_id:
-              sale.customer_id ??
-              null,
-            p_customer_name:
-              sale.customer_name ??
-              '',
-            p_items:
-              sale.items ?? [],
-            p_total:
-              sale.total ?? 0,
-            p_imei:
-              sale.imei ?? null,
-            p_serial_number:
-              sale.serial_number ??
-              null,
-            p_payment_method:
-              paymentMethod,
-            p_branch_id:
-              sale.branch_id ??
-              null,
-            p_status:
-              'concluida',
-            p_origin:
-              sale.origin ??
-              'pdv',
-            p_customer_type:
-              sale.customer_type,
-            p_delivery_type:
-              sale.delivery_type,
-          },
-        );
+      ensureEmployeeBranch(
+        currentIdentity,
+        sale.branch_id,
+      );
+
+      const effectiveOperatorId =
+        currentIdentity.salespersonId
+          ? currentIdentity.salespersonId
+          : operatorId ??
+            sale.salesperson_id ??
+            null;
+
+      const effectiveOperatorPin =
+        currentIdentity.salespersonId
+          ? null
+          : operatorPin ?? null;
+
+      if (isSupabaseConfigured && supabase) {
+        const { error: rpcErr } =
+          await supabase.rpc(
+            'execute_partner_sale_mutation',
+            {
+              p_salesperson_id:
+                effectiveOperatorId,
+              p_pin: effectiveOperatorPin,
+              p_sale_id: id,
+              p_customer_id:
+                sale.customer_id ?? null,
+              p_customer_name:
+                sale.customer_name ?? '',
+              p_items: sale.items ?? [],
+              p_total: sale.total ?? 0,
+              p_imei: sale.imei ?? null,
+              p_serial_number:
+                sale.serial_number ?? null,
+              p_payment_method: paymentMethod,
+              p_branch_id: sale.branch_id,
+              p_status: 'concluida',
+              p_origin:
+                sale.origin ?? 'pdv',
+              p_customer_type:
+                sale.customer_type ?? 'varejo',
+              p_delivery_type:
+                sale.delivery_type ?? 'balcao',
+            },
+          );
 
         if (rpcErr) {
           throw rpcErr;
@@ -1819,305 +1558,567 @@ export function usePartnerData(
 
       setData((prev) => {
         const newMovements: StockMovement[] =
-          sale.items.map(
-            (item) => ({
-              id: crypto.randomUUID(),
-              user_id:
-                sale.user_id,
-              product_id:
-                item.product_id,
-              product_name:
-                item.name,
-              type:
-                'saida' as const,
-              quantity:
-                item.quantity,
-              reason:
-                'Venda (Pré-venda)',
-              created_at:
-                new Date().toISOString(),
-            }),
-          );
+          sale.items.map((item) => ({
+            id: crypto.randomUUID(),
+            user_id:
+              currentIdentity.companyUserId,
+            product_id: item.product_id,
+            product_name: item.name,
+            type: 'saida',
+            quantity: item.quantity,
+            reason: 'Venda (Pré-venda)',
+            created_at:
+              new Date().toISOString(),
+            branch_id: sale.branch_id,
+          }));
 
         const updatedProducts =
-          prev.products.map(
-            (product) => {
-              if (
-                product.branch_id !==
-                sale.branch_id
-              ) {
-                return product;
-              }
+          prev.products.map((product) => {
+            if (
+              product.branch_id !==
+              sale.branch_id
+            ) {
+              return product;
+            }
 
-              const item =
-                sale.items.find(
-                  (currentItem) =>
-                    currentItem.product_id ===
-                    product.id,
-                );
+            const item = sale.items.find(
+              (currentItem) =>
+                currentItem.product_id ===
+                product.id,
+            );
 
-              return item
-                ? {
-                    ...product,
-                    stock:
-                      Math.max(
-                        0,
-                        product.stock -
-                          item.quantity,
-                      ),
-                  }
-                : product;
-            },
-          );
+            return item
+              ? {
+                  ...product,
+                  stock: Math.max(
+                    0,
+                    product.stock -
+                      item.quantity,
+                  ),
+                }
+              : product;
+          });
 
         return {
           ...prev,
-          sales:
-            prev.sales.map(
-              (currentSale) =>
-                currentSale.id === id
-                  ? {
-                      ...currentSale,
-                      status:
-                        'concluida',
-                      payment_method:
-                        paymentMethod,
-                    }
-                  : currentSale,
-            ),
+          sales: prev.sales.map(
+            (currentSale) =>
+              currentSale.id === id
+                ? {
+                    ...currentSale,
+                    status: 'concluida',
+                    payment_method:
+                      paymentMethod,
+                    payment_status:
+                      paymentMethod ===
+                      'faturado'
+                        ? 'pendente'
+                        : 'pago',
+                  }
+                : currentSale,
+          ),
           movements: [
             ...newMovements,
             ...prev.movements,
           ],
-          products:
-            updatedProducts,
+          products: updatedProducts,
         };
       });
     },
-    [data.sales],
+    [data.sales, identity, requireIdentity],
   );
 
-  const updateStoreSettings =
-    useCallback(
-      async (
-        settings: Partial<StoreSettings>,
-      ) => {
-        if (
-          !isSupabaseConfigured ||
-          !supabase ||
-          !identity
-        ) {
-          throw new Error(
-            'Supabase não configurado; não foi possível salvar as configurações da loja.',
-          );
-        }
-
-        if (requireIdentity().salespersonId) {
-          throw new Error(
-            'Funcionários não podem alterar as configurações da loja.',
-          );
-        }
-
-        const changes = {
-          ...settings,
-        };
-
-        delete changes.id;
-        delete changes.user_id;
-        delete changes.updated_at;
-
-        const {
-          data: savedSettings,
-          error,
-        } = await supabase
-          .from('store_settings_v2')
-          .upsert(
-            {
-              user_id:
-                requireIdentity().companyUserId,
-              ...changes,
-              updated_at:
-                new Date().toISOString(),
-            },
-            {
-              onConflict:
-                'user_id',
-            },
-          )
-          .select('*')
-          .maybeSingle();
-
-        if (error) {
-          console.error(
-            'Falha ao salvar configurações da loja.',
-            error,
-          );
-
-          setData((prev) => ({
-            ...prev,
-            error: `Não foi possível salvar as configurações da loja: ${error.message}`,
-          }));
-
-          throw error;
-        }
-
-        if (!savedSettings) {
-          throw new Error(
-            'As configurações foram enviadas, mas não foi possível confirmar o registro salvo.',
-          );
-        }
-
-        setData((prev) => ({
-          ...prev,
-          storeSettings:
-            savedSettings as StoreSettings,
-          error: null,
-        }));
-      },
-      [identity, requireIdentity],
-    );
-
-  const updateProfile = useCallback(
+  const cancelSale = useCallback(
     async (
-      profileUpdate: Partial<PartnerProfile>,
+      id: string,
+      operatorId?: string | null,
+      operatorPin?: string | null,
     ) => {
-      if (
-        !identity ||
-        !isSupabaseConfigured ||
-        !supabase
-      ) {
+      const currentIdentity = requireIdentity();
+
+      const sale = data.sales.find(
+        (item) => item.id === id,
+      );
+
+      if (!sale) {
+        throw new Error('Venda não encontrada.');
+      }
+
+      ensureEmployeeBranch(
+        currentIdentity,
+        sale.branch_id,
+      );
+
+      const effectiveOperatorId =
+        currentIdentity.salespersonId
+          ? currentIdentity.salespersonId
+          : operatorId ??
+            sale.salesperson_id ??
+            null;
+
+      const effectiveOperatorPin =
+        currentIdentity.salespersonId
+          ? null
+          : operatorPin ?? null;
+
+      if (isSupabaseConfigured && supabase) {
+        const { error: rpcErr } =
+          await supabase.rpc(
+            'execute_partner_sale_mutation',
+            {
+              p_salesperson_id:
+                effectiveOperatorId,
+              p_pin: effectiveOperatorPin,
+              p_sale_id: id,
+              p_customer_id:
+                sale.customer_id ?? null,
+              p_customer_name:
+                sale.customer_name ?? '',
+              p_items: sale.items ?? [],
+              p_total: sale.total ?? 0,
+              p_imei: sale.imei ?? null,
+              p_serial_number:
+                sale.serial_number ?? null,
+              p_payment_method:
+                sale.payment_method ?? null,
+              p_branch_id:
+                sale.branch_id ?? null,
+              p_status: 'cancelada',
+              p_origin:
+                sale.origin ?? 'pdv',
+              p_customer_type:
+                sale.customer_type ?? 'varejo',
+              p_delivery_type:
+                sale.delivery_type ?? 'balcao',
+            },
+          );
+
+        if (rpcErr) {
+          throw rpcErr;
+        }
+
+        await loadData();
+        return;
+      }
+
+      setData((prev) => ({
+        ...prev,
+        sales: prev.sales.map(
+          (item) =>
+            item.id === id
+              ? {
+                  ...item,
+                  status: 'cancelada',
+                }
+              : item,
+        ),
+      }));
+    },
+    [data.sales, loadData, identity, requireIdentity],
+  );
+
+  const deleteSale = useCallback(
+    async (
+      id: string,
+      operatorId?: string | null,
+      operatorPin?: string | null,
+    ) => {
+      const currentIdentity = requireIdentity();
+
+      const sale = data.sales.find(
+        (item) => item.id === id,
+      );
+
+      if (!sale) {
+        throw new Error('Venda não encontrada.');
+      }
+
+      ensureEmployeeBranch(
+        currentIdentity,
+        sale.branch_id,
+      );
+
+      const effectiveOperatorId =
+        currentIdentity.salespersonId
+          ? currentIdentity.salespersonId
+          : operatorId ??
+            sale.salesperson_id ??
+            null;
+
+      const effectiveOperatorPin =
+        currentIdentity.salespersonId
+          ? null
+          : operatorPin ?? null;
+
+      if (isSupabaseConfigured && supabase) {
+        const { error: rpcErr } =
+          await supabase.rpc(
+            'execute_partner_sale_delete',
+            {
+              p_sale_id: id,
+              p_salesperson_id:
+                effectiveOperatorId,
+              p_pin: effectiveOperatorPin,
+            },
+          );
+
+        if (rpcErr) {
+          throw rpcErr;
+        }
+      }
+
+      setData((prev) => ({
+        ...prev,
+        sales: prev.sales.filter(
+          (item) => item.id !== id,
+        ),
+        invoices: prev.invoices.filter(
+          (invoice) =>
+            invoice.sale_id !== id,
+        ),
+      }));
+    },
+    [data.sales, requireIdentity],
+  );
+
+  const replenishStock = useCallback(
+    async (
+      productId: string,
+      quantity: number,
+      reason: string,
+      operatorId?: string | null,
+      operatorPin?: string | null,
+    ) => {
+      const currentIdentity = requireIdentity();
+
+      if (quantity <= 0) {
         throw new Error(
-          'Supabase não configurado; não foi possível salvar o perfil.',
+          'A quantidade de reposição deve ser maior que zero.',
         );
       }
 
-      const {
-        data: savedProfile,
-        error,
-      } = await supabase
-        .from('partner_profiles')
-        .update(profileUpdate)
-        .eq(
-          'id',
-          requireIdentity().companyUserId,
-        )
-        .select('*')
-        .maybeSingle();
+      const product = data.products.find(
+        (item) => item.id === productId,
+      );
+
+      if (!product) {
+        throw new Error(
+          'Produto não encontrado.',
+        );
+      }
+
+      ensureEmployeeBranch(
+        currentIdentity,
+        product.branch_id,
+      );
+
+      const effectiveOperatorId =
+        currentIdentity.salespersonId
+          ? currentIdentity.salespersonId
+          : operatorId ?? null;
+
+      const effectiveOperatorPin =
+        currentIdentity.salespersonId
+          ? null
+          : operatorPin ?? null;
+
+      if (isSupabaseConfigured && supabase) {
+        const { error: rpcError } =
+          await supabase.rpc(
+            'execute_partner_stock_replenishment',
+            {
+              p_product_id: productId,
+              p_quantity: quantity,
+              p_reason: reason,
+              p_branch_id:
+                product.branch_id ?? null,
+              p_salesperson_id:
+                effectiveOperatorId,
+              p_pin: effectiveOperatorPin,
+            },
+          );
+
+        if (rpcError) {
+          throw rpcError;
+        }
+      }
+
+      setData((prev) => ({
+        ...prev,
+        products: prev.products.map(
+          (item) =>
+            item.id === productId
+              ? {
+                  ...item,
+                  stock:
+                    item.stock + quantity,
+                }
+              : item,
+        ),
+        movements: [
+          {
+            id: crypto.randomUUID(),
+            user_id:
+              currentIdentity.companyUserId,
+            product_id: product.id,
+            product_name: product.name,
+            type: 'entrada',
+            quantity,
+            reason,
+            created_at:
+              new Date().toISOString(),
+            branch_id:
+              product.branch_id ?? null,
+          },
+          ...prev.movements,
+        ],
+      }));
+    },
+    [data.products, requireIdentity],
+  );
+
+  const payInvoice = useCallback(
+    async (
+      id: string,
+      amount?: number,
+    ) => {
+      const currentIdentity = requireIdentity();
+
+      if (!isSupabaseConfigured || !supabase) {
+        throw new Error('Supabase não configurado.');
+      }
+
+      const invoice = data.invoices.find(
+        (item) => item.id === id,
+      );
+
+      if (!invoice) {
+        throw new Error(
+          'Fatura não encontrada.',
+        );
+      }
+
+      if (invoice.user_id !== currentIdentity.companyUserId) {
+        throw new Error(
+          'Acesso negado à fatura.',
+        );
+      }
+
+      const outstandingAmount =
+        Math.max(
+          0,
+          Number(invoice.amount ?? 0) -
+            Number(invoice.paid_amount ?? 0),
+        );
+
+      const paymentAmount =
+        amount ?? outstandingAmount;
+
+      if (
+        !Number.isFinite(paymentAmount) ||
+        paymentAmount <= 0
+      ) {
+        throw new Error(
+          'Valor de recebimento inválido.',
+        );
+      }
+
+      if (
+        paymentAmount >
+        outstandingAmount + 0.000001
+      ) {
+        throw new Error(
+          'Valor excede o saldo da fatura.',
+        );
+      }
+
+      const { data: paidInvoiceId, error } =
+        await supabase.rpc(
+          'record_partner_invoice_payment',
+          {
+            p_invoice_id: id,
+            p_amount: paymentAmount,
+          },
+        );
 
       if (error) {
-        setData((prev) => ({
-          ...prev,
-          error: `Não foi possível salvar o perfil: ${error.message}`,
-        }));
-
         throw error;
       }
 
-      const nextProfile =
-        (savedProfile as PartnerProfile | null) ??
-        ({
-          ...data.profile,
-          ...profileUpdate,
-        } as PartnerProfile);
+      if (paidInvoiceId !== id) {
+        throw new Error(
+          'O recebimento não foi confirmado pelo servidor.',
+        );
+      }
 
-      setData((prev) => ({
-        ...prev,
-        profile: nextProfile,
-        error: null,
-      }));
+      await loadData();
     },
-    [identity, data.profile],
+    [data.invoices, loadData, requireIdentity],
   );
 
-  const createRma = useCallback(
-    async (rma: RmaPayload) => {
-      if (!identity) return;
+  const updateStoreSettings = useCallback(
+    async (settings: StoreSettings) => {
+      const currentIdentity = requireIdentity();
 
-      if (
-        requireIdentity().salespersonId &&
-        !requireIdentity().branchId
-      ) {
+      if (currentIdentity.salespersonId) {
         throw new Error(
-          'Funcionário autenticado não possui uma filial atribuída.',
+          'Funcionários não podem alterar as configurações da loja.',
         );
       }
 
-      if (
-        requireIdentity().salespersonId &&
-        rma.branch_id !== requireIdentity().branchId
-      ) {
-        throw new Error(
-          'Funcionário só pode cadastrar devoluções na filial vinculada ao seu usuário.',
-        );
+      if (!isSupabaseConfigured || !supabase) {
+        throw new Error('Supabase não configurado.');
       }
 
-      const nr: RmaRequest = {
-        ...rma,
-        branch_id:
-          rma.branch_id ??
-          null,
-        customer_name:
-          rma.customer_name ??
-          'Cliente não informado',
-        id: crypto.randomUUID(),
-        user_id:
-          requireIdentity().companyUserId,
-        status:
-          'aguardando_troca',
-        created_at:
-          new Date().toISOString(),
-        updated_at:
-          new Date().toISOString(),
-      };
+      const { data: updated, error } = await supabase
+        .from('partner_store_settings')
+        .upsert(
+          {
+            ...settings,
+            user_id:
+              currentIdentity.companyUserId,
+          },
+          {
+            onConflict: 'user_id',
+          },
+        )
+        .select()
+        .single();
 
-      if (
-        isSupabaseConfigured &&
-        supabase
-      ) {
-        const {
-          error,
-        } = await supabase
-          .from('rma_requests_v2')
-          .insert(nr);
-
-        if (error) {
-          throw error;
-        }
+      if (error) {
+        throw error;
       }
 
       setData((prev) => ({
         ...prev,
-        rmaRequests: [
-          nr,
-          ...prev.rmaRequests,
-        ],
+        settings:
+          updated as StoreSettings,
       }));
+
+      return updated as StoreSettings;
     },
     [identity, requireIdentity],
   );
 
-  const updateRmaStatus =
-    useCallback(
-      async (
-        id: string,
-        status: RmaStatus,
-      ) => {
-        if (!identity) {
-          throw new Error(
-            'Usuário não autenticado.',
-          );
-        }
+  const updateProfile = useCallback(
+    async (
+      profile: Partial<PartnerProfile>,
+    ) => {
+      const currentIdentity = requireIdentity();
 
-        if (
-          !isSupabaseConfigured ||
-          !supabase
-        ) {
-          throw new Error(
-            'Supabase não configurado.',
-          );
-        }
+      if (currentIdentity.salespersonId) {
+        throw new Error(
+          'Funcionários não podem alterar o perfil da empresa.',
+        );
+      }
 
-        let rmaUpdate = supabase
+      if (!isSupabaseConfigured || !supabase) {
+        throw new Error('Supabase não configurado.');
+      }
+
+      const { data: updated, error } = await supabase
+        .from('partner_profiles')
+        .update(profile)
+        .eq(
+          'user_id',
+          currentIdentity.companyUserId,
+        )
+        .select()
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      setData((prev) => ({
+        ...prev,
+        profile:
+          updated as PartnerProfile,
+      }));
+
+      return updated as PartnerProfile;
+    },
+    [identity, requireIdentity],
+  );
+
+  const createRma = useCallback(
+    async (rma: RmaPayload) => {
+      const currentIdentity = requireIdentity();
+
+      if (!rma.branch_id) {
+        throw new Error(
+          'RMA sem filial selecionada.',
+        );
+      }
+
+      ensureEmployeeBranch(
+        currentIdentity,
+        rma.branch_id,
+      );
+
+      if (!isSupabaseConfigured || !supabase) {
+        throw new Error('Supabase não configurado.');
+      }
+
+      const { data: created, error } =
+        await supabase
+          .from('rma_requests_v2')
+          .insert({
+            ...rma,
+            user_id:
+              currentIdentity.companyUserId,
+          })
+          .select()
+          .single();
+
+      if (error) {
+        throw error;
+      }
+
+      const createdRma =
+        created as RmaRequest;
+
+      setData((prev) => ({
+        ...prev,
+        rmas: [
+          createdRma,
+          ...prev.rmas,
+        ],
+      }));
+
+      return createdRma;
+    },
+    [identity, requireIdentity],
+  );
+
+  const updateRmaStatus = useCallback(
+    async (
+      id: string,
+      status: RmaStatus,
+    ) => {
+      const currentIdentity = requireIdentity();
+
+      if (!isSupabaseConfigured || !supabase) {
+        throw new Error('Supabase não configurado.');
+      }
+
+      const existing = data.rmas.find(
+        (item) => item.id === id,
+      );
+
+      if (!existing) {
+        throw new Error(
+          'RMA não encontrado.',
+        );
+      }
+
+      ensureEmployeeBranch(
+        currentIdentity,
+        existing.branch_id,
+      );
+
+      const { data: updated, error } =
+        await supabase
           .from('rma_requests_v2')
           .update({
             status,
@@ -2127,89 +2128,61 @@ export function usePartnerData(
           .eq('id', id)
           .eq(
             'user_id',
-            requireIdentity().companyUserId,
-          );
+            currentIdentity.companyUserId,
+          )
+          .select()
+          .single();
 
-        if (requireIdentity().salespersonId) {
-          if (!requireIdentity().branchId) {
-            throw new Error(
-              'Funcionário autenticado não possui uma filial atribuída.',
-            );
-          }
+      if (error) {
+        throw error;
+      }
 
-          rmaUpdate = rmaUpdate.eq(
-            'branch_id',
-            requireIdentity().branchId,
-          );
-        }
+      setData((prev) => ({
+        ...prev,
+        rmas: prev.rmas.map(
+          (item) =>
+            item.id === id
+              ? (updated as RmaRequest)
+              : item,
+        ),
+      }));
 
-        const { error } =
-          await rmaUpdate;
-
-        if (error) {
-          throw error;
-        }
-
-        setData((prev) => ({
-          ...prev,
-          rmaRequests:
-            prev.rmaRequests.map(
-              (r) =>
-                r.id === id
-                  ? {
-                      ...r,
-                      status,
-                      updated_at:
-                        new Date().toISOString(),
-                    }
-                  : r,
-            ),
-        }));
-      },
-      [identity, requireIdentity],
-    );
+      return updated as RmaRequest;
+    },
+    [data.rmas, requireIdentity],
+  );
 
   const deleteRma = useCallback(
     async (id: string) => {
-      if (!identity) {
+      const currentIdentity = requireIdentity();
+
+      if (!isSupabaseConfigured || !supabase) {
+        throw new Error('Supabase não configurado.');
+      }
+
+      const existing = data.rmas.find(
+        (item) => item.id === id,
+      );
+
+      if (!existing) {
         throw new Error(
-          'Usuário não autenticado.',
+          'RMA não encontrado.',
         );
       }
 
-      if (
-        !isSupabaseConfigured ||
-        !supabase
-      ) {
-        throw new Error(
-          'Supabase não configurado.',
-        );
-      }
+      ensureEmployeeBranch(
+        currentIdentity,
+        existing.branch_id,
+      );
 
-      let rmaDelete = supabase
+      const { error } = await supabase
         .from('rma_requests_v2')
         .delete()
         .eq('id', id)
         .eq(
           'user_id',
-          requireIdentity().companyUserId,
+          currentIdentity.companyUserId,
         );
-
-      if (requireIdentity().salespersonId) {
-        if (!requireIdentity().branchId) {
-          throw new Error(
-            'Funcionário autenticado não possui uma filial atribuída.',
-          );
-        }
-
-        rmaDelete = rmaDelete.eq(
-          'branch_id',
-          requireIdentity().branchId,
-        );
-      }
-
-      const { error } =
-        await rmaDelete;
 
       if (error) {
         throw error;
@@ -2217,104 +2190,77 @@ export function usePartnerData(
 
       setData((prev) => ({
         ...prev,
-        rmaRequests:
-          prev.rmaRequests.filter(
-            (r) => r.id !== id,
-          ),
+        rmas: prev.rmas.filter(
+          (item) => item.id !== id,
+        ),
       }));
     },
-    [identity, requireIdentity],
+    [data.rmas, requireIdentity],
   );
 
-  const addBranch = useCallback(
-    async (
-      name: string,
-      address: string,
-    ) => {
-      if (!identity) return;
+  const addCombo = useCallback(
+    async (combo: PartnerCombo) => {
+      const currentIdentity = requireIdentity();
 
-      if (requireIdentity().salespersonId) {
-        throw new Error(
-          'Funcionários não têm permissão para adicionar filiais.',
-        );
+      if (!isSupabaseConfigured || !supabase) {
+        throw new Error('Supabase não configurado.');
       }
 
-      if (
-        !isSupabaseConfigured ||
-        !supabase
-      ) {
-        throw new Error(
-          'Supabase não configurado.',
-        );
-      }
-
-      const nb: PartnerBranch = {
-        id: crypto.randomUUID(),
+      const payload = {
+        ...combo,
         user_id:
-          requireIdentity().companyUserId,
-        name,
-        address,
-        is_active: true,
-        created_at:
-          new Date().toISOString(),
+          currentIdentity.companyUserId,
       };
 
-      const {
-        error,
-      } = await supabase
-        .from('partner_branches')
-        .insert(nb);
+      const { data: created, error } =
+        await supabase
+          .from('partner_combos')
+          .insert(payload)
+          .select()
+          .single();
 
       if (error) {
         throw error;
       }
 
+      const createdCombo =
+        created as PartnerCombo;
+
       setData((prev) => ({
         ...prev,
-        branches: [
-          ...prev.branches,
-          nb,
+        combos: [
+          createdCombo,
+          ...prev.combos,
         ],
       }));
+
+      return createdCombo;
     },
-    [identity, requireIdentity],
+    [requireIdentity],
   );
 
-  const updateBranch = useCallback(
+  const updateCombo = useCallback(
     async (
       id: string,
-      updates: Pick<
-        PartnerBranch,
-        'name' | 'address'
-      >,
+      combo: Partial<PartnerCombo>,
     ) => {
-      if (!identity) return;
+      const currentIdentity = requireIdentity();
 
-      if (requireIdentity().salespersonId) {
-        throw new Error(
-          'Funcionários não têm permissão para alterar filiais.',
-        );
+      if (!isSupabaseConfigured || !supabase) {
+        throw new Error('Supabase não configurado.');
       }
 
-      if (
-        !isSupabaseConfigured ||
-        !supabase
-      ) {
-        throw new Error(
-          'Supabase não configurado.',
-        );
-      }
-
-      const {
-        error,
-      } = await supabase
-        .from('partner_branches')
-        .update(updates)
-        .eq('id', id)
-        .eq(
-          'user_id',
-          requireIdentity().companyUserId,
-        );
+      const { data: updated, error } =
+        await supabase
+          .from('partner_combos')
+          .update(combo)
+          .eq('id', id)
+          .eq(
+            'user_id',
+            currentIdentity.companyUserId,
+          )
+          .select()
+          .single();
 
       if (error) {
         throw error;
@@ -2322,49 +2268,34 @@ export function usePartnerData(
 
       setData((prev) => ({
         ...prev,
-        branches:
-          prev.branches.map(
-            (branch) =>
-              branch.id === id
-                ? {
-                    ...branch,
-                    ...updates,
-                  }
-                : branch,
-          ),
+        combos: prev.combos.map(
+          (item) =>
+            item.id === id
+              ? (updated as PartnerCombo)
+              : item,
+        ),
       }));
+
+      return updated as PartnerCombo;
     },
-    [identity, requireIdentity],
+    [requireIdentity],
   );
 
-  const deleteBranch = useCallback(
+  const deleteCombo = useCallback(
     async (id: string) => {
-      if (!identity) return;
+      const currentIdentity = requireIdentity();
 
-      if (requireIdentity().salespersonId) {
-        throw new Error(
-          'Funcionários não têm permissão para excluir filiais.',
-        );
+      if (!isSupabaseConfigured || !supabase) {
+        throw new Error('Supabase não configurado.');
       }
 
-      if (
-        !isSupabaseConfigured ||
-        !supabase
-      ) {
-        throw new Error(
-          'Supabase não configurado.',
-        );
-      }
-
-      const {
-        error,
-      } = await supabase
-        .from('partner_branches')
+      const { error } = await supabase
+        .from('partner_combos')
         .delete()
         .eq('id', id)
         .eq(
           'user_id',
-          requireIdentity().companyUserId,
+          currentIdentity.companyUserId,
         );
 
       if (error) {
@@ -2373,43 +2304,77 @@ export function usePartnerData(
 
       setData((prev) => ({
         ...prev,
-        branches:
-          prev.branches.filter(
-            (branch) =>
-              branch.id !== id,
-          ),
+        combos: prev.combos.filter(
+          (item) => item.id !== id,
+        ),
       }));
     },
-    [identity, requireIdentity],
+    [requireIdentity],
   );
 
-  const addCategory = useCallback(
-    async (name: string) => {
-      if (!identity) return;
+  const addModifier = useCallback(
+    async (modifier: PartnerModifier) => {
+      const currentIdentity = requireIdentity();
 
-      if (
-        !isSupabaseConfigured ||
-        !supabase
-      ) {
-        throw new Error(
-          'Supabase não configurado.',
-        );
+      if (!isSupabaseConfigured || !supabase) {
+        throw new Error('Supabase não configurado.');
       }
 
-      const nc: PartnerCategory = {
-        id: crypto.randomUUID(),
+      const payload = {
+        ...modifier,
         user_id:
-          requireIdentity().companyUserId,
-        name,
-        created_at:
-          new Date().toISOString(),
+          currentIdentity.companyUserId,
       };
 
-      const {
-        error,
-      } = await supabase
-        .from('partner_categories')
-        .insert(nc);
+      const { data: created, error } =
+        await supabase
+          .from('partner_modifiers')
+          .insert(payload)
+          .select()
+          .single();
+
+      if (error) {
+        throw error;
+      }
+
+      const createdModifier =
+        created as PartnerModifier;
+
+      setData((prev) => ({
+        ...prev,
+        modifiers: [
+          createdModifier,
+          ...prev.modifiers,
+        ],
+      }));
+
+      return createdModifier;
+    },
+    [requireIdentity],
+  );
+
+  const updateModifier = useCallback(
+    async (
+      id: string,
+      modifier: Partial<PartnerModifier>,
+    ) => {
+      const currentIdentity = requireIdentity();
+
+      if (!isSupabaseConfigured || !supabase) {
+        throw new Error('Supabase não configurado.');
+      }
+
+      const { data: updated, error } =
+        await supabase
+          .from('partner_modifiers')
+          .update(modifier)
+          .eq('id', id)
+          .eq(
+            'user_id',
+            currentIdentity.companyUserId,
+          )
+          .select()
+          .single();
 
       if (error) {
         throw error;
@@ -2417,41 +2382,34 @@ export function usePartnerData(
 
       setData((prev) => ({
         ...prev,
-        categories: [
-          nc,
-          ...prev.categories,
-        ],
+        modifiers: prev.modifiers.map(
+          (item) =>
+            item.id === id
+              ? (updated as PartnerModifier)
+              : item,
+        ),
       }));
+
+      return updated as PartnerModifier;
     },
-    [identity, requireIdentity],
+    [requireIdentity],
   );
 
-  const deleteCategory = useCallback(
+  const deleteModifier = useCallback(
     async (id: string) => {
-      if (!identity) {
-        throw new Error(
-          'Usuário não autenticado.',
-        );
+      const currentIdentity = requireIdentity();
+
+      if (!isSupabaseConfigured || !supabase) {
+        throw new Error('Supabase não configurado.');
       }
 
-      if (
-        !isSupabaseConfigured ||
-        !supabase
-      ) {
-        throw new Error(
-          'Supabase não configurado.',
-        );
-      }
-
-      const {
-        error,
-      } = await supabase
-        .from('partner_categories')
+      const { error } = await supabase
+        .from('partner_modifiers')
         .delete()
         .eq('id', id)
         .eq(
           'user_id',
-          requireIdentity().companyUserId,
+          currentIdentity.companyUserId,
         );
 
       if (error) {
@@ -2460,904 +2418,974 @@ export function usePartnerData(
 
       setData((prev) => ({
         ...prev,
-        categories:
-          prev.categories.filter(
-            (c) => c.id !== id,
-          ),
+        modifiers: prev.modifiers.filter(
+          (item) => item.id !== id,
+        ),
       }));
     },
-    [identity, requireIdentity],
-  );
-
-  const addSupplier = useCallback(
-    async (
-      supplier: Omit<
-        PartnerSupplier,
-        'id' |
-          'user_id' |
-          'created_at' |
-          'payable_balance'
-      >,
-      operatorId?: string | null,
-      operatorPin?: string | null,
-    ) => {
-      if (!identity) return;
-
-      if (
-        !isSupabaseConfigured ||
-        !supabase
-      ) {
-        throw new Error(
-          'Supabase não configurado. O fornecedor não foi salvo.',
-        );
-      }
-
-      const {
-        data: newId,
-        error: rpcErr,
-      } = await supabase.rpc(
-        'execute_partner_supplier_mutation',
-        {
-          p_operator_id:
-            operatorId ?? null,
-          p_operator_pin:
-            operatorPin ?? null,
-          p_supplier_id: null,
-          p_name:
-            supplier.name,
-          p_phone:
-            supplier.phone ?? null,
-          p_notes:
-            supplier.notes ?? null,
-        },
-      );
-
-      if (rpcErr) {
-        throw rpcErr;
-      }
-
-      if (!newId) {
-        throw new Error(
-          'O fornecedor foi enviado, mas o servidor não retornou o ID.',
-        );
-      }
-
-      const ns: PartnerSupplier = {
-        ...supplier,
-        id: newId as string,
-        user_id:
-          requireIdentity().companyUserId,
-        payable_balance: 0,
-        created_at:
-          new Date().toISOString(),
-      };
-
-      setData((prev) => ({
-        ...prev,
-        suppliers: [
-          ns,
-          ...prev.suppliers,
-        ],
-      }));
-    },
-    [identity, requireIdentity],
-  );
-
-  const updateSupplier = useCallback(
-    async (
-      id: string,
-      updates: Partial<PartnerSupplier>,
-      operatorId?: string | null,
-      operatorPin?: string | null,
-    ) => {
-      if (
-        !identity ||
-        !isSupabaseConfigured ||
-        !supabase
-      ) {
-        throw new Error(
-          'Supabase não configurado.',
-        );
-      }
-
-      const current =
-        data.suppliers.find(
-          (supplier) =>
-            supplier.id === id,
-        );
-
-      if (!current) {
-        throw new Error(
-          'Fornecedor não encontrado no estado atual. Atualize a página e tente novamente.',
-        );
-      }
-
-      const merged = {
-        ...current,
-        ...updates,
-      };
-
-      const {
-        error: rpcErr,
-      } = await supabase.rpc(
-        'execute_partner_supplier_mutation',
-        {
-          p_operator_id:
-            operatorId ?? null,
-          p_operator_pin:
-            operatorPin ?? null,
-          p_supplier_id:
-            id,
-          p_name:
-            merged.name,
-          p_phone:
-            merged.phone ?? null,
-          p_notes:
-            merged.notes ?? null,
-        },
-      );
-
-      if (rpcErr) {
-        throw rpcErr;
-      }
-
-      setData((prev) => ({
-        ...prev,
-        suppliers:
-          prev.suppliers.map(
-            (supplier) =>
-              supplier.id === id
-                ? merged
-                : supplier,
-          ),
-      }));
-    },
-    [identity, data.suppliers],
-  );
-
-  const deleteSupplier = useCallback(
-    async (
-      id: string,
-      operatorId?: string | null,
-      operatorPin?: string | null,
-    ) => {
-      if (
-        !identity ||
-        !isSupabaseConfigured ||
-        !supabase
-      ) {
-        throw new Error(
-          'Supabase não configurado.',
-        );
-      }
-
-      const {
-        error: rpcErr,
-      } = await supabase.rpc(
-        'execute_partner_supplier_delete',
-        {
-          p_operator_id:
-            operatorId ?? null,
-          p_operator_pin:
-            operatorPin ?? null,
-          p_supplier_id:
-            id,
-        },
-      );
-
-      if (rpcErr) {
-        throw rpcErr;
-      }
-
-      setData((prev) => ({
-        ...prev,
-        suppliers:
-          prev.suppliers.filter(
-            (supplier) =>
-              supplier.id !== id,
-          ),
-      }));
-    },
-    [identity, requireIdentity],
+    [requireIdentity],
   );
 
   const addSalesperson = useCallback(
     async (
-      sp: Omit<
-        PartnerSalesperson,
-        'id' |
-          'user_id' |
-          'created_at'
-      >,
+      salesperson: PartnerSalesperson,
       operatorId?: string | null,
       operatorPin?: string | null,
     ) => {
-      if (!identity) return;
+      const currentIdentity = requireIdentity();
 
-      if (
-        !isSupabaseConfigured ||
-        !supabase
-      ) {
+      if (!isSupabaseConfigured || !supabase) {
+        throw new Error('Supabase não configurado.');
+      }
+
+      if (currentIdentity.salespersonId) {
         throw new Error(
-          'Supabase não configurado. O colaborador não foi salvo.',
+          'Funcionários não podem cadastrar operadores.',
         );
       }
 
-      const {
-        data: newId,
-        error: rpcErr,
-      } = await supabase.rpc(
-        'execute_partner_salesperson_mutation',
-        {
-          p_operator_id:
-            operatorId ?? null,
-          p_operator_pin:
-            operatorPin ?? null,
-          p_salesperson_id:
-            null,
-          p_name:
-            sp.name,
-          p_role:
-            sp.role,
-          p_commission_rate:
-            sp.commission_rate ??
-            0,
-          p_branch_id:
-            sp.branch_id ??
-            null,
-          p_active:
-            sp.active ??
-            true,
-          p_new_pin:
-            sp.pin ?? null,
-        },
-      );
-
-      if (rpcErr) {
-        throw rpcErr;
-      }
-
-      if (!newId) {
-        throw new Error(
-          'O colaborador foi enviado, mas o servidor não retornou o ID.',
+      const { data: created, error } =
+        await supabase.rpc(
+          'execute_partner_salesperson_mutation',
+          {
+            p_salesperson_id: null,
+            p_name: salesperson.name,
+            p_role: salesperson.role,
+            p_commission_rate:
+              salesperson.commission_rate ?? 0,
+            p_phone: salesperson.phone ?? null,
+            p_email: salesperson.email ?? null,
+            p_is_active:
+              salesperson.is_active ?? true,
+            p_branch_id:
+              salesperson.branch_id ?? null,
+            p_operator_id: operatorId ?? null,
+            p_operator_pin: operatorPin ?? null,
+          },
         );
+
+      if (error) {
+        throw error;
       }
 
-      const confirmed:
-        PartnerSalesperson = {
-        ...sp,
-        id:
-          newId as string,
-        user_id:
-          requireIdentity().companyUserId,
-        created_at:
-          new Date().toISOString(),
-
-        // PIN nunca deve ficar armazenado
-        // no estado local após a gravação.
-        pin: null,
-        pin_configured:
-          Boolean(sp.pin),
-      };
+      const createdSalesperson =
+        created as PartnerSalesperson;
 
       setData((prev) => ({
         ...prev,
         salespeople: [
-          confirmed,
+          createdSalesperson,
           ...prev.salespeople,
         ],
       }));
+
+      return createdSalesperson;
     },
-    [identity, requireIdentity],
+    [requireIdentity],
   );
 
   const updateSalesperson = useCallback(
     async (
       id: string,
-      updates: Partial<PartnerSalesperson>,
+      salesperson: Partial<PartnerSalesperson>,
       operatorId?: string | null,
       operatorPin?: string | null,
     ) => {
-      if (!identity) return;
+      const currentIdentity = requireIdentity();
 
-      if (
-        !isSupabaseConfigured ||
-        !supabase
-      ) {
+      if (currentIdentity.salespersonId) {
         throw new Error(
-          'Supabase não configurado. O colaborador não foi atualizado.',
+          'Funcionários não podem alterar operadores.',
         );
       }
 
-      const current =
+      if (!isSupabaseConfigured || !supabase) {
+        throw new Error('Supabase não configurado.');
+      }
+
+      const existing =
         data.salespeople.find(
-          (salesperson) =>
-            salesperson.id === id,
+          (item) => item.id === id,
         );
 
-      if (!current) {
+      if (!existing) {
         throw new Error(
-          'Colaborador não encontrado no estado atual. Atualize a página e tente novamente.',
+          'Operador não encontrado.',
         );
       }
 
-      const merged = {
-        ...current,
-        ...updates,
-      };
+      const { data: updated, error } =
+        await supabase.rpc(
+          'execute_partner_salesperson_mutation',
+          {
+            p_salesperson_id: id,
+            p_name:
+              salesperson.name ??
+              existing.name,
+            p_role:
+              salesperson.role ??
+              existing.role,
+            p_commission_rate:
+              salesperson.commission_rate ??
+              existing.commission_rate ??
+              0,
+            p_phone:
+              salesperson.phone ??
+              existing.phone ??
+              null,
+            p_email:
+              salesperson.email ??
+              existing.email ??
+              null,
+            p_is_active:
+              salesperson.is_active ??
+              existing.is_active,
+            p_branch_id:
+              salesperson.branch_id ??
+              existing.branch_id ??
+              null,
+            p_operator_id:
+              operatorId ?? null,
+            p_operator_pin:
+              operatorPin ?? null,
+          },
+        );
 
-      const {
-        error: rpcErr,
-      } = await supabase.rpc(
-        'execute_partner_salesperson_mutation',
-        {
-          p_operator_id:
-            operatorId ?? null,
-          p_operator_pin:
-            operatorPin ?? null,
-          p_salesperson_id:
-            id,
-          p_name:
-            merged.name,
-          p_role:
-            merged.role,
-          p_commission_rate:
-            merged.commission_rate ??
-            0,
-          p_branch_id:
-            merged.branch_id ??
-            null,
-          p_active:
-            merged.active ??
-            merged.is_active ??
-            true,
-          p_new_pin:
-            updates.pin ??
-            null,
-        },
-      );
-
-      if (rpcErr) {
-        throw rpcErr;
+      if (error) {
+        throw error;
       }
+
+      const updatedSalesperson =
+        updated as PartnerSalesperson;
 
       setData((prev) => ({
         ...prev,
         salespeople:
           prev.salespeople.map(
-            (salesperson) =>
-              salesperson.id === id
-                ? {
-                    ...merged,
-                    pin: null,
-                    pin_configured:
-                      updates.pin
-                        ? true
-                        : salesperson.pin_configured ??
-                          false,
-                  }
-                : salesperson,
+            (item) =>
+              item.id === id
+                ? updatedSalesperson
+                : item,
           ),
       }));
+
+      return updatedSalesperson;
     },
-    [identity, data.salespeople],
+    [data.salespeople, requireIdentity],
   );
 
-  const deleteSalesperson =
-    useCallback(
-      async (
-        id: string,
-        operatorId?: string | null,
-        operatorPin?: string | null,
-      ) => {
-        if (
-          !isSupabaseConfigured ||
-          !supabase
-        ) {
-          throw new Error(
-            'Supabase não configurado. O colaborador não foi excluído.',
-          );
-        }
-
-        const {
-          error: rpcErr,
-        } = await supabase.rpc(
-          'execute_partner_salesperson_delete',
-          {
-            p_operator_id:
-              operatorId ?? null,
-            p_operator_pin:
-              operatorPin ?? null,
-            p_salesperson_id:
-              id,
-          },
-        );
-
-        if (rpcErr) {
-          throw rpcErr;
-        }
-
-        setData((prev) => ({
-          ...prev,
-          salespeople:
-            prev.salespeople.filter(
-              (s) => s.id !== id,
-            ),
-        }));
-      },
-      [],
-    );
-
-  const cancelSale = useCallback(
+  const deleteSalesperson = useCallback(
     async (
       id: string,
       operatorId?: string | null,
       operatorPin?: string | null,
     ) => {
-      if (
-        isSupabaseConfigured &&
-        supabase
-      ) {
-        const sale =
-          data.sales.find(
-            (s) => s.id === id,
-          );
-
-        if (!sale) {
-          throw new Error(
-            'Venda não encontrada.',
-          );
-        }
-
-        const {
-          error: rpcErr,
-        } = await supabase.rpc(
-          'execute_partner_sale_mutation',
-          {
-            p_salesperson_id:
-              operatorId ??
-              sale.salesperson_id ??
-              null,
-            p_pin:
-              operatorPin ?? null,
-            p_sale_id:
-              id,
-            p_customer_id:
-              sale.customer_id ??
-              null,
-            p_customer_name:
-              sale.customer_name ??
-              '',
-            p_items:
-              sale.items ?? [],
-            p_total:
-              sale.total ?? 0,
-            p_imei:
-              sale.imei ?? null,
-            p_serial_number:
-              sale.serial_number ??
-              null,
-            p_payment_method:
-              sale.payment_method ??
-              null,
-            p_branch_id:
-              sale.branch_id ??
-              null,
-            p_status:
-              'cancelada',
-            p_origin:
-              sale.origin ??
-              'pdv',
-            p_customer_type:
-              sale.customer_type ??
-              'varejo',
-            p_delivery_type:
-              sale.delivery_type ??
-              'balcao',
-          },
-        );
-
-        if (rpcErr) {
-          throw rpcErr;
-        }
-
-        await loadData();
-
-        return;
+      if (!isSupabaseConfigured || !supabase) {
+        throw new Error('Supabase não configurado.');
       }
 
-      setData((prev) => ({
-        ...prev,
-        sales:
-          prev.sales.map(
-            (s) =>
-              s.id === id
-                ? {
-                    ...s,
-                    status:
-                      'cancelada' as const,
-                  }
-                : s,
-          ),
-      }));
-    },
-    [data.sales, loadData],
-  );
-
-  const deleteSale = useCallback(
-    async (
-      id: string,
-      operatorId?: string | null,
-      operatorPin?: string | null,
-    ) => {
-      if (
-        !isSupabaseConfigured ||
-        !supabase
-      ) {
-        throw new Error(
-          'Supabase não configurado. A venda não foi excluída.',
-        );
-      }
-
-      const {
-        data: deleted,
-        error: rpcErr,
-      } = await supabase.rpc(
-        'execute_partner_sale_delete',
+      const { error } = await supabase.rpc(
+        'execute_partner_salesperson_delete',
         {
-          p_salesperson_id:
-            operatorId ?? null,
-          p_pin:
-            operatorPin ?? null,
-          p_sale_id:
-            id,
+          p_salesperson_id: id,
+          p_operator_id: operatorId ?? null,
+          p_operator_pin: operatorPin ?? null,
         },
       );
 
-      if (rpcErr) {
-        throw rpcErr;
-      }
-
-      if (deleted !== id) {
-        throw new Error(
-          'A exclusão da venda não foi confirmada pelo servidor.',
-        );
+      if (error) {
+        throw error;
       }
 
       setData((prev) => ({
         ...prev,
-        sales:
-          prev.sales.filter(
-            (sale) =>
-              sale.id !== id,
+        salespeople:
+          prev.salespeople.filter(
+            (item) => item.id !== id,
           ),
       }));
     },
     [],
   );
 
-  const addCombo = useCallback(
+  const createInvoice = useCallback(
     async (
-      combo: Omit<
-        PartnerCombo,
-        'id' |
-          'user_id' |
-          'created_at'
-      >,
+      invoice: PartnerInvoice,
     ) => {
-      if (!identity) return;
+      const currentIdentity = requireIdentity();
 
-      if (
-        !isSupabaseConfigured ||
-        !supabase
-      ) {
-        throw new Error(
-          'Supabase não configurado.',
-        );
+      if (!isSupabaseConfigured || !supabase) {
+        throw new Error('Supabase não configurado.');
       }
 
-      const nc: PartnerCombo = {
-        ...combo,
-        id: crypto.randomUUID(),
-        user_id:
-          requireIdentity().companyUserId,
-        created_at:
-          new Date().toISOString(),
-      };
+      ensureEmployeeBranch(
+        currentIdentity,
+        invoice.branch_id,
+      );
 
-      const {
-        error,
-      } = await supabase
-        .from('partner_combos')
-        .insert(nc);
+      const { data: created, error } =
+        await supabase
+          .from('partner_invoices')
+          .insert({
+            ...invoice,
+            user_id:
+              currentIdentity.companyUserId,
+          })
+          .select()
+          .single();
 
       if (error) {
         throw error;
       }
 
+      const createdInvoice =
+        created as PartnerInvoice;
+
       setData((prev) => ({
         ...prev,
-        combos: [
-          nc,
-          ...prev.combos,
+        invoices: [
+          createdInvoice,
+          ...prev.invoices,
         ],
       }));
+
+      return createdInvoice;
     },
-    [identity, requireIdentity],
+    [requireIdentity],
   );
 
-  const deleteCombo = useCallback(
-    async (id: string) => {
-      if (!identity) {
-        throw new Error(
-          'Usuário não autenticado.',
-        );
-      }
-
-      if (
-        !isSupabaseConfigured ||
-        !supabase
-      ) {
-        throw new Error(
-          'Supabase não configurado.',
-        );
-      }
-
-      const {
-        error,
-      } = await supabase
-        .from('partner_combos')
-        .delete()
-        .eq('id', id)
-        .eq(
-          'user_id',
-          requireIdentity().companyUserId,
-        );
-
-      if (error) {
-        throw error;
-      }
-
-      setData((prev) => ({
-        ...prev,
-        combos:
-          prev.combos.filter(
-            (c) => c.id !== id,
-          ),
-      }));
-    },
-    [identity, requireIdentity],
-  );
-
-  const addModifier = useCallback(
+  const updateInvoice = useCallback(
     async (
-      mod: Omit<
-        PartnerModifier,
-        'id' |
-          'user_id' |
-          'created_at'
-      >,
+      id: string,
+      invoice: Partial<PartnerInvoice>,
     ) => {
-      if (!identity) return;
+      const currentIdentity = requireIdentity();
 
-      if (
-        !isSupabaseConfigured ||
-        !supabase
-      ) {
-        throw new Error(
-          'Supabase não configurado.',
-        );
+      if (!isSupabaseConfigured || !supabase) {
+        throw new Error('Supabase não configurado.');
       }
 
-      const nm: PartnerModifier = {
-        ...mod,
-        id: crypto.randomUUID(),
-        user_id:
-          requireIdentity().companyUserId,
-        created_at:
-          new Date().toISOString(),
-      };
-
-      const {
-        error,
-      } = await supabase
-        .from('partner_modifiers')
-        .insert(nm);
-
-      if (error) {
-        throw error;
-      }
-
-      setData((prev) => ({
-        ...prev,
-        modifiers: [
-          nm,
-          ...prev.modifiers,
-        ],
-      }));
-    },
-    [identity, requireIdentity],
-  );
-
-  const deleteModifier =
-    useCallback(
-      async (id: string) => {
-        if (!identity) {
-          throw new Error(
-            'Usuário não autenticado.',
-          );
-        }
-
-        if (
-          !isSupabaseConfigured ||
-          !supabase
-        ) {
-          throw new Error(
-            'Supabase não configurado.',
-          );
-        }
-
-        const {
-          error,
-        } = await supabase
-          .from(
-            'partner_modifiers',
-          )
-          .delete()
-          .eq('id', id)
-          .eq(
-            'user_id',
-            requireIdentity().companyUserId,
-          );
-
-        if (error) {
-          throw error;
-        }
-
-        setData((prev) => ({
-          ...prev,
-          modifiers:
-            prev.modifiers.filter(
-              (m) => m.id !== id,
-            ),
-        }));
-      },
-      [identity, requireIdentity],
-    );
-
-  const payInvoice = useCallback(
-    async (id: string) => {
-      if (
-        !isSupabaseConfigured ||
-        !supabase ||
-        !identity
-      ) {
-        throw new Error(
-          'Supabase não configurado.',
-        );
-      }
-
-      const invoice =
+      const existing =
         data.invoices.find(
           (item) => item.id === id,
         );
 
-      if (!invoice) {
+      if (!existing) {
         throw new Error(
-          'Título não encontrado.',
+          'Fatura não encontrada.',
         );
       }
 
-      if (
-        requireIdentity().salespersonId &&
-        invoice.branch_id !==
-          requireIdentity().branchId
-      ) {
-        throw new Error(
-          'Acesso negado: o título não pertence à filial do funcionário.',
-        );
-      }
+      ensureEmployeeBranch(
+        currentIdentity,
+        invoice.branch_id ??
+          existing.branch_id,
+      );
 
-      const paidAt =
-        new Date().toISOString();
-
-      let invoiceUpdate =
-        supabase
-          .from(
-            'partner_invoices',
-          )
-          .update({
-            status: 'paga',
-            paid_amount:
-              invoice.amount,
-            paid_at: paidAt,
-          })
+      const { data: updated, error } =
+        await supabase
+          .from('partner_invoices')
+          .update(invoice)
           .eq('id', id)
           .eq(
             'user_id',
-            requireIdentity().companyUserId,
-          );
-
-      if (invoice.branch_id) {
-        invoiceUpdate =
-          invoiceUpdate.eq(
-            'branch_id',
-            invoice.branch_id,
-          );
-      }
-
-      const {
-        data: updatedInvoice,
-        error,
-      } =
-        await invoiceUpdate
-          .select('*')
-          .maybeSingle();
+            currentIdentity.companyUserId,
+          )
+          .select()
+          .single();
 
       if (error) {
         throw error;
       }
 
-      if (!updatedInvoice) {
+      setData((prev) => ({
+        ...prev,
+        invoices: prev.invoices.map(
+          (item) =>
+            item.id === id
+              ? (updated as PartnerInvoice)
+              : item,
+        ),
+      }));
+
+      return updated as PartnerInvoice;
+    },
+    [data.invoices, requireIdentity],
+  );
+
+  const addServiceOrder = useCallback(
+    async (
+      serviceOrder: ServiceOrder,
+    ) => {
+      const currentIdentity = requireIdentity();
+
+      if (!serviceOrder.branch_id) {
         throw new Error(
-          'O título não foi encontrado ou não pôde ser atualizado.',
+          'Ordem de serviço sem filial.',
         );
+      }
+
+      ensureEmployeeBranch(
+        currentIdentity,
+        serviceOrder.branch_id,
+      );
+
+      if (!isSupabaseConfigured || !supabase) {
+        throw new Error('Supabase não configurado.');
+      }
+
+      const { data: created, error } =
+        await supabase
+          .from('service_orders')
+          .insert({
+            ...serviceOrder,
+            user_id:
+              currentIdentity.companyUserId,
+          })
+          .select()
+          .single();
+
+      if (error) {
+        throw error;
+      }
+
+      const createdOrder =
+        created as ServiceOrder;
+
+      setData((prev) => ({
+        ...prev,
+        serviceOrders: [
+          createdOrder,
+          ...prev.serviceOrders,
+        ],
+      }));
+
+      return createdOrder;
+    },
+    [requireIdentity],
+  );
+
+  const updateServiceOrder = useCallback(
+    async (
+      id: string,
+      serviceOrder: Partial<ServiceOrder>,
+    ) => {
+      const currentIdentity = requireIdentity();
+
+      if (!isSupabaseConfigured || !supabase) {
+        throw new Error('Supabase não configurado.');
+      }
+
+      const existing =
+        data.serviceOrders.find(
+          (item) => item.id === id,
+        );
+
+      if (!existing) {
+        throw new Error(
+          'Ordem de serviço não encontrada.',
+        );
+      }
+
+      ensureEmployeeBranch(
+        currentIdentity,
+        serviceOrder.branch_id ??
+          existing.branch_id,
+      );
+
+      const { data: updated, error } =
+        await supabase
+          .from('service_orders')
+          .update(serviceOrder)
+          .eq('id', id)
+          .eq(
+            'user_id',
+            currentIdentity.companyUserId,
+          )
+          .select()
+          .single();
+
+      if (error) {
+        throw error;
       }
 
       setData((prev) => ({
         ...prev,
-        invoices:
-          prev.invoices.map(
-            (currentInvoice) =>
-              currentInvoice.id === id
-                ? (updatedInvoice as PartnerInvoice)
-                : currentInvoice,
+        serviceOrders:
+          prev.serviceOrders.map(
+            (item) =>
+              item.id === id
+                ? (updated as ServiceOrder)
+                : item,
+          ),
+      }));
+
+      return updated as ServiceOrder;
+    },
+    [data.serviceOrders, requireIdentity],
+  );
+
+  const updateServiceOrderStatus = useCallback(
+    async (
+      id: string,
+      status: ServiceOrderStatus,
+    ) => {
+      return updateServiceOrder(id, {
+        status,
+      });
+    },
+    [updateServiceOrder],
+  );
+
+  const updateServiceOrderApproval = useCallback(
+    async (
+      id: string,
+      approvalStatus: ServiceOrderApprovalStatus,
+    ) => {
+      return updateServiceOrder(id, {
+        approval_status:
+          approvalStatus,
+      });
+    },
+    [updateServiceOrder],
+  );
+
+  const addServiceOrderItem = useCallback(
+    async (
+      item: ServiceOrderItem,
+    ) => {
+      const currentIdentity = requireIdentity();
+
+      if (!isSupabaseConfigured || !supabase) {
+        throw new Error('Supabase não configurado.');
+      }
+
+      const order =
+        data.serviceOrders.find(
+          (serviceOrder) =>
+            serviceOrder.id ===
+            item.service_order_id,
+        );
+
+      if (!order) {
+        throw new Error(
+          'Ordem de serviço não encontrada.',
+        );
+      }
+
+      ensureEmployeeBranch(
+        currentIdentity,
+        order.branch_id,
+      );
+
+      const { data: created, error } =
+        await supabase
+          .from('service_order_items')
+          .insert({
+            ...item,
+            user_id:
+              currentIdentity.companyUserId,
+          })
+          .select()
+          .single();
+
+      if (error) {
+        throw error;
+      }
+
+      const createdItem =
+        created as ServiceOrderItem;
+
+      setData((prev) => ({
+        ...prev,
+        serviceOrderItems: [
+          createdItem,
+          ...prev.serviceOrderItems,
+        ],
+      }));
+
+      return createdItem;
+    },
+    [data.serviceOrders, requireIdentity],
+  );
+
+  const deleteServiceOrderItem = useCallback(
+    async (id: string) => {
+      const currentIdentity = requireIdentity();
+
+      if (!isSupabaseConfigured || !supabase) {
+        throw new Error('Supabase não configurado.');
+      }
+
+      const item =
+        data.serviceOrderItems.find(
+          (currentItem) =>
+            currentItem.id === id,
+        );
+
+      if (!item) {
+        throw new Error(
+          'Item da ordem de serviço não encontrado.',
+        );
+      }
+
+      const order =
+        data.serviceOrders.find(
+          (serviceOrder) =>
+            serviceOrder.id ===
+            item.service_order_id,
+        );
+
+      if (!order) {
+        throw new Error(
+          'Ordem de serviço não encontrada.',
+        );
+      }
+
+      ensureEmployeeBranch(
+        currentIdentity,
+        order.branch_id,
+      );
+
+      const { error } = await supabase
+        .from('service_order_items')
+        .delete()
+        .eq('id', id)
+        .eq(
+          'user_id',
+          currentIdentity.companyUserId,
+        );
+
+      if (error) {
+        throw error;
+      }
+
+      setData((prev) => ({
+        ...prev,
+        serviceOrderItems:
+          prev.serviceOrderItems.filter(
+            (currentItem) =>
+              currentItem.id !== id,
           ),
       }));
     },
-    [data.invoices, identity],
+    [
+      data.serviceOrderItems,
+      data.serviceOrders,
+      requireIdentity,
+    ],
+  );
+
+  const addServiceOrderPhoto = useCallback(
+    async (
+      photo: ServiceOrderPhoto,
+    ) => {
+      const currentIdentity = requireIdentity();
+
+      if (!isSupabaseConfigured || !supabase) {
+        throw new Error('Supabase não configurado.');
+      }
+
+      const order =
+        data.serviceOrders.find(
+          (serviceOrder) =>
+            serviceOrder.id ===
+            photo.service_order_id,
+        );
+
+      if (!order) {
+        throw new Error(
+          'Ordem de serviço não encontrada.',
+        );
+      }
+
+      ensureEmployeeBranch(
+        currentIdentity,
+        order.branch_id,
+      );
+
+      const { data: created, error } =
+        await supabase
+          .from('service_order_photos')
+          .insert({
+            ...photo,
+            user_id:
+              currentIdentity.companyUserId,
+          })
+          .select()
+          .single();
+
+      if (error) {
+        throw error;
+      }
+
+      const createdPhoto =
+        created as ServiceOrderPhoto;
+
+      setData((prev) => ({
+        ...prev,
+        serviceOrderPhotos: [
+          ...prev.serviceOrderPhotos,
+          createdPhoto,
+        ],
+      }));
+
+      return createdPhoto;
+    },
+    [data.serviceOrders, requireIdentity],
+  );
+
+  const deleteServiceOrderPhoto = useCallback(
+    async (id: string) => {
+      const currentIdentity = requireIdentity();
+
+      if (!isSupabaseConfigured || !supabase) {
+        throw new Error('Supabase não configurado.');
+      }
+
+      const photo =
+        data.serviceOrderPhotos.find(
+          (currentPhoto) =>
+            currentPhoto.id === id,
+        );
+
+      if (!photo) {
+        throw new Error(
+          'Foto da ordem de serviço não encontrada.',
+        );
+      }
+
+      const order =
+        data.serviceOrders.find(
+          (serviceOrder) =>
+            serviceOrder.id ===
+            photo.service_order_id,
+        );
+
+      if (!order) {
+        throw new Error(
+          'Ordem de serviço não encontrada.',
+        );
+      }
+
+      ensureEmployeeBranch(
+        currentIdentity,
+        order.branch_id,
+      );
+
+      const { error } = await supabase
+        .from('service_order_photos')
+        .delete()
+        .eq('id', id)
+        .eq(
+          'user_id',
+          currentIdentity.companyUserId,
+        );
+
+      if (error) {
+        throw error;
+      }
+
+      setData((prev) => ({
+        ...prev,
+        serviceOrderPhotos:
+          prev.serviceOrderPhotos.filter(
+            (currentPhoto) =>
+              currentPhoto.id !== id,
+          ),
+      }));
+    },
+    [
+      data.serviceOrderPhotos,
+      data.serviceOrders,
+      requireIdentity,
+    ],
+  );
+
+  const createB2BOrder = useCallback(
+    async (order: B2BOrder) => {
+      const currentIdentity = requireIdentity();
+
+      if (!order.branch_id) {
+        throw new Error(
+          'Pedido sem filial selecionada.',
+        );
+      }
+
+      ensureEmployeeBranch(
+        currentIdentity,
+        order.branch_id,
+      );
+
+      if (!isSupabaseConfigured || !supabase) {
+        throw new Error('Supabase não configurado.');
+      }
+
+      const { data: created, error } =
+        await supabase
+          .from('b2b_orders')
+          .insert({
+            ...order,
+            user_id:
+              currentIdentity.companyUserId,
+          })
+          .select()
+          .single();
+
+      if (error) {
+        throw error;
+      }
+
+      const createdOrder =
+        created as B2BOrder;
+
+      setData((prev) => ({
+        ...prev,
+        orders: [
+          createdOrder,
+          ...prev.orders,
+        ],
+      }));
+
+      return createdOrder;
+    },
+    [requireIdentity],
+  );
+
+  const updateB2BOrder = useCallback(
+    async (
+      id: string,
+      order: Partial<B2BOrder>,
+    ) => {
+      const currentIdentity = requireIdentity();
+
+      if (!isSupabaseConfigured || !supabase) {
+        throw new Error('Supabase não configurado.');
+      }
+
+      const existing =
+        data.orders.find(
+          (item) => item.id === id,
+        );
+
+      if (!existing) {
+        throw new Error(
+          'Pedido não encontrado.',
+        );
+      }
+
+      ensureEmployeeBranch(
+        currentIdentity,
+        order.branch_id ??
+          existing.branch_id,
+      );
+
+      const { data: updated, error } =
+        await supabase
+          .from('b2b_orders')
+          .update(order)
+          .eq('id', id)
+          .eq(
+            'user_id',
+            currentIdentity.companyUserId,
+          )
+          .select()
+          .single();
+
+      if (error) {
+        throw error;
+      }
+
+      setData((prev) => ({
+        ...prev,
+        orders: prev.orders.map(
+          (item) =>
+            item.id === id
+              ? (updated as B2BOrder)
+              : item,
+        ),
+      }));
+
+      return updated as B2BOrder;
+    },
+    [data.orders, requireIdentity],
+  );
+
+  const recordStockMovement = useCallback(
+    async (
+      movement: StockMovement,
+      operatorId?: string | null,
+      operatorPin?: string | null,
+    ) => {
+      const currentIdentity = requireIdentity();
+
+      if (!movement.branch_id) {
+        throw new Error(
+          'Movimentação sem filial.',
+        );
+      }
+
+      ensureEmployeeBranch(
+        currentIdentity,
+        movement.branch_id,
+      );
+
+      if (!isSupabaseConfigured || !supabase) {
+        throw new Error('Supabase não configurado.');
+      }
+
+      const { data: created, error } =
+        await supabase.rpc(
+          'record_partner_stock_movement',
+          {
+            p_product_id:
+              movement.product_id,
+            p_product_name:
+              movement.product_name,
+            p_type: movement.type,
+            p_quantity:
+              movement.quantity,
+            p_reason:
+              movement.reason,
+            p_branch_id:
+              movement.branch_id,
+            p_salesperson_id:
+              operatorId ?? null,
+            p_pin:
+              operatorPin ?? null,
+          },
+        );
+
+      if (error) {
+        throw error;
+      }
+
+      const createdMovement =
+        (created as StockMovement | null) ??
+        {
+          ...movement,
+          id: crypto.randomUUID(),
+          user_id:
+            currentIdentity.companyUserId,
+          created_at:
+            new Date().toISOString(),
+        };
+
+      setData((prev) => ({
+        ...prev,
+        movements: [
+          createdMovement,
+          ...prev.movements,
+        ],
+      }));
+
+      return createdMovement;
+    },
+    [requireIdentity],
+  );
+
+  const recordAuditLog = useCallback(
+    async (
+      action: string,
+      entityType: string,
+      entityId: string | null,
+      details: string,
+      actorRole: SalespersonRole = 'administrador',
+    ) => {
+      const currentIdentity = requireIdentity();
+
+      if (!isSupabaseConfigured || !supabase) {
+        return;
+      }
+
+      const { data: created, error } =
+        await supabase.rpc(
+          'record_partner_audit_event',
+          {
+            p_action: action,
+            p_entity_type: entityType,
+            p_entity_id:
+              entityId ?? null,
+            p_details: details,
+            p_actor_role: actorRole,
+          },
+        );
+
+      if (error) {
+        throw error;
+      }
+
+      if (created) {
+        const log =
+          created as AuditLog;
+
+        if (mountedRef.current) {
+          setData((prev) => ({
+            ...prev,
+            auditLogs: [
+              log,
+              ...prev.auditLogs,
+            ],
+          }));
+        }
+      } else {
+        void currentIdentity;
+      }
+    },
+    [requireIdentity],
+  );
+
+  const load = useCallback(
+    async () => {
+      await loadData();
+    },
+    [loadData],
   );
 
   return {
-    products: data.products,
-    customers: data.customers,
-    sales: data.sales,
-    movements: data.movements,
-    storeSettings:
-      data.storeSettings,
-    profile: data.profile,
-    orders: data.orders,
-    error: data.error,
-    rmaRequests:
-      data.rmaRequests,
-    branches: data.branches,
-    categories:
-      data.categories,
-    suppliers:
-      data.suppliers,
-    salespeople:
-      data.salespeople,
-    combos: data.combos,
-    modifiers:
-      data.modifiers,
-    invoices:
-      data.invoices,
-    loading:
-      data.loading,
+    ...data,
 
-    addProduct,
-    replenishStock,
-    updateProduct,
-    deleteProduct,
+    loading,
+    error,
+
+    isEmployee: isEmployeeIdentity(identity),
+    identity,
+
+    load,
+    loadData,
 
     addCustomer,
     updateCustomer,
-    refreshCustomer,
     deleteCustomer,
+
+    addProduct,
+    updateProduct,
+    deleteProduct,
+
+    addSupplier,
+    updateSupplier,
+    deleteSupplier,
+
+    addCategory,
+    updateCategory,
+    deleteCategory,
+
+    addBranch,
+    updateBranch,
+    deleteBranch,
 
     createSale,
     createPreSale,
     finalizePreSale,
+    cancelSale,
+    deleteSale,
+
+    replenishStock,
+    recordStockMovement,
+
+    payInvoice,
+    createInvoice,
+    updateInvoice,
 
     updateStoreSettings,
     updateProfile,
@@ -3366,30 +3394,32 @@ export function usePartnerData(
     updateRmaStatus,
     deleteRma,
 
-    addBranch,
-    updateBranch,
-    deleteBranch,
+    addCombo,
+    updateCombo,
+    deleteCombo,
 
-    addCategory,
-    deleteCategory,
-
-    addSupplier,
-    updateSupplier,
-    deleteSupplier,
+    addModifier,
+    updateModifier,
+    deleteModifier,
 
     addSalesperson,
     updateSalesperson,
     deleteSalesperson,
 
-    cancelSale,
-    deleteSale,
+    addServiceOrder,
+    updateServiceOrder,
+    updateServiceOrderStatus,
+    updateServiceOrderApproval,
 
-    addCombo,
-    deleteCombo,
+    addServiceOrderItem,
+    deleteServiceOrderItem,
 
-    addModifier,
-    deleteModifier,
+    addServiceOrderPhoto,
+    deleteServiceOrderPhoto,
 
-    payInvoice,
+    createB2BOrder,
+    updateB2BOrder,
+
+    recordAuditLog,
   };
 }
