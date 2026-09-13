@@ -16,6 +16,11 @@ type AdminPanelProps = {
 
 type AdminTab = 'lojistas' | 'financeiro' | 'faturas' | 'seguranca';
 
+function invoiceStatusStyle(status: PartnerInvoice['status']) {
+  const color = status === 'paga' ? '#5bbc87' : '#e6a06d';
+  return { color, borderColor: color };
+}
+
 export function AdminPanel({ onBack }: AdminPanelProps) {
   const [tab, setTab] = useState<AdminTab>('lojistas');
   const [lojistas, setLojistas] = useState<AdminCompany[]>([]);
@@ -63,7 +68,7 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
     }
     void loadAdminData();
     return () => { cancelled = true; };
-}, []);
+  }, []);
 
   async function updateLojista(id: string, updates: Partial<AdminCompany>) {
     setLojistas((prev) => prev.map((l) => l.id === id ? { ...l, ...updates, client_status: updates.status ?? l.client_status } : l));
@@ -75,7 +80,6 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
       });
     }
   }
-
 
   const tabs: { id: AdminTab; label: string; icon: typeof Users }[] = [
     { id: 'lojistas', label: 'Gestão de Clientes', icon: Users },
@@ -111,6 +115,7 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
 
         <div className="partner-content">
           {error && !loading && <div className="admin-load-error admin-load-error-panel" role="alert">{error}</div>}
+
           {tab === 'lojistas' && (
             <div className="panel-module">
               <div className="module-header">
@@ -183,10 +188,7 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
                         <tr key={inv.id}>
                           <td><strong>{money.format(inv.amount)}</strong></td>
                           <td>
-                            <span className="rma-status-badge" style={{
-                              color: inv.status === 'paga' ? '#5bbc87' : '#e6a06d',
-                              borderColor: inv.status === 'paga' ? '#5bbc87' : '#e6a06d',
-                            }}>{inv.status}</span>
+                            <span className="rma-status-badge" style={invoiceStatusStyle(inv.status)}>{inv.status}</span>
                           </td>
                           <td>{inv.due_date ? new Date(inv.due_date).toLocaleDateString('pt-BR') : '—'}</td>
                           <td>{inv.paid_at ? new Date(inv.paid_at).toLocaleDateString('pt-BR') : '—'}</td>
@@ -209,11 +211,10 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
 }
 
 function ChangePasswordSection({ auth }: { auth: ReturnType<typeof useSuperAdminAuth> }) {
-  const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [showCurrent, setShowCurrent] = useState(false);
   const [showNew, setShowNew] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -238,7 +239,6 @@ function ChangePasswordSection({ auth }: { auth: ReturnType<typeof useSuperAdmin
       return;
     }
     setSuccess(true);
-    setCurrentPassword('');
     setNewPassword('');
     setConfirmPassword('');
   }
@@ -261,26 +261,35 @@ function ChangePasswordSection({ auth }: { auth: ReturnType<typeof useSuperAdmin
               value={newPassword}
               onChange={(e) => { setNewPassword(e.target.value); setError(null); setSuccess(false); }}
               placeholder="Mínimo 6 caracteres"
+              autoComplete="new-password"
+              minLength={6}
               required
             />
-            <button type="button" className="password-toggle" onClick={() => setShowNew(!showNew)}>
+            <button type="button" className="password-toggle" onClick={() => setShowNew(!showNew)} aria-label={showNew ? 'Ocultar nova senha' : 'Mostrar nova senha'}>
               {showNew ? <EyeOff size={16} /> : <Eye size={16} />}
             </button>
           </div>
         </label>
         <label>
           <span className="social-label"><Lock size={14} /> Confirmar Nova Senha</span>
-          <input
-            type={showNew ? 'text' : 'password'}
-            value={confirmPassword}
-            onChange={(e) => { setConfirmPassword(e.target.value); setError(null); setSuccess(false); }}
-            placeholder="Repita a nova senha"
-            required
-          />
+          <div className="password-input-wrap">
+            <input
+              type={showConfirm ? 'text' : 'password'}
+              value={confirmPassword}
+              onChange={(e) => { setConfirmPassword(e.target.value); setError(null); setSuccess(false); }}
+              placeholder="Repita a nova senha"
+              autoComplete="new-password"
+              minLength={6}
+              required
+            />
+            <button type="button" className="password-toggle" onClick={() => setShowConfirm(!showConfirm)} aria-label={showConfirm ? 'Ocultar confirmação de senha' : 'Mostrar confirmação de senha'}>
+              {showConfirm ? <EyeOff size={16} /> : <Eye size={16} />}
+            </button>
+          </div>
         </label>
-        {error && <p className="super-admin-gate-error">{error}</p>}
+        {error && <p className="super-admin-gate-error" role="alert" aria-live="polite">{error}</p>}
         {success && (
-          <p className="super-admin-change-success">
+          <p className="super-admin-change-success" aria-live="polite">
             <Check size={14} /> Senha master atualizada com sucesso!
           </p>
         )}
