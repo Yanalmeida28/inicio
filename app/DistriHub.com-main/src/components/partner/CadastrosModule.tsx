@@ -39,7 +39,9 @@ type Props = {
   onAddSupplier: (s: Omit<PartnerSupplier, 'id' | 'user_id' | 'created_at' | 'payable_balance'>) => Promise<void>;
   onUpdateSupplier: (id: string, updates: Partial<PartnerSupplier>) => Promise<void>;
   onDeleteSupplier: (id: string) => Promise<void>;
-  onAddSalesperson: (sp: Omit<PartnerSalesperson, 'id' | 'user_id' | 'created_at'>) => Promise<void>;
+  onAddSalesperson: (
+  sp: Omit<PartnerSalesperson, 'id' | 'user_id' | 'created_at'>
+) => Promise<PartnerSalesperson>;
   onUpdateSalesperson: (id: string, updates: Partial<PartnerSalesperson>) => Promise<void>;
   onDeleteSalesperson: (id: string) => Promise<void>;
   onAddCombo: (c: Omit<PartnerCombo, 'id' | 'user_id' | 'created_at'>) => Promise<void>;
