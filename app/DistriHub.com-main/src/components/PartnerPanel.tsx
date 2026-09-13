@@ -221,7 +221,6 @@ export function PartnerPanel({
   const [currentRole, setCurrentRole] =
     useState<SalespersonRole>('administrador');
 
-  // Sessão do operador
   const [currentSalespersonId, setCurrentSalespersonId] =
     useState<string | null>(null);
   const [activeOperatorPin, setActiveOperatorPin] =
@@ -238,7 +237,7 @@ export function PartnerPanel({
   const activeSalesperson = identity?.salespersonId
     ? partner.salespeople.find(
         (salesperson) =>
-          salesperson.id === identity.salespersonId
+          salesperson.id === identity.salespersonId,
       ) ?? {
         id: identity.salespersonId,
         user_id: identity.companyUserId,
@@ -250,13 +249,14 @@ export function PartnerPanel({
         is_active: true,
         branch_id: identity.branchId,
         created_at: '',
+        updated_at: '',
       }
     : currentSalespersonId
-    ? partner.salespeople.find(
-        (salesperson) =>
-          salesperson.id === currentSalespersonId
-      )
-    : null;
+      ? partner.salespeople.find(
+          (salesperson) =>
+            salesperson.id === currentSalespersonId,
+        )
+      : null;
 
   const isEmployeeRestricted = Boolean(identity?.salespersonId);
 
@@ -275,10 +275,6 @@ export function PartnerPanel({
     setCurrentRole(effectiveRole);
   }, [effectiveRole]);
 
-  /**
-   * Funcionários ficam permanentemente vinculados
-   * à filial definida pela identidade autenticada.
-   */
   useEffect(() => {
     if (
       isEmployeeRestricted &&
@@ -296,7 +292,7 @@ export function PartnerPanel({
   useEffect(() => {
     if (initialTab) {
       const validTab = allTabs.find(
-        (tab) => tab.id === initialTab
+        (tab) => tab.id === initialTab,
       );
 
       if (validTab) {
@@ -334,18 +330,18 @@ export function PartnerPanel({
 
   const visibleTabs = useMemo(() => {
     return allTabs.filter(
-      (tab) => !blockedTabs.includes(tab.id)
+      (tab) => !blockedTabs.includes(tab.id),
     );
   }, [blockedTabs]);
 
   useEffect(() => {
     if (
       !visibleTabs.some(
-        (tab) => tab.id === activeTab
+        (tab) => tab.id === activeTab,
       )
     ) {
       setActiveTab(
-        visibleTabs[0]?.id ?? 'pdv'
+        visibleTabs[0]?.id ?? 'pdv',
       );
     }
   }, [visibleTabs, activeTab]);
@@ -357,16 +353,10 @@ export function PartnerPanel({
 
     return (
       partner.branches.find(
-        (branch) => branch.id === lockedBranchId
+        (branch) => branch.id === lockedBranchId,
       ) ?? null
     );
   }, [partner.branches, lockedBranchId]);
-
-  /*
-   * ==========================================================
-   * FILTROS POR FILIAL
-   * ==========================================================
-   */
 
   const filteredProducts = useMemo(() => {
     if (!effectiveBranchId) {
@@ -375,7 +365,7 @@ export function PartnerPanel({
 
     return partner.products.filter(
       (product) =>
-        product.branch_id === effectiveBranchId
+        product.branch_id === effectiveBranchId,
     );
   }, [partner.products, effectiveBranchId]);
 
@@ -386,7 +376,7 @@ export function PartnerPanel({
 
     return partner.sales.filter(
       (sale) =>
-        sale.branch_id === effectiveBranchId
+        sale.branch_id === effectiveBranchId,
     );
   }, [partner.sales, effectiveBranchId]);
 
@@ -398,7 +388,7 @@ export function PartnerPanel({
     return partner.customers.filter(
       (customer) =>
         !customer.branch_id ||
-        customer.branch_id === effectiveBranchId
+        customer.branch_id === effectiveBranchId,
     );
   }, [partner.customers, effectiveBranchId]);
 
@@ -410,7 +400,7 @@ export function PartnerPanel({
     return partner.rmaRequests.filter(
       (request) =>
         !request.branch_id ||
-        request.branch_id === effectiveBranchId
+        request.branch_id === effectiveBranchId,
     );
   }, [partner.rmaRequests, effectiveBranchId]);
 
@@ -422,7 +412,7 @@ export function PartnerPanel({
     return partner.invoices.filter(
       (invoice) =>
         !invoice.branch_id ||
-        invoice.branch_id === effectiveBranchId
+        invoice.branch_id === effectiveBranchId,
     );
   }, [partner.invoices, effectiveBranchId]);
 
@@ -434,7 +424,7 @@ export function PartnerPanel({
     return partner.orders.filter(
       (order) =>
         !order.branch_id ||
-        order.branch_id === effectiveBranchId
+        order.branch_id === effectiveBranchId,
     );
   }, [partner.orders, effectiveBranchId]);
 
@@ -446,25 +436,9 @@ export function PartnerPanel({
     return partner.salespeople.filter(
       (salesperson) =>
         !salesperson.branch_id ||
-        salesperson.branch_id === effectiveBranchId
+        salesperson.branch_id === effectiveBranchId,
     );
   }, [partner.salespeople, effectiveBranchId]);
-
-  /*
-   * ==========================================================
-   * CONTEXTO DO OPERADOR
-   * ==========================================================
-   *
-   * IMPORTANTE:
-   * Não existe mais fallback para salesperson.pin.
-   *
-   * O PIN só existe:
-   * - enquanto informado pelo usuário;
-   * - dentro de activeOperatorPin;
-   * - e é enviado para a RPC quando necessário.
-   *
-   * Nunca tentamos recuperar PIN salvo do banco.
-   */
 
   function getOperatorContext() {
     const operatorId =
@@ -478,52 +452,53 @@ export function PartnerPanel({
     };
   }
 
-  /*
-   * ==========================================================
-   * SELEÇÃO DE FILIAL
-   * ==========================================================
-   *
-   * ESTA FUNÇÃO É EXCLUSIVAMENTE PARA SELEÇÃO.
-   *
-   * Nunca chama deleteBranch.
-   * Nunca executa operação destrutiva.
-   */
-
   function handleSelectBranch(id: string) {
-    if (!id) {
-      return;
+    if (isEmployeeRestricted) {
+      if (
+        !lockedBranchId
+      ) {
+        window.alert(
+          'Acesso negado: seu usuário não possui uma filial vinculada.',
+        );
+        return;
+      }
+
+      if (id !== lockedBranchId) {
+        window.alert(
+          'Acesso negado: você só pode acessar a filial vinculada ao seu usuário.',
+        );
+        return;
+      }
     }
 
-    if (
-      isEmployeeRestricted &&
-      lockedBranchId &&
-      id !== lockedBranchId
-    ) {
-      window.alert(
-        'Acesso negado: você só pode acessar a filial vinculada ao seu usuário.'
-      );
+    /*
+     * ID vazio representa Visão Consolidada.
+     * Isso é permitido apenas para proprietário/admin.
+     */
+    if (!id) {
+      if (isEmployeeRestricted) {
+        return;
+      }
+
+      setSelectedBranchId('');
+      setCurrentSalespersonId(null);
+      setActiveOperatorPin(null);
       return;
     }
 
     const branchExists = partner.branches.some(
-      (branch) => branch.id === id
+      (branch) => branch.id === id,
     );
 
     if (!branchExists) {
       window.alert(
-        'A filial selecionada não foi encontrada.'
+        'A filial selecionada não foi encontrada.',
       );
       return;
     }
 
     setSelectedBranchId(id);
 
-    /*
-     * Se o operador atual pertence a outra filial,
-     * limpamos a sessão manual do operador.
-     *
-     * Não afetamos a identidade autenticada do funcionário.
-     */
     if (
       currentSalespersonId &&
       !isEmployeeRestricted
@@ -531,7 +506,7 @@ export function PartnerPanel({
       const currentOperator =
         partner.salespeople.find(
           (salesperson) =>
-            salesperson.id === currentSalespersonId
+            salesperson.id === currentSalespersonId,
         );
 
       if (
@@ -544,17 +519,11 @@ export function PartnerPanel({
     }
   }
 
-  /*
-   * ==========================================================
-   * PRODUTOS
-   * ==========================================================
-   */
-
   async function handleAddProduct(
     product: Omit<
       PartnerProduct,
       'id' | 'user_id' | 'created_at' | 'updated_at'
-    >
+    >,
   ) {
     const targetBranch = isEmployeeRestricted
       ? effectiveBranchId
@@ -562,7 +531,7 @@ export function PartnerPanel({
 
     if (!targetBranch) {
       window.alert(
-        'Selecione uma filial antes de cadastrar produtos.'
+        'Selecione uma filial antes de cadastrar produtos.',
       );
       return;
     }
@@ -572,7 +541,7 @@ export function PartnerPanel({
       targetBranch !== effectiveBranchId
     ) {
       window.alert(
-        'Acesso negado: você só pode cadastrar produtos na sua filial vinculada.'
+        'Acesso negado: você só pode cadastrar produtos na sua filial vinculada.',
       );
       return;
     }
@@ -588,15 +557,15 @@ export function PartnerPanel({
         branch_id: targetBranch,
       },
       operatorId,
-      operatorPin
+      operatorPin,
     );
   }
 
   async function handleDeleteProduct(
-    id: string
+    id: string,
   ) {
     const target = partner.products.find(
-      (product) => product.id === id
+      (product) => product.id === id,
     );
 
     if (
@@ -606,7 +575,7 @@ export function PartnerPanel({
       target.branch_id !== effectiveBranchId
     ) {
       window.alert(
-        'Acesso negado: você não tem permissão para excluir produtos de outra filial.'
+        'Acesso negado: você não tem permissão para excluir produtos de outra filial.',
       );
       return;
     }
@@ -619,21 +588,21 @@ export function PartnerPanel({
     await partner.deleteProduct(
       id,
       operatorId,
-      operatorPin
+      operatorPin,
     );
   }
 
   async function handleUpdateProduct(
     id: string,
-    updates: Partial<PartnerProduct>
+    updates: Partial<PartnerProduct>,
   ) {
     const target = partner.products.find(
-      (product) => product.id === id
+      (product) => product.id === id,
     );
 
     if (!target) {
       throw new Error(
-        'Produto não encontrado.'
+        'Produto não encontrado.',
       );
     }
 
@@ -643,7 +612,7 @@ export function PartnerPanel({
       target.branch_id !== effectiveBranchId
     ) {
       throw new Error(
-        'Acesso negado: você não pode alterar produtos de outra filial.'
+        'Acesso negado: você não pode alterar produtos de outra filial.',
       );
     }
 
@@ -661,7 +630,7 @@ export function PartnerPanel({
           effectiveBranchId,
       },
       operatorId,
-      operatorPin
+      operatorPin,
     );
   }
 
@@ -670,30 +639,45 @@ export function PartnerPanel({
     branchId: string,
     quantity: number,
     unitCost?: number | null,
-    reason?: string
+    reason?: string,
   ) {
+    if (
+      isEmployeeRestricted &&
+      (!lockedBranchId ||
+        branchId !== lockedBranchId)
+    ) {
+      throw new Error(
+        'Acesso negado: você só pode repor estoque na filial vinculada ao seu usuário.',
+      );
+    }
+
+    if (!branchId) {
+      throw new Error(
+        'Filial inválida para reposição de estoque.',
+      );
+    }
+
+    const {
+      operatorId,
+      operatorPin,
+    } = getOperatorContext();
+
     return partner.replenishStock(
       productId,
       branchId,
       quantity,
       unitCost,
       reason,
-      currentSalespersonId,
-      activeOperatorPin
+      operatorId,
+      operatorPin,
     );
   }
-
-  /*
-   * ==========================================================
-   * CLIENTES
-   * ==========================================================
-   */
 
   async function handleAddCustomer(
     customer: Omit<
       PartnerCustomer,
       'id' | 'user_id' | 'created_at'
-    >
+    >,
   ) {
     const targetBranch = isEmployeeRestricted
       ? effectiveBranchId
@@ -702,7 +686,7 @@ export function PartnerPanel({
 
     if (!targetBranch) {
       window.alert(
-        'Selecione uma filial antes de cadastrar clientes.'
+        'Selecione uma filial antes de cadastrar clientes.',
       );
       return;
     }
@@ -712,7 +696,7 @@ export function PartnerPanel({
       targetBranch !== effectiveBranchId
     ) {
       window.alert(
-        'Acesso negado: você só pode cadastrar clientes na sua filial vinculada.'
+        'Acesso negado: você só pode cadastrar clientes na sua filial vinculada.',
       );
       return;
     }
@@ -728,16 +712,16 @@ export function PartnerPanel({
         branch_id: targetBranch,
       },
       operatorId,
-      operatorPin
+      operatorPin,
     );
   }
 
   async function handleUpdateCustomer(
     id: string,
-    updates: Partial<PartnerCustomer>
+    updates: Partial<PartnerCustomer>,
   ) {
     const target = partner.customers.find(
-      (customer) => customer.id === id
+      (customer) => customer.id === id,
     );
 
     if (
@@ -747,7 +731,7 @@ export function PartnerPanel({
       target.branch_id !== effectiveBranchId
     ) {
       window.alert(
-        'Acesso negado: você não tem permissão para alterar clientes de outra filial.'
+        'Acesso negado: você não tem permissão para alterar clientes de outra filial.',
       );
       return;
     }
@@ -766,15 +750,15 @@ export function PartnerPanel({
           }
         : updates,
       operatorId,
-      operatorPin
+      operatorPin,
     );
   }
 
   async function handleDeleteCustomer(
-    id: string
+    id: string,
   ) {
     const target = partner.customers.find(
-      (customer) => customer.id === id
+      (customer) => customer.id === id,
     );
 
     if (
@@ -784,7 +768,7 @@ export function PartnerPanel({
       target.branch_id !== effectiveBranchId
     ) {
       window.alert(
-        'Acesso negado: você não tem permissão para excluir clientes desta filial.'
+        'Acesso negado: você não tem permissão para excluir clientes desta filial.',
       );
       return;
     }
@@ -797,21 +781,15 @@ export function PartnerPanel({
     await partner.deleteCustomer(
       id,
       operatorId,
-      operatorPin
+      operatorPin,
     );
   }
-
-  /*
-   * ==========================================================
-   * FORNECEDORES
-   * ==========================================================
-   */
 
   async function handleAddSupplier(
     supplier: Omit<
       PartnerSupplier,
       'id' | 'user_id' | 'created_at' | 'payable_balance'
-    >
+    >,
   ) {
     const {
       operatorId,
@@ -821,13 +799,13 @@ export function PartnerPanel({
     await partner.addSupplier(
       supplier,
       operatorId,
-      operatorPin
+      operatorPin,
     );
   }
 
   async function handleUpdateSupplier(
     id: string,
-    updates: Partial<PartnerSupplier>
+    updates: Partial<PartnerSupplier>,
   ) {
     const {
       operatorId,
@@ -838,12 +816,12 @@ export function PartnerPanel({
       id,
       updates,
       operatorId,
-      operatorPin
+      operatorPin,
     );
   }
 
   async function handleDeleteSupplier(
-    id: string
+    id: string,
   ) {
     const {
       operatorId,
@@ -853,21 +831,15 @@ export function PartnerPanel({
     await partner.deleteSupplier(
       id,
       operatorId,
-      operatorPin
+      operatorPin,
     );
   }
-
-  /*
-   * ==========================================================
-   * FUNCIONÁRIOS
-   * ==========================================================
-   */
 
   async function handleAddSalesperson(
     salesperson: Omit<
       PartnerSalesperson,
       'id' | 'user_id' | 'created_at'
-    >
+    >,
   ) {
     const {
       operatorId,
@@ -877,13 +849,13 @@ export function PartnerPanel({
     await partner.addSalesperson(
       salesperson,
       operatorId,
-      operatorPin
+      operatorPin,
     );
   }
 
   async function handleUpdateSalesperson(
     id: string,
-    updates: Partial<PartnerSalesperson>
+    updates: Partial<PartnerSalesperson>,
   ) {
     const {
       operatorId,
@@ -894,12 +866,12 @@ export function PartnerPanel({
       id,
       updates,
       operatorId,
-      operatorPin
+      operatorPin,
     );
   }
 
   async function handleDeleteSalesperson(
-    id: string
+    id: string,
   ) {
     const {
       operatorId,
@@ -909,15 +881,9 @@ export function PartnerPanel({
     await partner.deleteSalesperson(
       id,
       operatorId,
-      operatorPin
+      operatorPin,
     );
   }
-
-  /*
-   * ==========================================================
-   * VENDAS
-   * ==========================================================
-   */
 
   async function handleCreateSale(
     sale: {
@@ -932,7 +898,7 @@ export function PartnerPanel({
       payment_method?: string;
       salesperson_id?: string | null;
       branch_id?: string | null;
-    }
+    },
   ) {
     const targetBranch = isEmployeeRestricted
       ? effectiveBranchId
@@ -941,7 +907,7 @@ export function PartnerPanel({
 
     if (!targetBranch) {
       window.alert(
-        'Selecione uma filial para realizar a venda.'
+        'Selecione uma filial para realizar a venda.',
       );
       return;
     }
@@ -951,7 +917,7 @@ export function PartnerPanel({
       targetBranch !== effectiveBranchId
     ) {
       window.alert(
-        'Acesso negado: você só pode realizar vendas na sua filial vinculada.'
+        'Acesso negado: você só pode realizar vendas na sua filial vinculada.',
       );
       return;
     }
@@ -970,7 +936,7 @@ export function PartnerPanel({
           : sale.salesperson_id || null,
       },
       operatorId,
-      operatorPin
+      operatorPin,
     );
   }
 
@@ -986,7 +952,7 @@ export function PartnerPanel({
       serial_number?: string;
       salesperson_id?: string | null;
       branch_id?: string | null;
-    }
+    },
   ) {
     const targetBranch = isEmployeeRestricted
       ? effectiveBranchId
@@ -995,7 +961,7 @@ export function PartnerPanel({
 
     if (!targetBranch) {
       window.alert(
-        'Selecione uma filial para criar a pré-venda.'
+        'Selecione uma filial para criar a pré-venda.',
       );
       return;
     }
@@ -1005,7 +971,7 @@ export function PartnerPanel({
       targetBranch !== effectiveBranchId
     ) {
       window.alert(
-        'Acesso negado: você só pode criar pré-vendas na sua filial vinculada.'
+        'Acesso negado: você só pode criar pré-vendas na sua filial vinculada.',
       );
       return;
     }
@@ -1024,26 +990,32 @@ export function PartnerPanel({
           : sale.salesperson_id || null,
       },
       operatorId,
-      operatorPin
+      operatorPin,
     );
   }
 
   async function handleFinalizePreSale(
     id: string,
-    paymentMethod: string
+    paymentMethod: string,
   ) {
     const sale = partner.sales.find(
-      (item) => item.id === id
+      (item) => item.id === id,
     );
+
+    if (!sale) {
+      window.alert(
+        'Pré-venda não encontrada.',
+      );
+      return;
+    }
 
     if (
       isEmployeeRestricted &&
-      sale &&
-      sale.branch_id &&
-      sale.branch_id !== effectiveBranchId
+      (!lockedBranchId ||
+        sale.branch_id !== lockedBranchId)
     ) {
       window.alert(
-        'Acesso negado: você só pode finalizar pré-vendas da sua filial vinculada.'
+        'Acesso negado: você só pode finalizar pré-vendas da sua filial vinculada.',
       );
       return;
     }
@@ -1057,25 +1029,31 @@ export function PartnerPanel({
       id,
       paymentMethod,
       operatorId,
-      operatorPin
+      operatorPin,
     );
   }
 
   async function handleCancelSale(
-    id: string
+    id: string,
   ) {
     const sale = partner.sales.find(
-      (item) => item.id === id
+      (item) => item.id === id,
     );
+
+    if (!sale) {
+      window.alert(
+        'Venda não encontrada.',
+      );
+      return;
+    }
 
     if (
       isEmployeeRestricted &&
-      sale &&
-      sale.branch_id &&
-      sale.branch_id !== effectiveBranchId
+      (!lockedBranchId ||
+        sale.branch_id !== lockedBranchId)
     ) {
       window.alert(
-        'Acesso negado: você não pode cancelar vendas de outra filial.'
+        'Acesso negado: você não pode cancelar vendas de outra filial.',
       );
       return;
     }
@@ -1088,25 +1066,31 @@ export function PartnerPanel({
     await partner.cancelSale(
       id,
       operatorId,
-      operatorPin
+      operatorPin,
     );
   }
 
   async function handleDeleteSale(
-    id: string
+    id: string,
   ) {
     const sale = partner.sales.find(
-      (item) => item.id === id
+      (item) => item.id === id,
     );
+
+    if (!sale) {
+      window.alert(
+        'Venda não encontrada.',
+      );
+      return;
+    }
 
     if (
       isEmployeeRestricted &&
-      sale &&
-      sale.branch_id &&
-      sale.branch_id !== effectiveBranchId
+      (!lockedBranchId ||
+        sale.branch_id !== lockedBranchId)
     ) {
       window.alert(
-        'Acesso negado: você não pode excluir vendas de outra filial.'
+        'Acesso negado: você não pode excluir vendas de outra filial.',
       );
       return;
     }
@@ -1119,23 +1103,34 @@ export function PartnerPanel({
     await partner.deleteSale(
       id,
       operatorId,
-      operatorPin
+      operatorPin,
     );
   }
 
-  /*
-   * ==========================================================
-   * RMA
-   * ==========================================================
-   */
-
   async function handleCreateRma(
-    rma: RmaPayload
+    rma: RmaPayload,
   ) {
     const targetBranch = isEmployeeRestricted
       ? effectiveBranchId
       : rma.branch_id ||
         effectiveBranchId;
+
+    if (isEmployeeRestricted && !targetBranch) {
+      window.alert(
+        'Acesso negado: seu usuário não possui uma filial válida vinculada.',
+      );
+      return;
+    }
+
+    if (
+      isEmployeeRestricted &&
+      targetBranch !== effectiveBranchId
+    ) {
+      window.alert(
+        'Acesso negado: você só pode criar RMA na sua filial vinculada.',
+      );
+      return;
+    }
 
     await partner.createRma({
       ...rma,
@@ -1143,37 +1138,31 @@ export function PartnerPanel({
     });
   }
 
-  /*
-   * ==========================================================
-   * FILIAIS — CRUD
-   * ==========================================================
-   */
-
   async function handleAddBranch(
     name: string,
-    address: string
+    address: string,
   ) {
     if (isEmployeeRestricted) {
       window.alert(
-        'Funcionários não têm permissão para adicionar novas filiais.'
+        'Funcionários não têm permissão para adicionar novas filiais.',
       );
       return;
     }
 
     await partner.addBranch(
       name,
-      address
+      address,
     );
   }
 
   async function handleUpdateBranch(
     id: string,
     name: string,
-    address: string
+    address: string,
   ) {
     if (isEmployeeRestricted) {
       window.alert(
-        'Funcionários não têm permissão para alterar filiais.'
+        'Funcionários não têm permissão para alterar filiais.',
       );
       return;
     }
@@ -1183,16 +1172,16 @@ export function PartnerPanel({
       {
         name,
         address,
-      }
+      },
     );
   }
 
   async function handleDeleteBranch(
-    id: string
+    id: string,
   ) {
     if (isEmployeeRestricted) {
       window.alert(
-        'Funcionários não têm permissão para excluir filiais.'
+        'Funcionários não têm permissão para excluir filiais.',
       );
       return;
     }
@@ -1206,27 +1195,14 @@ export function PartnerPanel({
     }
   }
 
-  /*
-   * ==========================================================
-   * OPERADOR
-   * ==========================================================
-   */
-
   function openOperatorModal() {
-    /*
-     * Funcionário autenticado não deve ser convertido
-     * em proprietário simplesmente pelo front-end.
-     *
-     * Para funcionário, o operador permanece sendo
-     * a identidade autenticada.
-     */
     if (isEmployeeRestricted) {
       setSelectedOperatorId(
-        identity?.salespersonId ?? 'owner'
+        identity?.salespersonId ?? 'owner',
       );
     } else {
       setSelectedOperatorId(
-        currentSalespersonId ?? 'owner'
+        currentSalespersonId ?? 'owner',
       );
     }
 
@@ -1238,19 +1214,22 @@ export function PartnerPanel({
   async function handleConfirmOperator() {
     setOperatorPinError('');
 
-    /*
-     * Funcionário autenticado:
-     *
-     * não pode selecionar "Proprietário / Administrador"
-     * artificialmente pelo front-end.
-     */
     if (isEmployeeRestricted) {
       const employeeId =
         identity?.salespersonId;
 
       if (!employeeId) {
         setOperatorPinError(
-          'Identidade do funcionário inválida.'
+          'Identidade do funcionário inválida.',
+        );
+        return;
+      }
+
+      if (
+        !identity?.branchId
+      ) {
+        setOperatorPinError(
+          'Funcionário sem filial vinculada.',
         );
         return;
       }
@@ -1259,22 +1238,19 @@ export function PartnerPanel({
         selectedOperatorId !== employeeId
       ) {
         setOperatorPinError(
-          'Funcionários só podem operar com sua própria identidade.'
+          'Funcionários só podem operar com sua própria identidade.',
         );
         return;
       }
 
       setCurrentSalespersonId(
-        employeeId
+        employeeId,
       );
       setActiveOperatorPin(null);
       setShowOperatorModal(false);
       return;
     }
 
-    /*
-     * Proprietário / administrador geral.
-     */
     if (
       selectedOperatorId === 'owner' ||
       !selectedOperatorId
@@ -1289,20 +1265,16 @@ export function PartnerPanel({
       partner.salespeople.find(
         (salesperson) =>
           salesperson.id ===
-          selectedOperatorId
+          selectedOperatorId,
       );
 
     if (!targetSalesperson) {
       setOperatorPinError(
-        'Operador não encontrado.'
+        'Operador não encontrado.',
       );
       return;
     }
 
-    /*
-     * Se o operador estiver vinculado a uma filial,
-     * ele só pode ser utilizado nessa filial.
-     */
     if (
       targetSalesperson.branch_id &&
       effectiveBranchId &&
@@ -1310,7 +1282,7 @@ export function PartnerPanel({
         effectiveBranchId
     ) {
       setOperatorPinError(
-        'Este operador pertence a outra filial.'
+        'Este operador pertence a outra filial.',
       );
       return;
     }
@@ -1320,14 +1292,14 @@ export function PartnerPanel({
 
     if (!/^\d{4,8}$/.test(pin)) {
       setOperatorPinError(
-        'Digite o PIN de 4 a 8 dígitos.'
+        'Digite o PIN de 4 a 8 dígitos.',
       );
       return;
     }
 
     if (!supabase) {
       setOperatorPinError(
-        'Não foi possível conectar ao sistema. Tente novamente.'
+        'Não foi possível conectar ao sistema. Tente novamente.',
       );
       return;
     }
@@ -1348,17 +1320,17 @@ export function PartnerPanel({
         p_pin: pin,
         p_requested_branch_id:
           requestedBranchId,
-      }
+      },
     );
 
     if (operatorError) {
       console.error(
         'Erro ao validar operador:',
-        operatorError
+        operatorError,
       );
 
       setOperatorPinError(
-        'PIN incorreto ou operador sem acesso a esta filial.'
+        'PIN incorreto ou operador sem acesso a esta filial.',
       );
 
       return;
@@ -1370,38 +1342,26 @@ export function PartnerPanel({
         operator.length === 0)
     ) {
       setOperatorPinError(
-        'PIN incorreto ou operador inválido.'
+        'PIN incorreto ou operador inválido.',
       );
 
       return;
     }
 
     setCurrentSalespersonId(
-      targetSalesperson.id
+      targetSalesperson.id,
     );
 
-    /*
-     * O PIN existe somente em memória durante
-     * a sessão do operador.
-     *
-     * Nunca recuperamos PIN do banco.
-     */
     setActiveOperatorPin(pin);
 
     if (targetSalesperson.branch_id) {
       setSelectedBranchId(
-        targetSalesperson.branch_id
+        targetSalesperson.branch_id,
       );
     }
 
     setShowOperatorModal(false);
   }
-
-  /*
-   * ==========================================================
-   * CONFIGURAÇÕES
-   * ==========================================================
-   */
 
   const defaultSettings: StoreSettings = {
     id: 'default',
@@ -1424,12 +1384,6 @@ export function PartnerPanel({
     partner.storeSettings ??
     defaultSettings;
 
-  /*
-   * ==========================================================
-   * ERRO DE IDENTIDADE
-   * ==========================================================
-   */
-
   if (identityError) {
     return (
       <div className="partner-panel">
@@ -1447,13 +1401,12 @@ export function PartnerPanel({
 
   return (
     <div className="partner-panel sidebar-layout">
-
       <div className="sidebar-mobile-bar">
         <button
           className="sidebar-toggle"
           onClick={() =>
             setSidebarOpen(
-              !sidebarOpen
+              !sidebarOpen,
             )
           }
           aria-label="Menu"
@@ -1471,7 +1424,7 @@ export function PartnerPanel({
           {
             visibleTabs.find(
               (tab) =>
-                tab.id === activeTab
+                tab.id === activeTab,
             )?.label
           }
         </span>
@@ -1603,7 +1556,7 @@ export function PartnerPanel({
                     ? partner.branches.find(
                         (branch) =>
                           branch.id ===
-                          effectiveBranchId
+                          effectiveBranchId,
                       )?.name ??
                       'Filial selecionada'
                     : 'Todas as filiais'}
@@ -1648,7 +1601,7 @@ export function PartnerPanel({
                 <Icon size={20} />
                 {label}
               </button>
-            )
+            ),
           )}
         </nav>
 
@@ -1663,24 +1616,12 @@ export function PartnerPanel({
 
       <div className="sidebar-main">
         <div className="sidebar-main-inner">
-
           {partner.error && (
             <p className="partner-loading">
               {partner.error}
             </p>
           )}
 
-          {/*
-           * CORREÇÃO CRÍTICA:
-           *
-           * Antes:
-           * onSelectBranch={handleDeleteBranch}
-           *
-           * Agora:
-           * onSelectBranch={handleSelectBranch}
-           *
-           * Selecionar uma filial NUNCA executa exclusão.
-           */}
           <MultiStoreModule
             branches={
               partner.branches
@@ -1709,7 +1650,6 @@ export function PartnerPanel({
           />
 
           <div className="partner-content">
-
             {activeTab === 'cadastros' && (
               <CadastrosModule
                 products={
@@ -1901,13 +1841,13 @@ export function PartnerPanel({
                   ''
                 }
                 onUpdateWarrantyTerms={(
-                  value
+                  value,
                 ) =>
                   partner.updateStoreSettings(
                     {
                       warranty_terms:
                         value,
-                    }
+                    },
                   )
                 }
               />
@@ -1979,22 +1919,12 @@ export function PartnerPanel({
                 selectedBranchId={
                   effectiveBranchId
                 }
-
-                /*
-                 * CORREÇÃO CRÍTICA:
-                 *
-                 * AdminModule também recebe a função
-                 * exclusiva de seleção.
-                 *
-                 * Nunca handleDeleteBranch.
-                 */
                 onSelectBranch={
                   handleSelectBranch
                 }
-
                 onNavigate={(tab) =>
                   handleTabClick(
-                    tab as Tab
+                    tab as Tab,
                   )
                 }
               />
@@ -2022,40 +1952,40 @@ export function PartnerPanel({
                 }
                 walletBalance={0}
                 creditLimit={
-                  partner.customers.reduce(
+                  filteredCustomers.reduce(
                     (
                       sum,
-                      customer
+                      customer,
                     ) =>
                       sum +
                       Number(
                         customer.credit_limit ??
-                          0
+                          0,
                       ),
-                    0
+                    0,
                   )
                 }
                 creditUsed={
-                  partner.invoices
+                  filteredInvoices
                     .filter(
                       (invoice) =>
                         invoice.status ===
-                        'aberta'
+                        'aberta',
                     )
                     .reduce(
                       (
                         sum,
-                        invoice
+                        invoice,
                       ) =>
                         sum +
                         Number(
-                          invoice.amount
+                          invoice.amount,
                         ) -
                         Number(
                           invoice.paid_amount ??
-                            0
+                            0,
                         ),
-                      0
+                      0,
                     )
                 }
                 onPayInvoice={
@@ -2128,7 +2058,6 @@ export function PartnerPanel({
                 }
               />
             )}
-
           </div>
         </div>
       </div>
@@ -2158,7 +2087,7 @@ export function PartnerPanel({
               <button
                 onClick={() =>
                   setShowOperatorModal(
-                    false
+                    false,
                   )
                 }
               >
@@ -2177,15 +2106,15 @@ export function PartnerPanel({
                   }
                   onChange={(event) => {
                     setSelectedOperatorId(
-                      event.target.value
+                      event.target.value,
                     );
 
                     setOperatorPinInput(
-                      ''
+                      '',
                     );
 
                     setOperatorPinError(
-                      ''
+                      '',
                     );
                   }}
                   disabled={
@@ -2204,7 +2133,7 @@ export function PartnerPanel({
                         partner.branches.find(
                           (branch) =>
                             branch.id ===
-                            salesperson.branch_id
+                            salesperson.branch_id,
                         );
 
                       const branchText =
@@ -2228,7 +2157,7 @@ export function PartnerPanel({
                           {branchText}
                         </option>
                       );
-                    }
+                    },
                   )}
                 </select>
               </label>
@@ -2252,20 +2181,20 @@ export function PartnerPanel({
                         operatorPinInput
                       }
                       onChange={(
-                        event
+                        event,
                       ) => {
                         const value =
                           event.target.value.replace(
                             /\D/g,
-                            ''
+                            '',
                           );
 
                         setOperatorPinInput(
-                          value
+                          value,
                         );
 
                         setOperatorPinError(
-                          ''
+                          '',
                         );
                       }}
                       placeholder="Digite o PIN do funcionário"
@@ -2344,7 +2273,7 @@ export function PartnerPanel({
                   className="rma-advance-btn"
                   onClick={() =>
                     setShowOperatorModal(
-                      false
+                      false,
                     )
                   }
                 >
