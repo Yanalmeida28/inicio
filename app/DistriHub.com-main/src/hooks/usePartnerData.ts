@@ -239,7 +239,7 @@ export function usePartnerData(identity: PartnerIdentity | null) {
          .from('partner_profiles')
 .select('*')
 .eq('id', companyUserId)
-.maybeSingle()
+.maybeSingle(),
 
         supabase
           .from('partner_branches')
