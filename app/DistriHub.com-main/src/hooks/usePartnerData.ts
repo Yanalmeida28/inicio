@@ -418,9 +418,8 @@ export function usePartnerData(identity: PartnerIdentity | null) {
       setData({
         profile:
           (profileResult.data as PartnerProfile | null) ?? null,
-        branches: filterBranch(
-          branchesResult.data as PartnerBranch[] | null,
-        ),
+        branches:
+  (branchesResult.data as PartnerBranch[] | null) ?? [],
         customers: filterBranch(
           customersResult.data as PartnerCustomer[] | null,
         ),
