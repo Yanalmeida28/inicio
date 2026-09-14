@@ -236,10 +236,10 @@ export function usePartnerData(identity: PartnerIdentity | null) {
         serviceOrderPhotosResult,
       ] = await Promise.all([
         supabase
-          .from('partner_profiles')
-          .select('*')
-          .eq('user_id', companyUserId)
-          .maybeSingle(),
+         .from('partner_profiles')
+.select('*')
+.eq('id', companyUserId)
+.maybeSingle()
 
         supabase
           .from('partner_branches')
