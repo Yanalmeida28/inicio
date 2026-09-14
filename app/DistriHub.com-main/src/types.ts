@@ -91,6 +91,7 @@ export interface PartnerBranch {
 }
 
 export interface PartnerCustomer {
+  status: any;
   id: string;
   user_id: string;
   name: string;
@@ -137,6 +138,9 @@ export interface PartnerCustomer {
 }
 
 export interface PartnerSupplier {
+  status: any;
+  zip_code: any;
+  state: any;
   id: string;
   user_id: string;
   name: string;
@@ -152,6 +156,7 @@ export interface PartnerSupplier {
 }
 
 export interface PartnerCategory {
+  branch_id: any;
   id: string;
   user_id: string;
   name: string;
@@ -159,6 +164,11 @@ export interface PartnerCategory {
 }
 
 export interface PartnerProduct {
+  brand: any;
+  active: any;
+  price: any;
+  image: any;
+  description: any;
   id: string;
   user_id: string;
   name: string;
