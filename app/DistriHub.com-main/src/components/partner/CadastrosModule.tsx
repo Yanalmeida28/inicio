@@ -1550,62 +1550,127 @@ const roleColors: Record<SalespersonRole, string> = {
   logistica: '#6D28D9',
 };
 
-function SalespeopleSubTab({ salespeople, branches, onAdd, onUpdate, onDelete }: {
+function SalespeopleSubTab({
+  salespeople,
+  branches,
+  onAdd,
+  onUpdate,
+  onDelete,
+}: {
   salespeople: PartnerSalesperson[];
   branches: PartnerBranch[];
-  onAdd: (sp: Omit<PartnerSalesperson, 'id' | 'user_id' | 'created_at'>) => Promise<void>;
-  onUpdate: (id: string, updates: Partial<PartnerSalesperson>) => Promise<void>;
+  onAdd: (
+    sp: Omit<PartnerSalesperson, 'id' | 'user_id' | 'created_at'>
+  ) => Promise<PartnerSalesperson>;
+  onUpdate: (
+    id: string,
+    updates: Partial<PartnerSalesperson>
+  ) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
 }) {
   const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
   const [rate, setRate] = useState('');
   const [pin, setPin] = useState('');
-  const [role, setRole] = useState<SalespersonRole>('vendedor');
+  const [role, setRole] =
+    useState<SalespersonRole>('vendedor');
   const [branchId, setBranchId] = useState('');
-  const [editingId, setEditingId] = useState<string | null>(null);
+
+  const [editingId, setEditingId] =
+    useState<string | null>(null);
   const [editName, setEditName] = useState('');
+  const [editEmail, setEditEmail] = useState('');
   const [editRate, setEditRate] = useState('');
   const [editPin, setEditPin] = useState('');
-  const [editRole, setEditRole] = useState<SalespersonRole>('vendedor');
-  const [editBranchId, setEditBranchId] = useState('');
-  const [editActive, setEditActive] = useState(true);
-  const [formError, setFormError] = useState<string | null>(null);
-  const [editError, setEditError] = useState<string | null>(null);
+  const [editRole, setEditRole] =
+    useState<SalespersonRole>('vendedor');
+  const [editBranchId, setEditBranchId] =
+    useState('');
+  const [editActive, setEditActive] =
+    useState(true);
+
+  const [formError, setFormError] =
+    useState<string | null>(null);
+  const [editError, setEditError] =
+    useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(
+    e: React.FormEvent
+  ) {
     e.preventDefault();
-    if (!name.trim()) return;
+
+    const normalizedName = name.trim();
+    const normalizedEmail =
+      email.trim().toLowerCase();
+
+    if (!normalizedName) {
+      setFormError(
+        'Informe o nome do colaborador.'
+      );
+      return;
+    }
+
+    if (!normalizedEmail) {
+      setFormError(
+        'Informe o e-mail do colaborador para criar o acesso ao sistema.'
+      );
+      return;
+    }
+
     setSaving(true);
     setFormError(null);
+
     try {
       await onAdd({
-        name: name.trim(),
+        name: normalizedName,
         commission_rate: Number(rate) || 0,
         active: true,
         pin: pin || null,
         role,
         branch_id: branchId || null,
         phone: null,
-        email: null,
+        email: normalizedEmail,
         is_active: true,
       });
-      setName(''); setRate(''); setPin(''); setRole('vendedor'); setBranchId('');
+
+      setName('');
+      setEmail('');
+      setRate('');
+      setPin('');
+      setRole('vendedor');
+      setBranchId('');
     } catch (error) {
-      setFormError(error instanceof Error ? error.message : 'Não foi possível salvar o colaborador.');
+      setFormError(
+        error instanceof Error
+          ? error.message
+          : 'Não foi possível salvar o colaborador.'
+      );
     } finally {
       setSaving(false);
     }
   }
 
-  function startEdit(s: PartnerSalesperson) {
-    setEditingId(s.id);
-    setEditName(s.name);
-    setEditRate(String(s.commission_rate));
+  function startEdit(
+    salesperson: PartnerSalesperson
+  ) {
+    setEditingId(salesperson.id);
+    setEditName(salesperson.name);
+    setEditEmail(salesperson.email ?? '');
+    setEditRate(
+      String(salesperson.commission_rate)
+    );
     setEditPin('');
-    setEditRole(s.role);
-    setEditBranchId(s.branch_id ?? '');
-    setEditActive(s.active ?? s.is_active ?? true);
+    setEditRole(salesperson.role);
+    setEditBranchId(
+      salesperson.branch_id ?? ''
+    );
+    setEditActive(
+      salesperson.active ??
+        salesperson.is_active ??
+        true
+    );
+    setEditError(null);
   }
 
   function cancelEdit() {
@@ -1615,157 +1680,573 @@ function SalespeopleSubTab({ salespeople, branches, onAdd, onUpdate, onDelete }:
 
   async function saveEdit(id: string) {
     setEditError(null);
+
+    const normalizedName =
+      editName.trim();
+    const normalizedEmail =
+      editEmail.trim().toLowerCase();
+
+    if (!normalizedName) {
+      setEditError(
+        'Informe o nome do colaborador.'
+      );
+      return;
+    }
+
+    if (!normalizedEmail) {
+      setEditError(
+        'Informe o e-mail do colaborador.'
+      );
+      return;
+    }
+
     try {
       await onUpdate(id, {
-        name: editName.trim(),
-        commission_rate: Number(editRate) || 0,
+        name: normalizedName,
+        email: normalizedEmail,
+        commission_rate:
+          Number(editRate) || 0,
         pin: editPin || null,
         role: editRole,
-        branch_id: editBranchId || null,
+        branch_id:
+          editBranchId || null,
         active: editActive,
         is_active: editActive,
       });
+
       setEditingId(null);
     } catch (error) {
-      setEditError(error instanceof Error ? error.message : 'Não foi possível salvar as alterações do colaborador.');
+      setEditError(
+        error instanceof Error
+          ? error.message
+          : 'Não foi possível salvar as alterações do colaborador.'
+      );
     }
   }
 
-  async function handleDelete(id: string, name: string) {
-    if (!window.confirm(`Excluir o colaborador "${name}"?`)) return;
+  async function handleDelete(
+    id: string,
+    salespersonName: string
+  ) {
+    if (
+      !window.confirm(
+        `Excluir o colaborador "${salespersonName}"?`
+      )
+    ) {
+      return;
+    }
+
     try {
       await onDelete(id);
     } catch (error) {
-      window.alert(error instanceof Error ? error.message : 'Não foi possível excluir o colaborador.');
+      window.alert(
+        error instanceof Error
+          ? error.message
+          : 'Não foi possível excluir o colaborador.'
+      );
     }
   }
 
   return (
     <div>
-      <form className="rma-form" onSubmit={handleSubmit}>
+      <form
+        className="rma-form"
+        onSubmit={handleSubmit}
+      >
         <div className="form-row">
           <label>
             Nome do colaborador
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex: João Silva" required />
+            <input
+              value={name}
+              onChange={(e) =>
+                setName(e.target.value)
+              }
+              placeholder="Ex: João Silva"
+              required
+            />
           </label>
+
+          <label>
+            E-mail de acesso
+            <input
+              type="email"
+              value={email}
+              onChange={(e) =>
+                setEmail(e.target.value)
+              }
+              placeholder="joao@email.com"
+              required
+            />
+          </label>
+
           <label>
             Taxa de Comissão (%)
-            <input type="number" step="0.01" value={rate} onChange={(e) => setRate(e.target.value)} placeholder="Ex: 5" />
+            <input
+              type="number"
+              step="0.01"
+              value={rate}
+              onChange={(e) =>
+                setRate(e.target.value)
+              }
+              placeholder="Ex: 5"
+            />
           </label>
+
           <label>
             PIN de Acesso
-            <input value={pin} onChange={(e) => setPin(e.target.value)} placeholder="4 dígitos" maxLength={4} />
+            <input
+              type="password"
+              inputMode="numeric"
+              value={pin}
+              onChange={(e) =>
+                setPin(
+                  e.target.value
+                    .replace(/\D/g, '')
+                    .slice(0, 4)
+                )
+              }
+              placeholder="4 dígitos"
+              maxLength={4}
+            />
           </label>
         </div>
+
         <div className="form-row">
           <label>
             Função / Permissões
-            <select value={role} onChange={(e) => setRole(e.target.value as SalespersonRole)}>
-              <option value="administrador">Administrador (Acesso Total)</option>
-              <option value="gerente">Gerente (Operacional & Vendas)</option>
-              <option value="caixa">Caixa (Finalizar Vendas & Pré-Vendas)</option>
-              <option value="vendedor">Vendedor / Balcão (PDV, Vendas, Clientes)</option>
-              <option value="tecnico">Técnico (Apenas Ordens de Serviço)</option>
-              <option value="atendente">Atendente (Atendimento e Pré-Vendas)</option>
-              <option value="logistica">Logística / Entregador (Gestão de Entregas)</option>
+            <select
+              value={role}
+              onChange={(e) =>
+                setRole(
+                  e.target.value as SalespersonRole
+                )
+              }
+            >
+              <option value="administrador">
+                Administrador (Acesso Total)
+              </option>
+              <option value="gerente">
+                Gerente (Operacional & Vendas)
+              </option>
+              <option value="caixa">
+                Caixa (Finalizar Vendas & Pré-Vendas)
+              </option>
+              <option value="vendedor">
+                Vendedor / Balcão
+              </option>
+              <option value="tecnico">
+                Técnico
+              </option>
+              <option value="atendente">
+                Atendente
+              </option>
+              <option value="logistica">
+                Logística / Entregador
+              </option>
             </select>
           </label>
+
           <label>
             Filial Vinculada
-            <select value={branchId} onChange={(e) => setBranchId(e.target.value)}>
-              <option value="">Todas as Filiais (Acesso Livre / Admin)</option>
-              {branches.map((b) => (
-                <option key={b.id} value={b.id}>{b.name}</option>
+            <select
+              value={branchId}
+              onChange={(e) =>
+                setBranchId(e.target.value)
+              }
+            >
+              <option value="">
+                Todas as Filiais (Acesso Livre / Admin)
+              </option>
+
+              {branches.map((branch) => (
+                <option
+                  key={branch.id}
+                  value={branch.id}
+                >
+                  {branch.name}
+                </option>
               ))}
             </select>
           </label>
         </div>
-        {formError && <p className="form-error-msg" style={{ color: '#e3829b', fontSize: '13px' }}>{formError}</p>}
-        <button type="submit" className="module-submit-btn" disabled={saving}><Plus size={16} /> {saving ? 'Salvando...' : 'Adicionar colaborador'}</button>
+
+        {formError && (
+          <p
+            className="form-error-msg"
+            style={{
+              color: '#e3829b',
+              fontSize: '13px',
+            }}
+          >
+            {formError}
+          </p>
+        )}
+
+        <button
+          type="submit"
+          className="module-submit-btn"
+          disabled={saving}
+        >
+          <Plus size={16} />
+
+          {saving
+            ? 'Salvando...'
+            : 'Adicionar colaborador'}
+        </button>
       </form>
+
       <div className="stock-table-wrap">
         <table className="rma-table">
-          <thead><tr><th>Nome</th><th>Função</th><th>Filial Vinculada</th><th>Comissão</th><th>PIN</th><th>Status</th><th></th></tr></thead>
+          <thead>
+            <tr>
+              <th>Nome</th>
+              <th>E-mail</th>
+              <th>Função</th>
+              <th>Filial Vinculada</th>
+              <th>Comissão</th>
+              <th>PIN</th>
+              <th>Status</th>
+              <th></th>
+            </tr>
+          </thead>
+
           <tbody>
             {salespeople.length === 0 ? (
-              <tr><td colSpan={7} className="empty-row">Nenhum colaborador cadastrado.</td></tr>
+              <tr>
+                <td
+                  colSpan={8}
+                  className="empty-row"
+                >
+                  Nenhum colaborador cadastrado.
+                </td>
+              </tr>
             ) : (
-              salespeople.map((s) => {
-                const spBranch = branches.find((b) => b.id === s.branch_id);
+              salespeople.map((salesperson) => {
+                const branch =
+                  branches.find(
+                    (item) =>
+                      item.id ===
+                      salesperson.branch_id
+                  );
+
+                if (
+                  editingId ===
+                  salesperson.id
+                ) {
+                  return (
+                    <tr
+                      key={salesperson.id}
+                    >
+                      <td>
+                        <input
+                          className="rma-edit-input"
+                          value={editName}
+                          onChange={(e) =>
+                            setEditName(
+                              e.target.value
+                            )
+                          }
+                          placeholder="Nome"
+                          style={{
+                            width: '100%',
+                          }}
+                        />
+                      </td>
+
+                      <td>
+                        <input
+                          className="rma-edit-input"
+                          type="email"
+                          value={editEmail}
+                          onChange={(e) =>
+                            setEditEmail(
+                              e.target.value
+                            )
+                          }
+                          placeholder="E-mail"
+                          style={{
+                            width: '100%',
+                          }}
+                        />
+                      </td>
+
+                      <td>
+                        <select
+                          className="rma-edit-input"
+                          value={editRole}
+                          onChange={(e) =>
+                            setEditRole(
+                              e.target
+                                .value as SalespersonRole
+                            )
+                          }
+                        >
+                          <option value="administrador">
+                            Administrador
+                          </option>
+                          <option value="gerente">
+                            Gerente
+                          </option>
+                          <option value="caixa">
+                            Caixa
+                          </option>
+                          <option value="vendedor">
+                            Vendedor / Balcão
+                          </option>
+                          <option value="tecnico">
+                            Técnico
+                          </option>
+                          <option value="atendente">
+                            Atendente
+                          </option>
+                          <option value="logistica">
+                            Logística / Entregador
+                          </option>
+                        </select>
+                      </td>
+
+                      <td>
+                        <select
+                          className="rma-edit-input"
+                          value={editBranchId}
+                          onChange={(e) =>
+                            setEditBranchId(
+                              e.target.value
+                            )
+                          }
+                        >
+                          <option value="">
+                            Todas as Filiais
+                          </option>
+
+                          {branches.map(
+                            (branch) => (
+                              <option
+                                key={branch.id}
+                                value={branch.id}
+                              >
+                                {branch.name}
+                              </option>
+                            )
+                          )}
+                        </select>
+                      </td>
+
+                      <td>
+                        <input
+                          className="rma-edit-input"
+                          type="number"
+                          step="0.01"
+                          value={editRate}
+                          onChange={(e) =>
+                            setEditRate(
+                              e.target.value
+                            )
+                          }
+                          style={{
+                            width: '60px',
+                          }}
+                        />
+                      </td>
+
+                      <td>
+                        <input
+                          className="rma-edit-input"
+                          type="password"
+                          inputMode="numeric"
+                          value={editPin}
+                          onChange={(e) =>
+                            setEditPin(
+                              e.target.value
+                                .replace(
+                                  /\D/g,
+                                  ''
+                                )
+                                .slice(0, 4)
+                            )
+                          }
+                          placeholder="PIN"
+                          maxLength={4}
+                          style={{
+                            width: '60px',
+                          }}
+                        />
+                      </td>
+
+                      <td>
+                        <label
+                          className="checkbox-label"
+                          style={{
+                            display: 'flex',
+                            alignItems:
+                              'center',
+                            gap: '4px',
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={editActive}
+                            onChange={(e) =>
+                              setEditActive(
+                                e.target.checked
+                              )
+                            }
+                          />
+
+                          {editActive
+                            ? 'Ativo'
+                            : 'Inativo'}
+                        </label>
+                      </td>
+
+                      <td>
+                        <div className="row-action-group">
+                          <button
+                            type="button"
+                            className="rma-advance-btn"
+                            onClick={() =>
+                              saveEdit(
+                                salesperson.id
+                              )
+                            }
+                            title="Salvar alterações"
+                          >
+                            <Check size={14} />
+                          </button>
+
+                          <button
+                            type="button"
+                            className="rma-advance-btn"
+                            onClick={
+                              cancelEdit
+                            }
+                            title="Cancelar"
+                          >
+                            <X size={14} />
+                          </button>
+                        </div>
+
+                        {editError && (
+                          <p
+                            className="form-error-msg"
+                            style={{
+                              color:
+                                '#e3829b',
+                              fontSize:
+                                '12px',
+                            }}
+                          >
+                            {editError}
+                          </p>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                }
+
                 return (
-                  <tr key={s.id}>
-                    {editingId === s.id ? (
-                      <>
-                        <td>
-                          <input className="rma-edit-input" value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Nome" style={{ width: '100%' }} />
-                        </td>
-                        <td>
-                          <select className="rma-edit-input" value={editRole} onChange={(e) => setEditRole(e.target.value as SalespersonRole)}>
-                            <option value="administrador">Administrador</option>
-                            <option value="gerente">Gerente</option>
-                            <option value="caixa">Caixa</option>
-                            <option value="vendedor">Vendedor / Balcão</option>
-                            <option value="tecnico">Técnico</option>
-                            <option value="atendente">Atendente</option>
-                            <option value="logistica">Logística / Entregador</option>
-                          </select>
-                        </td>
-                        <td>
-                          <select className="rma-edit-input" value={editBranchId} onChange={(e) => setEditBranchId(e.target.value)}>
-                            <option value="">Todas as Filiais</option>
-                            {branches.map((b) => (
-                              <option key={b.id} value={b.id}>{b.name}</option>
-                            ))}
-                          </select>
-                        </td>
-                        <td>
-                          <input className="rma-edit-input" type="number" step="0.01" value={editRate} onChange={(e) => setEditRate(e.target.value)} style={{ width: '60px' }} />
-                        </td>
-                        <td>
-                          <input className="rma-edit-input" value={editPin} onChange={(e) => setEditPin(e.target.value)} placeholder="PIN" maxLength={4} style={{ width: '60px' }} />
-                        </td>
-                        <td>
-                          <label className="checkbox-label" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <input type="checkbox" checked={editActive} onChange={(e) => setEditActive(e.target.checked)} />
-                            {editActive ? 'Ativo' : 'Inativo'}
-                          </label>
-                        </td>
-                        <td>
-                          <div className="row-action-group">
-                            <button className="rma-advance-btn" onClick={() => saveEdit(s.id)} title="Salvar alterações">
-                              <Check size={14} />
-                            </button>
-                            <button className="rma-advance-btn" onClick={cancelEdit} title="Cancelar">
-                              <X size={14} />
-                            </button>
-                          </div>
-                          {editError && <p className="form-error-msg" style={{ color: '#e3829b', fontSize: '12px' }}>{editError}</p>}
-                        </td>
-                      </>
-                    ) : (
-                      <>
-                        <td><strong>{s.name}</strong></td>
-                        <td>
-                          <span className="rma-status-badge" style={{ color: roleColors[s.role], borderColor: roleColors[s.role] }}>
-                            {roleLabels[s.role]}
-                          </span>
-                        </td>
-                        <td>{spBranch ? spBranch.name : <small style={{ color: '#475569' }}>Todas as filiais</small>}</td>
-                        <td>{s.commission_rate}%</td>
-                        <td>{s.pin_configured ? 'Configurado' : 'Não configurado'}</td>
-                        <td>{s.active ?? s.is_active ? 'Ativo' : 'Inativo'}</td>
-                        <td>
-                          <div className="row-action-group">
-                            <button className="rma-advance-btn" onClick={() => startEdit(s)} title="Editar">
-                              <History size={14} />
-                            </button>
-                            <button className="rma-advance-btn danger" onClick={() => handleDelete(s.id, s.name)} title="Excluir">
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                        </td>
-                      </>
-                    )}
+                  <tr
+                    key={salesperson.id}
+                  >
+                    <td>
+                      <strong>
+                        {salesperson.name}
+                      </strong>
+                    </td>
+
+                    <td>
+                      {salesperson.email ||
+                        '—'}
+                    </td>
+
+                    <td>
+                      <span
+                        className="rma-status-badge"
+                        style={{
+                          color:
+                            roleColors[
+                              salesperson.role
+                            ],
+                          borderColor:
+                            roleColors[
+                              salesperson.role
+                            ],
+                        }}
+                      >
+                        {
+                          roleLabels[
+                            salesperson.role
+                          ]
+                        }
+                      </span>
+                    </td>
+
+                    <td>
+                      {branch ? (
+                        branch.name
+                      ) : (
+                        <small
+                          style={{
+                            color:
+                              '#475569',
+                          }}
+                        >
+                          Todas as filiais
+                        </small>
+                      )}
+                    </td>
+
+                    <td>
+                      {
+                        salesperson.commission_rate
+                      }%
+                    </td>
+
+                    <td>
+                      {salesperson.pin
+                        ? '****'
+                        : salesperson.pin_configured
+                        ? 'Configurado'
+                        : '—'}
+                    </td>
+
+                    <td>
+                      {salesperson.active ??
+                      salesperson.is_active
+                        ? 'Ativo'
+                        : 'Inativo'}
+                    </td>
+
+                    <td>
+                      <div className="row-action-group">
+                        <button
+                          type="button"
+                          className="rma-advance-btn"
+                          onClick={() =>
+                            startEdit(
+                              salesperson
+                            )
+                          }
+                          title="Editar"
+                        >
+                          <History size={14} />
+                        </button>
+
+                        <button
+                          type="button"
+                          className="rma-advance-btn danger"
+                          onClick={() =>
+                            handleDelete(
+                              salesperson.id,
+                              salesperson.name
+                            )
+                          }
+                          title="Excluir"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 );
               })
