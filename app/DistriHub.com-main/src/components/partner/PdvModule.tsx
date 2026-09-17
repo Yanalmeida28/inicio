@@ -45,8 +45,8 @@ type Props = {
     branch_id?: string | null;
   }) => Promise<void>;
   onFinalizePreSale: (id: string, paymentMethod: string) => Promise<void>;
-  onCancelSale: (id: string) => Promise<void>;
-  onDeleteSale: (id: string) => Promise<void>;
+  onCancelSale: (id: string, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
+  onDeleteSale: (id: string, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
 };
 
 const cashierRoles: SalespersonRole[] = ['administrador', 'gerente', 'caixa', 'vendedor'];
@@ -133,8 +133,8 @@ function PdvCheckout({ products, customers, sales, invoices, salespeople, segmen
   selectedBranchId: string | null;
   canCheckout: boolean;
   onCreateSale: (sale: { customer_id: string | null; customer_name: string; items: SaleItem[]; total: number; customer_type: ClientType; delivery_type: DeliveryType; imei?: string; serial_number?: string; payment_method?: string; salesperson_id?: string | null; branch_id?: string | null }) => Promise<void>;
-  onCancelSale: (id: string) => Promise<void>;
-  onDeleteSale: (id: string) => Promise<void>;
+  onCancelSale: (id: string, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
+  onDeleteSale: (id: string, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
 }) {
   const [search, setSearch] = useState('');
   const [cart, setCart] = useState<{ product_id: string; name: string; quantity: number; unit_price: number }[]>([]);
@@ -151,8 +151,11 @@ function PdvCheckout({ products, customers, sales, invoices, salespeople, segmen
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [priceTable, setPriceTable] = useState<PriceTable>('varejo');
   const [cancelTarget, setCancelTarget] = useState<PartnerSale | null>(null);
+  const [supervisorId, setSupervisorId] = useState('');
   const [pinInput, setPinInput] = useState('');
-  const [pinError, setPinError] = useState(false);
+  const [pinError, setPinError] = useState<string | null>(null);
+  const [isVerifyingPin, setIsVerifyingPin] = useState(false);
+  const managers = salespeople.filter((s) => s.role === 'administrador' || s.role === 'gerente');
   const [selectionNotice, setSelectionNotice] = useState<string | null>(null);
   const [lastAddedId, setLastAddedId] = useState<string | null>(null);
   const lastClickRef = useRef<{ id: string; time: number }>({ id: '', time: 0 });
@@ -315,25 +318,38 @@ function PdvCheckout({ products, customers, sales, invoices, salespeople, segmen
 
   function requestCancelSale(sale: PartnerSale) {
     setCancelTarget(sale);
+    setSupervisorId(managers[0]?.id ?? '');
     setPinInput('');
-    setPinError(false);
+    setPinError(null);
   }
 
-  function verifyPinAndCancel(action: 'cancel' | 'delete') {
+  async function verifyPinAndCancel(action: 'cancel' | 'delete') {
     if (!cancelTarget) return;
-    const admin = salespeople.find((s) => (s.role === 'administrador' || s.role === 'gerente') && s.pin && s.pin === pinInput);
-    if (!admin || admin.pin !== pinInput) {
-      setPinError(true);
+    if (!supervisorId) {
+      setPinError('Selecione o responsável (Administrador ou Gerente).');
       return;
     }
-    if (action === 'cancel') {
-      onCancelSale(cancelTarget.id);
-    } else {
-      onDeleteSale(cancelTarget.id);
+    if (!pinInput) {
+      setPinError('Digite o PIN do responsável selecionado.');
+      return;
     }
-    setCancelTarget(null);
-    setPinInput('');
-    setPinError(false);
+    setIsVerifyingPin(true);
+    setPinError(null);
+    try {
+      if (action === 'cancel') {
+        await onCancelSale(cancelTarget.id, supervisorId, pinInput);
+      } else {
+        await onDeleteSale(cancelTarget.id, supervisorId, pinInput);
+      }
+      setCancelTarget(null);
+      setSupervisorId('');
+      setPinInput('');
+      setPinError(null);
+    } catch (error) {
+      setPinError(error instanceof Error ? error.message : 'Não foi possível autorizar. Verifique o PIN.');
+    } finally {
+      setIsVerifyingPin(false);
+    }
   }
 
   return (
@@ -613,27 +629,43 @@ function PdvCheckout({ products, customers, sales, invoices, salespeople, segmen
               <button onClick={() => setCancelTarget(null)}><X size={18} /></button>
             </div>
             <p className="otp-description">
-              Cancelar ou apagar uma venda requer permissão de Administrador ou Gerente. Digite o PIN de um administrador ou gerente para continuar.
+              Cancelar ou apagar uma venda requer permissão de Administrador ou Gerente. Selecione o responsável e digite o PIN dele para continuar.
             </p>
-            <label style={{ display: 'block', marginBottom: '12px' }}>
-              <strong>PIN (Administrador ou Gerente)</strong>
-              <input
-                type="password"
-                value={pinInput}
-                onChange={(e) => { setPinInput(e.target.value); setPinError(false); }}
-                placeholder="Digite o PIN"
-                maxLength={4}
-                style={{ width: '100%', marginTop: '6px' }}
-                autoFocus
-              />
-            </label>
-            {pinError && <p className="otp-error-msg">PIN incorreto. Acesso negado.</p>}
+            {managers.length === 0 ? (
+              <p className="otp-error-msg">Nenhum Administrador ou Gerente cadastrado com PIN. Cadastre um em Colaboradores antes de continuar.</p>
+            ) : (
+              <>
+                <label style={{ display: 'block', marginBottom: '12px' }}>
+                  <strong>Responsável</strong>
+                  <select
+                    value={supervisorId}
+                    onChange={(e) => { setSupervisorId(e.target.value); setPinError(null); }}
+                    style={{ width: '100%', marginTop: '6px' }}
+                  >
+                    {managers.map((m) => <option key={m.id} value={m.id}>{m.name} ({m.role === 'administrador' ? 'Administrador' : 'Gerente'})</option>)}
+                  </select>
+                </label>
+                <label style={{ display: 'block', marginBottom: '12px' }}>
+                  <strong>PIN do responsável</strong>
+                  <input
+                    type="password"
+                    value={pinInput}
+                    onChange={(e) => { setPinInput(e.target.value); setPinError(null); }}
+                    placeholder="Digite o PIN"
+                    maxLength={8}
+                    style={{ width: '100%', marginTop: '6px' }}
+                    autoFocus
+                  />
+                </label>
+              </>
+            )}
+            {pinError && <p className="otp-error-msg">{pinError}</p>}
             <div className="otp-actions">
-              <button className="rma-advance-btn danger" onClick={() => verifyPinAndCancel('delete')}>
-                <Trash2 size={16} /> Apagar Venda
+              <button className="rma-advance-btn danger" onClick={() => verifyPinAndCancel('delete')} disabled={isVerifyingPin || managers.length === 0}>
+                <Trash2 size={16} /> {isVerifyingPin ? 'Verificando...' : 'Apagar Venda'}
               </button>
-              <button className="module-submit-btn" onClick={() => verifyPinAndCancel('cancel')}>
-                <Ban size={16} /> Cancelar Venda
+              <button className="module-submit-btn" onClick={() => verifyPinAndCancel('cancel')} disabled={isVerifyingPin || managers.length === 0}>
+                <Ban size={16} /> {isVerifyingPin ? 'Verificando...' : 'Cancelar Venda'}
               </button>
             </div>
           </div>
@@ -655,8 +687,8 @@ function PreVendaTab({ products, customers, sales, salespeople, segment, selecte
   canCheckout: boolean;
   onCreatePreSale: (sale: { customer_id: string | null; customer_name: string; items: SaleItem[]; total: number; customer_type: ClientType; delivery_type: DeliveryType; imei?: string; serial_number?: string; salesperson_id?: string | null; branch_id?: string | null }) => Promise<void>;
   onFinalizePreSale: (id: string, paymentMethod: string) => Promise<void>;
-  onCancelSale: (id: string) => Promise<void>;
-  onDeleteSale: (id: string) => Promise<void>;
+  onCancelSale: (id: string, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
+  onDeleteSale: (id: string, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
 }) {
   const [search, setSearch] = useState('');
   const [cart, setCart] = useState<{ product_id: string; name: string; quantity: number; unit_price: number }[]>([]);
@@ -674,8 +706,11 @@ function PreVendaTab({ products, customers, sales, salespeople, segment, selecte
   const [finalizeTarget, setFinalizeTarget] = useState<PartnerSale | null>(null);
   const [finalizePayment, setFinalizePayment] = useState('pix');
   const [cancelTarget, setCancelTarget] = useState<PartnerSale | null>(null);
+  const [supervisorId, setSupervisorId] = useState('');
   const [pinInput, setPinInput] = useState('');
-  const [pinError, setPinError] = useState(false);
+  const [pinError, setPinError] = useState<string | null>(null);
+  const [isVerifyingPin, setIsVerifyingPin] = useState(false);
+  const managers = salespeople.filter((s) => s.role === 'administrador' || s.role === 'gerente');
 
   const traceabilityLabel = segment === 'assistencia' ? 'IMEI / Selo' : 'Nº de Série';
   const preSales = sales.filter((s) => s.status === 'pre_venda');
@@ -791,25 +826,38 @@ function PreVendaTab({ products, customers, sales, salespeople, segment, selecte
 
   function requestCancel(sale: PartnerSale) {
     setCancelTarget(sale);
+    setSupervisorId(managers[0]?.id ?? '');
     setPinInput('');
-    setPinError(false);
+    setPinError(null);
   }
 
-  function verifyPinAndCancel(action: 'cancel' | 'delete') {
+  async function verifyPinAndCancel(action: 'cancel' | 'delete') {
     if (!cancelTarget) return;
-    const admin = salespeople.find((s) => (s.role === 'administrador' || s.role === 'gerente') && s.pin && s.pin === pinInput);
-    if (!admin || admin.pin !== pinInput) {
-      setPinError(true);
+    if (!supervisorId) {
+      setPinError('Selecione o responsável (Administrador ou Gerente).');
       return;
     }
-    if (action === 'cancel') {
-      onCancelSale(cancelTarget.id);
-    } else {
-      onDeleteSale(cancelTarget.id);
+    if (!pinInput) {
+      setPinError('Digite o PIN do responsável selecionado.');
+      return;
     }
-    setCancelTarget(null);
-    setPinInput('');
-    setPinError(false);
+    setIsVerifyingPin(true);
+    setPinError(null);
+    try {
+      if (action === 'cancel') {
+        await onCancelSale(cancelTarget.id, supervisorId, pinInput);
+      } else {
+        await onDeleteSale(cancelTarget.id, supervisorId, pinInput);
+      }
+      setCancelTarget(null);
+      setSupervisorId('');
+      setPinInput('');
+      setPinError(null);
+    } catch (error) {
+      setPinError(error instanceof Error ? error.message : 'Não foi possível autorizar. Verifique o PIN.');
+    } finally {
+      setIsVerifyingPin(false);
+    }
   }
 
   return (
@@ -1050,27 +1098,43 @@ function PreVendaTab({ products, customers, sales, salespeople, segment, selecte
               <button onClick={() => setCancelTarget(null)}><X size={18} /></button>
             </div>
             <p className="otp-description">
-              Cancelar ou apagar uma pré-venda requer permissão de Administrador ou Gerente. Digite o PIN para continuar.
+              Cancelar ou apagar uma pré-venda requer permissão de Administrador ou Gerente. Selecione o responsável e digite o PIN dele para continuar.
             </p>
-            <label style={{ display: 'block', marginBottom: '12px' }}>
-              <strong>PIN (Administrador ou Gerente)</strong>
-              <input
-                type="password"
-                value={pinInput}
-                onChange={(e) => { setPinInput(e.target.value); setPinError(false); }}
-                placeholder="Digite o PIN"
-                maxLength={4}
-                style={{ width: '100%', marginTop: '6px' }}
-                autoFocus
-              />
-            </label>
-            {pinError && <p className="otp-error-msg">PIN incorreto. Acesso negado.</p>}
+            {managers.length === 0 ? (
+              <p className="otp-error-msg">Nenhum Administrador ou Gerente cadastrado com PIN. Cadastre um em Colaboradores antes de continuar.</p>
+            ) : (
+              <>
+                <label style={{ display: 'block', marginBottom: '12px' }}>
+                  <strong>Responsável</strong>
+                  <select
+                    value={supervisorId}
+                    onChange={(e) => { setSupervisorId(e.target.value); setPinError(null); }}
+                    style={{ width: '100%', marginTop: '6px' }}
+                  >
+                    {managers.map((m) => <option key={m.id} value={m.id}>{m.name} ({m.role === 'administrador' ? 'Administrador' : 'Gerente'})</option>)}
+                  </select>
+                </label>
+                <label style={{ display: 'block', marginBottom: '12px' }}>
+                  <strong>PIN do responsável</strong>
+                  <input
+                    type="password"
+                    value={pinInput}
+                    onChange={(e) => { setPinInput(e.target.value); setPinError(null); }}
+                    placeholder="Digite o PIN"
+                    maxLength={8}
+                    style={{ width: '100%', marginTop: '6px' }}
+                    autoFocus
+                  />
+                </label>
+              </>
+            )}
+            {pinError && <p className="otp-error-msg">{pinError}</p>}
             <div className="otp-actions">
-              <button className="rma-advance-btn danger" onClick={() => verifyPinAndCancel('delete')}>
-                <Trash2 size={16} /> Apagar
+              <button className="rma-advance-btn danger" onClick={() => verifyPinAndCancel('delete')} disabled={isVerifyingPin || managers.length === 0}>
+                <Trash2 size={16} /> {isVerifyingPin ? 'Verificando...' : 'Apagar'}
               </button>
-              <button className="module-submit-btn" onClick={() => verifyPinAndCancel('cancel')}>
-                <Ban size={16} /> Cancelar Pré-Venda
+              <button className="module-submit-btn" onClick={() => verifyPinAndCancel('cancel')} disabled={isVerifyingPin || managers.length === 0}>
+                <Ban size={16} /> {isVerifyingPin ? 'Verificando...' : 'Cancelar Pré-Venda'}
               </button>
             </div>
           </div>

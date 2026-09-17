@@ -348,4 +348,3 @@ export function HubHome({ onAccessPanel, onAccessSuperAdmin, superAdminActive }:
     </main>
   );
 }
-

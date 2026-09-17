@@ -1361,7 +1361,7 @@ supabase
             `Venda criada, mas o título B2B não pôde ser localizado: ${invoiceError.message}`,
           );
         }
-
+        
         if (!invoice) {
           throw new Error(
             'Venda criada, mas o título B2B não foi localizado.',
@@ -1648,17 +1648,20 @@ supabase
         sale.branch_id,
       );
 
+      // Cancelar venda exige autorização de Administrador ou Gerente digitada
+      // na hora (ver PdvModule). Quando um operatorId é explicitamente
+      // informado, ele tem prioridade sobre a identidade da sessão atual —
+      // é exatamente o ponto: quem está logado no caixa não pode se
+      // autoaprovar.
       const effectiveOperatorId =
-        currentIdentity.salespersonId
-          ? currentIdentity.salespersonId
-          : operatorId ??
-            sale.salesperson_id ??
-            null;
+        operatorId ??
+        currentIdentity.salespersonId ??
+        sale.salesperson_id ??
+        null;
 
-      const effectiveOperatorPin =
-        currentIdentity.salespersonId
-          ? null
-          : operatorPin ?? null;
+      const effectiveOperatorPin = operatorId
+        ? operatorPin ?? null
+        : null;
 
       if (isSupabaseConfigured && supabase) {
         const { error: rpcErr } =
@@ -1738,16 +1741,14 @@ supabase
       );
 
       const effectiveOperatorId =
-        currentIdentity.salespersonId
-          ? currentIdentity.salespersonId
-          : operatorId ??
-            sale.salesperson_id ??
-            null;
+        operatorId ??
+        currentIdentity.salespersonId ??
+        sale.salesperson_id ??
+        null;
 
-      const effectiveOperatorPin =
-        currentIdentity.salespersonId
-          ? null
-          : operatorPin ?? null;
+      const effectiveOperatorPin = operatorId
+        ? operatorPin ?? null
+        : null;
 
       if (isSupabaseConfigured && supabase) {
         const { error: rpcErr } =
@@ -2460,6 +2461,7 @@ supabase
               salesperson.branch_id ?? null,
             p_operator_id: operatorId ?? null,
             p_operator_pin: operatorPin ?? null,
+            p_new_pin: salesperson.pin ?? null,
           },
         );
 
@@ -2467,8 +2469,14 @@ supabase
         throw error;
       }
 
-      const createdSalesperson =
-        created as PartnerSalesperson;
+      const createdSalesperson = {
+        ...(created as PartnerSalesperson),
+        // O banco nunca devolve o PIN em texto puro (nem deveria). Sabemos
+        // apenas se um PIN foi enviado nesta criação — refletimos isso aqui
+        // para a tela mostrar "Configurado" corretamente sem recarregar.
+        pin: null,
+        pin_configured: !!salesperson.pin,
+      };
 
       setData((prev) => ({
         ...prev,
@@ -2547,6 +2555,8 @@ supabase
               operatorId ?? null,
             p_operator_pin:
               operatorPin ?? null,
+            p_new_pin:
+              salesperson.pin ?? null,
           },
         );
 
@@ -2554,8 +2564,13 @@ supabase
         throw error;
       }
 
-      const updatedSalesperson =
-        updated as PartnerSalesperson;
+      const updatedSalesperson = {
+        ...(updated as PartnerSalesperson),
+        pin: null,
+        pin_configured: salesperson.pin
+          ? true
+          : existing.pin_configured ?? false,
+      };
 
       setData((prev) => ({
         ...prev,

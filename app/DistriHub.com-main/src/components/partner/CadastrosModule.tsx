@@ -232,6 +232,11 @@ function ProductsSubTab({ products, allProducts, branches, selectedBranchId, cat
         image_url: null, category: category || null, is_service: isService, branch_id: selectedBranchId,
         ncm: ncm || null, cfop: cfop || null, cst_csosn: cstCsosn || null,
         icms_rate: Number(icmsRate) || 0, pis_rate: Number(pisRate) || 0, cofins_rate: Number(cofinsRate) || 0,
+        brand: undefined,
+        active: undefined,
+        price: undefined,
+        image: undefined,
+        description: undefined
       });
       setName(''); setSku(''); setCost(''); setSale(''); setWholesale(''); setStock(''); setMinStock('5'); setCategory(''); setIsService(false);
       setNcm(''); setCfop(''); setCstCsosn(''); setIcmsRate(''); setPisRate(''); setCofinsRate('');
@@ -713,6 +718,11 @@ function XmlSubTab({ selectedBranchId, onAddProduct }: {
         wholesale_price: item.cost * 1.3,
         stock: item.qty, min_stock: 5, image_url: null, category: null, is_service: false, branch_id: selectedBranchId,
         ncm: null, cfop: null, cst_csosn: null, icms_rate: 0, pis_rate: 0, cofins_rate: 0,
+        brand: undefined,
+        active: undefined,
+        price: undefined,
+        image: undefined,
+        description: undefined
       });
     }
     setImported(true);
@@ -1465,7 +1475,12 @@ function SuppliersSubTab({ suppliers, onAdd, onUpdate, onDelete }: {
       if (editingId) {
         await onUpdate(editingId, { name: name.trim(), phone: phone || null, notes: notes || null });
       } else {
-        await onAdd({ name, phone: phone || null, notes: notes || null });
+        await onAdd({
+          name, phone: phone || null, notes: notes || null,
+          status: undefined,
+          zip_code: undefined,
+          state: undefined
+        });
       }
       setName(''); setPhone(''); setNotes('');
       setEditingId(null);
