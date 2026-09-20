@@ -1130,22 +1130,17 @@ supabase
   );
 
   const addCategory = useCallback(
-    async (category: CategoryPayload) => {
+    async (name: string) => {
       const currentIdentity = requireIdentity();
 
       if (!isSupabaseConfigured || !supabase) {
         throw new Error('Supabase não configurado.');
       }
 
-      ensureEmployeeBranch(
-        currentIdentity,
-        category.branch_id,
-      );
-
       const { data: created, error } = await supabase
         .from('partner_categories')
         .insert({
-          ...category,
+          name,
           user_id: currentIdentity.companyUserId,
         })
         .select()
@@ -1165,8 +1160,6 @@ supabase
           ...prev.categories,
         ],
       }));
-
-      return createdCategory;
     },
     [requireIdentity],
   );
@@ -1263,7 +1256,7 @@ supabase
   );
 
   const addBranch = useCallback(
-    async (branch: BranchPayload) => {
+    async (name: string, address: string) => {
       const currentIdentity = requireIdentity();
 
       if (currentIdentity.salespersonId) {
@@ -1279,7 +1272,8 @@ supabase
       const { data: created, error } = await supabase
         .from('partner_branches')
         .insert({
-          ...branch,
+          name,
+          address: address || null,
           user_id: currentIdentity.companyUserId,
         })
         .select()
@@ -2073,7 +2067,7 @@ supabase
   );
 
   const updateStoreSettings = useCallback(
-    async (settings: StoreSettings) => {
+    async (settings: Partial<StoreSettings>) => {
       const currentIdentity = requireIdentity();
 
       if (currentIdentity.salespersonId) {
@@ -2315,7 +2309,9 @@ supabase
   );
 
   const addCombo = useCallback(
-    async (combo: PartnerCombo) => {
+    async (
+      combo: Omit<PartnerCombo, 'id' | 'user_id' | 'created_at'>,
+    ) => {
       const currentIdentity = requireIdentity();
 
       if (!isSupabaseConfigured || !supabase) {
@@ -2349,8 +2345,6 @@ supabase
           ...prev.combos,
         ],
       }));
-
-      return createdCombo;
     },
     [requireIdentity],
   );
@@ -2429,7 +2423,12 @@ supabase
   );
 
   const addModifier = useCallback(
-    async (modifier: PartnerModifier) => {
+    async (
+      modifier: Omit<
+        PartnerModifier,
+        'id' | 'user_id' | 'created_at'
+      >,
+    ) => {
       const currentIdentity = requireIdentity();
 
       if (!isSupabaseConfigured || !supabase) {
@@ -2463,8 +2462,6 @@ supabase
           ...prev.modifiers,
         ],
       }));
-
-      return createdModifier;
     },
     [requireIdentity],
   );
