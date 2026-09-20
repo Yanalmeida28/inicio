@@ -38,8 +38,25 @@ import type {
 
 type SalePayload = Omit<
   PartnerSale,
-  'id' | 'user_id' | 'created_at'
->;
+  | 'id'
+  | 'user_id'
+  | 'created_at'
+  | 'status'
+  | 'origin'
+  | 'online_payment'
+  | 'payment_status'
+  | 'imei'
+  | 'serial_number'
+  | 'payment_method'
+> & {
+  status?: PartnerSale['status'];
+  origin?: PartnerSale['origin'];
+  online_payment?: PartnerSale['online_payment'];
+  payment_status?: PartnerSale['payment_status'];
+  imei?: string | null;
+  serial_number?: string | null;
+  payment_method?: string | null;
+};
 
 type CustomerPayload = Omit<
   PartnerCustomer,
@@ -53,6 +70,15 @@ type ProductPayload = Omit<
 
 type SupplierPayload = Omit<
   PartnerSupplier,
+  | 'id'
+  | 'user_id'
+  | 'created_at'
+  | 'updated_at'
+  | 'payable_balance'
+>;
+
+type SalespersonPayload = Omit<
+  PartnerSalesperson,
   'id' | 'user_id' | 'created_at' | 'updated_at'
 >;
 
@@ -499,7 +525,11 @@ supabase
   }, [loadData]);
 
   const addCustomer = useCallback(
-    async (customer: CustomerPayload) => {
+    async (
+      customer: CustomerPayload,
+      operatorId?: string | null,
+      operatorPin?: string | null,
+    ) => {
       const currentIdentity = requireIdentity();
 
       if (!isSupabaseConfigured || !supabase) {
@@ -511,25 +541,34 @@ supabase
         customer.branch_id,
       );
 
+      // Operador que autoriza a operação (fluxo A: id + PIN do modal).
+      // Quando não informado, envia null para que a RPC resolva o
+      // operador pelo auth.uid() da sessão (fluxo B). Nunca enviar o id
+      // da sessão com PIN nulo: a RPC exige PIN válido nesse caso.
+      const effectiveOperatorId = operatorId ?? null;
+      const effectiveOperatorPin = operatorPin ?? null;
+
       const { data: created, error: rpcError } =
         await supabase.rpc(
           'execute_partner_customer_mutation',
           {
+            p_salesperson_id: effectiveOperatorId,
+            p_pin: effectiveOperatorPin,
             p_customer_id: null,
+            p_branch_id: customer.branch_id ?? null,
             p_name: customer.name,
             p_document: customer.document ?? null,
-            p_person_type: customer.person_type ?? 'PF',
             p_phone: customer.phone ?? null,
             p_email: customer.email ?? null,
+            p_birthday: customer.birthday ?? null,
             p_address: customer.address ?? null,
+            p_neighborhood: customer.neighborhood ?? null,
             p_city: customer.city ?? null,
-            p_state: customer.state ?? null,
-            p_zip_code: customer.zip_code ?? null,
+            p_device_model: customer.device_model ?? null,
             p_notes: customer.notes ?? null,
             p_customer_type: customer.customer_type ?? 'varejo',
             p_credit_limit: customer.credit_limit ?? 0,
-            p_branch_id: customer.branch_id ?? null,
-            p_status: customer.status ?? 'ativo',
+            p_allow_credit: customer.allow_credit ?? false,
           },
         );
 
@@ -537,14 +576,16 @@ supabase
         throw rpcError;
       }
 
-      const createdCustomer =
-        (created as PartnerCustomer | null) ?? {
-          ...customer,
-          id: crypto.randomUUID(),
-          user_id: currentIdentity.companyUserId,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        };
+      // A RPC retorna o id (uuid) do cliente, não a linha completa.
+      const createdCustomer: PartnerCustomer = {
+        ...customer,
+        id:
+          (created as string | null) ??
+          crypto.randomUUID(),
+        user_id: currentIdentity.companyUserId,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
 
       setData((prev) => ({
         ...prev,
@@ -565,6 +606,8 @@ supabase
     async (
       id: string,
       customer: Partial<CustomerPayload>,
+      operatorId?: string | null,
+      operatorPin?: string | null,
     ) => {
       const currentIdentity = requireIdentity();
 
@@ -585,32 +628,46 @@ supabase
         customer.branch_id ?? existing.branch_id,
       );
 
+      // Mesma regra de operador: id + PIN do modal ou null (auth.uid()).
+      const effectiveOperatorId = operatorId ?? null;
+      const effectiveOperatorPin = operatorPin ?? null;
+
       const { data: updated, error: rpcError } =
         await supabase.rpc(
           'execute_partner_customer_mutation',
           {
+            p_salesperson_id: effectiveOperatorId,
+            p_pin: effectiveOperatorPin,
             p_customer_id: id,
+            p_branch_id:
+              customer.branch_id ?? existing.branch_id ?? null,
             p_name: customer.name ?? existing.name,
             p_document:
               customer.document ?? existing.document ?? null,
-            p_person_type:
-              customer.person_type ?? existing.person_type,
             p_phone: customer.phone ?? existing.phone ?? null,
             p_email: customer.email ?? existing.email ?? null,
+            p_birthday:
+              customer.birthday ?? existing.birthday ?? null,
             p_address:
               customer.address ?? existing.address ?? null,
+            p_neighborhood:
+              customer.neighborhood ??
+              existing.neighborhood ??
+              null,
             p_city: customer.city ?? existing.city ?? null,
-            p_state: customer.state ?? existing.state ?? null,
-            p_zip_code:
-              customer.zip_code ?? existing.zip_code ?? null,
+            p_device_model:
+              customer.device_model ??
+              existing.device_model ??
+              null,
             p_notes: customer.notes ?? existing.notes ?? null,
             p_customer_type:
               customer.customer_type ?? existing.customer_type,
             p_credit_limit:
               customer.credit_limit ?? existing.credit_limit ?? 0,
-            p_branch_id:
-              customer.branch_id ?? existing.branch_id ?? null,
-            p_status: customer.status ?? existing.status,
+            p_allow_credit:
+              customer.allow_credit ??
+              existing.allow_credit ??
+              false,
           },
         );
 
@@ -618,12 +675,13 @@ supabase
         throw rpcError;
       }
 
-      const updatedCustomer =
-        (updated as PartnerCustomer | null) ?? {
-          ...existing,
-          ...customer,
-          updated_at: new Date().toISOString(),
-        };
+      // A RPC retorna o id (uuid) do cliente, não a linha completa.
+      const updatedCustomer: PartnerCustomer = {
+        ...existing,
+        ...customer,
+        id,
+        updated_at: new Date().toISOString(),
+      };
 
       setData((prev) => ({
         ...prev,
@@ -638,7 +696,11 @@ supabase
   );
 
   const deleteCustomer = useCallback(
-    async (id: string) => {
+    async (
+      id: string,
+      operatorId?: string | null,
+      operatorPin?: string | null,
+    ) => {
       const currentIdentity = requireIdentity();
 
       if (!isSupabaseConfigured || !supabase) {
@@ -658,9 +720,15 @@ supabase
         existing.branch_id,
       );
 
+      // Mesma regra de operador: id + PIN do modal ou null (auth.uid()).
+      const effectiveOperatorId = operatorId ?? null;
+      const effectiveOperatorPin = operatorPin ?? null;
+
       const { error: rpcError } = await supabase.rpc(
         'execute_partner_customer_delete',
         {
+          p_salesperson_id: effectiveOperatorId,
+          p_pin: effectiveOperatorPin,
           p_customer_id: id,
         },
       );
@@ -680,7 +748,11 @@ supabase
   );
 
   const addProduct = useCallback(
-    async (product: ProductPayload) => {
+    async (
+      product: ProductPayload,
+      operatorId?: string | null,
+      operatorPin?: string | null,
+    ) => {
       const currentIdentity = requireIdentity();
 
       if (!isSupabaseConfigured || !supabase) {
@@ -692,22 +764,28 @@ supabase
         product.branch_id,
       );
 
+      // Mesma regra de operador: id + PIN do modal ou null (auth.uid()).
+      const effectiveOperatorId = operatorId ?? null;
+      const effectiveOperatorPin = operatorPin ?? null;
+
       const { data: created, error: rpcError } =
         await supabase.rpc(
           'execute_partner_product_mutation',
           {
+            p_salesperson_id: effectiveOperatorId,
+            p_pin: effectiveOperatorPin,
             p_product_id: null,
+            p_branch_id: product.branch_id ?? null,
             p_name: product.name,
-            p_sku: product.sku,
-            p_brand: product.brand,
-            p_category: product.category,
-            p_price: product.price,
+            p_cost_price: product.cost_price,
+            p_sale_price: product.sale_price,
+            p_wholesale_price: product.wholesale_price,
             p_stock: product.stock,
             p_min_stock: product.min_stock,
-            p_image: product.image ?? null,
-            p_description: product.description ?? null,
-            p_branch_id: product.branch_id ?? null,
-            p_active: product.active ?? true,
+            p_category: product.category,
+            p_sku: product.sku,
+            p_is_service: product.is_service,
+            p_image_url: product.image_url ?? null,
           },
         );
 
@@ -715,14 +793,16 @@ supabase
         throw rpcError;
       }
 
-      const createdProduct =
-        (created as PartnerProduct | null) ?? {
-          ...product,
-          id: crypto.randomUUID(),
-          user_id: currentIdentity.companyUserId,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        };
+      // A RPC retorna o id (uuid) do produto, não a linha completa.
+      const createdProduct: PartnerProduct = {
+        ...product,
+        id:
+          (created as string | null) ??
+          crypto.randomUUID(),
+        user_id: currentIdentity.companyUserId,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
 
       setData((prev) => ({
         ...prev,
@@ -743,6 +823,8 @@ supabase
     async (
       id: string,
       product: Partial<ProductPayload>,
+      operatorId?: string | null,
+      operatorPin?: string | null,
     ) => {
       const currentIdentity = requireIdentity();
 
@@ -763,28 +845,37 @@ supabase
         product.branch_id ?? existing.branch_id,
       );
 
+      // Mesma regra de operador: id + PIN do modal ou null (auth.uid()).
+      const effectiveOperatorId = operatorId ?? null;
+      const effectiveOperatorPin = operatorPin ?? null;
+
       const { data: updated, error: rpcError } =
         await supabase.rpc(
           'execute_partner_product_mutation',
           {
+            p_salesperson_id: effectiveOperatorId,
+            p_pin: effectiveOperatorPin,
             p_product_id: id,
+            p_branch_id:
+              product.branch_id ?? existing.branch_id ?? null,
             p_name: product.name ?? existing.name,
-            p_sku: product.sku ?? existing.sku,
-            p_brand: product.brand ?? existing.brand,
-            p_category:
-              product.category ?? existing.category,
-            p_price: product.price ?? existing.price,
+            p_cost_price:
+              product.cost_price ?? existing.cost_price,
+            p_sale_price:
+              product.sale_price ?? existing.sale_price,
+            p_wholesale_price:
+              product.wholesale_price ??
+              existing.wholesale_price,
             p_stock: product.stock ?? existing.stock,
             p_min_stock:
               product.min_stock ?? existing.min_stock,
-            p_image: product.image ?? existing.image ?? null,
-            p_description:
-              product.description ??
-              existing.description ??
-              null,
-            p_branch_id:
-              product.branch_id ?? existing.branch_id ?? null,
-            p_active: product.active ?? existing.active,
+            p_category:
+              product.category ?? existing.category,
+            p_sku: product.sku ?? existing.sku,
+            p_is_service:
+              product.is_service ?? existing.is_service,
+            p_image_url:
+              product.image_url ?? existing.image_url ?? null,
           },
         );
 
@@ -792,12 +883,13 @@ supabase
         throw rpcError;
       }
 
-      const updatedProduct =
-        (updated as PartnerProduct | null) ?? {
-          ...existing,
-          ...product,
-          updated_at: new Date().toISOString(),
-        };
+      // A RPC retorna o id (uuid) do produto, não a linha completa.
+      const updatedProduct: PartnerProduct = {
+        ...existing,
+        ...product,
+        id,
+        updated_at: new Date().toISOString(),
+      };
 
       setData((prev) => ({
         ...prev,
@@ -812,7 +904,11 @@ supabase
   );
 
   const deleteProduct = useCallback(
-    async (id: string) => {
+    async (
+      id: string,
+      operatorId?: string | null,
+      operatorPin?: string | null,
+    ) => {
       const currentIdentity = requireIdentity();
 
       if (!isSupabaseConfigured || !supabase) {
@@ -832,9 +928,15 @@ supabase
         existing.branch_id,
       );
 
+      // Mesma regra de operador: id + PIN do modal ou null (auth.uid()).
+      const effectiveOperatorId = operatorId ?? null;
+      const effectiveOperatorPin = operatorPin ?? null;
+
       const { error: rpcError } = await supabase.rpc(
         'execute_partner_product_delete',
         {
+          p_salesperson_id: effectiveOperatorId,
+          p_pin: effectiveOperatorPin,
           p_product_id: id,
         },
       );
@@ -854,28 +956,34 @@ supabase
   );
 
   const addSupplier = useCallback(
-    async (supplier: SupplierPayload) => {
+    async (
+      supplier: SupplierPayload,
+      operatorId?: string | null,
+      operatorPin?: string | null,
+    ) => {
       const currentIdentity = requireIdentity();
 
       if (!isSupabaseConfigured || !supabase) {
         throw new Error('Supabase não configurado.');
       }
 
+      // Mesma regra de operador: id + PIN do modal ou null (auth.uid()).
+      const effectiveOperatorId = operatorId ?? null;
+      const effectiveOperatorPin = operatorPin ?? null;
+
+      // A RPC atual aceita apenas nome, telefone e observações.
+      // Os demais campos do formulário (documento, e-mail, endereço,
+      // cidade, estado, CEP, status) seguem apenas na UI/local state.
       const { data: created, error: rpcError } =
         await supabase.rpc(
           'execute_partner_supplier_mutation',
           {
+            p_operator_id: effectiveOperatorId,
+            p_operator_pin: effectiveOperatorPin,
             p_supplier_id: null,
             p_name: supplier.name,
-            p_document: supplier.document ?? null,
             p_phone: supplier.phone ?? null,
-            p_email: supplier.email ?? null,
-            p_address: supplier.address ?? null,
-            p_city: supplier.city ?? null,
-            p_state: supplier.state ?? null,
-            p_zip_code: supplier.zip_code ?? null,
             p_notes: supplier.notes ?? null,
-            p_status: supplier.status ?? 'ativo',
           },
         );
 
@@ -883,14 +991,18 @@ supabase
         throw rpcError;
       }
 
-      const createdSupplier =
-        (created as PartnerSupplier | null) ?? {
-          ...supplier,
-          id: crypto.randomUUID(),
-          user_id: currentIdentity.companyUserId,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        };
+      // A RPC retorna o id (uuid) do fornecedor, não a linha completa.
+      const createdSupplier: PartnerSupplier = {
+        ...supplier,
+        id:
+          (created as string | null) ??
+          crypto.randomUUID(),
+        user_id: currentIdentity.companyUserId,
+        // A RPC sempre insere o fornecedor com saldo a pagar zerado.
+        payable_balance: 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
 
       setData((prev) => ({
         ...prev,
@@ -911,6 +1023,8 @@ supabase
     async (
       id: string,
       supplier: Partial<SupplierPayload>,
+      operatorId?: string | null,
+      operatorPin?: string | null,
     ) => {
       const currentIdentity = requireIdentity();
 
@@ -926,24 +1040,21 @@ supabase
         throw new Error('Fornecedor não encontrado.');
       }
 
+      // Mesma regra de operador: id + PIN do modal ou null (auth.uid()).
+      const effectiveOperatorId = operatorId ?? null;
+      const effectiveOperatorPin = operatorPin ?? null;
+
+      // A RPC atual aceita apenas nome, telefone e observações.
       const { data: updated, error: rpcError } =
         await supabase.rpc(
           'execute_partner_supplier_mutation',
           {
+            p_operator_id: effectiveOperatorId,
+            p_operator_pin: effectiveOperatorPin,
             p_supplier_id: id,
             p_name: supplier.name ?? existing.name,
-            p_document:
-              supplier.document ?? existing.document ?? null,
             p_phone: supplier.phone ?? existing.phone ?? null,
-            p_email: supplier.email ?? existing.email ?? null,
-            p_address:
-              supplier.address ?? existing.address ?? null,
-            p_city: supplier.city ?? existing.city ?? null,
-            p_state: supplier.state ?? existing.state ?? null,
-            p_zip_code:
-              supplier.zip_code ?? existing.zip_code ?? null,
             p_notes: supplier.notes ?? existing.notes ?? null,
-            p_status: supplier.status ?? existing.status,
           },
         );
 
@@ -951,12 +1062,13 @@ supabase
         throw rpcError;
       }
 
-      const updatedSupplier =
-        (updated as PartnerSupplier | null) ?? {
-          ...existing,
-          ...supplier,
-          updated_at: new Date().toISOString(),
-        };
+      // A RPC retorna o id (uuid) do fornecedor, não a linha completa.
+      const updatedSupplier: PartnerSupplier = {
+        ...existing,
+        ...supplier,
+        id,
+        updated_at: new Date().toISOString(),
+      };
 
       setData((prev) => ({
         ...prev,
@@ -971,8 +1083,12 @@ supabase
   );
 
   const deleteSupplier = useCallback(
-    async (id: string) => {
-      requireIdentity();
+    async (
+      id: string,
+      operatorId?: string | null,
+      operatorPin?: string | null,
+    ) => {
+      const currentIdentity = requireIdentity();
 
       if (!isSupabaseConfigured || !supabase) {
         throw new Error('Supabase não configurado.');
@@ -986,9 +1102,15 @@ supabase
         throw new Error('Fornecedor não encontrado.');
       }
 
+      // Mesma regra de operador: id + PIN do modal ou null (auth.uid()).
+      const effectiveOperatorId = operatorId ?? null;
+      const effectiveOperatorPin = operatorPin ?? null;
+
       const { error: rpcError } = await supabase.rpc(
         'execute_partner_supplier_delete',
         {
+          p_operator_id: effectiveOperatorId,
+          p_operator_pin: effectiveOperatorPin,
           p_supplier_id: id,
         },
       );
@@ -1278,23 +1400,26 @@ supabase
         sale.branch_id,
       );
 
+      // Atribuição comercial da venda (relatórios/comissões) — preservada.
       const effectiveSalespersonId =
         currentIdentity.salespersonId
           ? currentIdentity.salespersonId
           : operatorId ?? sale.salesperson_id ?? null;
 
-      const effectiveOperatorPin =
-        currentIdentity.salespersonId
-          ? null
-          : operatorPin ?? null;
+      // Autorização da RPC: operador do modal (id + PIN) ou null para
+      // que a RPC resolva o operador pelo auth.uid() da sessão.
+      const effectiveOperatorId = operatorId ?? null;
+      const effectiveOperatorPin = operatorPin ?? null;
 
       const ns: PartnerSale = {
         ...sale,
         id: crypto.randomUUID(),
         user_id: currentIdentity.companyUserId,
+        status: sale.status ?? 'concluida',
         created_at: new Date().toISOString(),
         imei: sale.imei ?? null,
         serial_number: sale.serial_number ?? null,
+        payment_method: sale.payment_method ?? null,
         branch_id: sale.branch_id,
         salesperson_id: effectiveSalespersonId,
         origin: sale.origin ?? 'pdv',
@@ -1309,7 +1434,7 @@ supabase
             'execute_partner_sale_mutation',
             {
               p_salesperson_id:
-                effectiveSalespersonId,
+                effectiveOperatorId,
               p_pin: effectiveOperatorPin,
               p_sale_id: ns.id,
               p_customer_id: ns.customer_id,
@@ -1414,15 +1539,16 @@ supabase
         branchId,
       );
 
+      // Atribuição comercial da venda (relatórios/comissões) — preservada.
       const effectiveSpId =
         currentIdentity.salespersonId
           ? currentIdentity.salespersonId
           : operatorId ?? sale.salesperson_id ?? null;
 
-      const effectiveOperatorPin =
-        currentIdentity.salespersonId
-          ? null
-          : operatorPin ?? null;
+      // Autorização da RPC: operador do modal (id + PIN) ou null para
+      // que a RPC resolva o operador pelo auth.uid() da sessão.
+      const effectiveOperatorId = operatorId ?? null;
+      const effectiveOperatorPin = operatorPin ?? null;
 
       const ns: PartnerSale = {
         ...sale,
@@ -1445,7 +1571,7 @@ supabase
           await supabase.rpc(
             'execute_partner_sale_mutation',
             {
-              p_salesperson_id: effectiveSpId,
+              p_salesperson_id: effectiveOperatorId,
               p_pin: effectiveOperatorPin,
               p_sale_id: ns.id,
               p_customer_id: ns.customer_id,
@@ -1508,17 +1634,10 @@ supabase
         sale.branch_id,
       );
 
-      const effectiveOperatorId =
-        currentIdentity.salespersonId
-          ? currentIdentity.salespersonId
-          : operatorId ??
-            sale.salesperson_id ??
-            null;
-
-      const effectiveOperatorPin =
-        currentIdentity.salespersonId
-          ? null
-          : operatorPin ?? null;
+      // Autorização da RPC: operador do modal (id + PIN) ou null para
+      // que a RPC resolva o operador pelo auth.uid() da sessão.
+      const effectiveOperatorId = operatorId ?? null;
+      const effectiveOperatorPin = operatorPin ?? null;
 
       if (isSupabaseConfigured && supabase) {
         const { error: rpcErr } =
@@ -1650,18 +1769,11 @@ supabase
 
       // Cancelar venda exige autorização de Administrador ou Gerente digitada
       // na hora (ver PdvModule). Quando um operatorId é explicitamente
-      // informado, ele tem prioridade sobre a identidade da sessão atual —
-      // é exatamente o ponto: quem está logado no caixa não pode se
-      // autoaprovar.
-      const effectiveOperatorId =
-        operatorId ??
-        currentIdentity.salespersonId ??
-        sale.salesperson_id ??
-        null;
-
-      const effectiveOperatorPin = operatorId
-        ? operatorPin ?? null
-        : null;
+      // informado, ele é usado com o PIN digitado. Sem operador informado,
+      // envia null para que a RPC resolva pelo auth.uid() da sessão.
+      // Nunca enviar id de colaborador com PIN nulo.
+      const effectiveOperatorId = operatorId ?? null;
+      const effectiveOperatorPin = operatorPin ?? null;
 
       if (isSupabaseConfigured && supabase) {
         const { error: rpcErr } =
@@ -1740,15 +1852,10 @@ supabase
         sale.branch_id,
       );
 
-      const effectiveOperatorId =
-        operatorId ??
-        currentIdentity.salespersonId ??
-        sale.salesperson_id ??
-        null;
-
-      const effectiveOperatorPin = operatorId
-        ? operatorPin ?? null
-        : null;
+      // Mesma regra de autorização do cancelamento: operador informado
+      // na hora (id + PIN) ou null para resolução via auth.uid().
+      const effectiveOperatorId = operatorId ?? null;
+      const effectiveOperatorPin = operatorPin ?? null;
 
       if (isSupabaseConfigured && supabase) {
         const { error: rpcErr } =
@@ -1784,11 +1891,13 @@ supabase
   const replenishStock = useCallback(
     async (
       productId: string,
+      branchId: string,
       quantity: number,
-      reason: string,
+      unitCost?: number | null,
+      reason?: string,
       operatorId?: string | null,
       operatorPin?: string | null,
-    ) => {
+    ): Promise<{ newStock: number }> => {
       const currentIdentity = requireIdentity();
 
       if (quantity <= 0) {
@@ -1809,37 +1918,43 @@ supabase
 
       ensureEmployeeBranch(
         currentIdentity,
-        product.branch_id,
+        branchId,
       );
 
-      const effectiveOperatorId =
-        currentIdentity.salespersonId
-          ? currentIdentity.salespersonId
-          : operatorId ?? null;
+      // Mesma regra de operador: id + PIN do modal ou null (auth.uid()).
+      const effectiveOperatorId = operatorId ?? null;
+      const effectiveOperatorPin = operatorPin ?? null;
 
-      const effectiveOperatorPin =
-        currentIdentity.salespersonId
-          ? null
-          : operatorPin ?? null;
+      let newStock = product.stock + quantity;
 
       if (isSupabaseConfigured && supabase) {
-        const { error: rpcError } =
+        const { data: replenishment, error: rpcError } =
           await supabase.rpc(
             'execute_partner_stock_replenishment',
             {
-              p_product_id: productId,
-              p_quantity: quantity,
-              p_reason: reason,
-              p_branch_id:
-                product.branch_id ?? null,
-              p_salesperson_id:
-                effectiveOperatorId,
+              p_salesperson_id: effectiveOperatorId,
               p_pin: effectiveOperatorPin,
+              p_product_id: productId,
+              p_branch_id: branchId,
+              p_quantity: quantity,
+              p_unit_cost: unitCost ?? null,
+              p_reason: reason ?? null,
             },
           );
 
         if (rpcError) {
           throw rpcError;
+        }
+
+        // A RPC retorna jsonb com new_stock já calculado no banco.
+        const serverNewStock = (
+          replenishment as {
+            new_stock?: number;
+          } | null
+        )?.new_stock;
+
+        if (typeof serverNewStock === 'number') {
+          newStock = serverNewStock;
         }
       }
 
@@ -1850,8 +1965,7 @@ supabase
             item.id === productId
               ? {
                   ...item,
-                  stock:
-                    item.stock + quantity,
+                  stock: newStock,
                 }
               : item,
         ),
@@ -1864,15 +1978,17 @@ supabase
             product_name: product.name,
             type: 'entrada',
             quantity,
-            reason,
+            reason:
+              reason ?? 'Reposição de estoque',
             created_at:
               new Date().toISOString(),
-            branch_id:
-              product.branch_id ?? null,
+            branch_id: branchId,
           },
           ...prev.movements,
         ],
       }));
+
+      return { newStock };
     },
     [data.products, requireIdentity],
   );
@@ -2428,7 +2544,7 @@ supabase
 
   const addSalesperson = useCallback(
     async (
-      salesperson: PartnerSalesperson,
+      salesperson: SalespersonPayload,
       operatorId?: string | null,
       operatorPin?: string | null,
     ) => {
@@ -2444,6 +2560,13 @@ supabase
         );
       }
 
+      // Assinatura em produção (verificada diretamente no PostgREST):
+      // execute_partner_salesperson_mutation(p_salesperson_id, p_name,
+      //   p_role, p_commission_rate, p_phone, p_email, p_is_active,
+      //   p_branch_id, p_operator_id, p_operator_pin, p_new_pin)
+      // p_salesperson_id = colaborador criado/editado (null na criação);
+      // p_operator_id/p_operator_pin = operador que autoriza a operação;
+      // p_new_pin = novo PIN do colaborador, quando aplicável.
       const { data: created, error } =
         await supabase.rpc(
           'execute_partner_salesperson_mutation',
@@ -2469,8 +2592,14 @@ supabase
         throw error;
       }
 
-      const createdSalesperson = {
-        ...(created as PartnerSalesperson),
+      // A RPC retorna o id (uuid) do colaborador, não a linha completa.
+      const createdSalesperson: PartnerSalesperson = {
+        ...salesperson,
+        id:
+          (created as string | null) ??
+          crypto.randomUUID(),
+        user_id: currentIdentity.companyUserId,
+        created_at: new Date().toISOString(),
         // O banco nunca devolve o PIN em texto puro (nem deveria). Sabemos
         // apenas se um PIN foi enviado nesta criação — refletimos isso aqui
         // para a tela mostrar "Configurado" corretamente sem recarregar.
@@ -2521,6 +2650,8 @@ supabase
         );
       }
 
+      // Mesma assinatura de produção da criação (11 parâmetros);
+      // p_salesperson_id identifica o colaborador que está sendo editado.
       const { data: updated, error } =
         await supabase.rpc(
           'execute_partner_salesperson_mutation',
@@ -2564,8 +2695,11 @@ supabase
         throw error;
       }
 
-      const updatedSalesperson = {
-        ...(updated as PartnerSalesperson),
+      // A RPC retorna o id (uuid) do colaborador, não a linha completa.
+      const updatedSalesperson: PartnerSalesperson = {
+        ...existing,
+        ...salesperson,
+        id,
         pin: null,
         pin_configured: salesperson.pin
           ? true

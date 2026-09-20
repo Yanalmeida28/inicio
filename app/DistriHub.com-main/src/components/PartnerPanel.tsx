@@ -441,13 +441,25 @@ export function PartnerPanel({
   }, [partner.salespeople, effectiveBranchId]);
 
   function getOperatorContext() {
-    const operatorId =
-      currentSalespersonId ??
-      identity?.salespersonId ??
-      null;
+    /*
+     * Sessão de funcionário: nenhum id de colaborador é enviado — a RPC
+     * resolve o operador pelo auth.uid() da própria sessão. Enviar o id
+     * da sessão com PIN nulo seria rejeitado, pois a RPC exige um PIN
+     * válido sempre que p_salesperson_id é informado.
+     *
+     * Sessão de proprietário: usa o operador escolhido no modal
+     * (id + PIN digitado) ou nulo para operar diretamente como
+     * administrador via auth.uid().
+     */
+    if (isEmployeeRestricted) {
+      return {
+        operatorId: null,
+        operatorPin: null,
+      };
+    }
 
     return {
-      operatorId,
+      operatorId: currentSalespersonId ?? null,
       operatorPin: activeOperatorPin,
     };
   }
@@ -872,7 +884,7 @@ export function PartnerPanel({
       operatorPin,
     } = getOperatorContext();
 
-    await partner.addSalesperson(
+    return partner.addSalesperson(
       salesperson,
       operatorId,
       operatorPin,
