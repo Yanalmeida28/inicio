@@ -2599,9 +2599,6 @@ supabase
         created as Partial<PartnerSalesperson> | null;
 
       const createdSalesperson: PartnerSalesperson = {
-        // Campos que a linha retornada não traz (ex.: pin é protegido).
-        pin: null,
-        pin_configured: !!salesperson.pin,
         // Dados enviados como base...
         ...salesperson,
         // ...sobrescritos pelo que o banco realmente persistiu.
@@ -2614,6 +2611,11 @@ supabase
         created_at:
           returned?.created_at ??
           new Date().toISOString(),
+        // Campos protegidos: ficam DEPOIS dos spreads para que o PIN em
+        // texto puro enviado no formulário nunca seja copiado para o
+        // estado. Guardamos apenas se um PIN foi configurado.
+        pin: null,
+        pin_configured: !!salesperson.pin,
       };
 
       setData((prev) => ({
@@ -3462,20 +3464,25 @@ supabase
         return;
       }
 
+      // Nome real do ator já disponível no fluxo: o vendedor da sessão
+      // autenticada ou o proprietário. A coluna actor_name é NOT NULL no
+      // banco, então sem um nome real não registramos o evento.
+      const actorName =
+        data.salespeople.find(
+          (salesperson) =>
+            salesperson.id ===
+            currentIdentity.salespersonId,
+        )?.name ?? data.profile?.name;
+
+      if (!actorName) {
+        return;
+      }
+
       const { data: created, error } =
         await supabase.rpc(
           'record_partner_audit_event',
           {
-            // Nome real do ator já disponível no fluxo: vendedor da
-            // sessão, vendedor selecionado no modal ou proprietário.
-            p_actor_name:
-              data.salespeople.find(
-                (salesperson) =>
-                  salesperson.id ===
-                  currentIdentity.salespersonId,
-              )?.name ??
-              data.profile?.name ??
-              'Proprietário',
+            p_actor_name: actorName,
             p_actor_role: actorRole,
             p_action: action,
             p_entity_type: entityType,
