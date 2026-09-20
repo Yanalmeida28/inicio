@@ -272,9 +272,14 @@ supabase
           .eq('user_id', companyUserId)
           .order('name'),
 
+        // SELECT explícito e restritivo: o PIN em texto puro (pin) e o
+        // hash (pin_hash) jamais saem do banco para o estado do React.
+        // Somente as colunas necessárias à interface são carregadas.
         supabase
           .from('partner_salespeople')
-          .select('*')
+          .select(
+            'id, user_id, auth_user_id, name, role, commission_rate, phone, email, active, is_active, branch_id, created_at',
+          )
           .eq('user_id', companyUserId)
           .order('name'),
 
@@ -2591,7 +2596,7 @@ supabase
               salesperson.branch_id ?? null,
             p_operator_id: operatorId ?? null,
             p_operator_pin: operatorPin ?? null,
-            p_new_pin: salesperson.pin ?? null,
+            p_new_pin: salesperson.new_pin ?? null,
           },
         );
 
@@ -2618,11 +2623,11 @@ supabase
         created_at:
           returned?.created_at ??
           new Date().toISOString(),
-        // Campos protegidos: ficam DEPOIS dos spreads para que o PIN em
-        // texto puro enviado no formulário nunca seja copiado para o
-        // estado. Guardamos apenas se um PIN foi configurado.
-        pin: null,
-        pin_configured: !!salesperson.pin,
+        // Campos protegidos: ficam DEPOIS dos spreads para que o novo PIN
+        // em texto puro enviado no formulário (new_pin) nunca seja copiado
+        // para o estado. Guardamos apenas se um PIN foi configurado.
+        new_pin: null,
+        pin_configured: !!salesperson.new_pin,
       };
 
       setData((prev) => ({
@@ -2705,7 +2710,7 @@ supabase
             p_operator_pin:
               operatorPin ?? null,
             p_new_pin:
-              salesperson.pin ?? null,
+              salesperson.new_pin ?? null,
           },
         );
 
@@ -2718,8 +2723,8 @@ supabase
         ...existing,
         ...salesperson,
         id,
-        pin: null,
-        pin_configured: salesperson.pin
+        new_pin: null,
+        pin_configured: salesperson.new_pin
           ? true
           : existing.pin_configured ?? false,
       };

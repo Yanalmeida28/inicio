@@ -11,8 +11,8 @@ type Props = {
   salespeople: PartnerSalesperson[];
   currentRole: SalespersonRole;
   onFinalizePreSale?: (id: string, paymentMethod: string) => Promise<void>;
-  onCancelSale: (id: string) => Promise<void>;
-  onDeleteSale: (id: string) => Promise<void>;
+  onCancelSale: (id: string, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
+  onDeleteSale: (id: string, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
   onPullToPdv?: (sale: PartnerSale) => void;
 };
 
@@ -43,10 +43,16 @@ export function OpenOrdersModule({ sales, customers, salespeople, currentRole, o
   const [finalizeTarget, setFinalizeTarget] = useState<PartnerSale | null>(null);
   const [finalizePayment, setFinalizePayment] = useState('pix');
   const [cancelTarget, setCancelTarget] = useState<PartnerSale | null>(null);
+  const [supervisorId, setSupervisorId] = useState('');
   const [pinInput, setPinInput] = useState('');
-  const [pinError, setPinError] = useState(false);
+  const [pinError, setPinError] = useState<string | null>(null);
+  const [isVerifyingPin, setIsVerifyingPin] = useState(false);
 
   const canCheckout = cashierRoles.includes(currentRole);
+
+  // O PIN nunca é comparado no cliente: quem valida é a RPC no backend.
+  // A lista abaixo serve apenas para escolher o responsável que autoriza.
+  const managers = salespeople.filter((s) => s.role === 'administrador' || s.role === 'gerente');
 
   const openOrders = useMemo(() => {
     return sales.filter((s) => s.status === 'aberta' || s.status === 'pre_venda');
@@ -105,25 +111,41 @@ export function OpenOrdersModule({ sales, customers, salespeople, currentRole, o
 
   function requestCancel(sale: PartnerSale) {
     setCancelTarget(sale);
+    setSupervisorId(managers[0]?.id ?? '');
     setPinInput('');
-    setPinError(false);
+    setPinError(null);
   }
 
-  function verifyPinAndCancel(action: 'cancel' | 'delete') {
+  // Autenticação delegada ao backend: o PIN digitado é enviado às RPCs
+  // existentes (execute_partner_sale_mutation / execute_partner_sale_delete),
+  // que o validam contra o pin_hash. Nenhuma comparação ocorre no navegador.
+  async function verifyPinAndCancel(action: 'cancel' | 'delete') {
     if (!cancelTarget) return;
-    const admin = salespeople.find((s) => (s.role === 'administrador' || s.role === 'gerente') && s.pin && s.pin === pinInput);
-    if (!admin || admin.pin !== pinInput) {
-      setPinError(true);
+    if (!supervisorId) {
+      setPinError('Selecione o responsável (Administrador ou Gerente).');
       return;
     }
-    if (action === 'cancel') {
-      onCancelSale(cancelTarget.id);
-    } else {
-      onDeleteSale(cancelTarget.id);
+    if (!pinInput) {
+      setPinError('Digite o PIN do responsável selecionado.');
+      return;
     }
-    setCancelTarget(null);
-    setPinInput('');
-    setPinError(false);
+    setIsVerifyingPin(true);
+    setPinError(null);
+    try {
+      if (action === 'cancel') {
+        await onCancelSale(cancelTarget.id, supervisorId, pinInput);
+      } else {
+        await onDeleteSale(cancelTarget.id, supervisorId, pinInput);
+      }
+      setCancelTarget(null);
+      setSupervisorId('');
+      setPinInput('');
+      setPinError(null);
+    } catch (error) {
+      setPinError(error instanceof Error ? error.message : 'Não foi possível autorizar. Verifique o PIN.');
+    } finally {
+      setIsVerifyingPin(false);
+    }
   }
 
   return (
@@ -335,27 +357,43 @@ export function OpenOrdersModule({ sales, customers, salespeople, currentRole, o
               <button onClick={() => setCancelTarget(null)}><X size={18} /></button>
             </div>
             <p className="otp-description">
-              Cancelar ou apagar um pedido requer permissão de Administrador ou Gerente. Digite o PIN para continuar.
+              Cancelar ou apagar um pedido requer permissão de Administrador ou Gerente. Selecione o responsável e digite o PIN dele para continuar.
             </p>
-            <label style={{ display: 'block', marginBottom: '12px' }}>
-              <strong>PIN (Administrador ou Gerente)</strong>
-              <input
-                type="password"
-                value={pinInput}
-                onChange={(e) => { setPinInput(e.target.value); setPinError(false); }}
-                placeholder="Digite o PIN"
-                maxLength={4}
-                style={{ width: '100%', marginTop: '6px' }}
-                autoFocus
-              />
-            </label>
-            {pinError && <p className="otp-error-msg">PIN incorreto. Acesso negado.</p>}
+            {managers.length === 0 ? (
+              <p className="otp-error-msg">Nenhum Administrador ou Gerente cadastrado. Cadastre um em Colaboradores antes de continuar.</p>
+            ) : (
+              <>
+                <label style={{ display: 'block', marginBottom: '12px' }}>
+                  <strong>Responsável</strong>
+                  <select
+                    value={supervisorId}
+                    onChange={(e) => { setSupervisorId(e.target.value); setPinError(null); }}
+                    style={{ width: '100%', marginTop: '6px' }}
+                  >
+                    {managers.map((m) => <option key={m.id} value={m.id}>{m.name} ({m.role === 'administrador' ? 'Administrador' : 'Gerente'})</option>)}
+                  </select>
+                </label>
+                <label style={{ display: 'block', marginBottom: '12px' }}>
+                  <strong>PIN do responsável</strong>
+                  <input
+                    type="password"
+                    value={pinInput}
+                    onChange={(e) => { setPinInput(e.target.value); setPinError(null); }}
+                    placeholder="Digite o PIN"
+                    maxLength={8}
+                    style={{ width: '100%', marginTop: '6px' }}
+                    autoFocus
+                  />
+                </label>
+              </>
+            )}
+            {pinError && <p className="otp-error-msg">{pinError}</p>}
             <div className="otp-actions">
-              <button className="rma-advance-btn danger" onClick={() => verifyPinAndCancel('delete')}>
-                Apagar
+              <button className="rma-advance-btn danger" onClick={() => verifyPinAndCancel('delete')} disabled={isVerifyingPin || managers.length === 0}>
+                {isVerifyingPin ? 'Verificando...' : 'Apagar'}
               </button>
-              <button className="module-submit-btn" onClick={() => verifyPinAndCancel('cancel')}>
-                Cancelar Pedido
+              <button className="module-submit-btn" onClick={() => verifyPinAndCancel('cancel')} disabled={isVerifyingPin || managers.length === 0}>
+                {isVerifyingPin ? 'Verificando...' : 'Cancelar Pedido'}
               </button>
             </div>
           </div>

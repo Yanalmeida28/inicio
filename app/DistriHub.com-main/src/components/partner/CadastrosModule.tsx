@@ -1641,7 +1641,7 @@ function SalespeopleSubTab({
         name: normalizedName,
         commission_rate: Number(rate) || 0,
         active: true,
-        pin: pin || null,
+        new_pin: pin || null,
         role,
         branch_id: branchId || null,
         phone: null,
@@ -1721,7 +1721,7 @@ function SalespeopleSubTab({
         email: normalizedEmail,
         commission_rate:
           Number(editRate) || 0,
-        pin: editPin || null,
+        new_pin: editPin || null,
         role: editRole,
         branch_id:
           editBranchId || null,
@@ -2218,9 +2218,7 @@ function SalespeopleSubTab({
                     </td>
 
                     <td>
-                      {salesperson.pin
-                        ? '****'
-                        : salesperson.pin_configured
+                      {salesperson.pin_configured
                         ? 'Configurado'
                         : '—'}
                     </td>

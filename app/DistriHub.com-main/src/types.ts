@@ -205,11 +205,17 @@ export interface PartnerSalesperson {
   active?: boolean;
 
   /**
-   * Mantido apenas por compatibilidade com estruturas legadas.
-   * O sistema atual deve utilizar o PIN protegido no backend.
+   * Campo transitório de formulário: novo PIN digitado pelo administrador
+   * ao criar/editar o colaborador. É enviado somente como `p_new_pin` para
+   * a RPC `execute_partner_salesperson_mutation`, que gera o `pin_hash` no
+   * backend. NUNCA é lido de `partner_salespeople` nem persistido no estado.
    */
-  pin?: string | null;
+  new_pin?: string | null;
 
+  /**
+   * Indica apenas se existe PIN configurado (derivado de estado seguro).
+   * Nunca carrega o PIN em texto puro nem o hash.
+   */
   pin_configured?: boolean;
   branch_id?: string | null;
   created_at: string;
