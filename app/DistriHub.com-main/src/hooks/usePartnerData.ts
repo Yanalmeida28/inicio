@@ -2592,19 +2592,28 @@ supabase
         throw error;
       }
 
-      // A RPC retorna o id (uuid) do colaborador, não a linha completa.
+      // A RPC retorna a linha completa de partner_salespeople criada,
+      // não um UUID. Usamos o id e os dados retornados, apenas
+      // completando campos que o banco pode não devolver.
+      const returned =
+        created as Partial<PartnerSalesperson> | null;
+
       const createdSalesperson: PartnerSalesperson = {
-        ...salesperson,
-        id:
-          (created as string | null) ??
-          crypto.randomUUID(),
-        user_id: currentIdentity.companyUserId,
-        created_at: new Date().toISOString(),
-        // O banco nunca devolve o PIN em texto puro (nem deveria). Sabemos
-        // apenas se um PIN foi enviado nesta criação — refletimos isso aqui
-        // para a tela mostrar "Configurado" corretamente sem recarregar.
+        // Campos que a linha retornada não traz (ex.: pin é protegido).
         pin: null,
         pin_configured: !!salesperson.pin,
+        // Dados enviados como base...
+        ...salesperson,
+        // ...sobrescritos pelo que o banco realmente persistiu.
+        ...returned,
+        id:
+          returned?.id ?? crypto.randomUUID(),
+        user_id:
+          returned?.user_id ??
+          currentIdentity.companyUserId,
+        created_at:
+          returned?.created_at ??
+          new Date().toISOString(),
       };
 
       setData((prev) => ({
@@ -3388,19 +3397,13 @@ supabase
           {
             p_product_id:
               movement.product_id,
-            p_product_name:
-              movement.product_name,
+            p_branch_id:
+              movement.branch_id,
             p_type: movement.type,
             p_quantity:
               movement.quantity,
             p_reason:
               movement.reason,
-            p_branch_id:
-              movement.branch_id,
-            p_salesperson_id:
-              operatorId ?? null,
-            p_pin:
-              operatorPin ?? null,
           },
         );
 
@@ -3408,16 +3411,29 @@ supabase
         throw error;
       }
 
-      const createdMovement =
-        (created as StockMovement | null) ??
-        {
-          ...movement,
-          id: crypto.randomUUID(),
-          user_id:
-            currentIdentity.companyUserId,
-          created_at:
-            new Date().toISOString(),
-        };
+      // A RPC retorna a linha do movimento criado. Se algum dia retornar
+      // apenas o id, ainda montamos o objeto local a partir do payload.
+      const returned =
+        created as StockMovement | string | null;
+
+      const createdMovement: StockMovement =
+        typeof returned === 'object' &&
+        returned !== null
+          ? {
+              ...movement,
+              ...returned,
+            }
+          : {
+              ...movement,
+              id:
+                typeof returned === 'string'
+                  ? returned
+                  : crypto.randomUUID(),
+              user_id:
+                currentIdentity.companyUserId,
+              created_at:
+                new Date().toISOString(),
+            };
 
       setData((prev) => ({
         ...prev,
@@ -3450,12 +3466,22 @@ supabase
         await supabase.rpc(
           'record_partner_audit_event',
           {
+            // Nome real do ator já disponível no fluxo: vendedor da
+            // sessão, vendedor selecionado no modal ou proprietário.
+            p_actor_name:
+              data.salespeople.find(
+                (salesperson) =>
+                  salesperson.id ===
+                  currentIdentity.salespersonId,
+              )?.name ??
+              data.profile?.name ??
+              'Proprietário',
+            p_actor_role: actorRole,
             p_action: action,
             p_entity_type: entityType,
             p_entity_id:
               entityId ?? null,
             p_details: details,
-            p_actor_role: actorRole,
           },
         );
 
