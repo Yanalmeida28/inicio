@@ -238,28 +238,15 @@ export function usePartnerData(identity: PartnerIdentity | null) {
       const currentIdentity = requireIdentity();
       const companyUserId = currentIdentity.companyUserId;
 
+      // Consultas essenciais: qualquer falha bloqueia o carregamento,
+      // pois o painel não funciona sem elas.
       const [
         profileResult,
         branchesResult,
         customersResult,
-        suppliersResult,
-        categoriesResult,
         productsResult,
         salespeopleResult,
         salesResult,
-        movementsResult,
-        settingsResult,
-        rmasResult,
-        combosResult,
-        modifiersResult,
-        invoicesResult,
-        ordersResult,
-        financialMonthsResult,
-        permissionOverridesResult,
-        auditLogsResult,
-        serviceOrdersResult,
-        serviceOrderItemsResult,
-        serviceOrderPhotosResult,
       ] = await Promise.all([
         supabase
   .from('partner_profiles')
@@ -275,18 +262,6 @@ supabase
 
         supabase
           .from('partner_customers')
-          .select('*')
-          .eq('user_id', companyUserId)
-          .order('name'),
-
-        supabase
-          .from('partner_suppliers')
-          .select('*')
-          .eq('user_id', companyUserId)
-          .order('name'),
-
-        supabase
-          .from('partner_categories')
           .select('*')
           .eq('user_id', companyUserId)
           .order('name'),
@@ -308,6 +283,53 @@ supabase
           .select('*')
           .eq('user_id', companyUserId)
           .order('created_at', { ascending: false }),
+      ]);
+
+      const essentialResults = [
+        ['partner_profiles', profileResult],
+        ['partner_branches', branchesResult],
+        ['partner_customers', customersResult],
+        ['partner_products', productsResult],
+        ['partner_salespeople', salespeopleResult],
+        ['partner_sales', salesResult],
+      ] as const;
+
+      const essentialError = essentialResults.find(
+        ([, result]) => result.error,
+      );
+
+      if (essentialError?.[1].error) {
+        throw essentialError[1].error;
+      }
+
+      // Consultas secundárias: falham individualmente sem derrubar o
+      // carregamento; cada uma assume fallback seguro ([], null).
+      const [
+        suppliersResult,
+        categoriesResult,
+        movementsResult,
+        settingsResult,
+        rmasResult,
+        combosResult,
+        modifiersResult,
+        invoicesResult,
+        ordersResult,
+        auditLogsResult,
+        serviceOrdersResult,
+        serviceOrderItemsResult,
+        serviceOrderPhotosResult,
+      ] = await Promise.all([
+        supabase
+          .from('partner_suppliers')
+          .select('*')
+          .eq('user_id', companyUserId)
+          .order('name'),
+
+        supabase
+          .from('partner_categories')
+          .select('*')
+          .eq('user_id', companyUserId)
+          .order('name'),
 
         supabase
           .from('partner_stock_movements')
@@ -352,17 +374,6 @@ supabase
           .order('created_at', { ascending: false }),
 
         supabase
-          .from('admin_financial_months')
-          .select('*')
-          .eq('user_id', companyUserId)
-          .order('month'),
-
-        supabase
-          .from('permission_overrides')
-          .select('*')
-          .eq('user_id', companyUserId),
-
-        supabase
           .from('partner_audit_logs')
           .select('*')
           .eq('user_id', companyUserId)
@@ -386,36 +397,31 @@ supabase
           .order('created_at'),
       ]);
 
-      const results = [
-        profileResult,
-        branchesResult,
-        customersResult,
-        suppliersResult,
-        categoriesResult,
-        productsResult,
-        salespeopleResult,
-        salesResult,
-        movementsResult,
-        settingsResult,
-        rmasResult,
-        combosResult,
-        modifiersResult,
-        invoicesResult,
-        ordersResult,
-        financialMonthsResult,
-        permissionOverridesResult,
-        auditLogsResult,
-        serviceOrdersResult,
-        serviceOrderItemsResult,
-        serviceOrderPhotosResult,
-      ];
+      // Diagnóstico técnico de falhas secundárias — sem PIN, tokens
+      // ou dados de linhas; apenas nome da consulta e mensagem de erro.
+      const secondaryResults = [
+        ['partner_suppliers', suppliersResult],
+        ['partner_categories', categoriesResult],
+        ['partner_stock_movements', movementsResult],
+        ['partner_store_settings', settingsResult],
+        ['rma_requests_v2', rmasResult],
+        ['partner_combos', combosResult],
+        ['partner_modifiers', modifiersResult],
+        ['partner_invoices', invoicesResult],
+        ['b2b_orders', ordersResult],
+        ['partner_audit_logs', auditLogsResult],
+        ['service_orders', serviceOrdersResult],
+        ['service_order_items', serviceOrderItemsResult],
+        ['service_order_photos', serviceOrderPhotosResult],
+      ] as const;
 
-      const firstError = results.find(
-        (result) => result.error,
-      );
-
-      if (firstError?.error) {
-        throw firstError.error;
+      for (const [queryName, result] of secondaryResults) {
+        if (result.error) {
+          console.warn(
+            `[usePartnerData] Falha na consulta secundária "${queryName}":`,
+            result.error.message,
+          );
+        }
       }
 
       if (
@@ -427,8 +433,12 @@ supabase
 
       const branchId = currentIdentity.branchId;
 
+      // includeCompanyWide: clientes e vendedores com branch_id null são
+      // registros company-wide válidos e devem ser preservados; produtos,
+      // vendas e estoque seguem com filtro estrito de filial.
       const filterBranch = <T extends { branch_id?: string | null }>(
         rows: T[] | null,
+        includeCompanyWide = false,
       ): T[] => {
         const values = rows ?? [];
 
@@ -437,7 +447,9 @@ supabase
         }
 
         return values.filter(
-          (row) => row.branch_id === branchId,
+          (row) =>
+            (includeCompanyWide && row.branch_id == null) ||
+            row.branch_id === branchId,
         );
       };
 
@@ -448,6 +460,7 @@ supabase
   (branchesResult.data as PartnerBranch[] | null) ?? [],
         customers: filterBranch(
           customersResult.data as PartnerCustomer[] | null,
+          true,
         ),
         suppliers:
           (suppliersResult.data as PartnerSupplier[] | null) ?? [],
@@ -458,6 +471,7 @@ supabase
         ),
         salespeople: filterBranch(
           salespeopleResult.data as PartnerSalesperson[] | null,
+          true,
         ),
         sales: filterBranch(
           salesResult.data as PartnerSale[] | null,
@@ -482,12 +496,8 @@ supabase
         ),
         adminCompanies: [],
         adminLojistas: [],
-        financialMonths:
-          (financialMonthsResult.data as AdminFinancialMonth[] | null) ??
-          [],
-        permissionOverrides:
-          (permissionOverridesResult.data as PermissionOverride[] | null) ??
-          [],
+        financialMonths: [],
+        permissionOverrides: [],
         auditLogs:
           (auditLogsResult.data as AuditLog[] | null) ?? [],
         serviceOrders: filterBranch(
