@@ -264,29 +264,22 @@ export function usePartnerData(identity: PartnerIdentity | null) {
       const currentIdentity = requireIdentity();
       const companyUserId = currentIdentity.companyUserId;
 
-      // SELECT explícito e restritivo de colaboradores: o PIN em texto
+      // SELECT explícito e restritivo de colaboradores: somente colunas
+      // que existem em producao (a coluna real de ativacao eh `active`;
+      // `is_active` nao existe em partner_salespeople). O PIN em texto
       // puro (pin) e o hash (pin_hash) jamais saem do banco para o
-      // estado do React. A coluna is_active pode não existir em bases
-      // anteriores à migration 20260920120000; se o PostgREST acusar
-      // coluna inexistente (42703), a consulta é refeita sem ela e o
-      // mapeamento abaixo deriva is_active a partir de `active`.
-      const fetchSalespeople = async () => {
-        const baseColumns =
-          'id, user_id, auth_user_id, name, role, commission_rate, phone, email, active, branch_id, created_at';
-        const withIsActive = await supabase
+      // estado do React. No mapeamento abaixo, is_active eh derivado de
+      // `active`.
+      // `client` fixa o narrowing de `supabase` (nao-nulo neste ponto).
+      const client = supabase;
+      const fetchSalespeople = async () =>
+        client
           .from('partner_salespeople')
-          .select(`${baseColumns}, is_active`)
+          .select(
+            'id, user_id, auth_user_id, name, role, commission_rate, phone, email, active, branch_id, created_at',
+          )
           .eq('user_id', companyUserId)
           .order('name');
-        if (withIsActive.error?.code === '42703') {
-          return supabase
-            .from('partner_salespeople')
-            .select(baseColumns)
-            .eq('user_id', companyUserId)
-            .order('name');
-        }
-        return withIsActive;
-      };
 
       // Consultas essenciais: qualquer falha bloqueia o carregamento,
       // pois o painel não funciona sem elas.
@@ -520,7 +513,8 @@ supabase
             (salespeopleResult.data as PartnerSalesperson[] | null) ?? []
           ).map((sp) => ({
             ...sp,
-            is_active: sp.is_active ?? sp.active ?? true,
+            // partner_salespeople nao possui is_active; deriva de active.
+            is_active: sp.active ?? true,
           })),
           true,
         ),
