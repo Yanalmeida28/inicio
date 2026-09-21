@@ -208,6 +208,32 @@ export function usePartnerData(identity: PartnerIdentity | null) {
     return identity;
   }, [identity]);
 
+  // Garante que existe uma SESSÃO Supabase viva (JWT) antes de uma RPC
+  // protegida. O `identity` é apenas estado React e pode existir mesmo sem
+  // sessão válida; esta checagem lê a sessão real do client. Não expõe token.
+  // Retorna o client Supabase já validado (não-nulo) junto da identity, para
+  // que o TypeScript faça o narrowing e a RPC nunca rode sem sessão.
+  const requireAuthenticatedSession = useCallback(
+    async (): Promise<{ identity: PartnerIdentity; client: NonNullable<typeof supabase> }> => {
+      const currentIdentity = requireIdentity();
+
+      if (!isSupabaseConfigured || !supabase) {
+        throw new Error('Supabase não configurado.');
+      }
+
+      const { data, error } = await supabase.auth.getSession();
+      if (error) {
+        throw error;
+      }
+      if (!data.session || !data.session.user) {
+        throw new Error('Sessão expirada. Faça login novamente.');
+      }
+
+      return { identity: currentIdentity, client: supabase };
+    },
+    [requireIdentity],
+  );
+
   const clearData = useCallback(() => {
     if (!mountedRef.current) {
       return;
@@ -545,11 +571,8 @@ supabase
       operatorId?: string | null,
       operatorPin?: string | null,
     ) => {
-      const currentIdentity = requireIdentity();
-
-      if (!isSupabaseConfigured || !supabase) {
-        throw new Error('Supabase não configurado.');
-      }
+      const { identity: currentIdentity, client } =
+        await requireAuthenticatedSession();
 
       ensureEmployeeBranch(
         currentIdentity,
@@ -564,7 +587,7 @@ supabase
       const effectiveOperatorPin = operatorPin ?? null;
 
       const { data: created, error: rpcError } =
-        await supabase.rpc(
+        await client.rpc(
           'execute_partner_customer_mutation',
           {
             p_salesperson_id: effectiveOperatorId,
@@ -614,7 +637,7 @@ supabase
 
       return createdCustomer;
     },
-    [requireIdentity],
+    [requireAuthenticatedSession],
   );
 
   const updateCustomer = useCallback(
@@ -624,11 +647,8 @@ supabase
       operatorId?: string | null,
       operatorPin?: string | null,
     ) => {
-      const currentIdentity = requireIdentity();
-
-      if (!isSupabaseConfigured || !supabase) {
-        throw new Error('Supabase não configurado.');
-      }
+      const { identity: currentIdentity, client } =
+        await requireAuthenticatedSession();
 
       const existing = data.customers.find(
         (item) => item.id === id,
@@ -648,7 +668,7 @@ supabase
       const effectiveOperatorPin = operatorPin ?? null;
 
       const { data: updated, error: rpcError } =
-        await supabase.rpc(
+        await client.rpc(
           'execute_partner_customer_mutation',
           {
             p_salesperson_id: effectiveOperatorId,
@@ -707,7 +727,7 @@ supabase
 
       return updatedCustomer;
     },
-    [data.customers, requireIdentity],
+    [data.customers, requireAuthenticatedSession],
   );
 
   const deleteCustomer = useCallback(
@@ -768,11 +788,8 @@ supabase
       operatorId?: string | null,
       operatorPin?: string | null,
     ) => {
-      const currentIdentity = requireIdentity();
-
-      if (!isSupabaseConfigured || !supabase) {
-        throw new Error('Supabase não configurado.');
-      }
+      const { identity: currentIdentity, client } =
+        await requireAuthenticatedSession();
 
       ensureEmployeeBranch(
         currentIdentity,
@@ -784,7 +801,7 @@ supabase
       const effectiveOperatorPin = operatorPin ?? null;
 
       const { data: created, error: rpcError } =
-        await supabase.rpc(
+        await client.rpc(
           'execute_partner_product_mutation',
           {
             p_salesperson_id: effectiveOperatorId,
@@ -831,7 +848,7 @@ supabase
 
       return createdProduct;
     },
-    [requireIdentity],
+    [requireAuthenticatedSession],
   );
 
   const updateProduct = useCallback(

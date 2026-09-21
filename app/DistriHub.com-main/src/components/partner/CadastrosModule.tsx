@@ -12,9 +12,19 @@ import type {
   PartnerSale, SalespersonRole, PartnerBranch,
   PersonType,
 } from '../../types';
-import type { PartnerCustomerUpdate } from '../../hooks/usePartnerData';
 import { formatCnpj, formatCpf, isValidCnpj, isValidCpf, money, normalizeDocument } from '../../utils';
 import { ImportExportModule, ExportButtons } from './ImportExportModule';
+
+// Alias local: payload de atualização de cliente usado pelo perfil de cliente.
+// Campos do formulário (CustomerForm) mais o suporte de foto do modal
+// (photo_file/remove_photo são ignorados pelo handler atual, mas fazem parte
+// do contrato do callback onUpdate).
+type PartnerCustomerUpdate = Partial<
+  Omit<PartnerCustomer, 'id' | 'user_id' | 'created_at' | 'updated_at'>
+> & {
+  photo_file?: File | null;
+  remove_photo?: boolean;
+};
 
 type Props = {
   products: PartnerProduct[];
