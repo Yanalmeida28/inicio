@@ -1,7 +1,17 @@
 -- Corrige a persistencia dos cadastros de Clientes, Fornecedores e Colaboradores.
 -- Migration aditiva: nao altera nenhuma migration historica.
 --
--- Causa raiz 1 (clientes, fornecedores e colaboradores nunca persistiam):
+-- Causa raiz 1 (TODAS as RPCs protegidas falhavam):
+--   resolve_partner_operator e varias RLS policies usam
+--   COALESCE(sp.active, sp.is_active, true) sobre partner_salespeople, mas a
+--   coluna is_active nunca foi criada nessa tabela (apenas active; is_active
+--   existe apenas em partner_branches). Confirmado contra a base de producao:
+--   PostgREST responde 42703 "column partner_salespeople.is_active does not
+--   exist". Sem ela, toda chamada a resolve_partner_operator falha e nenhum
+--   cadastro persiste. Aqui garantimos a coluna com backfill a partir de
+--   active.
+--
+-- Causa raiz 2 (clientes e fornecedores):
 --   As RPCs criadas em 20260908010000 fazem
 --     SELECT * INTO v_operator FROM public.resolve_partner_operator(...)
 --   e em seguida leem v_operator.company_id. Porem resolve_partner_operator
@@ -9,18 +19,22 @@
 --   (user_id, branch_id, salesperson_id, role) -- o campo company_id NAO existe
 --   no record. Em PL/pgSQL, todo acesso aborta a chamada com:
 --     record "v_operator" has no field "company_id"
---   Esta migration recria as 5 funcoes trocando company_id por user_id e
+--   Esta migration recria essas funcoes trocando company_id por user_id e
 --   corrige a checagem de auto-exclusao em execute_partner_salesperson_delete
 --   (antes comparava company_id = company_id, sempre verdadeiro, bloqueando
 --   qualquer exclusao de colaborador).
 --
--- Causa raiz 2 (produtos e qualquer RPC protegida, em bancos sem a coluna):
---   resolve_partner_operator e varias RLS policies usam
---   COALESCE(sp.active, sp.is_active, true) sobre partner_salespeople, mas a
---   coluna is_active nunca foi criada nessa tabela (apenas active; is_active
---   existe apenas em partner_branches). Sem ela, toda chamada a
---   resolve_partner_operator falha com: column sp.is_active does not exist.
---   Aqui garantimos a coluna com backfill a partir de active.
+-- NOTA sobre execute_partner_salesperson_mutation (criacao/edicao):
+--   a base de producao NAO possui a versao de 9 parametros definida em
+--   20260908010000 (PostgREST responde PGRST202 para ela); existe apenas uma
+--   versao de 11 parametros (p_salesperson_id, p_name, p_role,
+--   p_commission_rate, p_phone, p_email, p_is_active, p_branch_id,
+--   p_operator_id, p_operator_pin, p_new_pin), criada fora deste repositorio e
+--   ja consumida pelo frontend. Como seu corpo nao esta versionado aqui, esta
+--   migration NAO a recria: reescreve-la cegamente poderia remover
+--   comportamento existente (phone/email/pin_hash). Se o cadastro de
+--   colaboradores apresentar erro apos esta correcao, capture a mensagem
+--   exata e ajuste a funcao com evidencia.
 
 -- ============================================================
 -- 1. Garante partner_salespeople.is_active (backfill a partir de active)
@@ -43,102 +57,8 @@ BEGIN
 END $$;
 
 -- ============================================================
--- 2. Recria execute_partner_salesperson_mutation (user_id)
--- ============================================================
-
-CREATE OR REPLACE FUNCTION public.execute_partner_salesperson_mutation(
-  p_operator_id uuid,
-  p_operator_pin text,
-  p_salesperson_id uuid,
-  p_name text,
-  p_role text,
-  p_commission_rate numeric,
-  p_branch_id uuid,
-  p_active boolean,
-  p_new_pin text DEFAULT NULL
-)
-RETURNS uuid
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-DECLARE
-  v_operator record;
-  v_target_id uuid := COALESCE(p_salesperson_id, pg_catalog.gen_random_uuid());
-  v_existing_user_id uuid;
-  v_pin_hash text;
-BEGIN
-  IF (SELECT auth.uid()) IS NULL THEN RAISE EXCEPTION 'Nao autenticado.'; END IF;
-  IF p_name IS NULL OR pg_catalog.btrim(p_name) = '' THEN RAISE EXCEPTION 'Nome do colaborador e obrigatorio.'; END IF;
-  IF p_role IS NULL OR p_role NOT IN ('administrador','gerente','caixa','vendedor','tecnico','atendente','logistica') THEN
-    RAISE EXCEPTION 'Funcao/permissao invalida.';
-  END IF;
-
-  SELECT * INTO v_operator FROM public.resolve_partner_operator(p_operator_id, p_operator_pin, p_branch_id);
-  IF v_operator.role <> 'administrador' THEN
-    RAISE EXCEPTION 'Acesso negado: apenas administradores podem gerenciar colaboradores.';
-  END IF;
-
-  IF p_branch_id IS NOT NULL AND NOT EXISTS (
-    SELECT 1 FROM public.partner_branches b WHERE b.id = p_branch_id AND b.user_id = v_operator.user_id
-  ) THEN
-    RAISE EXCEPTION 'Filial informada nao pertence a esta empresa.';
-  END IF;
-
-  SELECT user_id INTO v_existing_user_id FROM public.partner_salespeople WHERE id = v_target_id;
-  IF p_salesperson_id IS NOT NULL AND NOT FOUND THEN RAISE EXCEPTION 'Colaborador nao encontrado nesta empresa.'; END IF;
-  IF v_existing_user_id IS NOT NULL AND v_existing_user_id <> v_operator.user_id THEN
-    RAISE EXCEPTION 'Acesso negado: colaborador pertence a outra empresa.';
-  END IF;
-
-  IF p_new_pin IS NOT NULL THEN
-    IF p_new_pin !~ '^[0-9]{4,8}$' THEN RAISE EXCEPTION 'PIN deve conter entre 4 e 8 digitos numericos.'; END IF;
-    v_pin_hash := extensions.crypt(p_new_pin, extensions.gen_salt('bf'));
-  END IF;
-
-  IF v_existing_user_id IS NULL THEN
-    INSERT INTO public.partner_salespeople (
-      id, user_id, name, role, commission_rate, branch_id, active, pin, pin_hash, created_at
-    ) VALUES (
-      v_target_id,
-      v_operator.user_id, pg_catalog.btrim(p_name), p_role, COALESCE(p_commission_rate, 0),
-      p_branch_id,
-      COALESCE(p_active, true), NULL, v_pin_hash, pg_catalog.now()
-    );
-  ELSE
-    UPDATE public.partner_salespeople SET
-      name = pg_catalog.btrim(p_name),
-      role = p_role,
-      commission_rate = COALESCE(p_commission_rate, commission_rate),
-      branch_id = p_branch_id,
-      active = COALESCE(p_active, active),
-      is_active = COALESCE(p_active, active),
-      pin = CASE WHEN p_new_pin IS NOT NULL THEN NULL ELSE pin END,
-      pin_hash = COALESCE(v_pin_hash, pin_hash)
-    WHERE id = v_target_id AND user_id = v_operator.user_id;
-  END IF;
-
-  INSERT INTO public.partner_audit_logs (id, user_id, actor_name, actor_role, action, entity_type, entity_id, details)
-  VALUES (
-    'audit-' || pg_catalog.gen_random_uuid()::text,
-    v_operator.user_id,
-    COALESCE((SELECT name FROM public.partner_salespeople WHERE id = v_operator.salesperson_id), 'Administrador'),
-    v_operator.role,
-    CASE WHEN v_existing_user_id IS NULL THEN 'Colaborador Criado' ELSE 'Colaborador Atualizado' END,
-    'colaborador', v_target_id::text,
-    'Colaborador ' || pg_catalog.btrim(p_name) || ' (' || p_role || ')'
-  );
-
-  RETURN v_target_id;
-END;
-$$;
-
-REVOKE ALL ON FUNCTION public.execute_partner_salesperson_mutation(uuid, text, uuid, text, text, numeric, uuid, boolean, text) FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.execute_partner_salesperson_mutation(uuid, text, uuid, text, text, numeric, uuid, boolean, text) FROM anon;
-GRANT EXECUTE ON FUNCTION public.execute_partner_salesperson_mutation(uuid, text, uuid, text, text, numeric, uuid, boolean, text) TO authenticated;
-
--- ============================================================
--- 3. Recria execute_partner_salesperson_delete (user_id + auto-exclusao correta)
+-- 2. Recria execute_partner_salesperson_delete (user_id + auto-exclusao correta)
+--    (existe em producao com a assinatura de 3 parametros e ambos os bugs)
 -- ============================================================
 
 CREATE OR REPLACE FUNCTION public.execute_partner_salesperson_delete(
@@ -188,7 +108,7 @@ REVOKE ALL ON FUNCTION public.execute_partner_salesperson_delete(uuid, text, uui
 GRANT EXECUTE ON FUNCTION public.execute_partner_salesperson_delete(uuid, text, uuid) TO authenticated;
 
 -- ============================================================
--- 4. Recria execute_partner_supplier_mutation (user_id)
+-- 3. Recria execute_partner_supplier_mutation (user_id)
 -- ============================================================
 
 CREATE OR REPLACE FUNCTION public.execute_partner_supplier_mutation(
@@ -250,7 +170,7 @@ REVOKE ALL ON FUNCTION public.execute_partner_supplier_mutation(uuid, text, uuid
 GRANT EXECUTE ON FUNCTION public.execute_partner_supplier_mutation(uuid, text, uuid, text, text, text) TO authenticated;
 
 -- ============================================================
--- 5. Recria execute_partner_supplier_delete (user_id)
+-- 4. Recria execute_partner_supplier_delete (user_id)
 -- ============================================================
 
 CREATE OR REPLACE FUNCTION public.execute_partner_supplier_delete(
@@ -295,7 +215,7 @@ REVOKE ALL ON FUNCTION public.execute_partner_supplier_delete(uuid, text, uuid) 
 GRANT EXECUTE ON FUNCTION public.execute_partner_supplier_delete(uuid, text, uuid) TO authenticated;
 
 -- ============================================================
--- 6. Recria execute_partner_customer_mutation (user_id)
+-- 5. Recria execute_partner_customer_mutation (user_id)
 --    Mesma assinatura de 20260908010000 (17 parametros).
 -- ============================================================
 
