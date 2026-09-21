@@ -17,8 +17,8 @@ type Props = {
   onAddCustomer: (c: Omit<PartnerCustomer, 'id' | 'user_id' | 'created_at'>) => Promise<void>;
 };
 
-const productFields = ['name', 'sku', 'cost_price', 'sale_price', 'wholesale_price', 'stock', 'category'];
-const customerFields = ['name', 'document', 'phone', 'email', 'address', 'neighborhood', 'city'];
+const productFields = ['name', 'sku', 'cost_price', 'sale_price', 'wholesale_price', 'stock', 'min_stock', 'category', 'is_service'];
+const customerFields = ['name', 'document', 'phone', 'email', 'birthday', 'address', 'neighborhood', 'city', 'device_model', 'notes', 'customer_type', 'credit_limit', 'allow_credit'];
 
 const fieldLabels: Record<string, string> = {
   name: 'Nome',
@@ -27,19 +27,27 @@ const fieldLabels: Record<string, string> = {
   sale_price: 'Preço Varejo',
   wholesale_price: 'Preço Atacado',
   stock: 'Estoque',
+  min_stock: 'Estoque Mínimo',
   category: 'Categoria',
+  is_service: 'Serviço (sim/não)',
   document: 'CPF / CNPJ',
   phone: 'WhatsApp / Telefone',
   email: 'E-mail',
+  birthday: 'Aniversário',
   address: 'Endereço',
   neighborhood: 'Bairro',
   city: 'Cidade',
+  device_model: 'Modelo do Aparelho',
+  notes: 'Observações',
+  customer_type: 'Tipo de Cliente',
+  credit_limit: 'Limite de Crédito',
+  allow_credit: 'Permite Fiado (sim/não)',
 };
 
 type ParsedRow = string[];
 type ParsedData = { headers: string[]; rows: ParsedRow[] };
 type ImportError = { line: number; message: string };
-type ImportResult = { total: number; ok: number; fail: number; errors: ImportError[] };
+type ImportResult = { total: number; valid: number; ok: number; fail: number; errors: ImportError[] };
 
 // Parser CSV robusto: respeita campos entre aspas (com "", obras de linha
 // dentro do campo), separadores ; , e TAB fora de aspas, CRLF/LF e BOM UTF-8.
@@ -149,6 +157,92 @@ function parseBrazilianInteger(value: string): number {
   if (!Number.isInteger(n)) throw new Error('não é um número inteiro');
   return n;
 }
+
+// Datas: aceita DD/MM/YYYY, DD/MM/YY e YYYY-MM-DD (formatos comuns em
+// arquivos brasileiros). Retorna YYYY-MM-DD. Data inexistente → erro;
+// nunca gera uma data arbitrária.
+function parseBrazilianDate(value: string): string {
+  const v = value.trim();
+  if (v === '') throw new Error('vazia');
+  let m = v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (m) {
+    const [, d, mo, y] = m;
+    return buildIsoDate(Number(y), Number(mo), Number(d));
+  }
+  m = v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/);
+  if (m) {
+    const [, d, mo, yy] = m;
+    const year = Number(yy);
+    const full = year <= 49 ? 2000 + year : 1900 + year;
+    return buildIsoDate(full, Number(mo), Number(d));
+  }
+  m = v.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (m) {
+    const [, y, mo, d] = m;
+    return buildIsoDate(Number(y), Number(mo), Number(d));
+  }
+  throw new Error('formato inválido (use DD/MM/AAAA ou AAAA-MM-DD)');
+}
+
+function buildIsoDate(year: number, month: number, day: number): string {
+  if (month < 1 || month > 12 || day < 1 || day > 31) throw new Error('data inexistente');
+  const dt = new Date(Date.UTC(year, month - 1, day));
+  if (dt.getUTCFullYear() !== year || dt.getUTCMonth() !== month - 1 || dt.getUTCDate() !== day) {
+    throw new Error('data inexistente');
+  }
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+// E-mail: validação simples apenas quando o campo for informado.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+// Booleano PT-BR para colunas sim/não: "sim", "não", "s", "n", "1", "0",
+// "true", "false", "x" (marcado). Retorna undefined quando vazio.
+function parseBrazilianBoolean(value: string): boolean | undefined {
+  const v = normalizeHeader(value);
+  if (v === '') return undefined;
+  if (['sim', 's', '1', 'true', 'verdadeiro', 'x', 'yes', 'y'].includes(v)) return true;
+  if (['nao', 'n', '0', 'false', 'falso', 'no'].includes(v)) return false;
+  throw new Error(`valor inválido para sim/não: "${value}"`);
+}
+
+// Normaliza cabeçalhos para comparação inequívoca: minúsculas, sem acentos,
+// com `_`, `-` e espaços tratados de forma equivalente, sem espaços extras.
+function normalizeHeader(h: string): string {
+  return h
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[_\-\s]+/g, ' ')
+    .trim();
+}
+
+// Sinônimos aceitos por campo (já normalizados). Ordenados do mais específico
+// ao mais genérico; a correspondência é por igualdade exata após normalização
+// ou por prefixo exato, evitando mapeamentos ambíguos.
+const fieldSynonyms: Record<string, string[]> = {
+  name: ['nome', 'nome do produto', 'nome completo', 'razao social', 'descricao', 'produto', 'cliente'],
+  sku: ['sku', 'codigo', 'cod', 'codigo do produto', 'referencia', 'ref'],
+  cost_price: ['preco de custo', 'custo', 'preco custo', 'valor de custo'],
+  sale_price: ['preco varejo', 'preco de venda', 'preco', 'valor', 'valor varejo', 'preco de varejo', 'venda'],
+  wholesale_price: ['preco atacado', 'atacado', 'preco de atacado', 'valor atacado'],
+  stock: ['estoque', 'quantidade', 'qtde', 'qtd', 'saldo'],
+  min_stock: ['estoque minimo', 'minimo', 'estoque min'],
+  category: ['categoria', 'grupo', 'departamento'],
+  is_service: ['servico', 'e servico', 'tipo item'],
+  document: ['cpf cnpj', 'cpf', 'cnpj', 'documento', 'doc'],
+  phone: ['whatsapp', 'telefone', 'fone', 'celular', 'cel', 'whatsapp telefone'],
+  email: ['e mail', 'email', 'e-mail'],
+  birthday: ['aniversario', 'data de nascimento', 'nascimento', 'data nascimento'],
+  address: ['endereco', 'end', 'logradouro'],
+  neighborhood: ['bairro'],
+  city: ['cidade', 'municipio'],
+  device_model: ['modelo do aparelho', 'modelo aparelho', 'aparelho', 'modelo'],
+  notes: ['observacoes', 'observacao', 'obs', 'anotacoes'],
+  customer_type: ['tipo de cliente', 'tipo cliente', 'tipo'],
+  credit_limit: ['limite de credito', 'limite credito', 'limite'],
+  allow_credit: ['permite fiado', 'permite credito', 'fiado', 'venda a prazo'],
+};
 
 function downloadFile(content: string, filename: string, mime: string) {
   const blob = new Blob([content], { type: mime });
@@ -278,27 +372,33 @@ export function ImportExportModule({ products, customers, selectedBranchId, onAd
 
   function applyAutoMap(data: ParsedData) {
     const autoMap: Record<string, string> = {};
+    const ambiguityNotes: string[] = [];
+
     data.headers.forEach((h, i) => {
-      const lower = h.toLowerCase();
-      const match = fields.find((f) => f.toLowerCase().includes(lower) || lower.includes(f.toLowerCase()) ||
-        (f === 'name' && (lower.includes('nome') || lower.includes('razao') || lower.includes('descri'))) ||
-        (f === 'sku' && (lower.includes('sku') || lower.includes('codigo') || lower.includes('cod'))) ||
-        (f === 'cost_price' && (lower.includes('custo') || lower.includes('cust'))) ||
-        (f === 'sale_price' && (lower.includes('varejo') || lower.includes('preco') || lower.includes('valor'))) ||
-        (f === 'wholesale_price' && (lower.includes('atacado') || lower.includes('atac'))) ||
-        (f === 'stock' && (lower.includes('estoque') || lower.includes('qtde') || lower.includes('qtd'))) ||
-        (f === 'category' && (lower.includes('categ'))) ||
-        (f === 'document' && (lower.includes('cpf') || lower.includes('cnpj') || lower.includes('doc'))) ||
-        (f === 'phone' && (lower.includes('telefone') || lower.includes('whats') || lower.includes('fone') || lower.includes('cel'))) ||
-        (f === 'email' && lower.includes('email')) ||
-        (f === 'address' && (lower.includes('endereco') || lower.includes('end'))) ||
-        (f === 'neighborhood' && (lower.includes('bairro'))) ||
-        (f === 'city' && (lower.includes('cidade')))
+      const norm = normalizeHeader(h);
+      if (norm === '') return;
+      // Campos cujo sinônimo corresponde EXATAMENTE ao cabeçalho normalizado
+      // (ou o cabeçalho é o próprio nome do campo). Correspondência exata evita
+      // ambiguidade; se dois campos diferentes baterem na mesma coluna, não
+      // escolhemos arbitrariamente — registramos e deixamos para o usuário.
+      const matches = fields.filter(
+        (f) =>
+          normalizeHeader(f) === norm ||
+          (fieldSynonyms[f] ?? []).some((syn) => syn === norm),
       );
-      // Auto-mapeamento nunca associa duas colunas ao mesmo campo.
-      if (match && !Object.values(autoMap).includes(match)) autoMap[String(i)] = match;
+      if (matches.length === 1 && !Object.values(autoMap).includes(matches[0])) {
+        autoMap[String(i)] = matches[0];
+      } else if (matches.length > 1) {
+        ambiguityNotes.push(
+          `Coluna "${h}" é ambígua (${matches.map((f) => fieldLabels[f] ?? f).join(' / ')}): ajuste o mapeamento manualmente.`,
+        );
+      }
     });
+
     setColumnMap(autoMap);
+    if (ambiguityNotes.length > 0) {
+      setMapWarning(ambiguityNotes.join(' '));
+    }
   }
 
   function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -314,13 +414,8 @@ export function ImportExportModule({ products, customers, selectedBranchId, onAd
 
     // XML NF-e e PDF: formatos reconhecidos, porém não implementados nesta
     // etapa — nunca interpretar como CSV.
-    if (ext === 'xml') {
-      setFileError('Importação de XML NF-e será disponibilizada em etapa posterior.');
-      if (fileRef.current) fileRef.current.value = '';
-      return;
-    }
-    if (ext === 'pdf') {
-      setFileError('Importação de PDF será disponibilizada em etapa posterior.');
+    if (ext === 'xml' || ext === 'pdf') {
+      setFileError('Este formato ainda não está disponível para importação.');
       if (fileRef.current) fileRef.current.value = '';
       return;
     }
@@ -372,48 +467,106 @@ export function ImportExportModule({ products, customers, selectedBranchId, onAd
       return;
     }
     if (!selectedBranchId) {
-      window.alert('Selecione uma filial antes de importar para manter a separação entre filiais.');
+      setFileError('Selecione uma filial antes de importar.');
       return;
     }
+
+    // ===== VALIDAÇÃO ESTRUTURAL (impede qualquer gravação) =====
+    // Coluna de nome precisa estar mapeada: sem ela nenhuma linha é válida.
+    const nameMapped = Object.values(columnMap).includes('name');
+    if (!nameMapped) {
+      setFileError('Mapeie a coluna de Nome antes de importar: nenhum registro pode ser gravado sem nome.');
+      return;
+    }
+    if (parsed.rows.length === 0) {
+      setFileError('O arquivo não contém linhas de dados além do cabeçalho.');
+      return;
+    }
+
     setImporting(true);
     setImportResult(null);
+    setFileError(null);
 
-    (async () => {
-      const errors: ImportError[] = [];
-      let ok = 0;
-      let fail = 0;
+    const headerCount = parsed.headers.length;
 
-      for (let ri = 0; ri < parsed.rows.length; ri++) {
-        const row = parsed.rows[ri];
-        const line = ri + 2; // linha 1 = cabeçalho
-        const getVal = (field: string) => {
-          const idx = Object.entries(columnMap).find(([, f]) => f === field)?.[0];
-          if (idx === undefined) return '';
-          return row[Number(idx)] ?? '';
-        };
-        try {
-          if (target === 'produtos') {
-            const name = getVal('name').trim();
-            if (!name) throw new Error('Nome do produto obrigatório.');
-            const readPrice = (field: string, label: string, fallback: number) => {
-              const raw = getVal(field).trim();
-              if (raw === '') return fallback;
-              try {
-                return parseBrazilianNumber(raw);
-              } catch {
-                throw new Error(`${label} inválido: "${raw}".`);
-              }
-            };
-            const readStock = () => {
-              const raw = getVal('stock').trim();
-              if (raw === '') return 0;
-              try {
-                return parseBrazilianInteger(raw);
-              } catch {
-                throw new Error(`Estoque inválido: "${raw}".`);
-              }
-            };
-            await onAddProduct({
+    // getVal compartilhado entre validação e gravação (mesmo mapeamento).
+    const makeGetVal = (row: ParsedRow) => (field: string) => {
+      const idx = Object.entries(columnMap).find(([, f]) => f === field)?.[0];
+      if (idx === undefined) return '';
+      return row[Number(idx)] ?? '';
+    };
+
+    // ===== PRÉ-VALIDAÇÃO DE TODAS AS LINHAS (antes de qualquer RPC) =====
+    // Monta o payload de cada linha válida e coleta erros por linha.
+    // Linhas inválidas NUNCA chegam ao onAddProduct/onAddCustomer.
+    type Prepared =
+      | { kind: 'produto'; line: number; payload: Parameters<typeof onAddProduct>[0] }
+      | { kind: 'cliente'; line: number; payload: Parameters<typeof onAddCustomer>[0] };
+
+    const prepared: Prepared[] = [];
+    const preErrors: ImportError[] = [];
+    const seenSkus = new Map<string, number>();
+    const seenDocs = new Map<string, number>();
+    const seenEmails = new Map<string, number>();
+
+    for (let ri = 0; ri < parsed.rows.length; ri++) {
+      const row = parsed.rows[ri];
+      const line = ri + 2; // linha 1 = cabeçalho
+      const getVal = makeGetVal(row);
+
+      try {
+        if (row.length > headerCount) {
+          throw new Error(`linha com ${row.length} colunas, mas o cabeçalho tem ${headerCount} (verifique separadores extras).`);
+        }
+
+        if (target === 'produtos') {
+          const name = getVal('name').trim();
+          if (!name) throw new Error('Nome do produto obrigatório.');
+
+          const readPrice = (field: string, label: string, fallback: number) => {
+            const raw = getVal(field).trim();
+            if (raw === '') return fallback;
+            try {
+              return parseBrazilianNumber(raw);
+            } catch {
+              throw new Error(`${label} inválido: "${raw}".`);
+            }
+          };
+          const readInt = (field: string, label: string, fallback: number) => {
+            const raw = getVal(field).trim();
+            if (raw === '') return fallback;
+            try {
+              return parseBrazilianInteger(raw);
+            } catch {
+              throw new Error(`${label} inválido: "${raw}".`);
+            }
+          };
+
+          const sku = getVal('sku').trim();
+          if (sku) {
+            const key = sku.toLowerCase();
+            const first = seenSkus.get(key);
+            if (first !== undefined) {
+              preErrors.push({ line, message: `SKU "${sku}" duplicado no arquivo (já presente na linha ${first}).` });
+              continue;
+            }
+            seenSkus.set(key, line);
+          }
+
+          let isService = false;
+          const serviceRaw = getVal('is_service').trim();
+          if (serviceRaw !== '') {
+            try {
+              isService = parseBrazilianBoolean(serviceRaw) ?? false;
+            } catch (e) {
+              throw new Error(`Serviço inválido: ${e instanceof Error ? e.message : serviceRaw}`);
+            }
+          }
+
+          prepared.push({
+            kind: 'produto',
+            line,
+            payload: {
               // Campos residuais obrigatórios do tipo (não persistidos pela RPC):
               // satisfeitos com valores neutros apenas para conformidade de tipo.
               brand: null,
@@ -422,47 +575,150 @@ export function ImportExportModule({ products, customers, selectedBranchId, onAd
               active: true,
               description: null,
               name,
-              sku: getVal('sku') || null,
+              sku: sku || null,
               cost_price: readPrice('cost_price', 'Preço de custo', 0),
               sale_price: readPrice('sale_price', 'Preço de venda', 0),
               wholesale_price: readPrice('wholesale_price', 'Preço de atacado', 0),
-              stock: readStock(),
-              min_stock: 0,
+              stock: readInt('stock', 'Estoque', 0),
+              min_stock: readInt('min_stock', 'Estoque mínimo', 0),
               image_url: null,
-              category: getVal('category') || null,
-              is_service: false,
+              category: getVal('category').trim() || null,
+              is_service: isService,
               branch_id: selectedBranchId,
-            });
-            ok++;
-          } else {
-            const name = getVal('name').trim();
-            if (!name) throw new Error('Nome do cliente obrigatório.');
-            await onAddCustomer({
+            },
+          });
+        } else {
+          const name = getVal('name').trim();
+          if (!name) throw new Error('Nome do cliente obrigatório.');
+
+          const documentVal = getVal('document').trim();
+          if (documentVal) {
+            const key = documentVal.replace(/\D/g, '').toLowerCase();
+            const first = seenDocs.get(key);
+            if (first !== undefined) {
+              preErrors.push({ line, message: `Documento "${documentVal}" duplicado no arquivo (já presente na linha ${first}).` });
+              continue;
+            }
+            seenDocs.set(key, line);
+          }
+
+          const emailVal = getVal('email').trim();
+          if (emailVal) {
+            if (!EMAIL_RE.test(emailVal)) {
+              throw new Error(`E-mail inválido: "${emailVal}".`);
+            }
+            const key = emailVal.toLowerCase();
+            const first = seenEmails.get(key);
+            if (first !== undefined) {
+              preErrors.push({ line, message: `E-mail "${emailVal}" duplicado no arquivo (já presente na linha ${first}).` });
+              continue;
+            }
+            seenEmails.set(key, line);
+          }
+
+          let birthday: string | null = null;
+          const birthdayRaw = getVal('birthday').trim();
+          if (birthdayRaw !== '') {
+            try {
+              birthday = parseBrazilianDate(birthdayRaw);
+            } catch (e) {
+              throw new Error(`Aniversário inválido: ${e instanceof Error ? e.message : birthdayRaw}`);
+            }
+          }
+
+          let customerType: 'varejo' | 'atacado' = 'varejo';
+          const typeRaw = getVal('customer_type').trim();
+          if (typeRaw !== '') {
+            const norm = normalizeHeader(typeRaw);
+            if (norm === 'varejo' || norm === 'atacado') {
+              customerType = norm;
+            } else {
+              throw new Error(`Tipo de cliente inválido: "${typeRaw}" (use varejo ou atacado).`);
+            }
+          }
+
+          let creditLimit = 0;
+          const creditRaw = getVal('credit_limit').trim();
+          if (creditRaw !== '') {
+            try {
+              creditLimit = parseBrazilianNumber(creditRaw);
+            } catch {
+              throw new Error(`Limite de crédito inválido: "${creditRaw}".`);
+            }
+            if (creditLimit < 0) throw new Error('Limite de crédito não pode ser negativo.');
+          }
+
+          let allowCredit = false;
+          const allowRaw = getVal('allow_credit').trim();
+          if (allowRaw !== '') {
+            try {
+              allowCredit = parseBrazilianBoolean(allowRaw) ?? false;
+            } catch (e) {
+              throw new Error(`Permite fiado inválido: ${e instanceof Error ? e.message : allowRaw}`);
+            }
+          }
+
+          prepared.push({
+            kind: 'cliente',
+            line,
+            payload: {
               // Campo residual obrigatório do tipo (não persistido pela RPC):
               // satisfeito com valor neutro apenas para conformidade de tipo.
               status: null,
               name,
-              document: getVal('document') || null,
-              phone: getVal('phone') || null,
-              email: getVal('email') || null,
-              birthday: null,
-              address: getVal('address') || null,
-              neighborhood: getVal('neighborhood') || null,
-              city: getVal('city') || null,
-              device_model: null,
-              notes: null,
-              customer_type: 'varejo',
+              document: documentVal || null,
+              phone: getVal('phone').trim() || null,
+              email: emailVal || null,
+              birthday,
+              address: getVal('address').trim() || null,
+              neighborhood: getVal('neighborhood').trim() || null,
+              city: getVal('city').trim() || null,
+              device_model: getVal('device_model').trim() || null,
+              notes: getVal('notes').trim() || null,
+              customer_type: customerType,
+              credit_limit: creditLimit,
+              allow_credit: allowCredit,
               branch_id: selectedBranchId,
-            });
-            ok++;
+            },
+          });
+        }
+      } catch (err) {
+        preErrors.push({ line, message: err instanceof Error ? err.message : 'Erro desconhecido ao validar a linha.' });
+      }
+    }
+
+    // ===== GRAVAÇÃO (somente linhas válidas, via callbacks existentes) =====
+    (async () => {
+      const errors: ImportError[] = [...preErrors];
+      let ok = 0;
+      let fail = 0;
+
+      for (const item of prepared) {
+        try {
+          if (item.kind === 'produto') {
+            await onAddProduct(item.payload);
+          } else {
+            await onAddCustomer(item.payload);
           }
+          ok++;
         } catch (err) {
+          // Erro da RPC/Supabase: associado à linha, sem mascarar a mensagem.
           fail++;
-          errors.push({ line, message: err instanceof Error ? err.message : 'Erro desconhecido ao importar a linha.' });
+          errors.push({ line: item.line, message: err instanceof Error ? err.message : 'Erro ao gravar no servidor.' });
         }
       }
+
       setImporting(false);
-      setImportResult({ total: parsed.rows.length, ok, fail, errors });
+      // total = linhas de dados; valid = válidas na pré-validação;
+      // ok = importadas via RPC; fail = inválidas + falhas de RPC.
+      setImportResult({
+        total: parsed.rows.length,
+        valid: prepared.length,
+        ok,
+        fail: parsed.rows.length - ok,
+        errors,
+      });
+      void fail;
     })();
   }
 
@@ -569,8 +825,13 @@ export function ImportExportModule({ products, customers, selectedBranchId, onAd
                 <Check size={14} /> <strong>Importação concluída</strong>
               </div>
               <p style={{ margin: '6px 0 0 20px' }}>
-                {importResult.total} registros processados · {importResult.ok} importados{importResult.fail > 0 && ` · ${importResult.fail} com erro`}
+                Total de linhas: {importResult.total} · Válidas: {importResult.valid} · Importadas: {importResult.ok} · Falharam: {importResult.fail}
               </p>
+              {importResult.ok > 0 && importResult.fail > 0 && (
+                <p style={{ margin: '4px 0 0 20px' }}>
+                  Importação parcial: apenas as linhas válidas foram gravadas.
+                </p>
+              )}
               {importResult.errors.length > 0 && (
                 <div style={{ margin: '8px 0 0 20px' }}>
                   <strong>Erros:</strong>
