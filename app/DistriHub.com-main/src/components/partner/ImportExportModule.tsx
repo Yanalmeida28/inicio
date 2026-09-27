@@ -14,6 +14,7 @@ type Props = {
   customers: PartnerCustomer[];
   selectedBranchId?: string | null;
   onAddProduct: (p: Omit<PartnerProduct, 'id' | 'user_id' | 'created_at' | 'updated_at'>) => Promise<void>;
+  onUpdateProduct: (id: string, p: Partial<PartnerProduct>) => Promise<void>;
   onAddCustomer: (c: Omit<PartnerCustomer, 'id' | 'user_id' | 'created_at'>) => Promise<void>;
 };
 
@@ -341,7 +342,7 @@ export function ExportButtons({ target, products, customers }: { target: ImportT
   );
 }
 
-export function ImportExportModule({ products, customers, selectedBranchId, onAddProduct, onAddCustomer }: Props) {
+export function ImportExportModule({ products, customers, selectedBranchId, onAddProduct, onUpdateProduct, onAddCustomer }: Props) {
   const [target, setTarget] = useState<ImportTarget>('produtos');
   const [parsed, setParsed] = useState<ParsedData | null>(null);
   const [fileName, setFileName] = useState('');
@@ -474,7 +475,7 @@ export function ImportExportModule({ products, customers, selectedBranchId, onAd
     // ===== VALIDAÇÃO ESTRUTURAL (impede qualquer gravação) =====
     // Coluna de nome precisa estar mapeada: sem ela nenhuma linha é válida.
     const nameMapped = Object.values(columnMap).includes('name');
-    if (!nameMapped) {
+    if (!nameMapped && !(target === 'produtos' && Object.values(columnMap).includes('sku'))) {
       setFileError('Mapeie a coluna de Nome antes de importar: nenhum registro pode ser gravado sem nome.');
       return;
     }
@@ -500,7 +501,12 @@ export function ImportExportModule({ products, customers, selectedBranchId, onAd
     // Monta o payload de cada linha válida e coleta erros por linha.
     // Linhas inválidas NUNCA chegam ao onAddProduct/onAddCustomer.
     type Prepared =
-      | { kind: 'produto'; line: number; payload: Parameters<typeof onAddProduct>[0] }
+      | {
+          kind: 'produto';
+          line: number;
+          payload: Parameters<typeof onAddProduct>[0];
+          existingProductId?: string;
+        }
       | { kind: 'cliente'; line: number; payload: Parameters<typeof onAddCustomer>[0] };
 
     const prepared: Prepared[] = [];
@@ -520,7 +526,8 @@ export function ImportExportModule({ products, customers, selectedBranchId, onAd
         }
 
         if (target === 'produtos') {
-          const name = getVal('name').trim();
+          const importedName = getVal('name').trim();
+          let name = importedName || (getVal('sku').trim() ? ' ' : '');
           if (!name) throw new Error('Nome do produto obrigatório.');
 
           const readPrice = (field: string, label: string, fallback: number) => {
@@ -563,6 +570,22 @@ export function ImportExportModule({ products, customers, selectedBranchId, onAd
             }
           }
 
+          const matchingProducts = sku
+            ? products.filter(
+                (product) =>
+                  product.branch_id === selectedBranchId &&
+                  product.sku?.trim().toLowerCase() === sku.toLowerCase(),
+              )
+            : [];
+
+          if (matchingProducts.length > 1) {
+            throw new Error(`SKU "${sku}" corresponde a mais de um produto nesta filial.`);
+          }
+
+          const existingProduct = matchingProducts[0];
+          name = importedName || existingProduct?.name || '';
+          if (!name) throw new Error('Nome do produto obrigatorio para um SKU novo.');
+
           prepared.push({
             kind: 'produto',
             line,
@@ -586,6 +609,7 @@ export function ImportExportModule({ products, customers, selectedBranchId, onAd
               is_service: isService,
               branch_id: selectedBranchId,
             },
+            existingProductId: existingProduct?.id,
           });
         } else {
           const name = getVal('name').trim();
@@ -696,7 +720,44 @@ export function ImportExportModule({ products, customers, selectedBranchId, onAd
       for (const item of prepared) {
         try {
           if (item.kind === 'produto') {
-            await onAddProduct(item.payload);
+            if (item.existingProductId) {
+              const existingProduct = products.find(
+                (product) => product.id === item.existingProductId,
+              );
+
+              if (!existingProduct) {
+                throw new Error('Produto existente não foi localizado para atualização.');
+              }
+
+              const mappedFields = new Set(Object.values(columnMap));
+              await onUpdateProduct(item.existingProductId, {
+                ...item.payload,
+                cost_price: mappedFields.has('cost_price')
+                  ? item.payload.cost_price
+                  : existingProduct.cost_price,
+                sale_price: mappedFields.has('sale_price')
+                  ? item.payload.sale_price
+                  : existingProduct.sale_price,
+                wholesale_price: mappedFields.has('wholesale_price')
+                  ? item.payload.wholesale_price
+                  : existingProduct.wholesale_price,
+                stock: mappedFields.has('stock')
+                  ? item.payload.stock
+                  : existingProduct.stock,
+                min_stock: mappedFields.has('min_stock')
+                  ? item.payload.min_stock
+                  : existingProduct.min_stock,
+                category: mappedFields.has('category')
+                  ? item.payload.category
+                  : existingProduct.category,
+                is_service: mappedFields.has('is_service')
+                  ? item.payload.is_service
+                  : existingProduct.is_service,
+                image_url: existingProduct.image_url,
+              });
+            } else {
+              await onAddProduct(item.payload);
+            }
           } else {
             await onAddCustomer(item.payload);
           }

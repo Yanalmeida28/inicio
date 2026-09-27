@@ -180,6 +180,7 @@ export function CadastrosModule({
             customers={customers}
             selectedBranchId={selectedBranchId}
             onAddProduct={onAddProduct}
+            onUpdateProduct={onUpdateProduct}
             onAddCustomer={onAddCustomer}
           />
         )}
