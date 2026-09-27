@@ -60,5 +60,5 @@ jobs:
           protocol: ftp
           port: ${{ secrets.FTP_PORT }}
           local-dir: app/DistriHub.com-main/dist/
-          server-dir: public_html/
+          server-dir: ./
           dangerous-clean-slate: false
