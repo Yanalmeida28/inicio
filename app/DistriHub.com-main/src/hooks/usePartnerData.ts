@@ -92,6 +92,44 @@ type BranchPayload = Omit<
   'id' | 'user_id' | 'created_at' | 'updated_at'
 >;
 
+function normalizeSalespersonEmail(
+  email: string | null | undefined,
+): string | null {
+  const normalized = email?.trim().toLowerCase() ?? '';
+  return normalized || null;
+}
+
+function formatSalespersonSaveError(error: unknown): Error | unknown {
+  if (!error || typeof error !== 'object') {
+    return error;
+  }
+
+  const candidate = error as {
+    code?: unknown;
+    message?: unknown;
+    details?: unknown;
+    constraint?: unknown;
+  };
+  const text = [
+    candidate.message,
+    candidate.details,
+    candidate.constraint,
+  ]
+    .filter((value): value is string => typeof value === 'string')
+    .join(' ');
+
+  if (
+    candidate.code === '23505' ||
+    text.includes('idx_partner_salespeople_email_unique')
+  ) {
+    return new Error(
+      'Este e-mail já está cadastrado para outro colaborador.',
+    );
+  }
+
+  return error;
+}
+
 interface PartnerDataState {
   profile: PartnerProfile | null;
   branches: PartnerBranch[];
@@ -2620,7 +2658,7 @@ supabase
             p_commission_rate:
               salesperson.commission_rate ?? 0,
             p_phone: salesperson.phone ?? null,
-            p_email: salesperson.email ?? null,
+            p_email: normalizeSalespersonEmail(salesperson.email),
             p_is_active:
               salesperson.is_active ?? true,
             p_branch_id:
@@ -2632,7 +2670,7 @@ supabase
         );
 
       if (error) {
-        throw error;
+        throw formatSalespersonSaveError(error);
       }
 
       // A RPC retorna a linha completa de partner_salespeople criada,
@@ -2726,9 +2764,9 @@ supabase
               existing.phone ??
               null,
             p_email:
-              salesperson.email ??
-              existing.email ??
-              null,
+              salesperson.email === undefined
+                ? normalizeSalespersonEmail(existing.email)
+                : normalizeSalespersonEmail(salesperson.email),
             p_is_active:
               salesperson.is_active ??
               existing.is_active,
@@ -2746,7 +2784,7 @@ supabase
         );
 
       if (error) {
-        throw error;
+        throw formatSalespersonSaveError(error);
       }
 
       // A RPC retorna o id (uuid) do colaborador, não a linha completa.
