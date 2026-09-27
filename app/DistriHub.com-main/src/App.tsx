@@ -85,12 +85,16 @@ function App() {
     return;
   }
 
-  function handlePartnerClick() {
+  async function handlePartnerClick() {
+    // O acesso pelo botão "Entrar" deve sempre exigir as credenciais.
+    // Uma sessão persistida pode continuar válida após fechar ou recarregar
+    // o navegador, portanto ela é encerrada antes de exibir o login.
     if (auth.user) {
-      setView('partner');
-    } else {
-      setView('auth');
+      await auth.signOut();
     }
+
+    setPartnerInitialTab(undefined);
+    setView('auth');
   }
 
   async function handleSuperAdminUnlock(email: string, password: string): Promise<{ ok: boolean; error: string | null }> {
