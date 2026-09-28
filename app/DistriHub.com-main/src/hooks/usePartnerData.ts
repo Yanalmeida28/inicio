@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { billedSaleError, isDefinitiveSaleRejection, PdvSaleAttemptStore, pdvErrorMessage, type CustomerCredit } from '../lib/pdv';
 import type {
   AdminCompany,
   AdminFinancialMonth,
@@ -229,10 +230,30 @@ export function usePartnerData(identity: PartnerIdentity | null) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [pdvCredits, setPdvCredits] = useState<CustomerCredit[]>([]);
+  const [pdvSyncWarning, setPdvSyncWarning] = useState<string | null>(null);
+  const [pendingSale, setPendingSale] = useState<PartnerSale | null>(null);
+  const saleInFlight = useRef(false);
+  const pdvRequestId = useRef(0);
+  const identityScope = identity ? identity.authUserId + ':' + identity.companyUserId : '';
+  const identityScopeRef = useRef(identityScope);
+  identityScopeRef.current = identityScope;
+  useEffect(() => {
+    setPdvCredits([]);
+    setPdvSyncWarning(null);
+    ++pdvRequestId.current;
+    try {
+      setPendingSale(identityScope ? new PdvSaleAttemptStore(sessionStorage, identityScope).read() : null);
+    } catch (err) {
+      setPdvSyncWarning(pdvErrorMessage(err));
+    }
+  }, [identityScope]);
+
   const mountedRef = useRef(true);
   const requestIdRef = useRef(0);
 
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
       mountedRef.current = false;
     };
@@ -1459,143 +1480,123 @@ supabase
     [requireIdentity],
   );
 
-  const createSale = useCallback(
-    async (
-      sale: SalePayload,
-      operatorId?: string | null,
-      operatorPin?: string | null,
-    ) => {
-      const currentIdentity = requireIdentity();
-
-      if (!sale.branch_id) {
-        throw new Error(
-          'Venda sem filial selecionada.',
-        );
-      }
-
-      ensureEmployeeBranch(
-        currentIdentity,
-        sale.branch_id,
-      );
-
-      // Atribuição comercial da venda (relatórios/comissões) — preservada.
-      const effectiveSalespersonId =
-        currentIdentity.salespersonId
-          ? currentIdentity.salespersonId
-          : operatorId ?? sale.salesperson_id ?? null;
-
-      // Autorização da RPC: operador do modal (id + PIN) ou null para
-      // que a RPC resolva o operador pelo auth.uid() da sessão.
-      const effectiveOperatorId = operatorId ?? null;
-      const effectiveOperatorPin = operatorPin ?? null;
-
-      const ns: PartnerSale = {
-        ...sale,
-        id: crypto.randomUUID(),
-        user_id: currentIdentity.companyUserId,
-        status: sale.status ?? 'concluida',
-        created_at: new Date().toISOString(),
-        imei: sale.imei ?? null,
-        serial_number: sale.serial_number ?? null,
-        payment_method: sale.payment_method ?? null,
-        branch_id: sale.branch_id,
-        salesperson_id: effectiveSalespersonId,
-        origin: sale.origin ?? 'pdv',
-        online_payment: sale.online_payment ?? false,
-        payment_status:
-          sale.payment_status ?? 'pendente',
-      };
-
-      if (isSupabaseConfigured && supabase) {
-        const { error: rpcErr } =
-          await supabase.rpc(
-            'execute_partner_sale_mutation',
-            {
-              p_salesperson_id:
-                effectiveOperatorId,
-              p_pin: effectiveOperatorPin,
-              p_sale_id: ns.id,
-              p_customer_id: ns.customer_id,
-              p_customer_name: ns.customer_name,
-              p_items: ns.items,
-              p_total: ns.total,
-              p_imei: ns.imei,
-              p_serial_number: ns.serial_number,
-              p_payment_method:
-                ns.payment_method ?? null,
-              p_branch_id: ns.branch_id,
-              p_status: ns.status,
-              p_origin: ns.origin,
-              p_customer_type:
-                ns.customer_type ?? 'varejo',
-              p_delivery_type:
-                ns.delivery_type ?? 'balcao',
-            },
-          );
-
-        if (rpcErr) {
-          throw rpcErr;
-        }
-      }
-
-      let createdInvoice: PartnerInvoice | null =
-        null;
-
-      if (sale.payment_method === 'faturado') {
-        if (!isSupabaseConfigured || !supabase) {
-          throw new Error(
-            'Venda faturada requer Supabase configurado.',
-          );
-        }
-
-        const { data: invoice, error: invoiceError } =
-          await supabase
-            .from('partner_invoices')
-            .select('*')
-            .eq('sale_id', ns.id)
-            .eq(
-              'user_id',
-              currentIdentity.companyUserId,
-            )
-            .maybeSingle();
-
-        if (invoiceError) {
-          throw new Error(
-            `Venda criada, mas o título B2B não pôde ser localizado: ${invoiceError.message}`,
-          );
-        }
-        
-        if (!invoice) {
-          throw new Error(
-            'Venda criada, mas o título B2B não foi localizado.',
-          );
-        }
-
-        createdInvoice =
-          invoice as PartnerInvoice;
-      }
-
-      setData((prev) => ({
-        ...prev,
-        sales: [
-          ns,
-          ...prev.sales,
-        ],
-        invoices: createdInvoice
-          ? [
-              createdInvoice,
-              ...prev.invoices.filter(
-                (invoice) =>
-                  invoice.id !== createdInvoice!.id,
-              ),
-            ]
-          : prev.invoices,
+  // One authorized snapshot: current branch records plus company-wide credit totals.
+  const refreshPdv = useCallback(async (branchId: string) => {
+    const currentIdentity = requireIdentity();
+    ensureEmployeeBranch(currentIdentity, branchId);
+    const scope = currentIdentity.authUserId + ':' + currentIdentity.companyUserId;
+    const request = ++pdvRequestId.current;
+    setPdvCredits([]);
+    if (!isSupabaseConfigured || !supabase) throw new Error('Sincronização do PDV requer Supabase.');
+    const { data: snapshot, error: syncError } = await supabase.rpc('get_partner_pdv_snapshot', { p_branch_id: branchId });
+    if (syncError) throw syncError;
+    if (!snapshot || !Array.isArray(snapshot.credits) || !Array.isArray(snapshot.products)
+      || !Array.isArray(snapshot.sales) || !Array.isArray(snapshot.invoices) || !Array.isArray(snapshot.movements)) {
+      throw new Error('Resposta de sincronização do PDV inválida.');
+    }
+    const result = snapshot as { credits: CustomerCredit[]; products: PartnerProduct[]; sales: PartnerSale[]; invoices: PartnerInvoice[]; movements: StockMovement[] };
+    if (mountedRef.current && identityScopeRef.current === scope && request === pdvRequestId.current) {
+      const mergeBranch = <T extends { branch_id?: string | null }>(old: T[], rows: T[]) =>
+        [...rows, ...old.filter(row => row.branch_id !== branchId)];
+      setData(prev => ({ ...prev,
+        products: mergeBranch(prev.products, result.products),
+        sales: mergeBranch(prev.sales, result.sales),
+        invoices: mergeBranch(prev.invoices, result.invoices),
+        movements: mergeBranch(prev.movements, result.movements),
       }));
+      setPdvCredits(result.credits);
+      setPdvSyncWarning(null);
+    }
+    return result;
+  }, [requireIdentity]);
 
-      return ns;
-    },
-    [identity, requireIdentity],
+  const syncConfirmedSale = useCallback(async (branchId: string) => {
+    try { await refreshPdv(branchId); }
+    catch {
+      setPdvCredits([]);
+      setPdvSyncWarning('Operação confirmada. Não foi possível atualizar os dados do PDV. Use Atualizar dados; não repita a venda.');
+    }
+  }, [refreshPdv]);
+
+  const validateBilledSale = useCallback(async (sale: Pick<PartnerSale, 'customer_id' | 'branch_id' | 'total'>) => {
+    if (!sale.customer_id) throw new Error(billedSaleError(undefined, null, sale.total)!);
+    const snapshot = await refreshPdv(sale.branch_id!);
+    const message = billedSaleError(snapshot.credits.find(c => c.customer_id === sale.customer_id), sale.customer_id, sale.total);
+    if (message) throw new Error(message);
+  }, [refreshPdv]);
+
+  const createSale = useCallback(
+    async (sale: SalePayload, operatorId?: string | null, operatorPin?: string | null) => {
+      if (saleInFlight.current) throw new Error('Aguarde a conclusão da venda em andamento.');
+      saleInFlight.current = true;
+      try {
+        const currentIdentity = requireIdentity();
+        if (!sale.branch_id) throw new Error('Venda sem filial selecionada.');
+        ensureEmployeeBranch(currentIdentity, sale.branch_id);
+        const scope = currentIdentity.authUserId + ':' + currentIdentity.companyUserId;
+        const attempts = new PdvSaleAttemptStore(sessionStorage, scope);
+        const previous = attempts.read();
+        // Validate a NEW billed request. A retry may already have consumed its credit.
+        if (!previous && sale.payment_method === 'faturado') await validateBilledSale(sale);
+        const candidate: PartnerSale = {
+          ...sale, id: crypto.randomUUID(), user_id: currentIdentity.companyUserId,
+          status: sale.status ?? 'concluida', created_at: new Date().toISOString(),
+          imei: sale.imei ?? null, serial_number: sale.serial_number ?? null,
+          payment_method: sale.payment_method ?? null, branch_id: sale.branch_id,
+          salesperson_id: previous && 'id' in sale && sale.id === previous.id
+            ? previous.salesperson_id
+            : currentIdentity.salespersonId ?? sale.salesperson_id ?? operatorId ?? null,
+          origin: sale.origin ?? 'pdv', online_payment: false,
+          payment_status: sale.payment_method === 'faturado' ? 'pendente' : 'pago',
+        };
+        const ns = attempts.begin(candidate);
+        setPendingSale(ns);
+        if (isSupabaseConfigured && supabase) {
+          try {
+            const { data: confirmedId, error: rpcError } = await supabase.rpc('execute_partner_sale_mutation', {
+              p_salesperson_id: operatorId ?? null, p_pin: operatorPin ?? null,
+              p_commercial_salesperson_id: ns.salesperson_id,
+              p_sale_id: ns.id, p_customer_id: ns.customer_id, p_customer_name: ns.customer_name,
+              p_items: ns.items, p_total: ns.total, p_imei: ns.imei, p_serial_number: ns.serial_number,
+              p_payment_method: ns.payment_method, p_branch_id: ns.branch_id, p_status: ns.status,
+              p_origin: ns.origin, p_customer_type: ns.customer_type, p_delivery_type: ns.delivery_type,
+            });
+            if (rpcError) {
+              // A PostgreSQL rejection of the first request guarantees rollback. Transport
+              // failures and retries of an uncertain request must keep the same sale ID.
+              if (!previous && isDefinitiveSaleRejection(rpcError.code ?? '')) {
+                attempts.complete(ns.id);
+                setPendingSale(null);
+                throw new Error(pdvErrorMessage(rpcError));
+              }
+              throw rpcError;
+            }
+            if (confirmedId !== ns.id) throw new Error('Confirmação da venda não recebida.');
+          } catch (err) {
+            if (attempts.read()) {
+              throw new Error('Resultado da venda ainda não confirmado. Use Recuperar venda pendente; o mesmo ID será reutilizado. ' + pdvErrorMessage(err));
+            }
+            throw err;
+          }
+        }
+        // Success is final even if the following read fails. Never throw a checkout failure here.
+        if (identityScopeRef.current === scope) {
+          setData(prev => ({ ...prev, sales: [ns, ...prev.sales.filter(item => item.id !== ns.id)] }));
+        }
+        try { attempts.complete(ns.id); setPendingSale(null); }
+        catch { setPdvSyncWarning('Venda confirmada. A recuperação local permanece pendente; não repita com outro ID.'); }
+        if (isSupabaseConfigured && supabase) await syncConfirmedSale(ns.branch_id!);
+        return ns;
+      } finally { saleInFlight.current = false; }
+    }, [requireIdentity, validateBilledSale, syncConfirmedSale],
   );
+
+  const retryPendingSale = useCallback(async (operatorId?: string | null, operatorPin?: string | null) => {
+    const currentIdentity = requireIdentity();
+    const attempt = new PdvSaleAttemptStore(sessionStorage, currentIdentity.authUserId + ':' + currentIdentity.companyUserId).read();
+    if (!attempt) throw new Error('Nenhuma venda pendente para recuperar.');
+    return createSale(attempt, operatorId, operatorPin);
+  }, [createSale, requireIdentity]);
 
   const createPreSale = useCallback(
     async (
@@ -1621,7 +1622,7 @@ supabase
       const effectiveSpId =
         currentIdentity.salespersonId
           ? currentIdentity.salespersonId
-          : operatorId ?? sale.salesperson_id ?? null;
+          : sale.salesperson_id ?? operatorId ?? null;
 
       // Autorização da RPC: operador do modal (id + PIN) ou null para
       // que a RPC resolva o operador pelo auth.uid() da sessão.
@@ -1650,6 +1651,7 @@ supabase
             'execute_partner_sale_mutation',
             {
               p_salesperson_id: effectiveOperatorId,
+              p_commercial_salesperson_id: ns.salesperson_id,
               p_pin: effectiveOperatorPin,
               p_sale_id: ns.id,
               p_customer_id: ns.customer_id,
@@ -1717,6 +1719,16 @@ supabase
       const effectiveOperatorId = operatorId ?? null;
       const effectiveOperatorPin = operatorPin ?? null;
 
+      if (sale.status !== 'pre_venda') throw new Error('Esta pré-venda já foi finalizada ou cancelada.');
+      if (paymentMethod === 'faturado') {
+        // Refresh first: another checkout may already have finalized this same sale.
+        const snapshot = await refreshPdv(sale.branch_id);
+        const persisted = snapshot.sales.find(item => item.id === id);
+        if (persisted?.status === 'concluida' && persisted.payment_method === paymentMethod) return;
+        const message = billedSaleError(snapshot.credits.find(c => c.customer_id === sale.customer_id), sale.customer_id, sale.total);
+        if (message) throw new Error(message);
+      }
+
       if (isSupabaseConfigured && supabase) {
         const { error: rpcErr } =
           await supabase.rpc(
@@ -1725,6 +1737,7 @@ supabase
               p_salesperson_id:
                 effectiveOperatorId,
               p_pin: effectiveOperatorPin,
+              p_commercial_salesperson_id: sale.salesperson_id,
               p_sale_id: id,
               p_customer_id:
                 sale.customer_id ?? null,
@@ -1752,76 +1765,12 @@ supabase
         }
       }
 
-      setData((prev) => {
-        const newMovements: StockMovement[] =
-          sale.items.map((item) => ({
-            id: crypto.randomUUID(),
-            user_id:
-              currentIdentity.companyUserId,
-            product_id: item.product_id,
-            product_name: item.name,
-            type: 'saida',
-            quantity: item.quantity,
-            reason: 'Venda (Pré-venda)',
-            created_at:
-              new Date().toISOString(),
-            branch_id: sale.branch_id,
-          }));
-
-        const updatedProducts =
-          prev.products.map((product) => {
-            if (
-              product.branch_id !==
-              sale.branch_id
-            ) {
-              return product;
-            }
-
-            const item = sale.items.find(
-              (currentItem) =>
-                currentItem.product_id ===
-                product.id,
-            );
-
-            return item
-              ? {
-                  ...product,
-                  stock: Math.max(
-                    0,
-                    product.stock -
-                      item.quantity,
-                  ),
-                }
-              : product;
-          });
-
-        return {
-          ...prev,
-          sales: prev.sales.map(
-            (currentSale) =>
-              currentSale.id === id
-                ? {
-                    ...currentSale,
-                    status: 'concluida',
-                    payment_method:
-                      paymentMethod,
-                    payment_status:
-                      paymentMethod ===
-                      'faturado'
-                        ? 'pendente'
-                        : 'pago',
-                  }
-                : currentSale,
-          ),
-          movements: [
-            ...newMovements,
-            ...prev.movements,
-          ],
-          products: updatedProducts,
-        };
-      });
+      setData(prev => ({ ...prev, sales: prev.sales.map(item => item.id === id
+        ? { ...item, status: 'concluida', payment_method: paymentMethod, payment_status: paymentMethod === 'faturado' ? 'pendente' : 'pago' }
+        : item) }));
+      if (isSupabaseConfigured && supabase) await syncConfirmedSale(sale.branch_id);
     },
-    [data.sales, identity, requireIdentity],
+    [data.sales, requireIdentity, refreshPdv, syncConfirmedSale],
   );
 
   const cancelSale = useCallback(
@@ -1889,7 +1838,14 @@ supabase
           throw rpcErr;
         }
 
-        await loadData();
+        setData(prev => ({ ...prev,
+          sales: prev.sales.map(item => item.id === id
+            ? { ...item, status: 'cancelada', payment_status: item.payment_method === 'faturado' ? 'cancelado' : item.payment_status }
+            : item),
+          invoices: prev.invoices.map(invoice => invoice.sale_id === id && invoice.status === 'aberta' && Number(invoice.paid_amount ?? 0) === 0
+            ? { ...invoice, status: 'cancelada' } : invoice),
+        }));
+        await syncConfirmedSale(sale.branch_id!);
         return;
       }
 
@@ -1906,7 +1862,7 @@ supabase
         ),
       }));
     },
-    [data.sales, loadData, identity, requireIdentity],
+    [data.sales, syncConfirmedSale, requireIdentity],
   );
 
   const deleteSale = useCallback(
@@ -3636,6 +3592,11 @@ supabase
     updateBranch,
     deleteBranch,
 
+    pdvCredits,
+    pdvSyncWarning,
+    pendingSale,
+    refreshPdv,
+    retryPendingSale,
     createSale,
     createPreSale,
     finalizePreSale,

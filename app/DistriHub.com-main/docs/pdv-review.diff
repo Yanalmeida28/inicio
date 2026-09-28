@@ -1,0 +1,1270 @@
+diff --git a/app/DistriHub.com-main/src/components/PartnerPanel.tsx b/app/DistriHub.com-main/src/components/PartnerPanel.tsx
+index 91f021a..5b3f2cc 100644
+--- a/app/DistriHub.com-main/src/components/PartnerPanel.tsx
++++ b/app/DistriHub.com-main/src/components/PartnerPanel.tsx
+@@ -28,6 +28,7 @@ import { usePartnerData } from '../hooks/usePartnerData';
+ 
+ import { CadastrosModule } from './partner/CadastrosModule';
+ import { PdvModule } from './partner/PdvModule';
++import { pdvErrorMessage } from '../lib/pdv';
+ import { FinancialModule } from './partner/FinancialModule';
+ import { RmaModule } from './partner/RmaModule';
+ import { ReportsModule } from './partner/ReportsModule';
+@@ -233,6 +234,10 @@ export function PartnerPanel({
+   const [operatorPinError, setOperatorPinError] = useState('');
+ 
+   const partner = usePartnerData(identity);
++  const [pdvRevision, setPdvRevision] = useState(0);
++  const [pdvReadError, setPdvReadError] = useState<string | null>(null);
++  const [recoveringSale, setRecoveringSale] = useState(false);
++  const { refreshPdv } = partner;
+ 
+   const activeSalesperson = identity?.salespersonId
+     ? partner.salespeople.find(
+@@ -267,6 +272,33 @@ export function PartnerPanel({
+   const effectiveBranchId =
+     lockedBranchId ?? selectedBranchId;
+ 
++  useEffect(() => {
++    if (!effectiveBranchId || partner.loading || (activeTab !== 'pdv' && activeTab !== 'pedidos')) return;
++    let active = true;
++    setPdvReadError(null);
++    void refreshPdv(effectiveBranchId).catch(error => { if (active) setPdvReadError(pdvErrorMessage(error)); });
++    return () => { active = false; };
++  }, [effectiveBranchId, activeTab, partner.loading, refreshPdv]);
++
++  async function handleRefreshPdv() {
++    if (!effectiveBranchId) return;
++    try { await refreshPdv(effectiveBranchId); setPdvReadError(null); }
++    catch (error) { setPdvReadError(pdvErrorMessage(error)); }
++  }
++
++  async function handleRecoverSale() {
++    if (recoveringSale) return;
++    setRecoveringSale(true);
++    try {
++      const { operatorId, operatorPin } = getOperatorContext();
++      await partner.retryPendingSale(operatorId, operatorPin);
++      setPdvReadError(null);
++      // Clear the original cart only after this same sale has been confirmed.
++      setPdvRevision(value => value + 1);
++    } catch (error) { setPdvReadError(pdvErrorMessage(error)); }
++    finally { setRecoveringSale(false); }
++  }
++
+   const effectiveRole: SalespersonRole = activeSalesperson
+     ? activeSalesperson.role
+     : 'administrador';
+@@ -1794,8 +1826,22 @@ export function PartnerPanel({
+               />
+             )}
+ 
++            {(activeTab === 'pdv' || activeTab === 'pedidos') && (
++              <div role="status">
++                {(pdvReadError || partner.pdvSyncWarning) && <p className="otp-error-msg">{pdvReadError || partner.pdvSyncWarning}</p>}
++                <button className="rma-advance-btn" onClick={handleRefreshPdv}>Atualizar dados do PDV</button>
++                {partner.pendingSale && <>
++                  <p>Venda com resultado pendente. Recupere esta tentativa antes de iniciar outra venda.</p>
++                  <button className="module-submit-btn" disabled={recoveringSale} onClick={handleRecoverSale}>
++                    {recoveringSale ? 'Recuperando...' : 'Recuperar venda pendente'}
++                  </button>
++                </>}
++              </div>
++            )}
+             {activeTab === 'pdv' && (
+               <PdvModule
++                key={pdvRevision}
++                hasPendingSale={Boolean(partner.pendingSale)}
+                 products={
+                   filteredProducts
+                 }
+@@ -1805,9 +1851,7 @@ export function PartnerPanel({
+                 sales={
+                   filteredSales
+                 }
+-                invoices={
+-                  filteredInvoices
+-                }
++                credits={partner.pdvCredits}
+                 salespeople={
+                   filteredSalespeople
+                 }
+diff --git a/app/DistriHub.com-main/src/components/partner/OpenOrdersModule.tsx b/app/DistriHub.com-main/src/components/partner/OpenOrdersModule.tsx
+index 8dd9fcd..fcc2d3c 100644
+--- a/app/DistriHub.com-main/src/components/partner/OpenOrdersModule.tsx
++++ b/app/DistriHub.com-main/src/components/partner/OpenOrdersModule.tsx
+@@ -1,9 +1,10 @@
+-import { useMemo, useState } from 'react';
++import { useMemo, useRef, useState } from 'react';
+ import {
+   ClipboardList, Search, X, Calendar, Filter, ArrowRight, Wallet, Lock,
+ } from 'lucide-react';
+ import type { PartnerSale, PartnerCustomer, PartnerSalesperson, SalespersonRole } from '../../types';
+ import { money } from '../../utils';
++import { pdvErrorMessage } from '../../lib/pdv';
+ 
+ type Props = {
+   sales: PartnerSale[];
+@@ -42,6 +43,9 @@ export function OpenOrdersModule({ sales, customers, salespeople, currentRole, o
+   const [searchResults, setSearchResults] = useState<PartnerSale[] | null>(null);
+   const [finalizeTarget, setFinalizeTarget] = useState<PartnerSale | null>(null);
+   const [finalizePayment, setFinalizePayment] = useState('pix');
++  const [isFinalizing, setIsFinalizing] = useState(false);
++  const [finalizeError, setFinalizeError] = useState<string | null>(null);
++  const finalizeInFlight = useRef(false);
+   const [cancelTarget, setCancelTarget] = useState<PartnerSale | null>(null);
+   const [supervisorId, setSupervisorId] = useState('');
+   const [pinInput, setPinInput] = useState('');
+@@ -101,12 +105,24 @@ export function OpenOrdersModule({ sales, customers, salespeople, currentRole, o
+   function requestFinalize(sale: PartnerSale) {
+     setFinalizeTarget(sale);
+     setFinalizePayment('pix');
++    setFinalizeError(null);
+   }
+ 
+   async function confirmFinalize() {
+-    if (!finalizeTarget || !onFinalizePreSale) return;
+-    await onFinalizePreSale(finalizeTarget.id, finalizePayment);
+-    setFinalizeTarget(null);
++    if (!finalizeTarget || !onFinalizePreSale || finalizeInFlight.current) return;
++    finalizeInFlight.current = true;
++    setIsFinalizing(true);
++    setFinalizeError(null);
++    try {
++      // The shared hook checks a fresh authorized credit balance before calling the sale RPC.
++      await onFinalizePreSale(finalizeTarget.id, finalizePayment);
++      setFinalizeTarget(null);
++    } catch (error) {
++      setFinalizeError(pdvErrorMessage(error));
++    } finally {
++      finalizeInFlight.current = false;
++      setIsFinalizing(false);
++    }
+   }
+ 
+   function requestCancel(sale: PartnerSale) {
+@@ -338,10 +354,11 @@ export function OpenOrdersModule({ sales, customers, salespeople, currentRole, o
+                 <option value="faturado">Faturado</option>
+               </select>
+             </label>
++            {finalizeError && <p className="otp-error-msg" role="alert">{finalizeError}</p>}
+             <div className="otp-actions">
+-              <button className="rma-advance-btn" onClick={() => setFinalizeTarget(null)}>Cancelar</button>
+-              <button className="module-submit-btn" onClick={confirmFinalize}>
+-                Confirmar Venda
++              <button className="rma-advance-btn" disabled={isFinalizing} onClick={() => setFinalizeTarget(null)}>Cancelar</button>
++              <button className="module-submit-btn" onClick={confirmFinalize} disabled={isFinalizing}>
++                {isFinalizing ? 'Finalizando...' : 'Confirmar Venda'}
+               </button>
+             </div>
+           </div>
+diff --git a/app/DistriHub.com-main/src/components/partner/PdvModule.tsx b/app/DistriHub.com-main/src/components/partner/PdvModule.tsx
+index 4caca78..1ad8440 100644
+--- a/app/DistriHub.com-main/src/components/partner/PdvModule.tsx
++++ b/app/DistriHub.com-main/src/components/partner/PdvModule.tsx
+@@ -3,8 +3,9 @@ import {
+   Search, Trash2, ShoppingCart, Check, Printer, MessageCircle, Mail,
+   ScanLine, X, Tag, QrCode, Ban, Lock, ClipboardList, Wallet, Lock as LockIcon,
+ } from 'lucide-react';
+-import type { DeliveryType, PartnerProduct, PartnerCustomer, PartnerSale, PartnerSalesperson, PartnerInvoice, SaleItem, SalespersonRole } from '../../types';
++import type { DeliveryType, PartnerProduct, PartnerCustomer, PartnerSale, PartnerSalesperson, SaleItem, SalespersonRole } from '../../types';
+ import { money } from '../../utils';
++import { billedSaleError, pdvErrorMessage, type CustomerCredit } from '../../lib/pdv';
+ 
+ type PriceTable = 'varejo' | 'atacado';
+ type ClientType = 'varejo' | 'atacado';
+@@ -14,7 +15,8 @@ type Props = {
+   products: PartnerProduct[];
+   customers: PartnerCustomer[];
+   sales: PartnerSale[];
+-  invoices: PartnerInvoice[];
++  credits: CustomerCredit[];
++  hasPendingSale?: boolean;
+   salespeople: PartnerSalesperson[];
+   segment: string;
+   selectedBranchId: string | null;
+@@ -52,7 +54,7 @@ type Props = {
+ const cashierRoles: SalespersonRole[] = ['administrador', 'gerente', 'caixa', 'vendedor'];
+ 
+ export function PdvModule({
+-  products, customers, sales, invoices, salespeople, segment, selectedBranchId,
++  products, customers, sales, credits, hasPendingSale, salespeople, segment, selectedBranchId,
+   currentRole, onCreateSale, onCreatePreSale, onFinalizePreSale, onCancelSale, onDeleteSale,
+ }: Props) {
+   const [subTab, setSubTab] = useState<PdvSubTab>('pdv');
+@@ -91,7 +93,8 @@ export function PdvModule({
+           products={products}
+           customers={customers}
+           sales={sales}
+-          invoices={invoices}
++          credits={credits}
++          hasPendingSale={hasPendingSale}
+           salespeople={salespeople}
+           segment={segment}
+           selectedBranchId={selectedBranchId}
+@@ -123,11 +126,12 @@ export function PdvModule({
+ 
+ /* ============ PDV Checkout ============ */
+ 
+-function PdvCheckout({ products, customers, sales, invoices, salespeople, segment, selectedBranchId, canCheckout, onCreateSale, onCancelSale, onDeleteSale }: {
++function PdvCheckout({ products, customers, sales, credits, hasPendingSale, salespeople, segment, selectedBranchId, canCheckout, onCreateSale, onCancelSale, onDeleteSale }: {
+   products: PartnerProduct[];
+   customers: PartnerCustomer[];
+   sales: PartnerSale[];
+-  invoices: PartnerInvoice[];
++  credits: CustomerCredit[];
++  hasPendingSale?: boolean;
+   salespeople: PartnerSalesperson[];
+   segment: string;
+   selectedBranchId: string | null;
+@@ -148,6 +152,7 @@ function PdvCheckout({ products, customers, sales, invoices, salespeople, segmen
+   const [salespersonId, setSalespersonId] = useState('');
+   const [completed, setCompleted] = useState(false);
+   const [isCheckingOut, setIsCheckingOut] = useState(false);
++  const checkoutInFlight = useRef(false);
+   const [checkoutError, setCheckoutError] = useState<string | null>(null);
+   const [priceTable, setPriceTable] = useState<PriceTable>('varejo');
+   const [cancelTarget, setCancelTarget] = useState<PartnerSale | null>(null);
+@@ -214,11 +219,10 @@ function PdvCheckout({ products, customers, sales, invoices, salespeople, segmen
+ 
+   const total = cart.reduce((sum, item) => sum + item.unit_price * item.quantity, 0);
+   const selectedCustomer = customers.find((customer) => customer.id === customerId) ?? null;
+-  const customerOpenCredit = selectedCustomer
+-    ? invoices.filter((invoice) => invoice.customer_id === selectedCustomer.id && invoice.status === 'aberta').reduce((sum, invoice) => sum + (Number(invoice.amount) - Number(invoice.paid_amount ?? 0)), 0)
+-    : 0;
+-  const customerCreditAvailable = Number(selectedCustomer?.credit_limit ?? 0) - customerOpenCredit;
+-  const billedSaleBlocked = paymentMethod === 'faturado' && (!selectedCustomer || !selectedCustomer.allow_credit || total > customerCreditAvailable);
++  const credit = credits.find(item => item.customer_id === customerId);
++  const customerOpenCredit = Number(credit?.used ?? 0);
++  const customerCreditAvailable = Number(credit?.available ?? 0);
++  const billedSaleBlocked = paymentMethod === 'faturado' && Boolean(billedSaleError(credit, customerId || null, total));
+ 
+   function showSelectionNotice(message: string) {
+     setSelectionNotice(message);
+@@ -279,18 +283,18 @@ function PdvCheckout({ products, customers, sales, invoices, salespeople, segmen
+   }
+ 
+   async function handleCheckout() {
+-    if (cart.length === 0) return;
++    if (cart.length === 0 || checkoutInFlight.current || hasPendingSale) return;
+     if (!selectedBranchId) {
+       alert('Selecione uma filial antes de finalizar a venda.');
+       return;
+     }
+     const customer = customers.find((c) => c.id === customerId);
+     if (paymentMethod === 'faturado') {
+-      if (!customer) { setCheckoutError('Selecione um cliente para usar Faturado B2B.'); return; }
+-      if (!customer.allow_credit) { setCheckoutError('Este cliente não possui crédito permitido.'); return; }
+-      if (total > customerCreditAvailable) { setCheckoutError('Crédito disponível insuficiente para esta venda.'); return; }
++      const message = billedSaleError(credit, customerId || null, total);
++      if (message) { setCheckoutError(message); return; }
+     }
+     const fallbackName = clientType === 'atacado' ? 'Cliente Atacado' : 'Cliente Varejo';
++    checkoutInFlight.current = true;
+     setIsCheckingOut(true);
+     setCheckoutError(null);
+     try {
+@@ -310,8 +314,9 @@ function PdvCheckout({ products, customers, sales, invoices, salespeople, segmen
+       setCart([]); setCustomerId(''); setCustomerName(''); setImei(''); setSerial(''); setSalespersonId('');
+       setCompleted(true);
+     } catch (error) {
+-      setCheckoutError(error instanceof Error ? error.message : 'Não foi possível finalizar a venda.');
++      setCheckoutError(pdvErrorMessage(error));
+     } finally {
++      checkoutInFlight.current = false;
+       setIsCheckingOut(false);
+     }
+   }
+@@ -534,10 +539,13 @@ function PdvCheckout({ products, customers, sales, invoices, salespeople, segmen
+                 <span>Total {priceTable === 'atacado' ? '(Atacado)' : '(Varejo)'}</span>
+                 <strong>{money.format(total)}</strong>
+               </div>
+-              {paymentMethod === 'faturado' && selectedCustomer && (
++              {paymentMethod === 'faturado' && selectedCustomer && !credit && (
++                <p role="status">Crédito não consultado. Use Atualizar dados do PDV.</p>
++              )}
++              {paymentMethod === 'faturado' && selectedCustomer && credit && (
+                 <div className="b2b-credit-summary">
+                   <strong>Crédito B2B</strong>
+-                  <span>Limite: {money.format(Number(selectedCustomer.credit_limit ?? 0))}</span>
++                  <span>Limite: {money.format(Number(credit?.credit_limit ?? 0))}</span>
+                   <span>Utilizado: {money.format(customerOpenCredit)}</span>
+                   <span>Disponível: {money.format(Math.max(0, customerCreditAvailable))}</span>
+                   <span>Esta venda: {money.format(total)}</span>
+@@ -545,7 +553,7 @@ function PdvCheckout({ products, customers, sales, invoices, salespeople, segmen
+               )}
+ 
+               {canCheckout ? (
+-                <button className="module-submit-btn pdv-checkout-btn" onClick={handleCheckout} disabled={isCheckingOut || billedSaleBlocked}>
++                <button className="module-submit-btn pdv-checkout-btn" onClick={handleCheckout} disabled={isCheckingOut || billedSaleBlocked || hasPendingSale}>
+                   <Check size={18} /> {isCheckingOut ? 'Finalizando...' : 'Finalizar Venda'}
+                 </button>
+               ) : (
+@@ -705,6 +713,9 @@ function PreVendaTab({ products, customers, sales, salespeople, segment, selecte
+   const [saveError, setSaveError] = useState<string | null>(null);
+   const [finalizeTarget, setFinalizeTarget] = useState<PartnerSale | null>(null);
+   const [finalizePayment, setFinalizePayment] = useState('pix');
++  const [isFinalizing, setIsFinalizing] = useState(false);
++  const [finalizeError, setFinalizeError] = useState<string | null>(null);
++  const finalizeInFlight = useRef(false);
+   const [cancelTarget, setCancelTarget] = useState<PartnerSale | null>(null);
+   const [supervisorId, setSupervisorId] = useState('');
+   const [pinInput, setPinInput] = useState('');
+@@ -816,12 +827,24 @@ function PreVendaTab({ products, customers, sales, salespeople, segment, selecte
+   function requestFinalize(sale: PartnerSale) {
+     setFinalizeTarget(sale);
+     setFinalizePayment('pix');
++    setFinalizeError(null);
+   }
+ 
+   async function confirmFinalize() {
+-    if (!finalizeTarget) return;
+-    await onFinalizePreSale(finalizeTarget.id, finalizePayment);
+-    setFinalizeTarget(null);
++    if (!finalizeTarget || !onFinalizePreSale || finalizeInFlight.current) return;
++    finalizeInFlight.current = true;
++    setIsFinalizing(true);
++    setFinalizeError(null);
++    try {
++      // The shared hook checks a fresh authorized credit balance before calling the sale RPC.
++      await onFinalizePreSale(finalizeTarget.id, finalizePayment);
++      setFinalizeTarget(null);
++    } catch (error) {
++      setFinalizeError(pdvErrorMessage(error));
++    } finally {
++      finalizeInFlight.current = false;
++      setIsFinalizing(false);
++    }
+   }
+ 
+   function requestCancel(sale: PartnerSale) {
+@@ -1079,10 +1102,11 @@ function PreVendaTab({ products, customers, sales, salespeople, segment, selecte
+                 <option value="faturado">Faturado</option>
+               </select>
+             </label>
++            {finalizeError && <p className="otp-error-msg" role="alert">{finalizeError}</p>}
+             <div className="otp-actions">
+-              <button className="rma-advance-btn" onClick={() => setFinalizeTarget(null)}>Cancelar</button>
+-              <button className="module-submit-btn" onClick={confirmFinalize}>
+-                <Check size={16} /> Confirmar Venda
++              <button className="rma-advance-btn" disabled={isFinalizing} onClick={() => setFinalizeTarget(null)}>Cancelar</button>
++              <button className="module-submit-btn" onClick={confirmFinalize} disabled={isFinalizing}>
++                <Check size={16} /> {isFinalizing ? 'Finalizando...' : 'Confirmar Venda'}
+               </button>
+             </div>
+           </div>
+@@ -1142,4 +1166,4 @@ function PreVendaTab({ products, customers, sales, salespeople, segment, selecte
+       )}
+     </>
+   );
+-}
+\ No newline at end of file
++}
+diff --git a/app/DistriHub.com-main/src/hooks/usePartnerData.ts b/app/DistriHub.com-main/src/hooks/usePartnerData.ts
+index 1d6cf4f..512d312 100644
+--- a/app/DistriHub.com-main/src/hooks/usePartnerData.ts
++++ b/app/DistriHub.com-main/src/hooks/usePartnerData.ts
+@@ -1,5 +1,6 @@
+ import { useCallback, useEffect, useRef, useState } from 'react';
+ import { supabase, isSupabaseConfigured } from '../lib/supabase';
++import { billedSaleError, isDefinitiveSaleRejection, PdvSaleAttemptStore, pdvErrorMessage, type CustomerCredit } from '../lib/pdv';
+ import type {
+   AdminCompany,
+   AdminFinancialMonth,
+@@ -229,10 +230,30 @@ export function usePartnerData(identity: PartnerIdentity | null) {
+   const [loading, setLoading] = useState(false);
+   const [error, setError] = useState<string | null>(null);
+ 
++  const [pdvCredits, setPdvCredits] = useState<CustomerCredit[]>([]);
++  const [pdvSyncWarning, setPdvSyncWarning] = useState<string | null>(null);
++  const [pendingSale, setPendingSale] = useState<PartnerSale | null>(null);
++  const saleInFlight = useRef(false);
++  const pdvRequestId = useRef(0);
++  const identityScope = identity ? identity.authUserId + ':' + identity.companyUserId : '';
++  const identityScopeRef = useRef(identityScope);
++  identityScopeRef.current = identityScope;
++  useEffect(() => {
++    setPdvCredits([]);
++    setPdvSyncWarning(null);
++    ++pdvRequestId.current;
++    try {
++      setPendingSale(identityScope ? new PdvSaleAttemptStore(sessionStorage, identityScope).read() : null);
++    } catch (err) {
++      setPdvSyncWarning(pdvErrorMessage(err));
++    }
++  }, [identityScope]);
++
+   const mountedRef = useRef(true);
+   const requestIdRef = useRef(0);
+ 
+   useEffect(() => {
++    mountedRef.current = true;
+     return () => {
+       mountedRef.current = false;
+     };
+@@ -1459,144 +1480,124 @@ supabase
+     [requireIdentity],
+   );
+ 
+-  const createSale = useCallback(
+-    async (
+-      sale: SalePayload,
+-      operatorId?: string | null,
+-      operatorPin?: string | null,
+-    ) => {
+-      const currentIdentity = requireIdentity();
+-
+-      if (!sale.branch_id) {
+-        throw new Error(
+-          'Venda sem filial selecionada.',
+-        );
+-      }
+-
+-      ensureEmployeeBranch(
+-        currentIdentity,
+-        sale.branch_id,
+-      );
+-
+-      // Atribuição comercial da venda (relatórios/comissões) — preservada.
+-      const effectiveSalespersonId =
+-        currentIdentity.salespersonId
+-          ? currentIdentity.salespersonId
+-          : operatorId ?? sale.salesperson_id ?? null;
+-
+-      // Autorização da RPC: operador do modal (id + PIN) ou null para
+-      // que a RPC resolva o operador pelo auth.uid() da sessão.
+-      const effectiveOperatorId = operatorId ?? null;
+-      const effectiveOperatorPin = operatorPin ?? null;
+-
+-      const ns: PartnerSale = {
+-        ...sale,
+-        id: crypto.randomUUID(),
+-        user_id: currentIdentity.companyUserId,
+-        status: sale.status ?? 'concluida',
+-        created_at: new Date().toISOString(),
+-        imei: sale.imei ?? null,
+-        serial_number: sale.serial_number ?? null,
+-        payment_method: sale.payment_method ?? null,
+-        branch_id: sale.branch_id,
+-        salesperson_id: effectiveSalespersonId,
+-        origin: sale.origin ?? 'pdv',
+-        online_payment: sale.online_payment ?? false,
+-        payment_status:
+-          sale.payment_status ?? 'pendente',
+-      };
+-
+-      if (isSupabaseConfigured && supabase) {
+-        const { error: rpcErr } =
+-          await supabase.rpc(
+-            'execute_partner_sale_mutation',
+-            {
+-              p_salesperson_id:
+-                effectiveOperatorId,
+-              p_pin: effectiveOperatorPin,
+-              p_sale_id: ns.id,
+-              p_customer_id: ns.customer_id,
+-              p_customer_name: ns.customer_name,
+-              p_items: ns.items,
+-              p_total: ns.total,
+-              p_imei: ns.imei,
+-              p_serial_number: ns.serial_number,
+-              p_payment_method:
+-                ns.payment_method ?? null,
+-              p_branch_id: ns.branch_id,
+-              p_status: ns.status,
+-              p_origin: ns.origin,
+-              p_customer_type:
+-                ns.customer_type ?? 'varejo',
+-              p_delivery_type:
+-                ns.delivery_type ?? 'balcao',
+-            },
+-          );
+-
+-        if (rpcErr) {
+-          throw rpcErr;
+-        }
+-      }
+-
+-      let createdInvoice: PartnerInvoice | null =
+-        null;
+-
+-      if (sale.payment_method === 'faturado') {
+-        if (!isSupabaseConfigured || !supabase) {
+-          throw new Error(
+-            'Venda faturada requer Supabase configurado.',
+-          );
+-        }
++  // One authorized snapshot: current branch records plus company-wide credit totals.
++  const refreshPdv = useCallback(async (branchId: string) => {
++    const currentIdentity = requireIdentity();
++    ensureEmployeeBranch(currentIdentity, branchId);
++    const scope = currentIdentity.authUserId + ':' + currentIdentity.companyUserId;
++    const request = ++pdvRequestId.current;
++    setPdvCredits([]);
++    if (!isSupabaseConfigured || !supabase) throw new Error('Sincronização do PDV requer Supabase.');
++    const { data: snapshot, error: syncError } = await supabase.rpc('get_partner_pdv_snapshot', { p_branch_id: branchId });
++    if (syncError) throw syncError;
++    if (!snapshot || !Array.isArray(snapshot.credits) || !Array.isArray(snapshot.products)
++      || !Array.isArray(snapshot.sales) || !Array.isArray(snapshot.invoices) || !Array.isArray(snapshot.movements)) {
++      throw new Error('Resposta de sincronização do PDV inválida.');
++    }
++    const result = snapshot as { credits: CustomerCredit[]; products: PartnerProduct[]; sales: PartnerSale[]; invoices: PartnerInvoice[]; movements: StockMovement[] };
++    if (mountedRef.current && identityScopeRef.current === scope && request === pdvRequestId.current) {
++      const mergeBranch = <T extends { branch_id?: string | null }>(old: T[], rows: T[]) =>
++        [...rows, ...old.filter(row => row.branch_id !== branchId)];
++      setData(prev => ({ ...prev,
++        products: mergeBranch(prev.products, result.products),
++        sales: mergeBranch(prev.sales, result.sales),
++        invoices: mergeBranch(prev.invoices, result.invoices),
++        movements: mergeBranch(prev.movements, result.movements),
++      }));
++      setPdvCredits(result.credits);
++      setPdvSyncWarning(null);
++    }
++    return result;
++  }, [requireIdentity]);
++
++  const syncConfirmedSale = useCallback(async (branchId: string) => {
++    try { await refreshPdv(branchId); }
++    catch {
++      setPdvCredits([]);
++      setPdvSyncWarning('Operação confirmada. Não foi possível atualizar os dados do PDV. Use Atualizar dados; não repita a venda.');
++    }
++  }, [refreshPdv]);
+ 
+-        const { data: invoice, error: invoiceError } =
+-          await supabase
+-            .from('partner_invoices')
+-            .select('*')
+-            .eq('sale_id', ns.id)
+-            .eq(
+-              'user_id',
+-              currentIdentity.companyUserId,
+-            )
+-            .maybeSingle();
++  const validateBilledSale = useCallback(async (sale: Pick<PartnerSale, 'customer_id' | 'branch_id' | 'total'>) => {
++    if (!sale.customer_id) throw new Error(billedSaleError(undefined, null, sale.total)!);
++    const snapshot = await refreshPdv(sale.branch_id!);
++    const message = billedSaleError(snapshot.credits.find(c => c.customer_id === sale.customer_id), sale.customer_id, sale.total);
++    if (message) throw new Error(message);
++  }, [refreshPdv]);
+ 
+-        if (invoiceError) {
+-          throw new Error(
+-            `Venda criada, mas o título B2B não pôde ser localizado: ${invoiceError.message}`,
+-          );
++  const createSale = useCallback(
++    async (sale: SalePayload, operatorId?: string | null, operatorPin?: string | null) => {
++      if (saleInFlight.current) throw new Error('Aguarde a conclusão da venda em andamento.');
++      saleInFlight.current = true;
++      try {
++        const currentIdentity = requireIdentity();
++        if (!sale.branch_id) throw new Error('Venda sem filial selecionada.');
++        ensureEmployeeBranch(currentIdentity, sale.branch_id);
++        const scope = currentIdentity.authUserId + ':' + currentIdentity.companyUserId;
++        const attempts = new PdvSaleAttemptStore(sessionStorage, scope);
++        const previous = attempts.read();
++        // Validate a NEW billed request. A retry may already have consumed its credit.
++        if (!previous && sale.payment_method === 'faturado') await validateBilledSale(sale);
++        const candidate: PartnerSale = {
++          ...sale, id: crypto.randomUUID(), user_id: currentIdentity.companyUserId,
++          status: sale.status ?? 'concluida', created_at: new Date().toISOString(),
++          imei: sale.imei ?? null, serial_number: sale.serial_number ?? null,
++          payment_method: sale.payment_method ?? null, branch_id: sale.branch_id,
++          salesperson_id: previous && 'id' in sale && sale.id === previous.id
++            ? previous.salesperson_id
++            : currentIdentity.salespersonId ?? sale.salesperson_id ?? operatorId ?? null,
++          origin: sale.origin ?? 'pdv', online_payment: false,
++          payment_status: sale.payment_method === 'faturado' ? 'pendente' : 'pago',
++        };
++        const ns = attempts.begin(candidate);
++        setPendingSale(ns);
++        if (isSupabaseConfigured && supabase) {
++          try {
++            const { data: confirmedId, error: rpcError } = await supabase.rpc('execute_partner_sale_mutation', {
++              p_salesperson_id: operatorId ?? null, p_pin: operatorPin ?? null,
++              p_commercial_salesperson_id: ns.salesperson_id,
++              p_sale_id: ns.id, p_customer_id: ns.customer_id, p_customer_name: ns.customer_name,
++              p_items: ns.items, p_total: ns.total, p_imei: ns.imei, p_serial_number: ns.serial_number,
++              p_payment_method: ns.payment_method, p_branch_id: ns.branch_id, p_status: ns.status,
++              p_origin: ns.origin, p_customer_type: ns.customer_type, p_delivery_type: ns.delivery_type,
++            });
++            if (rpcError) {
++              // A PostgreSQL rejection of the first request guarantees rollback. Transport
++              // failures and retries of an uncertain request must keep the same sale ID.
++              if (!previous && isDefinitiveSaleRejection(rpcError.code ?? '')) {
++                attempts.complete(ns.id);
++                setPendingSale(null);
++                throw new Error(pdvErrorMessage(rpcError));
++              }
++              throw rpcError;
++            }
++            if (confirmedId !== ns.id) throw new Error('Confirmação da venda não recebida.');
++          } catch (err) {
++            if (attempts.read()) {
++              throw new Error('Resultado da venda ainda não confirmado. Use Recuperar venda pendente; o mesmo ID será reutilizado. ' + pdvErrorMessage(err));
++            }
++            throw err;
++          }
+         }
+-        
+-        if (!invoice) {
+-          throw new Error(
+-            'Venda criada, mas o título B2B não foi localizado.',
+-          );
++        // Success is final even if the following read fails. Never throw a checkout failure here.
++        if (identityScopeRef.current === scope) {
++          setData(prev => ({ ...prev, sales: [ns, ...prev.sales.filter(item => item.id !== ns.id)] }));
+         }
+-
+-        createdInvoice =
+-          invoice as PartnerInvoice;
+-      }
+-
+-      setData((prev) => ({
+-        ...prev,
+-        sales: [
+-          ns,
+-          ...prev.sales,
+-        ],
+-        invoices: createdInvoice
+-          ? [
+-              createdInvoice,
+-              ...prev.invoices.filter(
+-                (invoice) =>
+-                  invoice.id !== createdInvoice!.id,
+-              ),
+-            ]
+-          : prev.invoices,
+-      }));
+-
+-      return ns;
+-    },
+-    [identity, requireIdentity],
++        try { attempts.complete(ns.id); setPendingSale(null); }
++        catch { setPdvSyncWarning('Venda confirmada. A recuperação local permanece pendente; não repita com outro ID.'); }
++        if (isSupabaseConfigured && supabase) await syncConfirmedSale(ns.branch_id!);
++        return ns;
++      } finally { saleInFlight.current = false; }
++    }, [requireIdentity, validateBilledSale, syncConfirmedSale],
+   );
+ 
++  const retryPendingSale = useCallback(async (operatorId?: string | null, operatorPin?: string | null) => {
++    const currentIdentity = requireIdentity();
++    const attempt = new PdvSaleAttemptStore(sessionStorage, currentIdentity.authUserId + ':' + currentIdentity.companyUserId).read();
++    if (!attempt) throw new Error('Nenhuma venda pendente para recuperar.');
++    return createSale(attempt, operatorId, operatorPin);
++  }, [createSale, requireIdentity]);
++
+   const createPreSale = useCallback(
+     async (
+       sale: SalePayload,
+@@ -1621,7 +1622,7 @@ supabase
+       const effectiveSpId =
+         currentIdentity.salespersonId
+           ? currentIdentity.salespersonId
+-          : operatorId ?? sale.salesperson_id ?? null;
++          : sale.salesperson_id ?? operatorId ?? null;
+ 
+       // Autorização da RPC: operador do modal (id + PIN) ou null para
+       // que a RPC resolva o operador pelo auth.uid() da sessão.
+@@ -1650,6 +1651,7 @@ supabase
+             'execute_partner_sale_mutation',
+             {
+               p_salesperson_id: effectiveOperatorId,
++              p_commercial_salesperson_id: ns.salesperson_id,
+               p_pin: effectiveOperatorPin,
+               p_sale_id: ns.id,
+               p_customer_id: ns.customer_id,
+@@ -1717,6 +1719,16 @@ supabase
+       const effectiveOperatorId = operatorId ?? null;
+       const effectiveOperatorPin = operatorPin ?? null;
+ 
++      if (sale.status !== 'pre_venda') throw new Error('Esta pré-venda já foi finalizada ou cancelada.');
++      if (paymentMethod === 'faturado') {
++        // Refresh first: another checkout may already have finalized this same sale.
++        const snapshot = await refreshPdv(sale.branch_id);
++        const persisted = snapshot.sales.find(item => item.id === id);
++        if (persisted?.status === 'concluida' && persisted.payment_method === paymentMethod) return;
++        const message = billedSaleError(snapshot.credits.find(c => c.customer_id === sale.customer_id), sale.customer_id, sale.total);
++        if (message) throw new Error(message);
++      }
++
+       if (isSupabaseConfigured && supabase) {
+         const { error: rpcErr } =
+           await supabase.rpc(
+@@ -1725,6 +1737,7 @@ supabase
+               p_salesperson_id:
+                 effectiveOperatorId,
+               p_pin: effectiveOperatorPin,
++              p_commercial_salesperson_id: sale.salesperson_id,
+               p_sale_id: id,
+               p_customer_id:
+                 sale.customer_id ?? null,
+@@ -1752,76 +1765,12 @@ supabase
+         }
+       }
+ 
+-      setData((prev) => {
+-        const newMovements: StockMovement[] =
+-          sale.items.map((item) => ({
+-            id: crypto.randomUUID(),
+-            user_id:
+-              currentIdentity.companyUserId,
+-            product_id: item.product_id,
+-            product_name: item.name,
+-            type: 'saida',
+-            quantity: item.quantity,
+-            reason: 'Venda (Pré-venda)',
+-            created_at:
+-              new Date().toISOString(),
+-            branch_id: sale.branch_id,
+-          }));
+-
+-        const updatedProducts =
+-          prev.products.map((product) => {
+-            if (
+-              product.branch_id !==
+-              sale.branch_id
+-            ) {
+-              return product;
+-            }
+-
+-            const item = sale.items.find(
+-              (currentItem) =>
+-                currentItem.product_id ===
+-                product.id,
+-            );
+-
+-            return item
+-              ? {
+-                  ...product,
+-                  stock: Math.max(
+-                    0,
+-                    product.stock -
+-                      item.quantity,
+-                  ),
+-                }
+-              : product;
+-          });
+-
+-        return {
+-          ...prev,
+-          sales: prev.sales.map(
+-            (currentSale) =>
+-              currentSale.id === id
+-                ? {
+-                    ...currentSale,
+-                    status: 'concluida',
+-                    payment_method:
+-                      paymentMethod,
+-                    payment_status:
+-                      paymentMethod ===
+-                      'faturado'
+-                        ? 'pendente'
+-                        : 'pago',
+-                  }
+-                : currentSale,
+-          ),
+-          movements: [
+-            ...newMovements,
+-            ...prev.movements,
+-          ],
+-          products: updatedProducts,
+-        };
+-      });
++      setData(prev => ({ ...prev, sales: prev.sales.map(item => item.id === id
++        ? { ...item, status: 'concluida', payment_method: paymentMethod, payment_status: paymentMethod === 'faturado' ? 'pendente' : 'pago' }
++        : item) }));
++      if (isSupabaseConfigured && supabase) await syncConfirmedSale(sale.branch_id);
+     },
+-    [data.sales, identity, requireIdentity],
++    [data.sales, requireIdentity, refreshPdv, syncConfirmedSale],
+   );
+ 
+   const cancelSale = useCallback(
+@@ -1889,7 +1838,14 @@ supabase
+           throw rpcErr;
+         }
+ 
+-        await loadData();
++        setData(prev => ({ ...prev,
++          sales: prev.sales.map(item => item.id === id
++            ? { ...item, status: 'cancelada', payment_status: item.payment_method === 'faturado' ? 'cancelado' : item.payment_status }
++            : item),
++          invoices: prev.invoices.map(invoice => invoice.sale_id === id && invoice.status === 'aberta' && Number(invoice.paid_amount ?? 0) === 0
++            ? { ...invoice, status: 'cancelada' } : invoice),
++        }));
++        await syncConfirmedSale(sale.branch_id!);
+         return;
+       }
+ 
+@@ -1906,7 +1862,7 @@ supabase
+         ),
+       }));
+     },
+-    [data.sales, loadData, identity, requireIdentity],
++    [data.sales, syncConfirmedSale, requireIdentity],
+   );
+ 
+   const deleteSale = useCallback(
+@@ -3636,6 +3592,11 @@ supabase
+     updateBranch,
+     deleteBranch,
+ 
++    pdvCredits,
++    pdvSyncWarning,
++    pendingSale,
++    refreshPdv,
++    retryPendingSale,
+     createSale,
+     createPreSale,
+     finalizePreSale,
+diff --git a/app/DistriHub.com-main/src/types.ts b/app/DistriHub.com-main/src/types.ts
+index bfc766c..9be97fc 100644
+--- a/app/DistriHub.com-main/src/types.ts
++++ b/app/DistriHub.com-main/src/types.ts
+@@ -393,7 +393,9 @@ export interface PartnerInvoice {
+   paid_amount?: number;
+   status:
+     | 'aberta'
+-    | 'paga';
++    | 'paga'
++    | 'parcial'
++    | 'cancelada';
+   due_date: string | null;
+   paid_at: string | null;
+   branch_id: string | null;
+diff --git a/app/DistriHub.com-main/src/lib/pdv.ts b/app/DistriHub.com-main/src/lib/pdv.ts
+new file mode 100644
+--- /dev/null
++++ b/app/DistriHub.com-main/src/lib/pdv.ts
+@@ -0,0 +1,75 @@
++import type { PartnerSale } from '../types';
++
++export interface CustomerCredit {
++  customer_id: string;
++  allow_credit: boolean;
++  credit_limit: number;
++  used: number;
++  available: number;
++}
++
++export function billedSaleError(credit: CustomerCredit | undefined, customerId: string | null, total: number): string | null {
++  if (!customerId) return 'Selecione um cliente para usar Faturado B2B.';
++  if (!credit) return 'Não foi possível consultar o crédito. Atualize os dados antes de finalizar.';
++  if (!credit.allow_credit) return 'Este cliente não possui crédito permitido.';
++  if (total > Number(credit.available)) return 'Crédito disponível insuficiente para esta venda.';
++  return null;
++}
++
++export function pdvErrorMessage(error: unknown): string {
++  if (error && typeof error === 'object' && 'message' in error) return String(error.message);
++  return 'Não foi possível concluir a operação.';
++}
++
++export function isDefinitiveSaleRejection(code: string): boolean {
++  // Connection errors (08xxx) and unknown completion (40003) are deliberately excluded.
++  return /^(22|23)/.test(code) || ['P0001', '42501', '40001', '40P01', '57014', '42883', 'PGRST202'].includes(code);
++}
++
++// Only the immutable business request is compared. No operator credentials enter this object.
++export function saleRequestKey(sale: Partial<PartnerSale>): string {
++  return JSON.stringify([
++    sale.customer_id ?? null, sale.customer_name, sale.items, sale.total,
++    sale.imei ?? null, sale.serial_number ?? null, sale.payment_method ?? null,
++    sale.branch_id, sale.salesperson_id ?? null, sale.customer_type ?? 'varejo',
++    sale.delivery_type ?? 'balcao', sale.origin ?? 'pdv', sale.status ?? 'concluida',
++  ]);
++}
++
++// Per authenticated user/company and browser tab. Persist the draft, never a PIN or session token.
++export class PdvSaleAttemptStore {
++  constructor(private storage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>, private scope: string) {}
++  private get key() { return `distrihub:pdv-attempt:${this.scope}`; }
++  read(): PartnerSale | null {
++    const value = this.storage.getItem(this.key);
++    if (!value) return null;
++    const sale = JSON.parse(value) as PartnerSale;
++    if (!sale.id || !sale.branch_id || !Array.isArray(sale.items)) {
++      throw new Error('Tentativa de venda inválida no navegador. Solicite conciliação antes de iniciar outra venda.');
++    }
++    return sale;
++  }
++  begin(sale: PartnerSale): PartnerSale {
++    const pending = this.read();
++    if (pending) {
++      if (saleRequestKey(pending) !== saleRequestKey(sale)) {
++        throw new Error('Existe uma venda com resultado pendente. Use Recuperar venda pendente antes de iniciar outra.');
++      }
++      return pending;
++    }
++    // Persist an explicit allowlist, even if a caller supplies extra runtime properties.
++    const stored: PartnerSale = {
++      id: sale.id, user_id: sale.user_id, customer_id: sale.customer_id, customer_name: sale.customer_name,
++      items: sale.items.map(({ product_id, name, quantity, unit_price }) => ({ product_id, name, quantity, unit_price })),
++      total: sale.total, imei: sale.imei, serial_number: sale.serial_number, payment_method: sale.payment_method,
++      salesperson_id: sale.salesperson_id, branch_id: sale.branch_id, customer_type: sale.customer_type,
++      delivery_type: sale.delivery_type, status: sale.status, origin: sale.origin, online_payment: sale.online_payment,
++      payment_status: sale.payment_status, created_at: sale.created_at,
++    };
++    this.storage.setItem(this.key, JSON.stringify(stored));
++    return stored;
++  }
++  complete(id: string): void {
++    if (this.read()?.id === id) this.storage.removeItem(this.key);
++  }
++}
+diff --git a/app/DistriHub.com-main/supabase/migrations/20260928044542_fix_pdv_sales_reconciliation.sql b/app/DistriHub.com-main/supabase/migrations/20260928044542_fix_pdv_sales_reconciliation.sql
+new file mode 100644
+--- /dev/null
++++ b/app/DistriHub.com-main/supabase/migrations/20260928044542_fix_pdv_sales_reconciliation.sql
+@@ -0,0 +1,348 @@
++-- LOCAL REVIEW ONLY. Production baseline captured with pg_get_functiondef on 2026-09-28.
++-- Do not apply together with unrelated historical migrations.
++-- p_total/pricing rules, stock locks and shared resolve_partner_operator are unchanged.
++BEGIN;
++DO $guard$
++BEGIN
++  IF md5(pg_get_functiondef('public.execute_partner_sale_mutation(uuid,text,uuid,uuid,text,jsonb,numeric,text,text,text,uuid,text,text,text,text)'::regprocedure))
++       IS DISTINCT FROM 'ff8ec2a31ff5531cab50ff321e96c8f3'
++     OR md5(pg_get_functiondef('public.execute_partner_sale_delete(uuid,text,uuid)'::regprocedure))
++       IS DISTINCT FROM '69da6ffaf9cedbc1759717dec51e395d' THEN
++    RAISE EXCEPTION 'RPCs de producao mudaram desde a auditoria. Rebase obrigatorio antes de aplicar.';
++  END IF;
++END;
++$guard$;
++
++-- PDV-only identity adapter. Keep the shared resolver's PIN contract unchanged.
++-- SECURITY INVOKER: callable only by the owner of the DEFINER entry points below.
++CREATE OR REPLACE FUNCTION public.resolve_partner_pdv_operator(
++  p_salesperson_id uuid, p_pin text, p_requested_branch_id uuid
++) RETURNS TABLE(company_id uuid, salesperson_id uuid, role text, branch_id uuid)
++LANGUAGE plpgsql SECURITY INVOKER SET search_path TO ''
++AS $function$
++DECLARE
++  v_auth uuid := (SELECT auth.uid());
++  v_operator public.partner_salespeople%ROWTYPE;
++  v_count integer;
++BEGIN
++  IF v_auth IS NULL THEN RAISE EXCEPTION 'Nao autenticado'; END IF;
++  IF p_salesperson_id IS NULL THEN
++    SELECT count(*) INTO v_count FROM public.partner_salespeople sp WHERE sp.auth_user_id=v_auth;
++    IF v_count > 1 THEN RAISE EXCEPTION 'Identidade de funcionario ambigua'; END IF;
++    SELECT sp.* INTO v_operator FROM public.partner_salespeople sp WHERE sp.auth_user_id=v_auth;
++    IF FOUND THEN
++      IF v_operator.active IS DISTINCT FROM true THEN RAISE EXCEPTION 'Funcionario inativo'; END IF;
++    ELSE
++      RETURN QUERY SELECT * FROM public.resolve_partner_operator(NULL,NULL,p_requested_branch_id);
++      RETURN;
++    END IF;
++  ELSE
++    -- Preserve the production owner/operator/PIN authorization, including linked staff.
++    SELECT sp.* INTO v_operator FROM public.partner_salespeople sp
++    WHERE sp.id=p_salesperson_id AND sp.active=true
++      AND (sp.user_id=v_auth OR sp.auth_user_id=v_auth)
++      AND public.verify_partner_salesperson_pin(p_pin,sp.pin_hash);
++    IF NOT FOUND THEN RAISE EXCEPTION 'Operador invalido ou PIN incorreto'; END IF;
++  END IF;
++  IF v_operator.role IS NULL THEN RAISE EXCEPTION 'Operador sem permissao'; END IF;
++  IF v_operator.role <> 'administrador'
++     AND (v_operator.branch_id IS NULL OR
++          (p_requested_branch_id IS NOT NULL AND v_operator.branch_id IS DISTINCT FROM p_requested_branch_id)) THEN
++    RAISE EXCEPTION 'Acesso negado a filial';
++  END IF;
++  RETURN QUERY SELECT v_operator.user_id,v_operator.id,v_operator.role,v_operator.branch_id;
++END;
++$function$;
++REVOKE ALL ON FUNCTION public.resolve_partner_pdv_operator(uuid,text,uuid) FROM PUBLIC,anon,authenticated;
++
++-- Add optional commercial attribution separately from authorization.
++-- Remove the old signature to avoid PostgREST overload ambiguity; old named calls remain valid.
++DROP FUNCTION public.execute_partner_sale_mutation(uuid,text,uuid,uuid,text,jsonb,numeric,text,text,text,uuid,text,text,text,text);
++CREATE OR REPLACE FUNCTION public.execute_partner_sale_mutation(p_salesperson_id uuid, p_pin text, p_sale_id uuid, p_customer_id uuid, p_customer_name text, p_items jsonb, p_total numeric, p_imei text, p_serial_number text, p_payment_method text, p_branch_id uuid, p_status text, p_origin text, p_customer_type text, p_delivery_type text, p_commercial_salesperson_id uuid DEFAULT NULL)
++ RETURNS uuid
++ LANGUAGE plpgsql
++ SECURITY DEFINER
++ SET search_path TO ''
++AS $function$
++DECLARE
++  v_company_id uuid; v_role text; v_branch uuid;
++  v_existing_user uuid; v_old_status text; v_existing_branch uuid; v_existing_items jsonb;
++  v_should_decrement boolean := false; v_should_restore boolean := false;
++  v_item jsonb; v_product_branch uuid; v_stock integer; v_is_service boolean;
++  v_quantity integer; v_credit_limit numeric; v_allow_credit boolean; v_credit_used numeric;
++  v_target_id uuid := COALESCE(p_sale_id, pg_catalog.gen_random_uuid());
++  v_actor_name text;
++  v_operator_id uuid; v_commercial_id uuid;
++  v_existing_sale public.partner_sales%ROWTYPE;
++  v_invoice public.partner_invoices%ROWTYPE;
++BEGIN
++  IF (SELECT auth.uid()) IS NULL THEN RAISE EXCEPTION 'Nao autenticado'; END IF;
++  IF p_status IS NULL OR p_status NOT IN ('pre_venda','concluida','cancelada') THEN RAISE EXCEPTION 'Status de venda invalido'; END IF;
++  IF p_total IS NULL OR p_total < 0 THEN RAISE EXCEPTION 'Total de venda invalido'; END IF;
++  IF p_items IS NULL OR pg_catalog.jsonb_typeof(p_items) <> 'array' THEN RAISE EXCEPTION 'Itens da venda invalidos'; END IF;
++
++  SELECT op.company_id,op.salesperson_id,op.role,op.branch_id
++    INTO v_company_id,v_operator_id,v_role,v_branch
++  FROM public.resolve_partner_pdv_operator(p_salesperson_id,p_pin,p_branch_id) op;
++  IF p_status='concluida' AND v_role NOT IN ('administrador','gerente','caixa','vendedor') THEN
++    RAISE EXCEPTION 'Acesso negado para concluir vendas';
++  END IF;
++
++  -- Cancelamento de venda e restrito a administrador ou gerente.
++  IF p_status = 'cancelada' AND v_role NOT IN ('administrador','gerente') THEN
++    RAISE EXCEPTION 'Acesso negado: apenas administradores ou gerentes podem cancelar vendas.';
++  END IF;
++
++  IF p_branch_id IS NULL OR NOT EXISTS (SELECT 1 FROM public.partner_branches b WHERE b.id=p_branch_id AND b.user_id=v_company_id) THEN
++    RAISE EXCEPTION 'Filial invalida';
++  END IF;
++  IF p_customer_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM public.partner_customers c WHERE c.id=p_customer_id AND c.user_id=v_company_id AND (c.branch_id IS NULL OR c.branch_id=p_branch_id)) THEN
++    RAISE EXCEPTION 'Cliente invalido para esta filial';
++  END IF;
++
++  -- Serializes retries even before the sale row exists.
++  PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(v_target_id::text,0));
++  SELECT s.* INTO v_existing_sale FROM public.partner_sales s WHERE s.id=v_target_id FOR UPDATE;
++  v_existing_user := v_existing_sale.user_id;
++  v_old_status := v_existing_sale.status;
++  v_existing_branch := v_existing_sale.branch_id;
++  v_existing_items := v_existing_sale.items;
++  IF v_existing_user IS NOT NULL AND v_existing_user<>v_company_id THEN RAISE EXCEPTION 'Venda nao pertence a empresa'; END IF;
++  IF v_existing_user IS NOT NULL AND v_existing_branch IS DISTINCT FROM p_branch_id THEN RAISE EXCEPTION 'Venda nao pertence a filial informada'; END IF;
++  IF v_existing_user IS NOT NULL AND v_old_status='cancelada' THEN RAISE EXCEPTION 'Venda cancelada e imutavel'; END IF;
++  v_commercial_id := CASE WHEN v_existing_user IS NOT NULL
++    THEN COALESCE(p_commercial_salesperson_id,v_existing_sale.salesperson_id)
++    ELSE COALESCE(p_commercial_salesperson_id,v_operator_id) END;
++  IF p_status <> 'cancelada' AND (v_existing_user IS NULL OR v_old_status='pre_venda')
++     AND v_commercial_id IS NOT NULL AND NOT EXISTS (
++    SELECT 1 FROM public.partner_salespeople sp WHERE sp.id=v_commercial_id
++      AND sp.user_id=v_company_id AND (sp.branch_id IS NULL OR sp.branch_id=p_branch_id)
++  ) THEN RAISE EXCEPTION 'Vendedor comercial invalido para esta filial'; END IF;
++
++  IF v_existing_user IS NOT NULL AND v_old_status='concluida' AND p_status<>'cancelada' THEN
++    -- Retry is a read of the same operation, never an edit or another stock/invoice write.
++    IF p_status='concluida'
++      AND v_existing_sale.customer_id IS NOT DISTINCT FROM p_customer_id
++      AND v_existing_sale.customer_name IS NOT DISTINCT FROM p_customer_name
++      AND v_existing_sale.items IS NOT DISTINCT FROM p_items
++      AND v_existing_sale.total IS NOT DISTINCT FROM p_total
++      AND v_existing_sale.payment_method IS NOT DISTINCT FROM p_payment_method
++      AND v_existing_sale.imei IS NOT DISTINCT FROM p_imei
++      AND v_existing_sale.serial_number IS NOT DISTINCT FROM p_serial_number
++      AND v_existing_sale.origin IS NOT DISTINCT FROM COALESCE(p_origin,'pdv')
++      AND v_existing_sale.customer_type IS NOT DISTINCT FROM COALESCE(p_customer_type,'varejo')
++      AND v_existing_sale.delivery_type IS NOT DISTINCT FROM COALESCE(p_delivery_type,'balcao')
++      AND v_existing_sale.salesperson_id IS NOT DISTINCT FROM v_commercial_id
++    THEN RETURN v_target_id; END IF;
++    RAISE EXCEPTION 'Venda concluida nao pode ser editada; tentativa com dados diferentes';
++  END IF;
++
++  v_should_decrement := p_status='concluida' AND (v_existing_user IS NULL OR v_old_status='pre_venda');
++  v_should_restore := v_existing_user IS NOT NULL AND v_old_status='concluida' AND p_status='cancelada';
++
++  IF v_should_decrement THEN
++    FOR v_item IN
++      SELECT pg_catalog.jsonb_build_object('product_id', product_id, 'quantity', total_qty)
++      FROM (SELECT (x->>'product_id')::uuid AS product_id, SUM((x->>'quantity')::integer)::integer AS total_qty FROM pg_catalog.jsonb_array_elements(p_items) x GROUP BY (x->>'product_id')::uuid ORDER BY (x->>'product_id')::uuid) q
++    LOOP
++      v_quantity := (v_item->>'quantity')::integer;
++      IF v_quantity <= 0 THEN RAISE EXCEPTION 'Quantidade invalida'; END IF;
++      SELECT branch_id,stock,is_service INTO v_product_branch,v_stock,v_is_service FROM public.partner_products WHERE id=(v_item->>'product_id')::uuid AND user_id=v_company_id FOR UPDATE;
++      IF NOT FOUND THEN RAISE EXCEPTION 'Produto invalido ou inexistente'; END IF;
++      IF v_product_branch IS DISTINCT FROM p_branch_id THEN RAISE EXCEPTION 'Produto fora da filial da venda'; END IF;
++      IF NOT COALESCE(v_is_service,false) AND v_stock < v_quantity THEN RAISE EXCEPTION 'Estoque insuficiente'; END IF;
++    END LOOP;
++  END IF;
++
++  IF p_payment_method='faturado' AND p_status='concluida' THEN
++    IF p_customer_id IS NULL THEN RAISE EXCEPTION 'Faturado B2B exige cliente'; END IF;
++    SELECT c.credit_limit,COALESCE(c.allow_credit,false) INTO v_credit_limit,v_allow_credit FROM public.partner_customers c WHERE c.id=p_customer_id AND c.user_id=v_company_id FOR UPDATE;
++    IF NOT COALESCE(v_allow_credit,false) THEN RAISE EXCEPTION 'Cliente sem credito permitido'; END IF;
++    SELECT COALESCE(SUM(i.amount-COALESCE(i.paid_amount,0)),0) INTO v_credit_used FROM public.partner_invoices i WHERE i.user_id=v_company_id AND i.customer_id=p_customer_id AND i.status IN ('aberta','vencida','parcial','pending');
++    IF COALESCE(v_credit_used,0)+p_total>COALESCE(v_credit_limit,0) THEN RAISE EXCEPTION 'Credito insuficiente para a venda'; END IF;
++  END IF;
++
++  IF v_should_decrement THEN
++    FOR v_item IN
++      SELECT pg_catalog.jsonb_build_object('product_id', product_id, 'quantity', total_qty)
++      FROM (SELECT (x->>'product_id')::uuid AS product_id, SUM((x->>'quantity')::integer)::integer AS total_qty FROM pg_catalog.jsonb_array_elements(p_items) x GROUP BY (x->>'product_id')::uuid ORDER BY (x->>'product_id')::uuid) q
++    LOOP
++      v_quantity := (v_item->>'quantity')::integer;
++      UPDATE public.partner_products SET stock=stock-v_quantity,updated_at=pg_catalog.now() WHERE id=(v_item->>'product_id')::uuid AND user_id=v_company_id AND branch_id=p_branch_id AND NOT COALESCE(is_service,false) AND stock>=v_quantity;
++      IF NOT FOUND AND NOT EXISTS (SELECT 1 FROM public.partner_products WHERE id=(v_item->>'product_id')::uuid AND user_id=v_company_id AND branch_id=p_branch_id AND COALESCE(is_service,false)) THEN RAISE EXCEPTION 'Estoque insuficiente durante a baixa'; END IF;
++      INSERT INTO public.stock_movements(user_id,product_id,product_name,type,quantity,reason,branch_id)
++      SELECT v_company_id,p.id,p.name,'saida',v_quantity,'Saida por venda '||v_target_id::text,p_branch_id FROM public.partner_products p WHERE p.id=(v_item->>'product_id')::uuid AND p.user_id=v_company_id AND p.branch_id=p_branch_id AND NOT COALESCE(p.is_service,false);
++    END LOOP;
++  END IF;
++
++  IF v_should_restore THEN
++    SELECT i.* INTO v_invoice FROM public.partner_invoices i
++    WHERE i.sale_id=v_target_id AND i.user_id=v_company_id FOR UPDATE;
++    IF FOUND THEN
++      IF COALESCE(v_invoice.paid_amount,0)>0 OR v_invoice.status IN ('parcial','paga') THEN
++        RAISE EXCEPTION 'Cancelamento bloqueado: a fatura possui recebimentos. E necessario um fluxo de estorno financeiro antes de cancelar a venda.';
++      END IF;
++      IF v_invoice.status NOT IN ('aberta','cancelada') THEN
++        RAISE EXCEPTION 'Cancelamento bloqueado: status da fatura requer revisao financeira';
++      END IF;
++    ELSIF v_existing_sale.payment_method='faturado' THEN
++      RAISE EXCEPTION 'Cancelamento bloqueado: fatura da venda nao localizada para conciliacao';
++    END IF;
++    FOR v_item IN SELECT pg_catalog.jsonb_build_object('product_id', product_id, 'quantity', total_qty) FROM (SELECT (x->>'product_id')::uuid AS product_id, SUM((x->>'quantity')::integer)::integer AS total_qty FROM pg_catalog.jsonb_array_elements(COALESCE(v_existing_items,'[]'::jsonb)) x GROUP BY (x->>'product_id')::uuid ORDER BY (x->>'product_id')::uuid) q LOOP
++      v_quantity := (v_item->>'quantity')::integer;
++      IF v_quantity <= 0 THEN RAISE EXCEPTION 'Quantidade invalida no historico da venda'; END IF;
++      SELECT branch_id,is_service INTO v_product_branch,v_is_service FROM public.partner_products WHERE id=(v_item->>'product_id')::uuid AND user_id=v_company_id FOR UPDATE;
++      IF NOT FOUND THEN RAISE EXCEPTION 'Produto do historico nao existe; cancelamento bloqueado'; END IF;
++      IF v_product_branch IS DISTINCT FROM p_branch_id THEN RAISE EXCEPTION 'Produto fora da filial do estorno'; END IF;
++      IF NOT COALESCE(v_is_service,false) THEN
++        UPDATE public.partner_products SET stock=stock+v_quantity,updated_at=pg_catalog.now() WHERE id=(v_item->>'product_id')::uuid AND user_id=v_company_id AND branch_id=p_branch_id;
++        INSERT INTO public.stock_movements(user_id,product_id,product_name,type,quantity,reason,branch_id) SELECT v_company_id,p.id,p.name,'entrada',v_quantity,'Estorno por cancelamento da venda '||v_target_id::text,p_branch_id FROM public.partner_products p WHERE p.id=(v_item->>'product_id')::uuid AND p.user_id=v_company_id AND p.branch_id=p_branch_id;
++      END IF;
++    END LOOP;
++  END IF;
++
++  IF v_existing_user IS NULL THEN
++    IF p_status='cancelada' THEN RAISE EXCEPTION 'Nao e possivel criar venda cancelada'; END IF;
++    INSERT INTO public.partner_sales(id,user_id,customer_id,customer_name,items,total,status,created_at,branch_id,salesperson_id,imei,serial_number,payment_method,origin,online_payment,payment_status,customer_type,delivery_type)
++    VALUES(v_target_id,v_company_id,p_customer_id,p_customer_name,p_items,p_total,p_status,pg_catalog.now(),p_branch_id,v_commercial_id,p_imei,p_serial_number,p_payment_method,COALESCE(p_origin,'pdv'),false,CASE WHEN p_status='concluida' AND p_payment_method<>'faturado' THEN 'pago' ELSE 'pendente' END,COALESCE(p_customer_type,'varejo'),COALESCE(p_delivery_type,'balcao'));
++  ELSIF v_should_restore THEN
++    UPDATE public.partner_sales SET status='cancelada',payment_status=CASE WHEN payment_method='faturado' THEN 'cancelado' ELSE payment_status END WHERE id=v_target_id AND user_id=v_company_id AND status='concluida';
++    IF NOT FOUND THEN RAISE EXCEPTION 'Venda nao pode ser cancelada'; END IF;
++    UPDATE public.partner_invoices SET status='cancelada'
++    WHERE id=v_invoice.id AND user_id=v_company_id AND status='aberta' AND paid_amount=0;
++  ELSE
++    UPDATE public.partner_sales SET customer_id=p_customer_id,customer_name=p_customer_name,items=p_items,total=p_total,status=p_status,branch_id=p_branch_id,salesperson_id=v_commercial_id,imei=p_imei,serial_number=p_serial_number,payment_method=p_payment_method,origin=COALESCE(p_origin,origin),payment_status=CASE WHEN p_status='concluida' AND p_payment_method<>'faturado' THEN 'pago' ELSE payment_status END,customer_type=COALESCE(p_customer_type,customer_type),delivery_type=COALESCE(p_delivery_type,delivery_type) WHERE id=v_target_id AND user_id=v_company_id AND status='pre_venda';
++    IF NOT FOUND THEN RAISE EXCEPTION 'Somente pre-vendas podem ser editadas'; END IF;
++  END IF;
++
++  IF p_payment_method='faturado' AND p_status='concluida' AND NOT v_should_restore THEN
++    INSERT INTO public.partner_invoices(user_id,number,sale_id,customer_id,customer_name,amount,paid_amount,status,due_date,branch_id,salesperson_id)
++    VALUES(v_company_id,'B2B-'||v_target_id::text,v_target_id,p_customer_id,p_customer_name,p_total,0,'aberta',CURRENT_DATE + 30,p_branch_id,v_commercial_id)
++    ON CONFLICT(sale_id) WHERE sale_id IS NOT NULL DO NOTHING;
++  END IF;
++
++  SELECT COALESCE(NULLIF(pg_catalog.btrim(pp.account_name),''),NULLIF(pg_catalog.btrim(pp.business_name),''),'Administrador') INTO v_actor_name
++  FROM public.partner_profiles pp WHERE pp.id=v_company_id;
++  INSERT INTO public.partner_audit_logs(id,user_id,actor_name,actor_role,action,entity_type,entity_id,details)
++  VALUES(pg_catalog.gen_random_uuid()::text,v_company_id,COALESCE(v_actor_name,'Administrador'),COALESCE(v_role,'administrador'),CASE WHEN v_should_restore THEN 'cancelamento_venda' WHEN v_should_decrement THEN 'conclusao_venda' ELSE 'alteracao_pre_venda' END,'partner_sale',v_target_id::text,'Operacao de venda executada atomicamente com protecao de estoque e controle de transicao de status');
++
++  RETURN v_target_id;
++END;
++$function$;
++
++REVOKE ALL ON FUNCTION public.execute_partner_sale_mutation(uuid,text,uuid,uuid,text,jsonb,numeric,text,text,text,uuid,text,text,text,text,uuid) FROM PUBLIC,anon;
++-- Preserve the existing backend role grant; this is a role name, never an API key.
++GRANT EXECUTE ON FUNCTION public.execute_partner_sale_mutation(uuid,text,uuid,uuid,text,jsonb,numeric,text,text,text,uuid,text,text,text,text,uuid) TO authenticated,service_role;
++
++CREATE OR REPLACE FUNCTION public.execute_partner_sale_delete(p_salesperson_id uuid, p_pin text, p_sale_id uuid)
++ RETURNS uuid
++ LANGUAGE plpgsql
++ SECURITY DEFINER
++ SET search_path TO ''
++AS $function$
++DECLARE
++  v_company_id uuid;
++  v_role text;
++  v_branch uuid;
++  v_sale_branch uuid;
++  v_status text;
++BEGIN
++  IF (SELECT auth.uid()) IS NULL THEN
++    RAISE EXCEPTION 'Nao autenticado';
++  END IF;
++
++  SELECT op.company_id,op.role,op.branch_id INTO v_company_id,v_role,v_branch
++  FROM public.resolve_partner_pdv_operator(p_salesperson_id,p_pin,NULL) op;
++
++  -- Somente administrador ou gerente podem excluir vendas/pre-vendas.
++  IF v_role NOT IN ('administrador','gerente') THEN
++    RAISE EXCEPTION 'Acesso negado: apenas administradores ou gerentes podem excluir vendas.';
++  END IF;
++
++  SELECT s.branch_id, s.status
++    INTO v_sale_branch, v_status
++  FROM public.partner_sales s
++  WHERE s.id = p_sale_id
++    AND s.user_id = v_company_id
++  FOR UPDATE;
++
++  IF NOT FOUND THEN
++    RAISE EXCEPTION 'Venda nao encontrada';
++  END IF;
++
++  IF v_role <> 'administrador'
++     AND (v_branch IS NULL OR v_sale_branch IS DISTINCT FROM v_branch) THEN
++    RAISE EXCEPTION 'Acesso negado a filial';
++  END IF;
++
++  IF v_status IN ('concluida', 'cancelada') THEN
++    RAISE EXCEPTION 'Vendas concluidas ou canceladas nao podem ser excluidas. Preserve o historico e utilize o cancelamento quando necessario.';
++  END IF;
++
++  IF v_status IS DISTINCT FROM 'pre_venda' THEN
++    RAISE EXCEPTION 'Status da venda nao permite exclusao';
++  END IF;
++
++  DELETE FROM public.partner_sales
++  WHERE id = p_sale_id
++    AND user_id = v_company_id
++    AND status = 'pre_venda';
++
++  IF NOT FOUND THEN
++    RAISE EXCEPTION 'Venda nao encontrada ou nao pode ser excluida';
++  END IF;
++
++  RETURN p_sale_id;
++END;
++$function$;
++
++
++-- Read-only, authorized reconciliation. No RLS policy is broadened.
++-- DEFINER is necessary for company-wide credit aggregation without exposing other branches' invoices.
++CREATE OR REPLACE FUNCTION public.get_partner_pdv_snapshot(p_branch_id uuid)
++RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path TO ''
++AS $function$
++DECLARE
++  v_company uuid; v_operator uuid; v_role text; v_branch uuid; v_result jsonb;
++BEGIN
++  SELECT op.company_id,op.salesperson_id,op.role,op.branch_id
++    INTO v_company,v_operator,v_role,v_branch
++  FROM public.resolve_partner_pdv_operator(NULL,NULL,p_branch_id) op;
++  IF v_role NOT IN ('administrador','gerente','caixa','vendedor','atendente') THEN
++    RAISE EXCEPTION 'Acesso negado ao PDV';
++  END IF;
++  IF p_branch_id IS NULL OR NOT EXISTS (
++    SELECT 1 FROM public.partner_branches b WHERE b.id=p_branch_id AND b.user_id=v_company
++  ) THEN RAISE EXCEPTION 'Filial invalida'; END IF;
++  SELECT pg_catalog.jsonb_build_object(
++    'products',COALESCE((SELECT pg_catalog.jsonb_agg(p) FROM public.partner_products p
++      WHERE p.user_id=v_company AND p.branch_id=p_branch_id),'[]'::jsonb),
++    'movements',COALESCE((SELECT pg_catalog.jsonb_agg(m ORDER BY m.created_at DESC) FROM public.stock_movements m
++      WHERE m.user_id=v_company AND m.branch_id=p_branch_id),'[]'::jsonb),
++    'sales',COALESCE((SELECT pg_catalog.jsonb_agg(s ORDER BY s.created_at DESC) FROM public.partner_sales s
++      WHERE s.user_id=v_company AND s.branch_id=p_branch_id
++        AND (v_company=(SELECT auth.uid()) OR public.partner_employee_can_operate_sale(s.user_id,s.branch_id,s.salesperson_id))),'[]'::jsonb),
++    'invoices',COALESCE((SELECT pg_catalog.jsonb_agg(i ORDER BY i.due_date) FROM public.partner_invoices i
++      WHERE i.user_id=v_company AND i.branch_id=p_branch_id
++        AND (v_company=(SELECT auth.uid()) OR EXISTS (
++          SELECT 1 FROM public.partner_sales s WHERE s.id=i.sale_id AND s.user_id=v_company
++            AND s.branch_id=p_branch_id AND public.partner_employee_can_operate_sale(s.user_id,s.branch_id,s.salesperson_id)
++        ))),'[]'::jsonb),
++    'credits',COALESCE((SELECT pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
++      'customer_id',c.id,'allow_credit',c.allow_credit,'credit_limit',c.credit_limit,
++      'used',COALESCE(balance.used,0),'available',c.credit_limit-COALESCE(balance.used,0)))
++      FROM public.partner_customers c
++      LEFT JOIN LATERAL (
++        SELECT SUM(i.amount-COALESCE(i.paid_amount,0)) AS used
++        FROM public.partner_invoices i WHERE i.user_id=v_company AND i.customer_id=c.id
++          AND i.status IN ('aberta','vencida','parcial','pending')
++      ) balance ON true
++      WHERE c.user_id=v_company AND (c.branch_id IS NULL OR c.branch_id=p_branch_id)),'[]'::jsonb)
++  ) INTO v_result;
++  RETURN v_result;
++END;
++$function$;
++REVOKE ALL ON FUNCTION public.get_partner_pdv_snapshot(uuid) FROM PUBLIC,anon;
++GRANT EXECUTE ON FUNCTION public.get_partner_pdv_snapshot(uuid) TO authenticated;
++
++COMMIT;

@@ -28,6 +28,7 @@ import { usePartnerData } from '../hooks/usePartnerData';
 
 import { CadastrosModule } from './partner/CadastrosModule';
 import { PdvModule } from './partner/PdvModule';
+import { pdvErrorMessage } from '../lib/pdv';
 import { FinancialModule } from './partner/FinancialModule';
 import { RmaModule } from './partner/RmaModule';
 import { ReportsModule } from './partner/ReportsModule';
@@ -233,6 +234,10 @@ export function PartnerPanel({
   const [operatorPinError, setOperatorPinError] = useState('');
 
   const partner = usePartnerData(identity);
+  const [pdvRevision, setPdvRevision] = useState(0);
+  const [pdvReadError, setPdvReadError] = useState<string | null>(null);
+  const [recoveringSale, setRecoveringSale] = useState(false);
+  const { refreshPdv } = partner;
 
   const activeSalesperson = identity?.salespersonId
     ? partner.salespeople.find(
@@ -266,6 +271,33 @@ export function PartnerPanel({
 
   const effectiveBranchId =
     lockedBranchId ?? selectedBranchId;
+
+  useEffect(() => {
+    if (!effectiveBranchId || partner.loading || (activeTab !== 'pdv' && activeTab !== 'pedidos')) return;
+    let active = true;
+    setPdvReadError(null);
+    void refreshPdv(effectiveBranchId).catch(error => { if (active) setPdvReadError(pdvErrorMessage(error)); });
+    return () => { active = false; };
+  }, [effectiveBranchId, activeTab, partner.loading, refreshPdv]);
+
+  async function handleRefreshPdv() {
+    if (!effectiveBranchId) return;
+    try { await refreshPdv(effectiveBranchId); setPdvReadError(null); }
+    catch (error) { setPdvReadError(pdvErrorMessage(error)); }
+  }
+
+  async function handleRecoverSale() {
+    if (recoveringSale) return;
+    setRecoveringSale(true);
+    try {
+      const { operatorId, operatorPin } = getOperatorContext();
+      await partner.retryPendingSale(operatorId, operatorPin);
+      setPdvReadError(null);
+      // Clear the original cart only after this same sale has been confirmed.
+      setPdvRevision(value => value + 1);
+    } catch (error) { setPdvReadError(pdvErrorMessage(error)); }
+    finally { setRecoveringSale(false); }
+  }
 
   const effectiveRole: SalespersonRole = activeSalesperson
     ? activeSalesperson.role
@@ -1794,8 +1826,22 @@ export function PartnerPanel({
               />
             )}
 
+            {(activeTab === 'pdv' || activeTab === 'pedidos') && (
+              <div role="status">
+                {(pdvReadError || partner.pdvSyncWarning) && <p className="otp-error-msg">{pdvReadError || partner.pdvSyncWarning}</p>}
+                <button className="rma-advance-btn" onClick={handleRefreshPdv}>Atualizar dados do PDV</button>
+                {partner.pendingSale && <>
+                  <p>Venda com resultado pendente. Recupere esta tentativa antes de iniciar outra venda.</p>
+                  <button className="module-submit-btn" disabled={recoveringSale} onClick={handleRecoverSale}>
+                    {recoveringSale ? 'Recuperando...' : 'Recuperar venda pendente'}
+                  </button>
+                </>}
+              </div>
+            )}
             {activeTab === 'pdv' && (
               <PdvModule
+                key={pdvRevision}
+                hasPendingSale={Boolean(partner.pendingSale)}
                 products={
                   filteredProducts
                 }
@@ -1805,9 +1851,7 @@ export function PartnerPanel({
                 sales={
                   filteredSales
                 }
-                invoices={
-                  filteredInvoices
-                }
+                credits={partner.pdvCredits}
                 salespeople={
                   filteredSalespeople
                 }

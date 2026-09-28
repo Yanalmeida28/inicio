@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
   ClipboardList, Search, X, Calendar, Filter, ArrowRight, Wallet, Lock,
 } from 'lucide-react';
 import type { PartnerSale, PartnerCustomer, PartnerSalesperson, SalespersonRole } from '../../types';
 import { money } from '../../utils';
+import { pdvErrorMessage } from '../../lib/pdv';
 
 type Props = {
   sales: PartnerSale[];
@@ -42,6 +43,9 @@ export function OpenOrdersModule({ sales, customers, salespeople, currentRole, o
   const [searchResults, setSearchResults] = useState<PartnerSale[] | null>(null);
   const [finalizeTarget, setFinalizeTarget] = useState<PartnerSale | null>(null);
   const [finalizePayment, setFinalizePayment] = useState('pix');
+  const [isFinalizing, setIsFinalizing] = useState(false);
+  const [finalizeError, setFinalizeError] = useState<string | null>(null);
+  const finalizeInFlight = useRef(false);
   const [cancelTarget, setCancelTarget] = useState<PartnerSale | null>(null);
   const [supervisorId, setSupervisorId] = useState('');
   const [pinInput, setPinInput] = useState('');
@@ -101,12 +105,24 @@ export function OpenOrdersModule({ sales, customers, salespeople, currentRole, o
   function requestFinalize(sale: PartnerSale) {
     setFinalizeTarget(sale);
     setFinalizePayment('pix');
+    setFinalizeError(null);
   }
 
   async function confirmFinalize() {
-    if (!finalizeTarget || !onFinalizePreSale) return;
-    await onFinalizePreSale(finalizeTarget.id, finalizePayment);
-    setFinalizeTarget(null);
+    if (!finalizeTarget || !onFinalizePreSale || finalizeInFlight.current) return;
+    finalizeInFlight.current = true;
+    setIsFinalizing(true);
+    setFinalizeError(null);
+    try {
+      // The shared hook checks a fresh authorized credit balance before calling the sale RPC.
+      await onFinalizePreSale(finalizeTarget.id, finalizePayment);
+      setFinalizeTarget(null);
+    } catch (error) {
+      setFinalizeError(pdvErrorMessage(error));
+    } finally {
+      finalizeInFlight.current = false;
+      setIsFinalizing(false);
+    }
   }
 
   function requestCancel(sale: PartnerSale) {
@@ -338,10 +354,11 @@ export function OpenOrdersModule({ sales, customers, salespeople, currentRole, o
                 <option value="faturado">Faturado</option>
               </select>
             </label>
+            {finalizeError && <p className="otp-error-msg" role="alert">{finalizeError}</p>}
             <div className="otp-actions">
-              <button className="rma-advance-btn" onClick={() => setFinalizeTarget(null)}>Cancelar</button>
-              <button className="module-submit-btn" onClick={confirmFinalize}>
-                Confirmar Venda
+              <button className="rma-advance-btn" disabled={isFinalizing} onClick={() => setFinalizeTarget(null)}>Cancelar</button>
+              <button className="module-submit-btn" onClick={confirmFinalize} disabled={isFinalizing}>
+                {isFinalizing ? 'Finalizando...' : 'Confirmar Venda'}
               </button>
             </div>
           </div>

@@ -393,7 +393,9 @@ export interface PartnerInvoice {
   paid_amount?: number;
   status:
     | 'aberta'
-    | 'paga';
+    | 'paga'
+    | 'parcial'
+    | 'cancelada';
   due_date: string | null;
   paid_at: string | null;
   branch_id: string | null;

@@ -3,8 +3,9 @@ import {
   Search, Trash2, ShoppingCart, Check, Printer, MessageCircle, Mail,
   ScanLine, X, Tag, QrCode, Ban, Lock, ClipboardList, Wallet, Lock as LockIcon,
 } from 'lucide-react';
-import type { DeliveryType, PartnerProduct, PartnerCustomer, PartnerSale, PartnerSalesperson, PartnerInvoice, SaleItem, SalespersonRole } from '../../types';
+import type { DeliveryType, PartnerProduct, PartnerCustomer, PartnerSale, PartnerSalesperson, SaleItem, SalespersonRole } from '../../types';
 import { money } from '../../utils';
+import { billedSaleError, pdvErrorMessage, type CustomerCredit } from '../../lib/pdv';
 
 type PriceTable = 'varejo' | 'atacado';
 type ClientType = 'varejo' | 'atacado';
@@ -14,7 +15,8 @@ type Props = {
   products: PartnerProduct[];
   customers: PartnerCustomer[];
   sales: PartnerSale[];
-  invoices: PartnerInvoice[];
+  credits: CustomerCredit[];
+  hasPendingSale?: boolean;
   salespeople: PartnerSalesperson[];
   segment: string;
   selectedBranchId: string | null;
@@ -52,7 +54,7 @@ type Props = {
 const cashierRoles: SalespersonRole[] = ['administrador', 'gerente', 'caixa', 'vendedor'];
 
 export function PdvModule({
-  products, customers, sales, invoices, salespeople, segment, selectedBranchId,
+  products, customers, sales, credits, hasPendingSale, salespeople, segment, selectedBranchId,
   currentRole, onCreateSale, onCreatePreSale, onFinalizePreSale, onCancelSale, onDeleteSale,
 }: Props) {
   const [subTab, setSubTab] = useState<PdvSubTab>('pdv');
@@ -91,7 +93,8 @@ export function PdvModule({
           products={products}
           customers={customers}
           sales={sales}
-          invoices={invoices}
+          credits={credits}
+          hasPendingSale={hasPendingSale}
           salespeople={salespeople}
           segment={segment}
           selectedBranchId={selectedBranchId}
@@ -123,11 +126,12 @@ export function PdvModule({
 
 /* ============ PDV Checkout ============ */
 
-function PdvCheckout({ products, customers, sales, invoices, salespeople, segment, selectedBranchId, canCheckout, onCreateSale, onCancelSale, onDeleteSale }: {
+function PdvCheckout({ products, customers, sales, credits, hasPendingSale, salespeople, segment, selectedBranchId, canCheckout, onCreateSale, onCancelSale, onDeleteSale }: {
   products: PartnerProduct[];
   customers: PartnerCustomer[];
   sales: PartnerSale[];
-  invoices: PartnerInvoice[];
+  credits: CustomerCredit[];
+  hasPendingSale?: boolean;
   salespeople: PartnerSalesperson[];
   segment: string;
   selectedBranchId: string | null;
@@ -148,6 +152,7 @@ function PdvCheckout({ products, customers, sales, invoices, salespeople, segmen
   const [salespersonId, setSalespersonId] = useState('');
   const [completed, setCompleted] = useState(false);
   const [isCheckingOut, setIsCheckingOut] = useState(false);
+  const checkoutInFlight = useRef(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [priceTable, setPriceTable] = useState<PriceTable>('varejo');
   const [cancelTarget, setCancelTarget] = useState<PartnerSale | null>(null);
@@ -214,11 +219,10 @@ function PdvCheckout({ products, customers, sales, invoices, salespeople, segmen
 
   const total = cart.reduce((sum, item) => sum + item.unit_price * item.quantity, 0);
   const selectedCustomer = customers.find((customer) => customer.id === customerId) ?? null;
-  const customerOpenCredit = selectedCustomer
-    ? invoices.filter((invoice) => invoice.customer_id === selectedCustomer.id && invoice.status === 'aberta').reduce((sum, invoice) => sum + (Number(invoice.amount) - Number(invoice.paid_amount ?? 0)), 0)
-    : 0;
-  const customerCreditAvailable = Number(selectedCustomer?.credit_limit ?? 0) - customerOpenCredit;
-  const billedSaleBlocked = paymentMethod === 'faturado' && (!selectedCustomer || !selectedCustomer.allow_credit || total > customerCreditAvailable);
+  const credit = credits.find(item => item.customer_id === customerId);
+  const customerOpenCredit = Number(credit?.used ?? 0);
+  const customerCreditAvailable = Number(credit?.available ?? 0);
+  const billedSaleBlocked = paymentMethod === 'faturado' && Boolean(billedSaleError(credit, customerId || null, total));
 
   function showSelectionNotice(message: string) {
     setSelectionNotice(message);
@@ -279,18 +283,18 @@ function PdvCheckout({ products, customers, sales, invoices, salespeople, segmen
   }
 
   async function handleCheckout() {
-    if (cart.length === 0) return;
+    if (cart.length === 0 || checkoutInFlight.current || hasPendingSale) return;
     if (!selectedBranchId) {
       alert('Selecione uma filial antes de finalizar a venda.');
       return;
     }
     const customer = customers.find((c) => c.id === customerId);
     if (paymentMethod === 'faturado') {
-      if (!customer) { setCheckoutError('Selecione um cliente para usar Faturado B2B.'); return; }
-      if (!customer.allow_credit) { setCheckoutError('Este cliente não possui crédito permitido.'); return; }
-      if (total > customerCreditAvailable) { setCheckoutError('Crédito disponível insuficiente para esta venda.'); return; }
+      const message = billedSaleError(credit, customerId || null, total);
+      if (message) { setCheckoutError(message); return; }
     }
     const fallbackName = clientType === 'atacado' ? 'Cliente Atacado' : 'Cliente Varejo';
+    checkoutInFlight.current = true;
     setIsCheckingOut(true);
     setCheckoutError(null);
     try {
@@ -310,8 +314,9 @@ function PdvCheckout({ products, customers, sales, invoices, salespeople, segmen
       setCart([]); setCustomerId(''); setCustomerName(''); setImei(''); setSerial(''); setSalespersonId('');
       setCompleted(true);
     } catch (error) {
-      setCheckoutError(error instanceof Error ? error.message : 'Não foi possível finalizar a venda.');
+      setCheckoutError(pdvErrorMessage(error));
     } finally {
+      checkoutInFlight.current = false;
       setIsCheckingOut(false);
     }
   }
@@ -534,10 +539,13 @@ function PdvCheckout({ products, customers, sales, invoices, salespeople, segmen
                 <span>Total {priceTable === 'atacado' ? '(Atacado)' : '(Varejo)'}</span>
                 <strong>{money.format(total)}</strong>
               </div>
-              {paymentMethod === 'faturado' && selectedCustomer && (
+              {paymentMethod === 'faturado' && selectedCustomer && !credit && (
+                <p role="status">Crédito não consultado. Use Atualizar dados do PDV.</p>
+              )}
+              {paymentMethod === 'faturado' && selectedCustomer && credit && (
                 <div className="b2b-credit-summary">
                   <strong>Crédito B2B</strong>
-                  <span>Limite: {money.format(Number(selectedCustomer.credit_limit ?? 0))}</span>
+                  <span>Limite: {money.format(Number(credit?.credit_limit ?? 0))}</span>
                   <span>Utilizado: {money.format(customerOpenCredit)}</span>
                   <span>Disponível: {money.format(Math.max(0, customerCreditAvailable))}</span>
                   <span>Esta venda: {money.format(total)}</span>
@@ -545,7 +553,7 @@ function PdvCheckout({ products, customers, sales, invoices, salespeople, segmen
               )}
 
               {canCheckout ? (
-                <button className="module-submit-btn pdv-checkout-btn" onClick={handleCheckout} disabled={isCheckingOut || billedSaleBlocked}>
+                <button className="module-submit-btn pdv-checkout-btn" onClick={handleCheckout} disabled={isCheckingOut || billedSaleBlocked || hasPendingSale}>
                   <Check size={18} /> {isCheckingOut ? 'Finalizando...' : 'Finalizar Venda'}
                 </button>
               ) : (
@@ -705,6 +713,9 @@ function PreVendaTab({ products, customers, sales, salespeople, segment, selecte
   const [saveError, setSaveError] = useState<string | null>(null);
   const [finalizeTarget, setFinalizeTarget] = useState<PartnerSale | null>(null);
   const [finalizePayment, setFinalizePayment] = useState('pix');
+  const [isFinalizing, setIsFinalizing] = useState(false);
+  const [finalizeError, setFinalizeError] = useState<string | null>(null);
+  const finalizeInFlight = useRef(false);
   const [cancelTarget, setCancelTarget] = useState<PartnerSale | null>(null);
   const [supervisorId, setSupervisorId] = useState('');
   const [pinInput, setPinInput] = useState('');
@@ -816,12 +827,24 @@ function PreVendaTab({ products, customers, sales, salespeople, segment, selecte
   function requestFinalize(sale: PartnerSale) {
     setFinalizeTarget(sale);
     setFinalizePayment('pix');
+    setFinalizeError(null);
   }
 
   async function confirmFinalize() {
-    if (!finalizeTarget) return;
-    await onFinalizePreSale(finalizeTarget.id, finalizePayment);
-    setFinalizeTarget(null);
+    if (!finalizeTarget || !onFinalizePreSale || finalizeInFlight.current) return;
+    finalizeInFlight.current = true;
+    setIsFinalizing(true);
+    setFinalizeError(null);
+    try {
+      // The shared hook checks a fresh authorized credit balance before calling the sale RPC.
+      await onFinalizePreSale(finalizeTarget.id, finalizePayment);
+      setFinalizeTarget(null);
+    } catch (error) {
+      setFinalizeError(pdvErrorMessage(error));
+    } finally {
+      finalizeInFlight.current = false;
+      setIsFinalizing(false);
+    }
   }
 
   function requestCancel(sale: PartnerSale) {
@@ -1079,10 +1102,11 @@ function PreVendaTab({ products, customers, sales, salespeople, segment, selecte
                 <option value="faturado">Faturado</option>
               </select>
             </label>
+            {finalizeError && <p className="otp-error-msg" role="alert">{finalizeError}</p>}
             <div className="otp-actions">
-              <button className="rma-advance-btn" onClick={() => setFinalizeTarget(null)}>Cancelar</button>
-              <button className="module-submit-btn" onClick={confirmFinalize}>
-                <Check size={16} /> Confirmar Venda
+              <button className="rma-advance-btn" disabled={isFinalizing} onClick={() => setFinalizeTarget(null)}>Cancelar</button>
+              <button className="module-submit-btn" onClick={confirmFinalize} disabled={isFinalizing}>
+                <Check size={16} /> {isFinalizing ? 'Finalizando...' : 'Confirmar Venda'}
               </button>
             </div>
           </div>
