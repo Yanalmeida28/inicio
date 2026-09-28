@@ -13,7 +13,8 @@ const login = id => sql("SELECT set_config('test.auth_uid',$1,false)", [id]);
 async function sale(overrides={}) {
   const request={id:randomUUID(), customer, branch, total:100, method:'pix', status:'concluida',
     items:[{product_id:product,name:'Produto',quantity:1,unit_price:100}],operator:null,pin:null,commercial:null,...overrides};
-  const args=[request.operator,request.pin,request.id,request.customer,'Cliente',JSON.stringify(request.items),request.total,null,null,request.method,request.branch,request.status,'pdv','varejo','balcao',request.commercial];
+  request.total=overrides.total ?? request.items.reduce((sum,item)=>sum+item.quantity*item.unit_price,0);
+  const args=[request.operator,request.pin,request.id,request.customer,'Cliente',JSON.stringify(request.items),request.total,null,null,request.method,request.branch,request.status,'pdv',request.customerType??'varejo','balcao',request.commercial];
   const {rows}=await sql('SELECT public.execute_partner_sale_mutation($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) AS id',args);
   assert.equal(rows[0].id,request.id);
   return request;
@@ -32,6 +33,7 @@ before(async()=>{
   try {
     await db.exec(await read('./fixtures/pdv_production.sql'));
     await db.exec(await read('../migrations/20260928044542_fix_pdv_sales_reconciliation.sql'));
+    await db.exec(await read('../migrations/20260928195329_enforce_pdv_authoritative_pricing.sql'));
   } catch (error) { throw new Error(`${error.message} (position ${error.position})`); }
 });
 after(()=>db.close());
@@ -60,11 +62,13 @@ test('billed sale atomically creates the correct invoice and commercial attribut
   assert.equal(i.salesperson_id,employee);assert.equal(i.correct_due,true);
 });
 test('invoice insertion failure rolls back sale, stock and movements together',async()=>{
+  await sql('UPDATE partner_products SET sale_price=123 WHERE id=$1',[product]);
   await db.exec('ALTER TABLE partner_invoices ADD CONSTRAINT test_invoice_rejection CHECK (amount <> 123)');
   const before=await state();
   try {
-    await assert.rejects(sale({method:'faturado',total:123}),/test_invoice_rejection/);
+    await assert.rejects(sale({method:'faturado',total:123,items:[{product_id:product,name:'Produto',quantity:1,unit_price:123}]}),/test_invoice_rejection/);
     assert.deepEqual(await state(),before);
+    assert.equal((await sql('SELECT count(*)::int AS n FROM partner_pdv_price_snapshots')).rows[0].n,0);
   } finally { await db.exec('ALTER TABLE partner_invoices DROP CONSTRAINT test_invoice_rejection'); }
 });
 test('legacy 15-argument callers still work and cannot access another company branch',async()=>{
@@ -74,7 +78,7 @@ test('legacy 15-argument callers still work and cannot access another company br
   await assert.rejects(sale({branch:foreignBranch}),/Filial invalida/);
 });
 test('retry same sale ID does not repeat stock, invoice or audit, even after credit consumed',async()=>{
-  const request=await sale({method:'faturado',total:1000});
+  const request=await sale({method:'faturado',total:1000,items:[{product_id:product,name:'Produto',quantity:10,unit_price:100}]});
   const before=await state(); await sale(request);assert.deepEqual(await state(),before);
   await assert.rejects(sale({...request,total:999}),/dados diferentes/);
   assert.deepEqual(await state(),before);
@@ -82,7 +86,7 @@ test('retry same sale ID does not repeat stock, invoice or audit, even after cre
 test('partial balances across branches consume credit and reject excess without side effects',async()=>{
   await sql("INSERT INTO partner_invoices(user_id,customer_id,amount,paid_amount,status,branch_id) VALUES($1,$2,950,50,'parcial',$3)",[owner,customer,otherBranch]);
   const before=await state();
-  await assert.rejects(sale({method:'faturado',total:101}),/Credito insuficiente/);
+  await assert.rejects(sale({method:'faturado',total:200,items:[{product_id:product,name:'Produto',quantity:2,unit_price:100}]}),/Credito insuficiente/);
   assert.deepEqual(await state(),before);
   await sale({method:'faturado',total:100});
 });
@@ -238,4 +242,160 @@ test('frontend retains ID over reload/retry, rejects a changed cart, and isolate
   assert.match(billedSaleError({allow_credit:true,available:20},customer,21),/insuficiente/);
   assert.match(billedSaleError(undefined,customer,10),/consultar o crédito/);
   assert.match(billedSaleError(undefined,null,10),/Selecione um cliente/);
+});
+
+// Pricing regressions run against both migrations, with synthetic catalog prices.
+const line=(changes={})=>({product_id:product,name:'Produto',quantity:1,unit_price:100,...changes});
+async function rejectPricing(request,pattern) {
+  const previous=await state();
+  await assert.rejects(sale(request),pattern);
+  assert.deepEqual(await state(),previous);
+  assert.equal((await sql('SELECT count(*)::int AS n FROM partner_pdv_price_snapshots')).rows[0].n,0);
+}
+for(const total of [99,101,-1,0.001]) test(`pricing: declared total ${total} is rejected atomically`,async()=>{
+  await rejectPricing({method:'faturado',total},/Total/);
+});
+test('pricing: manipulated unit price and discount fields are rejected',async()=>{
+  await rejectPricing({items:[line({unit_price:1})]},/Preco unitario/);
+  await rejectPricing({items:[line({discount:10})]},/desconto/);
+  await rejectPricing({items:[line({unit_price:-1})]},/Total|Preco/);
+});
+test('pricing: subtotal is checked rather than trusted',async()=>{
+  await rejectPricing({items:[line({subtotal:1})]},/Subtotal/);
+  await sale({items:[line({subtotal:100})]});
+});
+for(const quantity of [0,-1,1.5,2147483648,null,'1']) test(`pricing: invalid quantity ${JSON.stringify(quantity)}`,async()=>{
+  await rejectPricing({items:[line({quantity})],total:100},/Quantidade/);
+});
+test('pricing: changing quantity without matching the total fails',async()=>{
+  await rejectPricing({items:[line({quantity:2})],total:100},/Total diverge/);
+});
+test('pricing: each repeated line is validated before aggregation',async()=>{
+  await rejectPricing({items:[line({quantity:2}),line({quantity:-1})],total:100},/Quantidade/);
+  await sale({items:[line(),line()],total:200});
+  assert.equal((await state()).stock,8);assert.equal((await state()).movements,1);
+});
+test('pricing: missing, foreign-company and foreign-branch products cannot be sold',async()=>{
+  await rejectPricing({items:[line({product_id:randomUUID()})]},/Produto invalido/);
+  await sql('UPDATE partner_products SET user_id=$1 WHERE id=$2',[otherOwner,product]);
+  await rejectPricing({},/Produto invalido/);
+  await sql('UPDATE partner_products SET user_id=$1,branch_id=$2 WHERE id=$3',[owner,otherBranch,product]);
+  await rejectPricing({},/Produto fora da filial/);
+});
+test('pricing: empty cart and missing unit price fail',async()=>{
+  await rejectPricing({items:[],total:0},/vazios/);
+  await rejectPricing({items:[{product_id:product,quantity:1}],total:100},/preco unitario/);
+});
+test('pricing: wholesale follows registered customer type, ignoring unused price_table',async()=>{
+  await sql("UPDATE partner_customers SET customer_type='atacado',price_table='premium'");
+  await sql('UPDATE partner_products SET wholesale_price=75');
+  await rejectPricing({customerType:'varejo'},/Tipo de cliente diverge/);
+  await sale({customerType:'atacado',items:[line({unit_price:75})],method:'faturado'});
+  assert.equal(Number((await sql('SELECT amount FROM partner_invoices')).rows[0].amount),75);
+});
+test('pricing: retail cannot claim a wholesale classification',async()=>{
+  await sql('UPDATE partner_products SET wholesale_price=75');
+  await rejectPricing({customerType:'atacado',items:[line({unit_price:75})]},/Tipo de cliente diverge/);
+});
+test('pricing: anonymous wholesale is allowed, with retail fallback for zero or NULL wholesale',async()=>{
+  await sale({customer:null,customerType:'atacado'});
+  await sql('UPDATE partner_products SET wholesale_price=NULL');
+  await sale({customer:null,customerType:'atacado'});
+  await sql('UPDATE partner_products SET wholesale_price=75');
+  await sale({customer:null,customerType:'atacado',items:[line({unit_price:75})]});
+});
+test('pricing: zero catalog price and decimal cents are legitimate',async()=>{
+  await sql('UPDATE partner_products SET sale_price=0 WHERE id=$1',[service]);
+  await sale({items:[line({product_id:service,unit_price:0})],total:0});
+  await sql('UPDATE partner_products SET sale_price=0.10 WHERE id=$1',[product]);
+  await sale({items:[line({unit_price:0.10,quantity:3})],total:0.30});
+  assert.equal(Number((await sql("SELECT total FROM partner_sales WHERE total>0")).rows[0].total),0.3);
+});
+test('pricing: catalog nonfinite, negative or subcent prices fail',async()=>{
+  for(const price of ['NaN','Infinity','1.001']) {
+    await sql('UPDATE partner_products SET wholesale_price=$1',[price]);
+    await rejectPricing({customer:null,customerType:'atacado'},/Preco do cadastro/);
+  }
+  await sql('UPDATE partner_products SET sale_price=-1');
+  await rejectPricing({},/Preco do cadastro/);
+});
+test('pricing: services and NULL classification use the catalog price',async()=>{
+  await sql('UPDATE partner_products SET is_service=NULL WHERE id=$1',[product]);
+  await rejectPricing({items:[line({product_id:service,unit_price:1})]},/Preco unitario/);
+  await sale({items:[line(),line({product_id:service})],total:200});
+  assert.equal((await state()).movements,1);assert.equal((await state()).stock,9);
+});
+test('pricing: credit is checked against authorized total, with no underbilling',async()=>{
+  await sql('UPDATE partner_customers SET credit_limit=99');
+  await rejectPricing({method:'faturado',total:1},/Total diverge/);
+  await rejectPricing({method:'faturado',total:100},/Credito insuficiente/);
+});
+test('pricing: validated pre-sale keeps its quote after catalog and classification changes',async()=>{
+  const pre=await sale({status:'pre_venda',method:null});
+  await sql('UPDATE partner_products SET sale_price=150');
+  await sql("UPDATE partner_customers SET customer_type='atacado'");
+  await sale({...pre,status:'concluida',method:'faturado'});
+  assert.equal(Number((await sql('SELECT amount FROM partner_invoices')).rows[0].amount),100);
+});
+test('pricing: finalization cannot replace saved quote with new price or quantity',async()=>{
+  const pre=await sale({status:'pre_venda',method:null});
+  const previous=await state();
+  await assert.rejects(sale({...pre,status:'concluida',total:200,items:[line({quantity:2})]}),/dados financeiros/);
+  assert.deepEqual(await state(),previous);
+});
+test('pricing: legacy pre-sale without proof is blocked when its quote is no longer verifiable',async()=>{
+  const pre=await sale({status:'pre_venda',method:null});
+  await sql('DELETE FROM partner_pdv_price_snapshots'); // Synthetic legacy fixture; no production writes.
+  await sql('UPDATE partner_products SET sale_price=150');
+  const previous=await state();
+  await assert.rejects(sale({...pre,status:'concluida',method:'pix'}),/Preco unitario/);
+  assert.deepEqual(await state(),previous);
+  await sql('UPDATE partner_products SET sale_price=100');
+  await sale({...pre,status:'concluida',method:'pix'});
+});
+test('pricing: exact retry after price changes has no second stock, invoice or audit',async()=>{
+  const request=await sale({method:'faturado'});
+  const previous=await state();
+  await sql('UPDATE partner_products SET sale_price=200');
+  await sale(request);await sale(request);
+  assert.deepEqual(await state(),previous);
+  await assert.rejects(sale({...request,total:200,items:[line({unit_price:200})]}),/dados diferentes/);
+});
+test('pricing: quote helper and storage are inaccessible to authenticated clients',async()=>{
+  await db.exec('SET ROLE authenticated');
+  await assert.rejects(sql('SELECT * FROM partner_pdv_price_snapshots'),/permission denied/);
+  await assert.rejects(sql('DELETE FROM partner_pdv_price_snapshots'),/permission denied/);
+  await assert.rejects(sql('SELECT validate_partner_pdv_prices($1,$2,$3,$4,$5::jsonb,100)',[owner,branch,customer,'varejo',JSON.stringify([line()])]),/permission denied/);
+});
+test('pricing: direct PDV financial edits cannot forge a validated quote',async()=>{
+  const pre=await sale({status:'pre_venda',method:null});
+  await assert.rejects(sql('UPDATE partner_sales SET total=1 WHERE id=$1',[pre.id]),/RPC autorizada/);
+  await assert.rejects(sql("INSERT INTO partner_sales(id,user_id,branch_id,customer_id,customer_type,items,total,origin,status) VALUES($1,$2,$3,$4,'varejo',$5::jsonb,1,'pdv','pre_venda')",[randomUUID(),owner,branch,customer,JSON.stringify([line()])]),/RPC autorizada/);
+});
+test('pricing: frontend declares exact cents without changing unit prices',async()=>{
+  const source=await read('../../src/lib/pdv.ts');
+  const compiled=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2020}}).outputText;
+  const {pdvTotal}=await import('data:text/javascript;base64,'+Buffer.from(compiled).toString('base64'));
+  assert.equal(pdvTotal([{unit_price:0.1,quantity:3}]),0.3);
+  assert.equal(pdvTotal([{unit_price:19.99,quantity:7},{unit_price:0.01,quantity:1}]),139.94);
+});
+test('pricing: duplicate submitted requests share one sale, invoice, movement and quote',async()=>{
+  const request={id:randomUUID(),method:'faturado'};
+  await Promise.all([sale(request),sale(request)]);
+  assert.deepEqual(await state(),{stock:9,sales:1,invoices:1,movements:1,logs:1});
+  assert.equal((await sql('SELECT count(*)::int AS n FROM partner_pdv_price_snapshots')).rows[0].n,1);
+});
+test('pricing: unknown classification and invalid pre-sale prices fail before stock',async()=>{
+  await rejectPricing({customer:null,customerType:'premium'},/Tipo de cliente invalido/);
+  await rejectPricing({status:'pre_venda',method:null,total:1},/Total diverge/);
+});
+test('pricing: NUMERIC total capacity and aggregate quantity capacity are enforced',async()=>{
+  await rejectPricing({items:[line({quantity:1000000})],total:100000000},/precisao financeira/);
+  await sql('UPDATE partner_products SET sale_price=0');
+  await rejectPricing({items:[line({quantity:2147483647,unit_price:0}),line({unit_price:0})],total:0},/Quantidade agregada/);
+});
+test('pricing: direct legacy finalization cannot bypass quote validation',async()=>{
+  const pre=await sale({status:'pre_venda',method:null});
+  await sql('DELETE FROM partner_pdv_price_snapshots');
+  await assert.rejects(sql("UPDATE partner_sales SET status='concluida' WHERE id=$1",[pre.id]),/RPC autorizada/);
 });

@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import type { DeliveryType, PartnerProduct, PartnerCustomer, PartnerSale, PartnerSalesperson, SaleItem, SalespersonRole } from '../../types';
 import { money } from '../../utils';
-import { billedSaleError, pdvErrorMessage, type CustomerCredit } from '../../lib/pdv';
+import { billedSaleError, pdvErrorMessage, pdvTotal, type CustomerCredit } from '../../lib/pdv';
 
 type PriceTable = 'varejo' | 'atacado';
 type ClientType = 'varejo' | 'atacado';
@@ -217,7 +217,7 @@ function PdvCheckout({ products, customers, sales, credits, hasPendingSale, sale
     });
   }, [products, search, selectedBranchId]);
 
-  const total = cart.reduce((sum, item) => sum + item.unit_price * item.quantity, 0);
+  const total = pdvTotal(cart);
   const selectedCustomer = customers.find((customer) => customer.id === customerId) ?? null;
   const credit = credits.find(item => item.customer_id === customerId);
   const customerOpenCredit = Number(credit?.used ?? 0);
@@ -766,7 +766,7 @@ function PreVendaTab({ products, customers, sales, salespeople, segment, selecte
     });
   }, [products, search, selectedBranchId]);
 
-  const total = cart.reduce((sum, item) => sum + item.unit_price * item.quantity, 0);
+  const total = pdvTotal(cart);
 
   function addToCart(product: PartnerProduct) {
     const price = getPriceForProduct(product, priceTable);

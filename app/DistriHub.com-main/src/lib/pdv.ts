@@ -1,5 +1,11 @@
 import type { PartnerSale } from '../types';
 
+// Catalog prices are stored in cents. Avoid binary floating point drift in the declared total.
+// This is display/request arithmetic only; the RPC validates every price and the total.
+export function pdvTotal(items: Pick<PartnerSale['items'][number], 'unit_price' | 'quantity'>[]): number {
+  return items.reduce((cents, item) => cents + Math.round(item.unit_price * 100) * item.quantity, 0) / 100;
+}
+
 export interface CustomerCredit {
   customer_id: string;
   allow_credit: boolean;
