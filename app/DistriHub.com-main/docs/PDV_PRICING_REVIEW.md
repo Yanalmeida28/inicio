@@ -191,6 +191,42 @@ HEAD permanece em `490f676`; `origin/main` local permanece em `676c09f`. Os seis
 - A assinatura RPC e seus grants permanecem iguais. Tabelas e funções de aplicação estão qualificadas por schema; funções internas PostgreSQL resolvem em pg_catalog com search_path vazio. Mantidos RLS, revokes dos clientes, helper INVOKER, RPC/trigger DEFINER e transação única.
 - Continuam pendentes homologação em PostgreSQL/PostgREST completos e concorrência com conexões reais; PGlite serializa a conexão de teste.
 
+## 23. Correções locais após pré-homologação (2026-09-29)
+
+Base desta rodada: `b9de99562cabfd22720c8a0e22360ed768444dc5`. Nenhuma alteração desta rodada foi staged ou commitada. Os resultados abaixo atualizam a validação de 75 testes registrada anteriormente.
+
+### Tentativa de pré-venda
+
+`createPreSale` passa pelo mesmo `createSale` que já persiste a tentativa em sessionStorage, valida a confirmação pelo UUID, bloqueia submissão simultânea e distingue rejeição definitiva de resposta incerta. O status `pre_venda` faz parte da chave do payload; recuperação não transforma pré-venda em venda concluída. O estado local usa `payment_status=pendente`. A tentativa não guarda PIN, JWT ou campos extras; operação confirmada limpa a tentativa, e uma operação posterior recebe outro UUID. Payload divergente é bloqueado. Recuperação após recarga pode usar a ação existente de recuperar venda pendente.
+
+### Exclusão de cliente e cotação
+
+Produção confirmou `partner_sales.customer_id REFERENCES partner_customers(id) ON DELETE SET NULL`. A cotação recebe a mesma FK. O guard permite desvincular cliente exclusivamente durante trigger aninhado, com cliente anterior já inexistente, novo vínculo NULL e igualdade de todos os demais campos da linha. Uma atualização direta para NULL com cliente existente continua rejeitada. A exclusão atualiza as duas referências atomicamente; itens, quantidade, preço, subtotal, total e classificação permanecem intactos. Uma pré-venda assim desvinculada pode ser finalizada à vista com sua cotação; faturado continua exigindo cliente.
+
+### Recebimentos: contrato real e correção mínima
+
+Definição consultada em produção: `public.record_partner_invoice_payment(p_invoice_id uuid, p_amount numeric) RETURNS uuid`, SECURITY DEFINER, search_path vazio, EXECUTE para authenticated/service_role, sem acesso PUBLIC/anon. Hash: `0b74bf64cd8f96a3d7201b578c2cf534`.
+
+A função exige auth.uid(), bloqueia a invoice com FOR UPDATE e filtra `invoice.user_id=auth.uid()`. Portanto o contrato existente é de owner; vínculo de funcionário por `partner_salespeople.auth_user_id` não concede recebimentos. Owner opera as filiais de sua empresa; outra empresa não é autorizada. Não foi ampliado esse contrato nem criado parâmetro de identidade fornecido pelo cliente.
+
+`partner_profiles.id` é UUID e identifica o owner. A coluna `partner_profiles.user_id` não existe. A migration local `20260929181116_fix_partner_invoice_payment_profile.sql`, criada pela CLI, substitui somente essa referência e rejeita recebimentos não finitos, não positivos ou com subcentavos. Preserva assinatura, grants, lock, saldo, recebimento parcial/total, paid_at e auditoria transacional. O guard exige o hash da definição real antes da substituição. O fixture `pdv_payment_production.sql` preserva a definição consultada, sem dados reais.
+
+A RPC de recebimentos NÃO tem chave de idempotência: duas chamadas parciais iguais são dois recebimentos, enquanto houver saldo. Não foi inventado retry automático. Em resposta incerta, reconciliar o saldo antes de repetir. O teste explicita esse contrato; saldo integral já pago rejeita nova cobrança.
+
+### Verificação e nova pré-homologação
+
+- 88 testes passaram; zero falhas/ignorados, incluindo os 75 anteriores. O frontend calcula o saldo de recebimento em centavos inteiros, evitando subcentavos de ponto flutuante ao quitar uma invoice decimal.
+- Testes novos: pré-venda após recarga/resposta perdida, UUID/payload persistidos sem credenciais, rejeição definitiva/incerta, clique simultâneo, FK real de exclusão de cliente, proteção financeira posterior, recebimentos abertos/parciais/totais, owner/funcionário/outra empresa, valores inválidos e rollback de auditoria.
+- Typecheck, build e diff-check passaram. Build conserva o aviso de chunk acima de 500 kB.
+- Lint somente em `src/hooks/usePartnerData.ts`: 12 erros e 4 avisos preexistentes; comparação com HEAD não encontrou diagnóstico introduzido (antes: 12 erros e 5 avisos). Sem limpeza geral.
+- Reconsulta somente de leitura confirmou assinaturas/hashes das três RPCs de produção, perfil por id UUID, FK SET NULL, índice único válido de invoice por venda e ausência de permissão UPDATE direta em vendas para authenticated.
+- Os guards da primeira migration e da correção de recebimentos correspondem à produção. A execução em memória da primeira seguida da segunda confirmou o guard intermediário da RPC. Não há novo overload.
+- Primeira migration: PRONTA para homologação controlada. Segunda migration corrigida: PRONTA para homologação controlada. Recebimentos: PRONTO para homologação controlada com o contrato owner-only existente. Nenhuma migration aplicada em projeto Supabase.
+
+### Pendências preservadas
+
+PGlite não substitui homologação com conexões PostgreSQL concorrentes e PostgREST reais. A tentativa permanece por identidade/empresa e por aba em sessionStorage; não cobre perda desse armazenamento ou nova aba. Permissões existentes de pin_hash continuam pendência separada e não foram alteradas. A invoice histórica aberta ligada a venda cancelada não foi corrigida. Não houve backfill de cotação, limpeza histórica ou escrita em produção.
+
 ## Confirmações
 
 BANCO DE PRODUÇÃO ALTERADO: NÃO

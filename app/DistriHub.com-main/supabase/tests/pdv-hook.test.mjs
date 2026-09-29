@@ -14,11 +14,10 @@ const helperSource = await readFile(new URL('../../src/lib/pdv.ts',import.meta.u
 const compile = source => ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText;
 let renderer;
 afterEach(async()=>{if(renderer) await act(async()=>renderer.unmount());renderer=null;});
-async function harness({initialSales=[],rpc}={}) {
-  const values=new Map();
+async function harness({initialSales=[],initialInvoices=[],rpc,values=new Map()}={}) {
   const storage={getItem:k=>values.get(k)??null,setItem:(k,v)=>values.set(k,v),removeItem:k=>values.delete(k)};
   const identity={authUserId:'owner',companyUserId:'owner',salespersonId:null,branchId:null,role:'administrador'};
-  const initial={partner_sales:initialSales};
+  const initial={partner_sales:initialSales,partner_invoices:initialInvoices};
   const client={rpc,from(table){
     const q={select(){return q;},eq(){return q;},order(){return q;},limit(){return q;},
       maybeSingle(){return Promise.resolve({data:null,error:null});},
@@ -44,6 +43,75 @@ async function harness({initialSales=[],rpc}={}) {
 }
 const payload=()=>({customer_id:'customer',customer_name:'Cliente',items:[{product_id:'physical',name:'Produto',quantity:1,unit_price:100}],total:100,branch_id:'branch',salesperson_id:null,customer_type:'varejo',delivery_type:'balcao',payment_method:'pix'});
 const snapshot=(overrides={})=>({credits:[{customer_id:'customer',allow_credit:true,credit_limit:1000,used:0,available:1000}],products:[],movements:[],sales:[],invoices:[],...overrides});
+
+test('receipt frontend declares exact remaining cents for full payment',async()=>{
+  let received;
+  const h=await harness({initialInvoices:[{id:'invoice',user_id:'owner',amount:0.3,paid_amount:0.1,status:'parcial'}],rpc:async(name,args)=>{
+    assert.equal(name,'record_partner_invoice_payment');received=args.p_amount;
+    return {data:args.p_invoice_id,error:null};
+  }});
+  await act(async()=>{await h.current.payInvoice('invoice');});
+  assert.equal(received,0.2);
+});
+
+test('pre-sale uncertain response survives remount and reuses UUID and payload without credentials',async()=>{
+  const requests=[];let fail=true;
+  const rpc=async(name,args)=>{
+    if(name!=='execute_partner_sale_mutation') return {data:snapshot(),error:null};
+    requests.push(args);
+    return fail ? {data:null,error:{message:'Lost response'}} : {data:args.p_sale_id,error:null};
+  };
+  let h=await harness({rpc});
+  await act(async()=>{await assert.rejects(h.current.createPreSale({...payload(),jwt:'synthetic-secret'},null,'synthetic-pin'),/mesmo ID/);});
+  const values=h.values;
+  assert.ok(![...values.values()].join('').includes('synthetic-'));
+  await act(async()=>renderer.unmount());renderer=null;
+  h=await harness({rpc,values});
+  await act(async()=>{await assert.rejects(h.current.createPreSale({...payload(),total:101}),/resultado pendente/);});
+  assert.equal(requests.length,1);
+  fail=false;
+  await act(async()=>{await h.current.createPreSale(payload());});
+  assert.equal(requests[1].p_sale_id,requests[0].p_sale_id);
+  assert.equal(JSON.stringify(requests[1].p_items),JSON.stringify(requests[0].p_items));
+  assert.equal(requests[1].p_status,'pre_venda');
+  assert.equal(h.values.size,0);
+  await act(async()=>{await h.current.createPreSale(payload());});
+  assert.notEqual(requests[2].p_sale_id,requests[0].p_sale_id);
+});
+
+test('pre-sale definitive first rejection releases attempt; uncertain retry rejection retains it',async()=>{
+  let error={code:'P0001',message:'Invalid price'};
+  const h=await harness({rpc:async()=>({data:null,error})});
+  await act(async()=>{await assert.rejects(h.current.createPreSale(payload()),/Invalid price/);});
+  assert.equal(h.values.size,0);
+  error={code:'08006',message:'Connection lost'};
+  await act(async()=>{await assert.rejects(h.current.createPreSale(payload()),/mesmo ID/);});
+  const saved=[...h.values.values()][0];
+  error={code:'P0001',message:'Invalid price'};
+  await act(async()=>{await assert.rejects(h.current.createPreSale(payload()),/mesmo ID/);});
+  assert.equal([...h.values.values()][0],saved);
+});
+
+test('pre-sale double submission is blocked and recovery retains pre-sale status',async()=>{
+  let release;const requests=[];
+  const h=await harness({rpc:async(name,args)=>{
+    if(name!=='execute_partner_sale_mutation')return {data:snapshot(),error:null};
+    requests.push(args);
+    if(requests.length===1) {await new Promise(resolve=>{release=resolve;});return {data:null,error:{message:'Lost response'}};}
+    return {data:args.p_sale_id,error:null};
+  }});
+  await act(async()=>{
+    const first=assert.rejects(h.current.createPreSale(payload()),/mesmo ID/);
+    await assert.rejects(h.current.createPreSale(payload()),/Aguarde/);
+    release();await first;
+  });
+  await act(async()=>{await h.current.retryPendingSale();});
+  assert.equal(requests.length,2);
+  assert.equal(requests[0].p_sale_id,requests[1].p_sale_id);
+  assert.equal(requests[1].p_status,'pre_venda');
+  assert.equal(requests[1].p_payment_method,null);
+  assert.equal(h.values.size,0);
+});
 
 test('confirmed RPC + failed reconciliation resolves success and does not retain a retry',async()=>{
   let writes=0;

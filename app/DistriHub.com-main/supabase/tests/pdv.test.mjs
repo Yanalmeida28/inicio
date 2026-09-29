@@ -34,6 +34,8 @@ before(async()=>{
     await db.exec(await read('./fixtures/pdv_production.sql'));
     await db.exec(await read('../migrations/20260928044542_fix_pdv_sales_reconciliation.sql'));
     await db.exec(await read('../migrations/20260928195329_enforce_pdv_authoritative_pricing.sql'));
+    await db.exec(await read('./fixtures/pdv_payment_production.sql'));
+    await db.exec(await read('../migrations/20260929181116_fix_partner_invoice_payment_profile.sql'));
   } catch (error) { throw new Error(`${error.message} (position ${error.position})`); }
 });
 after(()=>db.close());
@@ -452,4 +454,106 @@ test('pricing: clients cannot insert or update protected quotes',async()=>{
   await db.exec('SET ROLE authenticated');
   await assert.rejects(sql('UPDATE partner_pdv_price_snapshots SET total=1 WHERE sale_id=$1',[pre.id]),/permission denied/);
   await assert.rejects(sql('INSERT INTO partner_pdv_price_snapshots SELECT * FROM partner_pdv_price_snapshots'),/permission denied/);
+});
+
+test('pricing: customer deletion detaches sale and quote without changing finance or duplicating effects',async()=>{
+  const pre=await sale({status:'pre_venda',method:null});
+  const previous=await state();
+  await sql('DELETE FROM partner_customers WHERE id=$1',[customer]);
+  assert.deepEqual(await state(),previous);
+  const saved=(await sql('SELECT customer_id,items,total FROM partner_sales')).rows[0];
+  const quote=(await sql('SELECT customer_id,items,total FROM partner_pdv_price_snapshots')).rows[0];
+  assert.equal(saved.customer_id,null);assert.deepEqual(saved,quote);
+  assert.deepEqual(saved.items,pre.items);assert.equal(Number(saved.total),100);
+  const done=await sale({...pre,customer:null,status:'concluida',method:'pix'});
+  const completed=await state();await sale(done);assert.deepEqual(await state(),completed);
+  assert.equal((await sql('SELECT count(*)::int AS n FROM partner_pdv_price_snapshots')).rows[0].n,1);
+});
+
+test('pricing: completed cash sale permits real customer FK deletion but no manual quote edits',async()=>{
+  const done=await sale();
+  await assert.rejects(sql('UPDATE partner_sales SET customer_id=NULL WHERE id=$1',[done.id]),/RPC autorizada/);
+  await sql('DELETE FROM partner_customers WHERE id=$1',[customer]);
+  for(const assignment of ["total=1", "items='[]'::jsonb", "customer_type='atacado'"]) {
+    await assert.rejects(sql(`UPDATE partner_sales SET ${assignment} WHERE id=$1`,[done.id]),/RPC autorizada/);
+  }
+  assert.equal((await sql('SELECT customer_id FROM partner_sales')).rows[0].customer_id,null);
+  assert.equal((await state()).stock,9);
+});
+
+const receive=(id,amount)=>sql('SELECT public.record_partner_invoice_payment($1,$2) AS id',[id,amount]);
+async function billedInvoice() {
+  await sale({method:'faturado'});
+  return (await sql('SELECT id FROM partner_invoices')).rows[0].id;
+}
+
+test('receipts: owner receives partial and total amounts with actor and atomic audit',async()=>{
+  const id=await billedInvoice();
+  await db.exec('SET ROLE authenticated');
+  assert.equal((await receive(id,25)).rows[0].id,id);
+  await db.exec('RESET ROLE');
+  let invoice=(await sql('SELECT * FROM partner_invoices')).rows[0];
+  assert.equal(Number(invoice.paid_amount),25);assert.equal(invoice.status,'parcial');assert.equal(invoice.paid_at,null);
+  await receive(id,75);
+  invoice=(await sql('SELECT * FROM partner_invoices')).rows[0];
+  assert.equal(Number(invoice.paid_amount),100);assert.equal(invoice.status,'paga');assert.ok(invoice.paid_at);
+  const logs=(await sql("SELECT * FROM partner_audit_logs WHERE action='recebimento_fatura'")).rows;
+  assert.equal(logs.length,2);
+  for(const log of logs) {assert.equal(log.user_id,owner);assert.equal(log.actor_name,'Owner');assert.equal(log.entity_id,id);}
+  assert.equal((await state()).stock,9);
+});
+
+test('receipts: an open invoice can be paid in full; excess or repeat after full payment fails',async()=>{
+  const id=await billedInvoice();
+  await assert.rejects(receive(id,101),/excede/);
+  await receive(id,100);
+  const previous=await state();
+  await assert.rejects(receive(id,100),/excede/);
+  assert.deepEqual(await state(),previous);
+  assert.equal((await sql('SELECT status FROM partner_invoices')).rows[0].status,'paga');
+});
+
+test('receipts: unauthenticated, foreign owner and employees cannot receive company invoices',async()=>{
+  const id=await billedInvoice();const previous=await state();
+  await login('');await assert.rejects(receive(id,10),/Nao autenticado/);
+  for(const actor of [otherOwner,employeeAuth,managerAuth]) {
+    await login(actor);await assert.rejects(receive(id,10),/Fatura nao encontrada/);
+  }
+  assert.deepEqual(await state(),previous);
+  assert.equal(Number((await sql('SELECT paid_amount FROM partner_invoices')).rows[0].paid_amount),0);
+});
+
+test('receipts: owner scope spans own branches but never another company',async()=>{
+  const id=await billedInvoice();
+  await sql('UPDATE partner_invoices SET branch_id=$1 WHERE id=$2',[otherBranch,id]);
+  await receive(id,10);
+  await login(otherOwner);await assert.rejects(receive(id,10),/Fatura nao encontrada/);
+  assert.equal(Number((await sql('SELECT paid_amount FROM partner_invoices')).rows[0].paid_amount),10);
+});
+
+test('receipts: invalid amounts and cancelled invoices produce no receipt or audit',async()=>{
+  const id=await billedInvoice();const previous=await state();
+  for(const value of [null,0,-1,0.001,'NaN','Infinity','-Infinity']) await assert.rejects(receive(id,value),/Valor de recebimento invalido/);
+  assert.deepEqual(await state(),previous);
+  await sql("UPDATE partner_invoices SET status='cancelada' WHERE id=$1",[id]);
+  await assert.rejects(receive(id,1),/cancelada/);
+  assert.deepEqual(await state(),previous);
+});
+
+test('receipts: audit failure rolls back balance, status and paid_at',async()=>{
+  const id=await billedInvoice();
+  await db.exec("ALTER TABLE partner_audit_logs ADD CONSTRAINT reject_receipt_audit CHECK(action<>'recebimento_fatura')");
+  try {
+    await assert.rejects(receive(id,100),/reject_receipt_audit/);
+    const invoice=(await sql('SELECT paid_amount,status,paid_at FROM partner_invoices')).rows[0];
+    assert.equal(Number(invoice.paid_amount),0);assert.equal(invoice.status,'aberta');assert.equal(invoice.paid_at,null);
+    assert.equal((await state()).logs,1);
+  } finally {await db.exec('ALTER TABLE partner_audit_logs DROP CONSTRAINT reject_receipt_audit');}
+});
+
+test('receipts: existing two-argument contract treats equal partial payments as distinct receipts',async()=>{
+  const id=await billedInvoice();
+  await receive(id,10);await receive(id,10);
+  assert.equal(Number((await sql('SELECT paid_amount FROM partner_invoices')).rows[0].paid_amount),20);
+  assert.equal((await state()).logs,3);
 });

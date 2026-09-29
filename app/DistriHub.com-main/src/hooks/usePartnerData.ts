@@ -1547,7 +1547,7 @@ supabase
             ? previous.salesperson_id
             : currentIdentity.salespersonId ?? sale.salesperson_id ?? operatorId ?? null,
           origin: sale.origin ?? 'pdv', online_payment: false,
-          payment_status: sale.payment_method === 'faturado' ? 'pendente' : 'pago',
+          payment_status: sale.status === 'pre_venda' || sale.payment_method === 'faturado' ? 'pendente' : 'pago',
         };
         const ns = attempts.begin(candidate);
         setPendingSale(ns);
@@ -1598,95 +1598,12 @@ supabase
     return createSale(attempt, operatorId, operatorPin);
   }, [createSale, requireIdentity]);
 
+  // Share the persisted attempt and synchronous guard with checkout. The status is
+  // part of the immutable request key, so a pending pre-sale cannot become a sale.
   const createPreSale = useCallback(
-    async (
-      sale: SalePayload,
-      operatorId?: string | null,
-      operatorPin?: string | null,
-    ) => {
-      const currentIdentity = requireIdentity();
-      const branchId = sale.branch_id ?? null;
-
-      if (!branchId) {
-        throw new Error(
-          'Pré-venda sem filial selecionada.',
-        );
-      }
-
-      ensureEmployeeBranch(
-        currentIdentity,
-        branchId,
-      );
-
-      // Atribuição comercial da venda (relatórios/comissões) — preservada.
-      const effectiveSpId =
-        currentIdentity.salespersonId
-          ? currentIdentity.salespersonId
-          : sale.salesperson_id ?? operatorId ?? null;
-
-      // Autorização da RPC: operador do modal (id + PIN) ou null para
-      // que a RPC resolva o operador pelo auth.uid() da sessão.
-      const effectiveOperatorId = operatorId ?? null;
-      const effectiveOperatorPin = operatorPin ?? null;
-
-      const ns: PartnerSale = {
-        ...sale,
-        id: crypto.randomUUID(),
-        user_id: currentIdentity.companyUserId,
-        status: 'pre_venda',
-        created_at: new Date().toISOString(),
-        imei: sale.imei ?? null,
-        serial_number: sale.serial_number ?? null,
-        payment_method: null,
-        branch_id: branchId,
-        salesperson_id: effectiveSpId,
-        origin: 'pdv',
-        online_payment: false,
-        payment_status: 'pendente',
-      };
-
-      if (isSupabaseConfigured && supabase) {
-        const { error: rpcErr } =
-          await supabase.rpc(
-            'execute_partner_sale_mutation',
-            {
-              p_salesperson_id: effectiveOperatorId,
-              p_commercial_salesperson_id: ns.salesperson_id,
-              p_pin: effectiveOperatorPin,
-              p_sale_id: ns.id,
-              p_customer_id: ns.customer_id,
-              p_customer_name: ns.customer_name,
-              p_items: ns.items,
-              p_total: ns.total,
-              p_imei: ns.imei,
-              p_serial_number: ns.serial_number,
-              p_payment_method: null,
-              p_branch_id: ns.branch_id,
-              p_status: 'pre_venda',
-              p_origin: 'pdv',
-              p_customer_type:
-                ns.customer_type ?? 'varejo',
-              p_delivery_type:
-                ns.delivery_type ?? 'balcao',
-            },
-          );
-
-        if (rpcErr) {
-          throw rpcErr;
-        }
-      }
-
-      setData((prev) => ({
-        ...prev,
-        sales: [
-          ns,
-          ...prev.sales,
-        ],
-      }));
-
-      return ns;
-    },
-    [identity, requireIdentity],
+    (sale: SalePayload, operatorId?: string | null, operatorPin?: string | null) =>
+      createSale({ ...sale, status: 'pre_venda', payment_method: null, origin: 'pdv' }, operatorId, operatorPin),
+    [createSale],
   );
 
   const finalizePreSale = useCallback(
@@ -2057,9 +1974,9 @@ supabase
       const outstandingAmount =
         Math.max(
           0,
-          Number(invoice.amount ?? 0) -
-            Number(invoice.paid_amount ?? 0),
-        );
+          Math.round(Number(invoice.amount ?? 0) * 100) -
+            Math.round(Number(invoice.paid_amount ?? 0) * 100),
+        ) / 100;
 
       const paymentAmount =
         amount ?? outstandingAmount;

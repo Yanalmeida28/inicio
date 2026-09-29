@@ -11,7 +11,7 @@ CREATE TABLE public.partner_pdv_price_snapshots (
   sale_id uuid PRIMARY KEY REFERENCES public.partner_sales(id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
   user_id uuid NOT NULL,
   branch_id uuid NOT NULL,
-  customer_id uuid,
+  customer_id uuid REFERENCES public.partner_customers(id) ON DELETE SET NULL,
   customer_type text NOT NULL,
   items jsonb NOT NULL,
   total numeric(10,2) NOT NULL
@@ -92,6 +92,14 @@ CREATE FUNCTION public.guard_partner_pdv_price_snapshot() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path TO '' AS $function$
 BEGIN
   IF TG_OP='UPDATE' THEN
+    -- Only an RI-triggered deletion may detach a customer without re-authorizing
+    -- prices. The quote's own FK follows the same deletion; finance is untouched.
+    IF OLD.customer_id IS NOT NULL AND NEW.customer_id IS NULL
+      AND pg_catalog.pg_trigger_depth()>1
+      AND NOT EXISTS (SELECT 1 FROM public.partner_customers c WHERE c.id=OLD.customer_id)
+      AND (pg_catalog.to_jsonb(OLD)-'customer_id')=(pg_catalog.to_jsonb(NEW)-'customer_id') THEN
+      RETURN NEW;
+    END IF;
     IF ROW(OLD.id,OLD.user_id,OLD.branch_id,OLD.customer_id,OLD.customer_type,OLD.items,OLD.total,OLD.origin)
       IS NOT DISTINCT FROM ROW(NEW.id,NEW.user_id,NEW.branch_id,NEW.customer_id,NEW.customer_type,NEW.items,NEW.total,NEW.origin)
       AND NOT (OLD.status='pre_venda' AND NEW.status='concluida') THEN

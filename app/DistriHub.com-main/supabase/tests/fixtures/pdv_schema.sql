@@ -22,6 +22,12 @@ ALTER TABLE public.partner_customers ADD COLUMN customer_type text DEFAULT 'vare
 CREATE TABLE public.partner_sales(id uuid PRIMARY KEY,user_id uuid,customer_id uuid,customer_name text,items jsonb,total numeric CHECK(total>=0),status text,created_at timestamptz,branch_id uuid,salesperson_id uuid,imei text,serial_number text,payment_method text,origin text,online_payment boolean,payment_status text,customer_type text,delivery_type text);
 CREATE TABLE public.partner_invoices(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),user_id uuid,number text,sale_id uuid REFERENCES partner_sales(id) ON DELETE SET NULL,customer_id uuid,customer_name text,amount numeric NOT NULL CHECK(amount>=0),paid_amount numeric NOT NULL DEFAULT 0 CHECK(paid_amount>=0 AND paid_amount<=amount),status text NOT NULL CHECK(status IN ('aberta','parcial','paga','cancelada')),due_date date,branch_id uuid,salesperson_id uuid);
 CREATE UNIQUE INDEX partner_invoices_sale_id_unique ON public.partner_invoices(sale_id) WHERE sale_id IS NOT NULL;
+-- Real production referential actions and receipt timestamp.
+ALTER TABLE public.partner_sales ADD CONSTRAINT partner_sales_customer_id_fkey
+  FOREIGN KEY(customer_id) REFERENCES public.partner_customers(id) ON DELETE SET NULL;
+ALTER TABLE public.partner_invoices ADD COLUMN paid_at timestamptz;
+ALTER TABLE public.partner_invoices ADD CONSTRAINT partner_invoices_customer_id_fkey
+  FOREIGN KEY(customer_id) REFERENCES public.partner_customers(id) ON DELETE SET NULL;
 CREATE TABLE public.stock_movements(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),user_id uuid,product_id uuid,product_name text,type text,quantity integer,reason text,branch_id uuid,created_at timestamptz DEFAULT now());
 CREATE TABLE public.partner_audit_logs(id text PRIMARY KEY,user_id uuid,actor_name text,actor_role text,action text,entity_type text,entity_id text,details text);
 -- Production sale read authorization, with table fields reduced to the test contract.
