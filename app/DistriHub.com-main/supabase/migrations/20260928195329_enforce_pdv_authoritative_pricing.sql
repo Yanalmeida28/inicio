@@ -78,7 +78,7 @@ BEGIN
     END IF;
     v_sum := v_sum + v_price*v_qty;
   END LOOP;
-  IF EXISTS(SELECT 1 FROM jsonb_array_elements(p_items) x GROUP BY x->>'product_id'
+  IF EXISTS(SELECT 1 FROM jsonb_array_elements(p_items) x GROUP BY (x->>'product_id')::uuid
     HAVING SUM((x->>'quantity')::numeric)>2147483647) THEN RAISE EXCEPTION 'Quantidade agregada invalida'; END IF;
   IF v_sum>99999999.99 THEN RAISE EXCEPTION 'Total excede a precisao financeira'; END IF;
   IF p_total IS DISTINCT FROM v_sum THEN RAISE EXCEPTION 'Total diverge do total autorizado'; END IF;
@@ -174,9 +174,15 @@ BEGIN
       AND sp.user_id=v_company_id AND (sp.branch_id IS NULL OR sp.branch_id=p_branch_id)
   ) THEN RAISE EXCEPTION 'Vendedor comercial invalido para esta filial'; END IF;
 
-  IF v_existing_user IS NOT NULL AND v_old_status='concluida' AND p_status<>'cancelada' THEN
+  IF v_existing_user IS NOT NULL AND p_status<>'cancelada' AND (
+    v_old_status='concluida' OR (v_old_status='pre_venda' AND p_status='pre_venda' AND EXISTS (
+      SELECT 1 FROM public.partner_pdv_price_snapshots q WHERE q.sale_id=v_target_id
+        AND ROW(q.user_id,q.branch_id,q.customer_id,q.customer_type,q.items,q.total)
+          IS NOT DISTINCT FROM ROW(v_company_id,p_branch_id,p_customer_id,COALESCE(p_customer_type,'varejo'),p_items,p_total)
+    ))
+  ) THEN
     -- Retry is a read of the same operation, never an edit or another stock/invoice write.
-    IF p_status='concluida'
+    IF p_status=v_old_status
       AND v_existing_sale.customer_id IS NOT DISTINCT FROM p_customer_id
       AND v_existing_sale.customer_name IS NOT DISTINCT FROM p_customer_name
       AND v_existing_sale.items IS NOT DISTINCT FROM p_items
@@ -189,7 +195,9 @@ BEGIN
       AND v_existing_sale.delivery_type IS NOT DISTINCT FROM COALESCE(p_delivery_type,'balcao')
       AND v_existing_sale.salesperson_id IS NOT DISTINCT FROM v_commercial_id
     THEN RETURN v_target_id; END IF;
-    RAISE EXCEPTION 'Venda concluida nao pode ser editada; tentativa com dados diferentes';
+    IF v_old_status='concluida' THEN
+      RAISE EXCEPTION 'Venda concluida nao pode ser editada; tentativa com dados diferentes';
+    END IF;
   END IF;
 
   -- Validate finance before credit and physical stock. Historical exact retries returned above.

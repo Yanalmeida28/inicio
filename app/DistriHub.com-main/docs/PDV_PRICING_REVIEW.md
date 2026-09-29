@@ -1,7 +1,7 @@
 # PDV — preço autoritativo no backend
 
 Base: `676c09fbce1ad514247cca749a40c8b9c1c551e9`, branch `main`.
-Esta etapa é local, sem commit, push, deploy ou aplicação no Supabase.
+Retomada do WIP local `490f6764f3033b07950d1622e0d5c457d3167033`, posterior à base publicada acima. As correções desta retomada permanecem sem novo commit, push, deploy ou aplicação no Supabase.
 O relatório `PDV_REVIEW.md` e seus diffs permanecem como registro da etapa anterior.
 
 ## 1. Regra encontrada
@@ -134,7 +134,7 @@ DDL e alterações de função são transacionais. Erro aborta a segunda migrati
 
 ## 14. Testes adicionados
 
-34 testes adicionais de pricing, além dos 35 cenários anteriores. Alguns dados dos testes antigos foram corrigidos para que unit_price × quantity corresponda ao total e ao catálogo sintético; os objetivos de estoque/crédito/rollback desses testes foram preservados.
+40 testes adicionais de pricing, além dos 35 cenários anteriores. Alguns dados dos testes antigos foram corrigidos no WIP para que unit_price × quantity corresponda ao total e ao catálogo sintético; os objetivos de estoque/crédito/rollback desses testes foram preservados.
 
 Cobertura: total legítimo/adulterado para menos/mais, unit_price e subtotal adulterados, quantidade zero/negativa/fracionária/ausente/excessiva, linhas repetidas, produto inexistente/outra empresa/outra filial, varejo, atacado cadastrado e sem cliente, fallback, preço zero, centavos, NUMERIC, serviços, is_service NULL, faturado, limite insuficiente, pré-venda/finalização, preços alterados depois da cotação, legado sem prova, retry, requisição duplicada, clique duplo, rollback, ausência de baixa/invoice/prova em rejeição, acesso negado ao helper/tabela e tentativa de gravar preço diretamente.
 
@@ -142,7 +142,7 @@ Não existe teste de desconto válido porque não existe esse fluxo no PDV. Há 
 
 ## 15. Resultado total
 
-69 testes passaram; 0 falhas; 0 ignorados. Usam PostgreSQL PGlite efêmero, schema reduzido e dados sintéticos, mais transporte React simulado. As migrations foram executadas somente nesse banco em memória.
+75 testes passaram na retomada; 0 falhas; 0 ignorados. Usam PostgreSQL PGlite efêmero, schema reduzido e dados sintéticos, mais transporte React simulado. Os arquivos SQL foram executados somente nesse banco em memória, sem aplicar migration em projeto Supabase.
 
 O teste com Promise.all submete duas requisições ao mesmo banco em memória; PGlite serializa sua conexão. Não equivale a um teste de duas conexões PostgreSQL concorrentes reais.
 
@@ -152,7 +152,7 @@ O teste com Promise.all submete duas requisições ao mesmo banco em memória; P
 - `npm.cmd run build`: passou; aviso existente de chunk acima de 500 kB.
 - `npm.cmd run lint`: 57 erros e 10 avisos preexistentes.
 - Comparação de lint com HEAD 676c09f nos arquivos TS/TSX tocados: nenhum diagnóstico introduzido.
-- `npm.cmd test --prefix supabase/tests`: 69 passaram.
+- `npm.cmd test --prefix supabase/tests`: 75 passaram.
 - `git diff --check`: passou.
 
 ## 17. Crédito/faturado
@@ -178,7 +178,18 @@ Permanece o advisory lock por sale_id e a comparação completa da operação j�
 
 ## 20–21. Diff e status
 
-O relatório final no chat registra `git diff --stat` e `git status --short` após esta documentação. O diff rastreado não inclui esta documentação nem a segunda migration enquanto permanecerem untracked. Nenhum arquivo foi staged.
+HEAD permanece em `490f676`; `origin/main` local permanece em `676c09f`. Os seis arquivos do escopo já integram o WIP. Nesta retomada, somente este relatório, a segunda migration e `supabase/tests/pdv.test.mjs` receberam alterações adicionais, sem staging. O arquivo `pdv-migration.txt` permanece não rastreado e não foi lido nem utilizado.
+
+## 22. Correções e validação da retomada
+
+- Retry exato de pré-venda com cotação protegida retorna sem reconsultar preços ou duplicar auditoria. A comparação inclui todos os dados da operação; pré-venda sem prova continua passando pelo catálogo.
+- Quantidades repetidas são agregadas por UUID convertido, também na validação de preço. Formatos textuais equivalentes do mesmo UUID não contornam o limite agregado na pré-venda.
+- Seis novos testes cobrem esses casos, total não finito, campos numéricos malformados, adulteração de cada campo financeiro na finalização, serviço atacadista no teto de NUMERIC(10,2), invoice correspondente e INSERT/UPDATE negados na cotação.
+- Typecheck e build passaram nesta execução. O build precisou de execução local fora do sandbox por bloqueio de leitura do Vite; manteve apenas o aviso de chunk acima de 500 kB.
+- Lint: 57 erros e 10 avisos. Comparação dos diagnósticos dos dois arquivos frontend com `676c09f` confirma ausência de novos diagnósticos.
+- Nenhuma consulta ao Supabase de produção foi necessária nesta retomada. As observações de schema de produção nas seções anteriores são o registro da investigação preservada no WIP, não uma nova confirmação.
+- A assinatura RPC e seus grants permanecem iguais. Tabelas e funções de aplicação estão qualificadas por schema; funções internas PostgreSQL resolvem em pg_catalog com search_path vazio. Mantidos RLS, revokes dos clientes, helper INVOKER, RPC/trigger DEFINER e transação única.
+- Continuam pendentes homologação em PostgreSQL/PostgREST completos e concorrência com conexões reais; PGlite serializa a conexão de teste.
 
 ## Confirmações
 

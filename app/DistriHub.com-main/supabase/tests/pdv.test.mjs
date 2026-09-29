@@ -399,3 +399,57 @@ test('pricing: direct legacy finalization cannot bypass quote validation',async(
   await sql('DELETE FROM partner_pdv_price_snapshots');
   await assert.rejects(sql("UPDATE partner_sales SET status='concluida' WHERE id=$1",[pre.id]),/RPC autorizada/);
 });
+
+test('pricing: pre-sale retries preserve the quote and audit after catalog changes',async()=>{
+  const pre=await sale({status:'pre_venda',method:null});
+  const previous=await state();
+  const quote=(await sql('SELECT * FROM partner_pdv_price_snapshots')).rows;
+  await sql('UPDATE partner_products SET sale_price=150');
+  await sql("UPDATE partner_customers SET customer_type='atacado'");
+  await Promise.all([sale(pre),sale(pre)]);
+  assert.deepEqual(await state(),previous);
+  assert.deepEqual((await sql('SELECT * FROM partner_pdv_price_snapshots')).rows,quote);
+});
+
+test('pricing: canonical UUID duplicates cannot exceed quantity capacity in a pre-sale',async()=>{
+  await sql('UPDATE partner_products SET sale_price=0');
+  await rejectPricing({status:'pre_venda',total:0,items:[
+    line({quantity:2147483647,unit_price:0}),
+    line({product_id:`{${product}}`,unit_price:0}),
+  ]},/Quantidade agregada/);
+});
+
+test('pricing: nonfinite declared totals and malformed numeric items roll back',async()=>{
+  for(const total of ['NaN','Infinity','-Infinity']) await rejectPricing({total},/Total/);
+  for(const field of ['quantity','unit_price','subtotal']) {
+    for(const value of ['NaN','Infinity',null]) {
+      await rejectPricing({total:100,items:[line({[field]:value})]},/Quantidade|Subtotal/);
+    }
+  }
+});
+
+test('pricing: finalization rejects changes to every quoted financial field',async()=>{
+  const pre=await sale({status:'pre_venda',method:null});
+  const previous=await state();
+  for(const change of [
+    {items:[line({product_id:service})]}, {items:[line({unit_price:99})],total:99},
+    {total:99}, {customerType:'atacado'}, {customer:null},
+  ]) await assert.rejects(sale({...pre,status:'concluida',...change}),/dados financeiros/);
+  assert.deepEqual(await state(),previous);
+});
+
+test('pricing: wholesale services and maximum financial total use the authoritative invoice',async()=>{
+  await sql('UPDATE partner_products SET wholesale_price=99999999.99 WHERE id=$1',[service]);
+  await sql("UPDATE partner_customers SET customer_type='atacado',credit_limit=99999999.99");
+  await sale({customerType:'atacado',method:'faturado',items:[line({product_id:service,unit_price:99999999.99})]});
+  assert.equal(Number((await sql('SELECT total FROM partner_sales')).rows[0].total),99999999.99);
+  assert.equal(Number((await sql('SELECT amount FROM partner_invoices')).rows[0].amount),99999999.99);
+  assert.equal((await state()).movements,0);
+});
+
+test('pricing: clients cannot insert or update protected quotes',async()=>{
+  const pre=await sale({status:'pre_venda',method:null});
+  await db.exec('SET ROLE authenticated');
+  await assert.rejects(sql('UPDATE partner_pdv_price_snapshots SET total=1 WHERE sale_id=$1',[pre.id]),/permission denied/);
+  await assert.rejects(sql('INSERT INTO partner_pdv_price_snapshots SELECT * FROM partner_pdv_price_snapshots'),/permission denied/);
+});
