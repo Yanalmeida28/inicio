@@ -1007,7 +1007,36 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
 .partner-panel .subtab:hover { color: var(--dh-navy); background: var(--dh-blue-soft); }
 .partner-panel .subtab.active { color: var(--dh-blue); border-color: var(--dh-blue); background: var(--dh-blue-soft); }
 .partner-panel .pdv-subtabs { border-bottom: 1px solid var(--dh-border); }
+.partner-panel .pdv-subtab { color: var(--dh-text); }
+.partner-panel .pdv-subtab:hover { color: var(--dh-navy); }
+.partner-panel .pdv-subtab.active { color: var(--dh-text); border-bottom-color: var(--dh-blue); }
 .partner-panel .pdv-subtab-badge { background: var(--dh-blue); color: #fff; }
+
+/* Settings: reuse the light panel palette without changing layout. */
+.partner-panel .subscription-detail-item,
+.partner-panel .plan-card,
+.partner-panel .plan-modal-summary { background: var(--dh-surface); border-color: var(--dh-border); }
+.partner-panel .plan-card.highlighted { background: var(--dh-bg); border-color: var(--dh-blue); }
+.partner-panel .plan-card:hover { border-color: var(--dh-blue); }
+.partner-panel .plan-card.current { border-color: var(--dh-success); }
+.partner-panel .subscription-plan-name,
+.partner-panel .subscription-detail-item strong,
+.partner-panel .plan-card strong,
+.partner-panel .plan-modal-row strong,
+.partner-panel .plan-price-value { color: var(--dh-text); }
+.partner-panel .subscription-detail-item small,
+.partner-panel .plan-modal-row small,
+.partner-panel .plan-price-period,
+.partner-panel .plan-features li { color: var(--dh-text-secondary); }
+.partner-panel .subscription-detail-item,
+.partner-panel .plan-modal-arrow { color: var(--dh-blue); }
+.partner-panel .plan-card-icon { color: var(--dh-blue); background: var(--dh-blue-soft); }
+.partner-panel .plan-features li svg { color: var(--dh-success); }
+.partner-panel .plan-badge { background: var(--dh-blue); }
+.partner-panel .plan-select-btn { background: var(--dh-surface); color: var(--dh-text); border-color: var(--dh-border); }
+.partner-panel .plan-select-btn:hover { background: var(--dh-bg); border-color: var(--dh-blue); }
+.partner-panel .plan-select-btn.primary { background: var(--dh-blue); border-color: var(--dh-blue); color: #fff; }
+.partner-panel .plan-select-btn.primary:hover { background: var(--dh-blue-hover); }
 
 /* ---------- Cards ---------- */
 .partner-panel .partner-card,
