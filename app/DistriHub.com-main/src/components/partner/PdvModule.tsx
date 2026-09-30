@@ -22,6 +22,7 @@ type Props = {
   segment: string;
   selectedBranchId: string | null;
   currentRole: SalespersonRole;
+  activeSalespersonId?: string | null;
   onCreateSale: (sale: {
     customer_id: string | null;
     customer_name: string;
@@ -57,7 +58,7 @@ const PRODUCT_PAGE_SIZE = 30;
 
 export function PdvModule({
   products, customers, sales, credits, hasPendingSale, salespeople, segment, selectedBranchId,
-  currentRole, onCreateSale, onCreatePreSale, onFinalizePreSale, onCancelSale, onDeleteSale,
+  currentRole, activeSalespersonId, onCreateSale, onCreatePreSale, onFinalizePreSale, onCancelSale, onDeleteSale,
 }: Props) {
   const [subTab, setSubTab] = useState<PdvSubTab>('pdv');
 
@@ -99,6 +100,7 @@ export function PdvModule({
       {subTab !== 'pre-venda' && (
         <PdvCheckout
           showRecentSales={subTab === 'vendas-recentes'}
+          activeSalespersonId={activeSalespersonId}
           products={products}
           customers={customers}
           sales={sales}
@@ -135,8 +137,9 @@ export function PdvModule({
 
 /* ============ PDV Checkout ============ */
 
-function PdvCheckout({ showRecentSales, products, customers, sales, credits, hasPendingSale, salespeople, segment, selectedBranchId, canCheckout, onCreateSale, onCancelSale, onDeleteSale }: {
+function PdvCheckout({ showRecentSales, activeSalespersonId, products, customers, sales, credits, hasPendingSale, salespeople, segment, selectedBranchId, canCheckout, onCreateSale, onCancelSale, onDeleteSale }: {
   showRecentSales: boolean;
+  activeSalespersonId?: string | null;
   products: PartnerProduct[];
   customers: PartnerCustomer[];
   sales: PartnerSale[];
@@ -170,7 +173,10 @@ function PdvCheckout({ showRecentSales, products, customers, sales, credits, has
 
   function handlePrint(sale: PrintableSale, format: 'receipt' | 'label') {
     setPrintError(null);
-    try { printSale(sale, format); } catch (error) {
+    try { printSale(sale, format, {
+      customer: customers.find((customer) => customer.id === sale.customer_id),
+      salespersonName: salespeople.find((person) => person.id === sale.salesperson_id)?.name,
+    }); } catch (error) {
       setPrintError(error instanceof Error ? error.message : 'Não foi possível abrir a impressão.');
     }
   }
@@ -338,6 +344,7 @@ function PdvCheckout({ showRecentSales, products, customers, sales, credits, has
       setCart([]); setCustomerId(''); setCustomerName(''); setImei(''); setSerial(''); setSalespersonId('');
       setCompleted(true);
       setLastSale({ customer_name: customerName || customer?.name || fallbackName,
+        customer_id: customerId || null, salesperson_id: activeSalespersonId || salespersonId || null,
         items: cart.map((item) => ({ ...item })), total, imei: imei || null,
         serial_number: serial || null, payment_method: paymentMethod,
         created_at: new Date().toISOString(), branch_id: selectedBranchId });

@@ -1,9 +1,11 @@
-import type { PartnerSale } from '../types';
+import type { PartnerCustomer, PartnerSale } from '../types';
 import { money } from '../utils';
 
-export type PrintableSale = Pick<PartnerSale, 'customer_name' | 'items' | 'total' | 'imei' | 'serial_number' | 'payment_method' | 'created_at' | 'branch_id'> & { id?: string };
+export type PrintableSale = Pick<PartnerSale, 'customer_name' | 'items' | 'total' | 'imei' | 'serial_number' | 'payment_method' | 'created_at' | 'branch_id' | 'customer_id' | 'salesperson_id'> & { id?: string };
 
-export function printSale(sale: PrintableSale, format: 'receipt' | 'label') {
+type ReceiptDetails = { customer?: PartnerCustomer; salespersonName?: string };
+
+export function printSale(sale: PrintableSale, format: 'receipt' | 'label', details: ReceiptDetails = {}) {
   const popup = window.open('', '_blank', 'width=440,height=700');
   if (!popup) throw new Error('Permita pop-ups neste navegador para imprimir o cupom ou a etiqueta.');
 
@@ -42,6 +44,15 @@ export function printSale(sale: PrintableSale, format: 'receipt' | 'label') {
   if (format === 'receipt') {
     line(main, 'CUPOM NÃO FISCAL', true);
     identification(main);
+    line(main, `Colaborador: ${details.salespersonName || 'Não informado'}`);
+    const customer = details.customer;
+    const phones = [...new Set([customer?.phone, customer?.phone_commercial_1, customer?.phone_commercial_2].map((value) => value?.trim()).filter(Boolean))].join(' / ');
+    const address = [customer?.address, customer?.address_number, customer?.complement, customer?.neighborhood].map((value) => value?.trim()).filter(Boolean).join(', ');
+    const city = [customer?.city, customer?.state].map((value) => value?.trim()).filter(Boolean).join(' / ');
+    line(main, `Telefone: ${phones || 'Não informado'}`);
+    line(main, `Endereço: ${address || 'Não informado'}`);
+    line(main, `Cidade: ${city || 'Não informada'}`);
+    if (customer?.zip_code) line(main, `CEP: ${customer.zip_code}`);
     if (sale.id) line(main, `Data: ${date}`);
     for (const item of sale.items) {
       const row = doc.createElement('article');
