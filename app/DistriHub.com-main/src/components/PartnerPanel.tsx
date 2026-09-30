@@ -1840,7 +1840,6 @@ export function PartnerPanel({
             )}
             {activeTab === 'pdv' && (
               <PdvModule
-                activeSalespersonId={activeSalesperson?.id}
                 key={pdvRevision}
                 hasPendingSale={Boolean(partner.pendingSale)}
                 products={

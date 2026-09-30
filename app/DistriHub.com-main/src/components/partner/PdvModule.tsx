@@ -23,7 +23,6 @@ type Props = {
   segment: string;
   selectedBranchId: string | null;
   currentRole: SalespersonRole;
-  activeSalespersonId?: string | null;
   onCreateSale: (sale: {
     customer_id: string | null;
     customer_name: string;
@@ -59,7 +58,7 @@ const PRODUCT_PAGE_SIZE = 30;
 
 export function PdvModule({
   products, customers, sales, credits, hasPendingSale, salespeople, segment, selectedBranchId,
-  currentRole, activeSalespersonId, onCreateSale, onCreatePreSale, onFinalizePreSale, onCancelSale, onDeleteSale,
+  currentRole, onCreateSale, onCreatePreSale, onFinalizePreSale, onCancelSale, onDeleteSale,
 }: Props) {
   const [subTab, setSubTab] = useState<PdvSubTab>('pdv');
 
@@ -101,7 +100,6 @@ export function PdvModule({
       {subTab !== 'pre-venda' && (
         <PdvCheckout
           showRecentSales={subTab === 'vendas-recentes'}
-          activeSalespersonId={activeSalespersonId}
           products={products}
           customers={customers}
           sales={sales}
@@ -138,9 +136,8 @@ export function PdvModule({
 
 /* ============ PDV Checkout ============ */
 
-function PdvCheckout({ showRecentSales, activeSalespersonId, products, customers, sales, credits, hasPendingSale, salespeople, segment, selectedBranchId, canCheckout, onCreateSale, onCancelSale, onDeleteSale }: {
+function PdvCheckout({ showRecentSales, products, customers, sales, credits, hasPendingSale, salespeople, segment, selectedBranchId, canCheckout, onCreateSale, onCancelSale, onDeleteSale }: {
   showRecentSales: boolean;
-  activeSalespersonId?: string | null;
   products: PartnerProduct[];
   customers: PartnerCustomer[];
   sales: PartnerSale[];
@@ -169,7 +166,6 @@ function PdvCheckout({ showRecentSales, activeSalespersonId, products, customers
   const [deliveryType, setDeliveryType] = useState<DeliveryType>('balcao');
   const [salespersonId, setSalespersonId] = useState('');
   const [completed, setCompleted] = useState(false);
-  const [lastSale, setLastSale] = useState<PrintableSale | null>(null);
   const [printError, setPrintError] = useState<string | null>(null);
   const [shareNotice, setShareNotice] = useState<string | null>(null);
 
@@ -371,11 +367,16 @@ function PdvCheckout({ showRecentSales, activeSalespersonId, products, customers
       });
       setCart([]); setCustomerId(''); setCustomerName(''); setImei(''); setSerial(''); setSalespersonId('');
       setCompleted(true);
-      setLastSale({ customer_name: customerName || customer?.name || fallbackName,
-        customer_id: customerId || null, salesperson_id: activeSalespersonId || salespersonId || null,
-        items: cart.map((item) => ({ ...item })), total, imei: imei || null,
-        serial_number: serial || null, payment_method: paymentMethod,
-        created_at: new Date().toISOString(), branch_id: selectedBranchId });
+      setClientType('varejo');
+      setPriceTable('varejo');
+      setPaymentMethod('pix');
+      setDeliveryType('balcao');
+      setSearch('');
+      setVisibleProductCount(PRODUCT_PAGE_SIZE);
+      setSelectionNotice(null);
+      setLastAddedId(null);
+      setPrintError(null);
+      setShareNotice(null);
     } catch (error) {
       setCheckoutError(pdvErrorMessage(error));
     } finally {
@@ -638,28 +639,10 @@ function PdvCheckout({ showRecentSales, activeSalespersonId, products, customers
 
             </>
           )}
-          {lastSale && lastSale.branch_id === selectedBranchId && (
-            <>
-              <div className="pdv-receipt-actions">
-                <button className="pdv-receipt-btn" onClick={() => handlePrint(lastSale, 'receipt')}>
-                  <Printer size={16} /> Imprimir Cupom
-                </button>
-                <button className="pdv-receipt-btn" onClick={() => handlePrint(lastSale, 'label')}>
-                  <QrCode size={16} /> Imprimir Etiqueta
-                </button>
-                <button type="button" className="pdv-receipt-btn" onClick={() => handleShare(lastSale, 'whatsapp')}>
-                  <MessageCircle size={16} /> WhatsApp
-                </button>
-                <button type="button" className="pdv-receipt-btn" onClick={() => handleShare(lastSale, 'email')}>
-                  <Mail size={16} /> E-mail
-                </button>
-              </div>
-              {completed && (
-                <div className="sent-message">
-                  <Check size={15} /> Venda finalizada! Cupom e etiqueta disponíveis para impressão/envio.
-                </div>
-              )}
-            </>
+          {completed && (
+            <div className="sent-message" role="status">
+              <Check size={15} /> Venda finalizada! Pronto para uma nova venda. Cupom, etiqueta e envio em Vendas recentes.
+            </div>
           )}
           {checkoutError && <p className="otp-error-msg">{checkoutError}</p>}
         </div>
@@ -667,8 +650,8 @@ function PdvCheckout({ showRecentSales, activeSalespersonId, products, customers
 
       )}
 
-      {printError && <p className="otp-error-msg" role="alert">{printError}</p>}
-      {shareNotice && <p role="status">{shareNotice}</p>}
+      {showRecentSales && printError && <p className="otp-error-msg" role="alert">{printError}</p>}
+      {showRecentSales && shareNotice && <p role="status">{shareNotice}</p>}
       {showRecentSales && (
       <div className="pdv-recent-sales">
         <h4>Vendas Recentes</h4>
