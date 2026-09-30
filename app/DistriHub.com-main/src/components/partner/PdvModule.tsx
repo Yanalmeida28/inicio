@@ -9,7 +9,7 @@ import { billedSaleError, pdvErrorMessage, pdvTotal, type CustomerCredit } from 
 
 type PriceTable = 'varejo' | 'atacado';
 type ClientType = 'varejo' | 'atacado';
-type PdvSubTab = 'pdv' | 'pre-venda';
+type PdvSubTab = 'pdv' | 'pre-venda' | 'vendas-recentes';
 
 type Props = {
   products: PartnerProduct[];
@@ -78,19 +78,26 @@ export function PdvModule({
           className={`pdv-subtab ${subTab === 'pdv' ? 'active' : ''}`}
           onClick={() => setSubTab('pdv')}
         >
-          <ShoppingCart size={16} /> PDV & Vendas
+          <ShoppingCart size={16} /> PDV
         </button>
         <button
           className={`pdv-subtab ${subTab === 'pre-venda' ? 'active' : ''}`}
           onClick={() => setSubTab('pre-venda')}
         >
-          <ClipboardList size={16} /> Pré-Venda / Orçamentos
+          <ClipboardList size={16} /> Pré-vendas
           {preSales.length > 0 && <span className="pdv-subtab-badge">{preSales.length}</span>}
+        </button>
+        <button
+          className={`pdv-subtab ${subTab === 'vendas-recentes' ? 'active' : ''}`}
+          onClick={() => setSubTab('vendas-recentes')}
+        >
+          <ClipboardList size={16} /> Vendas recentes
         </button>
       </div>
 
-      {subTab === 'pdv' && (
+      {subTab !== 'pre-venda' && (
         <PdvCheckout
+          showRecentSales={subTab === 'vendas-recentes'}
           products={products}
           customers={customers}
           sales={sales}
@@ -127,7 +134,8 @@ export function PdvModule({
 
 /* ============ PDV Checkout ============ */
 
-function PdvCheckout({ products, customers, sales, credits, hasPendingSale, salespeople, segment, selectedBranchId, canCheckout, onCreateSale, onCancelSale, onDeleteSale }: {
+function PdvCheckout({ showRecentSales, products, customers, sales, credits, hasPendingSale, salespeople, segment, selectedBranchId, canCheckout, onCreateSale, onCancelSale, onDeleteSale }: {
+  showRecentSales: boolean;
   products: PartnerProduct[];
   customers: PartnerCustomer[];
   sales: PartnerSale[];
@@ -365,6 +373,7 @@ function PdvCheckout({ products, customers, sales, credits, hasPendingSale, sale
 
   return (
     <>
+      {!showRecentSales && (
       <div className="pdv-layout">
         <div className="pdv-left">
           <div className="pdv-search-bar">
@@ -603,6 +612,9 @@ function PdvCheckout({ products, customers, sales, credits, hasPendingSale, sale
         </div>
       </div>
 
+      )}
+
+      {showRecentSales && (
       <div className="pdv-recent-sales">
         <h4>Vendas Recentes</h4>
         <div className="stock-table-wrap">
@@ -644,7 +656,9 @@ function PdvCheckout({ products, customers, sales, credits, hasPendingSale, sale
         </div>
       </div>
 
-      {cancelTarget && (
+      )}
+
+      {showRecentSales && cancelTarget && (
         <div className="modal-backdrop" onClick={() => setCancelTarget(null)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '380px' }}>
             <div className="modal-header">
