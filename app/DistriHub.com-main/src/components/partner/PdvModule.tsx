@@ -6,6 +6,7 @@ import {
 import type { DeliveryType, PartnerProduct, PartnerCustomer, PartnerSale, PartnerSalesperson, SaleItem, SalespersonRole } from '../../types';
 import { money } from '../../utils';
 import { printSale, type PrintableSale } from '../../lib/salePrint';
+import { saleShareUrl } from '../../lib/saleShare';
 import { billedSaleError, pdvErrorMessage, pdvTotal, type CustomerCredit } from '../../lib/pdv';
 
 type PriceTable = 'varejo' | 'atacado';
@@ -170,6 +171,33 @@ function PdvCheckout({ showRecentSales, activeSalespersonId, products, customers
   const [completed, setCompleted] = useState(false);
   const [lastSale, setLastSale] = useState<PrintableSale | null>(null);
   const [printError, setPrintError] = useState<string | null>(null);
+  const [shareNotice, setShareNotice] = useState<string | null>(null);
+
+  function handleShare(sale: PrintableSale, channel: 'whatsapp' | 'email') {
+    setPrintError(null);
+    setShareNotice(null);
+    try {
+      const url = saleShareUrl(sale, channel,
+        customers.find((customer) => customer.id === sale.customer_id),
+        salespeople.find((person) => person.id === sale.salesperson_id)?.name);
+      if (channel === 'whatsapp') {
+        const popup = window.open('about:blank', '_blank');
+        if (!popup) throw new Error('Permita pop-ups neste navegador para abrir o WhatsApp.');
+        popup.opener = null;
+        popup.location.replace(url);
+        setShareNotice('Confirme o envio no WhatsApp conectado ao número da empresa. O resumo vai em texto, sem PDF anexado.');
+      } else {
+        const link = document.createElement('a');
+        link.href = url;
+        document.body.append(link);
+        link.click();
+        link.remove();
+        setShareNotice('Confirme o envio usando o e-mail da empresa. Se nada abriu, configure um aplicativo de e-mail padrão no dispositivo. O resumo vai em texto, sem PDF anexado.');
+      }
+    } catch (error) {
+      setPrintError(error instanceof Error ? error.message : 'Não foi possível preparar o envio.');
+    }
+  }
 
   function handlePrint(sale: PrintableSale, format: 'receipt' | 'label') {
     setPrintError(null);
@@ -619,10 +647,10 @@ function PdvCheckout({ showRecentSales, activeSalespersonId, products, customers
                 <button className="pdv-receipt-btn" onClick={() => handlePrint(lastSale, 'label')}>
                   <QrCode size={16} /> Imprimir Etiqueta
                 </button>
-                <button className="pdv-receipt-btn" disabled={!completed}>
+                <button type="button" className="pdv-receipt-btn" onClick={() => handleShare(lastSale, 'whatsapp')}>
                   <MessageCircle size={16} /> WhatsApp
                 </button>
-                <button className="pdv-receipt-btn" disabled={!completed}>
+                <button type="button" className="pdv-receipt-btn" onClick={() => handleShare(lastSale, 'email')}>
                   <Mail size={16} /> E-mail
                 </button>
               </div>
@@ -640,6 +668,7 @@ function PdvCheckout({ showRecentSales, activeSalespersonId, products, customers
       )}
 
       {printError && <p className="otp-error-msg" role="alert">{printError}</p>}
+      {shareNotice && <p role="status">{shareNotice}</p>}
       {showRecentSales && (
       <div className="pdv-recent-sales">
         <h4>Vendas Recentes</h4>
@@ -670,6 +699,8 @@ function PdvCheckout({ showRecentSales, activeSalespersonId, products, customers
                         <div className="row-action-group">
                           <button className="rma-advance-btn" onClick={() => handlePrint(s, 'receipt')} title="Imprimir Cupom" aria-label="Imprimir Cupom"><Printer size={14} /></button>
                           <button className="rma-advance-btn" onClick={() => handlePrint(s, 'label')} title="Imprimir Etiqueta" aria-label="Imprimir Etiqueta"><QrCode size={14} /></button>
+                          <button type="button" className="rma-advance-btn" onClick={() => handleShare(s, 'whatsapp')} title="Enviar por WhatsApp" aria-label="Enviar por WhatsApp"><MessageCircle size={14} /></button>
+                          <button type="button" className="rma-advance-btn" onClick={() => handleShare(s, 'email')} title="Enviar por e-mail" aria-label="Enviar por e-mail"><Mail size={14} /></button>
                           <button className="rma-advance-btn" onClick={() => requestCancelSale(s)} title="Cancelar/Apagar Venda">
                             <Ban size={14} />
                           </button>
