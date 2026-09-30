@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import type { DeliveryType, PartnerProduct, PartnerCustomer, PartnerSale, PartnerSalesperson, SaleItem, SalespersonRole } from '../../types';
 import { money } from '../../utils';
+import { printSale, type PrintableSale } from '../../lib/salePrint';
 import { billedSaleError, pdvErrorMessage, pdvTotal, type CustomerCredit } from '../../lib/pdv';
 
 type PriceTable = 'varejo' | 'atacado';
@@ -164,6 +165,15 @@ function PdvCheckout({ showRecentSales, products, customers, sales, credits, has
   const [deliveryType, setDeliveryType] = useState<DeliveryType>('balcao');
   const [salespersonId, setSalespersonId] = useState('');
   const [completed, setCompleted] = useState(false);
+  const [lastSale, setLastSale] = useState<PrintableSale | null>(null);
+  const [printError, setPrintError] = useState<string | null>(null);
+
+  function handlePrint(sale: PrintableSale, format: 'receipt' | 'label') {
+    setPrintError(null);
+    try { printSale(sale, format); } catch (error) {
+      setPrintError(error instanceof Error ? error.message : 'Não foi possível abrir a impressão.');
+    }
+  }
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const checkoutInFlight = useRef(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
@@ -327,6 +337,10 @@ function PdvCheckout({ showRecentSales, products, customers, sales, credits, has
       });
       setCart([]); setCustomerId(''); setCustomerName(''); setImei(''); setSerial(''); setSalespersonId('');
       setCompleted(true);
+      setLastSale({ customer_name: customerName || customer?.name || fallbackName,
+        items: cart.map((item) => ({ ...item })), total, imei: imei || null,
+        serial_number: serial || null, payment_method: paymentMethod,
+        created_at: new Date().toISOString(), branch_id: selectedBranchId });
     } catch (error) {
       setCheckoutError(pdvErrorMessage(error));
     } finally {
@@ -587,11 +601,15 @@ function PdvCheckout({ showRecentSales, products, customers, sales, credits, has
                 </div>
               )}
 
+            </>
+          )}
+          {lastSale && lastSale.branch_id === selectedBranchId && (
+            <>
               <div className="pdv-receipt-actions">
-                <button className="pdv-receipt-btn" disabled={!completed}>
+                <button className="pdv-receipt-btn" onClick={() => handlePrint(lastSale, 'receipt')}>
                   <Printer size={16} /> Imprimir Cupom
                 </button>
-                <button className="pdv-receipt-btn" disabled={!completed}>
+                <button className="pdv-receipt-btn" onClick={() => handlePrint(lastSale, 'label')}>
                   <QrCode size={16} /> Imprimir Etiqueta
                 </button>
                 <button className="pdv-receipt-btn" disabled={!completed}>
@@ -606,14 +624,15 @@ function PdvCheckout({ showRecentSales, products, customers, sales, credits, has
                   <Check size={15} /> Venda finalizada! Cupom e etiqueta disponíveis para impressão/envio.
                 </div>
               )}
-              {checkoutError && <p className="otp-error-msg">{checkoutError}</p>}
             </>
           )}
+          {checkoutError && <p className="otp-error-msg">{checkoutError}</p>}
         </div>
       </div>
 
       )}
 
+      {printError && <p className="otp-error-msg" role="alert">{printError}</p>}
       {showRecentSales && (
       <div className="pdv-recent-sales">
         <h4>Vendas Recentes</h4>
@@ -642,6 +661,8 @@ function PdvCheckout({ showRecentSales, products, customers, sales, credits, has
                     <td>
                       {s.status !== 'cancelada' && (
                         <div className="row-action-group">
+                          <button className="rma-advance-btn" onClick={() => handlePrint(s, 'receipt')} title="Imprimir Cupom" aria-label="Imprimir Cupom"><Printer size={14} /></button>
+                          <button className="rma-advance-btn" onClick={() => handlePrint(s, 'label')} title="Imprimir Etiqueta" aria-label="Imprimir Etiqueta"><QrCode size={14} /></button>
                           <button className="rma-advance-btn" onClick={() => requestCancelSale(s)} title="Cancelar/Apagar Venda">
                             <Ban size={14} />
                           </button>
