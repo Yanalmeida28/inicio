@@ -201,6 +201,14 @@ function ProductsSubTab({ products, allProducts, branches, selectedBranchId, cat
   onDeleteProduct: (id: string) => Promise<void>;
 }) {
   const [showForm, setShowForm] = useState(false);
+  const [productSearch, setProductSearch] = useState('');
+  const matchingProducts = useMemo(() => {
+    const normalize = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    const term = normalize(productSearch.trim());
+    return products.filter((product) =>
+      normalize(product.name).includes(term) || normalize(product.sku ?? '').includes(term),
+    );
+  }, [products, productSearch]);
   const [name, setName] = useState('');
   const [sku, setSku] = useState('');
   const [cost, setCost] = useState('');
@@ -382,6 +390,15 @@ function ProductsSubTab({ products, allProducts, branches, selectedBranchId, cat
         </form>
       )}
 
+      <div className="pdv-search-bar">
+        <input
+          type="search"
+          value={productSearch}
+          onChange={(event) => setProductSearch(event.target.value)}
+          placeholder="Pesquisar produto, modelo ou SKU..."
+          aria-label="Pesquisar produto, modelo ou SKU"
+        />
+      </div>
       <div className="stock-table-wrap">
         <table className="rma-table">
           <thead>
@@ -390,10 +407,10 @@ function ProductsSubTab({ products, allProducts, branches, selectedBranchId, cat
             </tr>
           </thead>
           <tbody>
-            {products.length === 0 ? (
-              <tr><td colSpan={8} className="empty-row">Nenhum produto cadastrado.</td></tr>
+            {matchingProducts.length === 0 ? (
+              <tr><td colSpan={8} className="empty-row">Nenhum produto encontrado.</td></tr>
             ) : (
-              products.map((p) => (
+              matchingProducts.map((p) => (
                 <tr key={p.id}>
                   <td><strong>{p.name}</strong>{p.is_service && <small className="tag-service">Serviço</small>}</td>
                   <td>{p.sku ?? '—'}</td>

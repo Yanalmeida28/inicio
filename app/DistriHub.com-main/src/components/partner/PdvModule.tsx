@@ -52,6 +52,7 @@ type Props = {
 };
 
 const cashierRoles: SalespersonRole[] = ['administrador', 'gerente', 'caixa', 'vendedor'];
+const PRODUCT_PAGE_SIZE = 30;
 
 export function PdvModule({
   products, customers, sales, credits, hasPendingSale, salespeople, segment, selectedBranchId,
@@ -141,6 +142,10 @@ function PdvCheckout({ products, customers, sales, credits, hasPendingSale, sale
   onDeleteSale: (id: string, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
 }) {
   const [search, setSearch] = useState('');
+  const [visibleProductCount, setVisibleProductCount] = useState(PRODUCT_PAGE_SIZE);
+  useEffect(() => {
+    setVisibleProductCount(PRODUCT_PAGE_SIZE);
+  }, [search, selectedBranchId]);
   const [cart, setCart] = useState<{ product_id: string; name: string; quantity: number; unit_price: number }[]>([]);
   const [customerId, setCustomerId] = useState('');
   const [customerName, setCustomerName] = useState('');
@@ -207,13 +212,14 @@ function PdvCheckout({ products, customers, sales, credits, hasPendingSale, sale
   }
 
   const filtered = useMemo(() => {
-    const term = search.trim().toLowerCase();
+    const normalize = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    const term = normalize(search.trim());
     return products.filter((p) => {
       // `products` já chega filtrado pela filial ativa (ou pela filial fixa do funcionário).
       // Aplica o filtro local apenas quando uma filial específica está selecionada,
       // mantendo a Visão Consolidada do proprietário funcional.
       if (selectedBranchId && p.branch_id !== selectedBranchId) return false;
-      return !term || p.name.toLowerCase().includes(term) || (p.sku ?? '').toLowerCase().includes(term);
+      return !term || normalize(p.name).includes(term) || normalize(p.sku ?? '').includes(term);
     });
   }, [products, search, selectedBranchId]);
 
@@ -394,7 +400,7 @@ function PdvCheckout({ products, customers, sales, credits, hasPendingSale, sale
                     : 'Nenhum produto cadastrado.'}
               </p>
             ) : (
-              filtered.map((p) => {
+              filtered.slice(0, visibleProductCount).map((p) => {
                 const outOfStock = !p.is_service && p.stock <= 0;
                 const inCartQty = cart.find((i) => i.product_id === p.id)?.quantity ?? 0;
                 const justAdded = lastAddedId === p.id;
@@ -425,6 +431,15 @@ function PdvCheckout({ products, customers, sales, credits, hasPendingSale, sale
               })
             )}
           </div>
+          {filtered.length > visibleProductCount && (
+            <button
+              type="button"
+              className="module-action-btn"
+              onClick={() => setVisibleProductCount((count) => count + PRODUCT_PAGE_SIZE)}
+            >
+              Carregar mais ({Math.min(visibleProductCount, filtered.length)} de {filtered.length})
+            </button>
+          )}
         </div>
 
         <div className="pdv-right">
