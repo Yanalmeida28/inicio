@@ -977,7 +977,8 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
 .partner-panel .partner-loading { color: var(--dh-text-secondary); font-size: 13.5px; }
 
 /* ---------- Sidebar ---------- */
-.partner-panel .partner-sidebar { background: var(--dh-navy); border-right: 1px solid rgba(255,255,255,.06); }
+.partner-panel .partner-sidebar { background: var(--store-nav, var(--dh-navy)); border-right: 1px solid rgba(255,255,255,.06); }
+.store-internal-notice { padding: 14px 18px; margin-bottom: 18px; border-left: 4px solid var(--dh-blue); border-radius: 8px; background: #EFF6FF; color: #172033; white-space: pre-wrap; overflow-wrap: anywhere; }
 .partner-panel .sidebar-header { border-bottom: 1px solid rgba(255,255,255,.08); }
 .partner-panel .sidebar-brand-mark { background: rgba(255,255,255,.1); color: #ffffff; }
 .partner-panel .sidebar-brand strong { color: #ffffff; }

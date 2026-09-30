@@ -1,9 +1,9 @@
-import type { PartnerCustomer, PartnerSale } from '../types';
+import type { PartnerCustomer, PartnerSale, StoreSettings } from '../types';
 import { money } from '../utils';
 
 export type PrintableSale = Pick<PartnerSale, 'customer_name' | 'items' | 'total' | 'imei' | 'serial_number' | 'payment_method' | 'created_at' | 'branch_id' | 'customer_id' | 'salesperson_id'> & { id?: string };
 
-type ReceiptDetails = { customer?: PartnerCustomer; salespersonName?: string };
+export type ReceiptDetails = { customer?: PartnerCustomer; salespersonName?: string; settings?: StoreSettings; companyName?: string; companyDocument?: string | null; companyAddress?: string | null };
 
 export function printSale(sale: PrintableSale, format: 'receipt' | 'label', details: ReceiptDetails = {}) {
   const popup = window.open('', '_blank', 'width=440,height=700');
@@ -42,6 +42,18 @@ export function printSale(sale: PrintableSale, format: 'receipt' | 'label', deta
     if (sale.serial_number) line(parent, `Nº de série: ${sale.serial_number}`);
   }
   if (format === 'receipt') {
+    if (details.settings?.show_logo_on_receipt && details.settings.logo_url) {
+      const logo = doc.createElement('img');
+      logo.src = details.settings.logo_url;
+      logo.alt = details.companyName || 'Logo da loja';
+      logo.style.cssText = 'display:block;max-width:50mm;max-height:25mm;object-fit:contain;margin:0 auto';
+      main.append(logo);
+    }
+    if (details.companyName) line(main, details.companyName, true);
+    if (details.settings?.show_cnpj_on_receipt) {
+      if (details.companyDocument) line(main, `CNPJ/CPF: ${details.companyDocument}`);
+      if (details.companyAddress) line(main, `Endereço da loja: ${details.companyAddress}`);
+    }
     line(main, 'CUPOM NÃO FISCAL', true);
     identification(main);
     line(main, `Colaborador: ${details.salespersonName || 'Não informado'}`);
@@ -63,6 +75,7 @@ export function printSale(sale: PrintableSale, format: 'receipt' | 'label', deta
     line(main, `TOTAL: ${money.format(sale.total)}`, true);
     const payments: Record<string, string> = { pix: 'PIX', cartao: 'Cartão', dinheiro: 'Dinheiro', faturado: 'Faturado B2B' };
     line(main, `Pagamento: ${payments[sale.payment_method ?? ''] ?? sale.payment_method ?? 'Não informado'}`);
+    if (details.settings?.receipt_footer_text) line(main, details.settings.receipt_footer_text);
   } else {
     for (const item of sale.items) {
       const label = doc.createElement('article');
@@ -78,5 +91,8 @@ export function printSale(sale: PrintableSale, format: 'receipt' | 'label', deta
   button.onclick = () => { popup.focus(); popup.print(); };
   doc.body.append(button);
   // Keep the preview available for retrying or changing the printer settings.
-  popup.requestAnimationFrame(() => { popup.focus(); popup.print(); });
+  const images = Array.from(doc.images);
+  void Promise.all(images.map((img) => img.decode().catch(() => undefined))).then(() => {
+    if (!popup.closed) popup.requestAnimationFrame(() => { popup.focus(); popup.print(); });
+  });
 }

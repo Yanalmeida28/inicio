@@ -1477,7 +1477,7 @@ export function PartnerPanel({
   }
 
   return (
-    <div className="partner-panel sidebar-layout">
+    <div className="partner-panel sidebar-layout" style={{ '--dh-blue': storeSettings.primary_color, '--store-nav': storeSettings.nav_color } as React.CSSProperties}>
       <div className="sidebar-mobile-bar">
         <button
           className="sidebar-toggle"
@@ -1531,7 +1531,7 @@ export function PartnerPanel({
         <div className="sidebar-header">
           <div className="sidebar-brand">
             <span className="sidebar-brand-mark">
-              <Store size={22} />
+              {storeSettings.logo_url ? <img src={storeSettings.logo_url} alt="Logo da loja" style={{ width: 36, height: 36, objectFit: 'contain' }} /> : <Store size={22} />}
             </span>
 
             <div>
@@ -1727,6 +1727,7 @@ export function PartnerPanel({
           />
 
           <div className="partner-content">
+            {storeSettings.internal_notice && <div role="note" className="store-internal-notice">{storeSettings.internal_notice}</div>}
             {activeTab === 'cadastros' && (
               <CadastrosModule
                 products={
@@ -1840,6 +1841,7 @@ export function PartnerPanel({
             )}
             {activeTab === 'pdv' && (
               <PdvModule
+                receiptDetails={{ settings: storeSettings, companyName: partner.profile?.account_name || partner.profile?.name, companyDocument: partner.profile?.document, companyAddress: partner.branches.find((branch) => branch.id === effectiveBranchId)?.address }}
                 key={pdvRevision}
                 hasPendingSale={Boolean(partner.pendingSale)}
                 products={

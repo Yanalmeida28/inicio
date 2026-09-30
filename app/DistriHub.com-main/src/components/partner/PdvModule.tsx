@@ -6,7 +6,7 @@ import {
 import type { DeliveryType, PartnerProduct, PartnerCustomer, PartnerSale, PartnerSalesperson, SaleItem, SalespersonRole } from '../../types';
 import { SaleActionsMenu } from './SaleActionsMenu';
 import { money } from '../../utils';
-import { printSale, type PrintableSale } from '../../lib/salePrint';
+import { printSale, type PrintableSale, type ReceiptDetails } from '../../lib/salePrint';
 import { saleShareUrl } from '../../lib/saleShare';
 import { billedSaleError, pdvErrorMessage, pdvTotal, type CustomerCredit } from '../../lib/pdv';
 
@@ -15,6 +15,7 @@ type ClientType = 'varejo' | 'atacado';
 type PdvSubTab = 'pdv' | 'pre-venda' | 'vendas-recentes';
 
 type Props = {
+  receiptDetails?: ReceiptDetails;
   products: PartnerProduct[];
   customers: PartnerCustomer[];
   sales: PartnerSale[];
@@ -59,7 +60,7 @@ const PRODUCT_PAGE_SIZE = 30;
 
 export function PdvModule({
   products, customers, sales, credits, hasPendingSale, salespeople, segment, selectedBranchId,
-  currentRole, onCreateSale, onCreatePreSale, onFinalizePreSale, onCancelSale, onDeleteSale,
+  currentRole, receiptDetails, onCreateSale, onCreatePreSale, onFinalizePreSale, onCancelSale, onDeleteSale,
 }: Props) {
   const [subTab, setSubTab] = useState<PdvSubTab>('pdv');
 
@@ -100,6 +101,7 @@ export function PdvModule({
 
       {subTab !== 'pre-venda' && (
         <PdvCheckout
+          receiptDetails={receiptDetails}
           showRecentSales={subTab === 'vendas-recentes'}
           products={products}
           customers={customers}
@@ -137,7 +139,8 @@ export function PdvModule({
 
 /* ============ PDV Checkout ============ */
 
-function PdvCheckout({ showRecentSales, products, customers, sales, credits, hasPendingSale, salespeople, segment, selectedBranchId, canCheckout, onCreateSale, onCancelSale, onDeleteSale }: {
+function PdvCheckout({ receiptDetails, showRecentSales, products, customers, sales, credits, hasPendingSale, salespeople, segment, selectedBranchId, canCheckout, onCreateSale, onCancelSale, onDeleteSale }: {
+  receiptDetails?: ReceiptDetails;
   showRecentSales: boolean;
   products: PartnerProduct[];
   customers: PartnerCustomer[];
@@ -199,6 +202,7 @@ function PdvCheckout({ showRecentSales, products, customers, sales, credits, has
   function handlePrint(sale: PrintableSale, format: 'receipt' | 'label') {
     setPrintError(null);
     try { printSale(sale, format, {
+      ...receiptDetails,
       customer: customers.find((customer) => customer.id === sale.customer_id),
       salespersonName: salespeople.find((person) => person.id === sale.salesperson_id)?.name,
     }); } catch (error) {
