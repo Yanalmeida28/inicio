@@ -1,5 +1,6 @@
-import { Fragment, useState } from 'react';
+import { useState } from 'react';
 import { Building2, CheckCircle2, Lock, MapPin, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { ActionsMenu } from './SaleActionsMenu';
 import type { PartnerBranch } from '../../types';
 
 type MultiStoreModuleProps = {
@@ -130,9 +131,10 @@ export function MultiStoreModule({
         <span className="branch-selector-label">Filial ativa:</span>
         <div className="branch-cards">
           {allBranches.map((branch) => (
-            <Fragment key={branch.id}>
+            <div key={branch.id} className={`branch-card branch-card-container ${selectedBranchId === branch.id || (branch.id === 'consolidado' && !selectedBranchId) ? 'active' : ''}`}>
             <button
-              className={`branch-card ${selectedBranchId === branch.id || (branch.id === 'consolidado' && !selectedBranchId) ? 'active' : ''}`}
+              type="button"
+              className="branch-card-select"
               disabled={isEmployeeLocked}
               onClick={() => {
                 if (isEmployeeLocked) return;
@@ -154,16 +156,16 @@ export function MultiStoreModule({
               )}
             </button>
             {branch.id !== 'consolidado' && !isEmployeeLocked && (
-              <div className="branch-card-actions">
-                <button type="button" className="branch-edit-btn" disabled={Boolean(deletingBranchId)} onClick={() => startEdit(branch)} title={`Editar filial ${branch.name}`}>
-                  <Pencil size={14} /> Editar
-                </button>
-                <button type="button" className="branch-delete-btn" disabled={Boolean(deletingBranchId)} onClick={() => handleDelete(branch)} title={`Excluir filial ${branch.name}`}>
-                  <Trash2 size={14} /> {deletingBranchId === branch.id ? 'Excluindo...' : 'Excluir'}
-                </button>
-              </div>
+              <ActionsMenu
+                label={`Ações da filial ${branch.name}`}
+                disabled={Boolean(deletingBranchId)}
+                actions={[
+                  { label: 'Editar filial', icon: Pencil, run: () => startEdit(branch) },
+                  { label: 'Excluir filial', icon: Trash2, run: () => { void handleDelete(branch); } },
+                ]}
+              />
             )}
-            </Fragment>
+            </div>
           ))}
           {!isEmployeeLocked && branches.length < 4 && (
             <button className="branch-card add" onClick={() => setShowAddForm(!showAddForm)}>

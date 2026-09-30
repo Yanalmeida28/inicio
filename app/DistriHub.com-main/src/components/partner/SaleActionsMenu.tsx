@@ -1,6 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Ban, Mail, MessageCircle, MoreVertical, Printer, QrCode } from 'lucide-react';
+import { type LucideIcon, Ban, Mail, MessageCircle, MoreVertical, Printer, QrCode } from 'lucide-react';
 
 type Props = {
   onPrintReceipt: () => void;
@@ -11,11 +11,6 @@ type Props = {
 };
 
 export function SaleActionsMenu(props: Props) {
-  const [open, setOpen] = useState(false);
-  const [position, setPosition] = useState({ top: 0, left: 0 });
-  const trigger = useRef<HTMLButtonElement>(null);
-  const menu = useRef<HTMLDivElement>(null);
-  const id = useId();
   const actions = [
     { label: 'Imprimir cupom', icon: Printer, run: props.onPrintReceipt },
     { label: 'Imprimir etiqueta', icon: QrCode, run: props.onPrintLabel },
@@ -23,6 +18,16 @@ export function SaleActionsMenu(props: Props) {
     { label: 'Enviar por e-mail', icon: Mail, run: props.onEmail },
     { label: 'Cancelar/apagar venda', icon: Ban, run: props.onCancel },
   ];
+  return <ActionsMenu actions={actions} label="Ações da venda" />;
+}
+
+export function ActionsMenu({ actions, label, disabled = false }: { actions: { label: string; icon: LucideIcon; run: () => void }[]; label: string; disabled?: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [position, setPosition] = useState({ top: 0, left: 0 });
+  const trigger = useRef<HTMLButtonElement>(null);
+  const menu = useRef<HTMLDivElement>(null);
+  const id = useId();
+
 
   useLayoutEffect(() => {
     if (!open || !trigger.current || !menu.current) return;
@@ -53,11 +58,11 @@ export function SaleActionsMenu(props: Props) {
   }, [open]);
 
   return <>
-    <button ref={trigger} type="button" className="sale-actions-trigger" title="Ações da venda" aria-label="Ações da venda" aria-haspopup="menu" aria-expanded={open} aria-controls={open ? id : undefined} onClick={() => setOpen(!open)}>
+    <button ref={trigger} type="button" disabled={disabled} className="sale-actions-trigger" title={label} aria-label={label} aria-haspopup="menu" aria-expanded={open} aria-controls={open ? id : undefined} onClick={() => setOpen(!open)}>
       <MoreVertical size={19} />
     </button>
     {open && createPortal(
-      <div ref={menu} id={id} role="menu" aria-label="Ações da venda" className="sale-actions-menu" style={position} onKeyDown={(event) => {
+      <div ref={menu} id={id} role="menu" aria-label={label} className="sale-actions-menu" style={position} onKeyDown={(event) => {
         const buttons = Array.from(menu.current?.querySelectorAll('button') ?? []);
         const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
         if (event.key === 'Escape') { event.preventDefault(); setOpen(false); trigger.current?.focus(); }
