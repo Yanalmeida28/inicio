@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Search, Trash2, ShoppingCart, Check, Printer, MessageCircle, Mail,
-  ScanLine, X, Tag, QrCode, Ban, Lock, ClipboardList, Wallet, Lock as LockIcon,
+  Search, Trash2, ShoppingCart, Check,
+  ScanLine, X, Tag, Ban, Lock, ClipboardList, Wallet, Lock as LockIcon,
 } from 'lucide-react';
 import type { DeliveryType, PartnerProduct, PartnerCustomer, PartnerSale, PartnerSalesperson, SaleItem, SalespersonRole } from '../../types';
+import { SaleActionsMenu } from './SaleActionsMenu';
 import { money } from '../../utils';
 import { printSale, type PrintableSale } from '../../lib/salePrint';
 import { saleShareUrl } from '../../lib/saleShare';
@@ -679,15 +680,13 @@ function PdvCheckout({ showRecentSales, products, customers, sales, credits, has
                     <td>{new Date(s.created_at).toLocaleDateString('pt-BR')}</td>
                     <td>
                       {s.status !== 'cancelada' && (
-                        <div className="row-action-group">
-                          <button className="rma-advance-btn" onClick={() => handlePrint(s, 'receipt')} title="Imprimir Cupom" aria-label="Imprimir Cupom"><Printer size={14} /></button>
-                          <button className="rma-advance-btn" onClick={() => handlePrint(s, 'label')} title="Imprimir Etiqueta" aria-label="Imprimir Etiqueta"><QrCode size={14} /></button>
-                          <button type="button" className="rma-advance-btn" onClick={() => handleShare(s, 'whatsapp')} title="Enviar por WhatsApp" aria-label="Enviar por WhatsApp"><MessageCircle size={14} /></button>
-                          <button type="button" className="rma-advance-btn" onClick={() => handleShare(s, 'email')} title="Enviar por e-mail" aria-label="Enviar por e-mail"><Mail size={14} /></button>
-                          <button className="rma-advance-btn" onClick={() => requestCancelSale(s)} title="Cancelar/Apagar Venda">
-                            <Ban size={14} />
-                          </button>
-                        </div>
+                        <SaleActionsMenu
+                          onPrintReceipt={() => handlePrint(s, 'receipt')}
+                          onPrintLabel={() => handlePrint(s, 'label')}
+                          onWhatsApp={() => handleShare(s, 'whatsapp')}
+                          onEmail={() => handleShare(s, 'email')}
+                          onCancel={() => requestCancelSale(s)}
+                        />
                       )}
                     </td>
                   </tr>
