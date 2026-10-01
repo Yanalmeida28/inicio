@@ -121,7 +121,9 @@ export function ServiceOrdersModule({
   );
 
   const availableProducts = useMemo(() => {
-    const term = productSearch.toLowerCase();
+    const term = productSearch.trim().toLowerCase();
+
+    if (!term) return [];
 
     return products.filter((product) => {
       if (product.branch_id !== selectedBranchId) {
@@ -951,20 +953,28 @@ export function ServiceOrdersModule({
                   <input
                     value={productSearch}
                     onChange={(event) => setProductSearch(event.target.value)}
-                    placeholder="Nome ou SKU"
+                    placeholder="Digite o nome ou SKU da peça"
                     style={{ ...inputDarkStyle }}
                   />
                 </label>
 
+                {productSearch.trim() && availableProducts.length === 0 && (
+                  <p role="status">Nenhuma peça encontrada nesta filial.</p>
+                )}
+                {availableProducts.length > 20 && (
+                  <p role="status">Mostrando 20 resultados. Refine a pesquisa para encontrar a peça.</p>
+                )}
+                <div style={{ maxHeight: 300, overflowY: 'auto' }}>
                 {availableProducts
                   .slice(0, 20)
                   .map((product) => (
                     <button
                       key={product.id}
                       type="button"
-                      onClick={() =>
-                        addProduct(product)
-                      }
+                      onClick={() => {
+                        addProduct(product);
+                        setProductSearch('');
+                      }}
                       disabled={
                         !product.is_service &&
                         product.stock < 1
@@ -986,6 +996,7 @@ export function ServiceOrdersModule({
                       <br />
 
                       <small>
+                        {product.sku ? `SKU: ${product.sku} · ` : ''}
                         {product.is_service
                           ? 'Serviço'
                           : `Estoque: ${product.stock}`}{' '}
@@ -993,6 +1004,7 @@ export function ServiceOrdersModule({
                       </small>
                     </button>
                   ))}
+                </div>
               </div>
 
               <div>
