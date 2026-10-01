@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Search, Trash2, ShoppingCart, Check,
+  Search, Trash2, ShoppingCart, Check, Maximize2, Minimize2,
   ScanLine, X, Tag, Ban, Lock, ClipboardList, Wallet, Lock as LockIcon,
 } from 'lucide-react';
 import type { DeliveryType, PartnerProduct, PartnerCustomer, PartnerSale, PartnerSalesperson, SaleItem, SalespersonRole } from '../../types';
@@ -63,18 +63,55 @@ export function PdvModule({
   currentRole, receiptDetails, onCreateSale, onCreatePreSale, onFinalizePreSale, onCancelSale, onDeleteSale,
 }: Props) {
   const [subTab, setSubTab] = useState<PdvSubTab>('pdv');
+  const [expanded, setExpanded] = useState(false);
+  const moduleRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const element = moduleRef.current;
+    if (!element) return;
+    const updateHeight = () => {
+      const top = element.getBoundingClientRect().top + window.scrollY;
+      element.style.setProperty('--pdv-height', `${Math.max(420, window.innerHeight - (expanded ? 24 : top + 20))}px`);
+    };
+    updateHeight();
+    const observer = new ResizeObserver(updateHeight);
+    if (element.parentElement) observer.observe(element.parentElement);
+    window.addEventListener('resize', updateHeight);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', updateHeight);
+    };
+  }, [expanded, subTab]);
+
+  useEffect(() => {
+    if (!expanded) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setExpanded(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [expanded]);
 
   const canCheckout = cashierRoles.includes(currentRole);
   const preSales = sales.filter((s) => s.status === 'pre_venda');
 
   return (
-    <div className="panel-module">
+    <div ref={moduleRef} className={`panel-module pdv-workspace${subTab === 'pdv' ? ' pdv-workspace-checkout' : ''}${expanded ? ' pdv-workspace-expanded' : ''}`}>
       <div className="module-header">
         <span className="module-icon"><ShoppingCart size={20} /></span>
         <div>
           <h3>PDV Ultrarrápido & Validação de Garantia</h3>
           <p>Venda no balcão com rastreabilidade e cupom térmico</p>
         </div>
+        <button type="button" className="rma-advance-btn pdv-expand-btn" aria-pressed={expanded} onClick={() => setExpanded((value) => !value)}>
+          {expanded ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+          {expanded ? 'Sair do modo ampliado' : 'Ampliar PDV'}
+        </button>
       </div>
 
       <div className="pdv-subtabs">
@@ -429,7 +466,7 @@ function PdvCheckout({ receiptDetails, showRecentSales, products, customers, sal
   return (
     <>
       {!showRecentSales && (
-      <div className="pdv-layout">
+      <div className="pdv-layout pdv-checkout-layout">
         <div className="pdv-left">
           <div className="pdv-search-bar">
             <Search size={18} />
@@ -516,6 +553,7 @@ function PdvCheckout({ receiptDetails, showRecentSales, products, customers, sal
             )}
           </div>
 
+          <div className="pdv-sale-scroll">
           <div className="pdv-cart-items">
             {cart.length === 0 ? (
               <p className="empty-row">Carrinho vazio. Selecione produtos ao lado.</p>
@@ -569,6 +607,8 @@ function PdvCheckout({ receiptDetails, showRecentSales, products, customers, sal
                       .map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                 </label>
+                <details className="pdv-traceability">
+                  <summary>Rastreabilidade (opcional){imei || serial ? ' · preenchida' : ''}</summary>
                 <div className="form-row">
                   <label>
                     <ScanLine size={14} /> {traceabilityLabel}
@@ -579,6 +619,7 @@ function PdvCheckout({ receiptDetails, showRecentSales, products, customers, sal
                     <input value={serial} onChange={(e) => setSerial(e.target.value)} placeholder="Opcional" />
                   </label>
                 </div>
+                </details>
                 <label>
                   Tipo de atendimento
                   <div className="pdv-client-type-toggle">
@@ -613,11 +654,6 @@ function PdvCheckout({ receiptDetails, showRecentSales, products, customers, sal
                   </label>
                 </div>
               </div>
-
-              <div className="pdv-total-bar">
-                <span>Total {priceTable === 'atacado' ? '(Atacado)' : '(Varejo)'}</span>
-                <strong>{money.format(total)}</strong>
-              </div>
               {paymentMethod === 'faturado' && selectedCustomer && !credit && (
                 <p role="status">Crédito não consultado. Use Atualizar dados do PDV.</p>
               )}
@@ -631,8 +667,18 @@ function PdvCheckout({ receiptDetails, showRecentSales, products, customers, sal
                 </div>
               )}
 
+            </>
+          )}
+          </div>
+
+          <div className="pdv-sale-footer">
+              <div className="pdv-total-bar">
+                <span>Total {priceTable === 'atacado' ? '(Atacado)' : '(Varejo)'}</span>
+                <strong>{money.format(total)}</strong>
+              </div>
+
               {canCheckout ? (
-                <button className="module-submit-btn pdv-checkout-btn" onClick={handleCheckout} disabled={isCheckingOut || billedSaleBlocked || hasPendingSale}>
+                <button className="module-submit-btn pdv-checkout-btn" onClick={handleCheckout} disabled={cart.length === 0 || isCheckingOut || billedSaleBlocked || hasPendingSale}>
                   <Check size={18} /> {isCheckingOut ? 'Finalizando...' : 'Finalizar Venda'}
                 </button>
               ) : (
@@ -642,14 +688,13 @@ function PdvCheckout({ receiptDetails, showRecentSales, products, customers, sal
                 </div>
               )}
 
-            </>
-          )}
           {completed && (
             <div className="sent-message" role="status">
               <Check size={15} /> Venda finalizada! Pronto para uma nova venda. Cupom, etiqueta e envio em Vendas recentes.
             </div>
           )}
           {checkoutError && <p className="otp-error-msg">{checkoutError}</p>}
+          </div>
         </div>
       </div>
 
