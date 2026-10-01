@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Wallet, CreditCard, Receipt, Check } from 'lucide-react';
 import type { PartnerInvoice } from '../../types';
 import { money } from '../../utils';
@@ -8,19 +8,26 @@ type Props = {
   walletBalance: number;
   creditLimit: number;
   creditUsed: number;
-  onPayInvoice: (id: string) => Promise<void>;
+  onPayInvoice: (id: string, amount?: number) => Promise<void>;
 };
+
+const paidAmount = (invoice: PartnerInvoice) => Number(invoice.paid_amount ?? (invoice.status === 'paga' ? invoice.amount : 0));
+const balance = (invoice: PartnerInvoice) => Math.max(0, Math.round(Number(invoice.amount) * 100) - Math.round(paidAmount(invoice) * 100)) / 100;
+const isOpen = (invoice: PartnerInvoice) => invoice.status === 'aberta' || invoice.status === 'parcial';
 
 export function FinancialModule({ invoices, walletBalance, creditLimit, creditUsed, onPayInvoice }: Props) {
   const [payingId, setPayingId] = useState<string | null>(null);
-  const [paid, setPaid] = useState<string | null>(null);
+  const [paymentMode, setPaymentMode] = useState<'full' | 'partial'>('full');
+  const [amount, setAmount] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(false);
+  const [success, setSuccess] = useState<string | null>(null);
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'aberta' | 'paga'>('all');
 
-  const openInvoices = invoices.filter((i) => i.status === 'aberta');
-  const paidInvoices = invoices.filter((i) => i.status === 'paga');
-  const totalOpen = openInvoices.reduce((sum, i) => sum + i.amount, 0);
-  const totalPaid = paidInvoices.reduce((sum, i) => sum + Number(i.paid_amount ?? i.amount), 0);
+  const openInvoices = invoices.filter(isOpen);
+  const totalOpen = openInvoices.reduce((sum, i) => sum + balance(i), 0);
+  const totalPaid = invoices.reduce((sum, i) => sum + paidAmount(i), 0);
   const totalInvoiced = invoices.reduce((sum, i) => sum + i.amount, 0);
   const creditAvailable = creditLimit - creditUsed;
 
@@ -31,22 +38,38 @@ export function FinancialModule({ invoices, walletBalance, creditLimit, creditUs
 
   const visibleInvoices = useMemo(() => {
     if (filter === 'all') return invoices;
+    if (filter === 'aberta') return invoices.filter(isOpen);
     return invoices.filter((invoice) => invoice.status === filter);
   }, [filter, invoices]);
 
-  function handlePay(id: string) {
+  function handlePay(id: string, mode: 'full' | 'partial') {
+    setPaymentMode(mode);
+    setAmount('');
+    setPaymentError(null);
+    setSuccess(null);
     setPayingId(id);
   }
 
-  async function confirmPay(id: string) {
+  async function confirmPay(invoice: PartnerInvoice) {
+    if (submittingRef.current) return;
     setPaymentError(null);
+    const normalizedAmount = amount.trim().replace(',', '.');
+    const value = paymentMode === 'partial' ? Number(normalizedAmount) : balance(invoice);
+    if (paymentMode === 'partial' && (!/^\d+(\.\d{1,2})?$/.test(normalizedAmount) || !Number.isFinite(value) || value <= 0 || value >= balance(invoice))) {
+      setPaymentError('Informe um valor maior que zero e menor que o saldo, com até duas casas decimais. Para pagar todo o saldo, use Quitar título.');
+      return;
+    }
+    submittingRef.current = true;
+    setSubmitting(true);
     try {
-      await onPayInvoice(id);
+      await onPayInvoice(invoice.id, value);
       setPayingId(null);
-      setPaid(id);
-      setTimeout(() => setPaid(null), 3000);
+      setSuccess(paymentMode === 'partial' ? 'Amortização registrada com sucesso!' : 'Título quitado com sucesso!');
     } catch (error) {
-      setPaymentError(error instanceof Error ? error.message : 'Não foi possível quitar o título.');
+      setPaymentError(error instanceof Error ? error.message : 'Não foi possível registrar o pagamento.');
+    } finally {
+      submittingRef.current = false;
+      setSubmitting(false);
     }
   }
 
@@ -124,6 +147,7 @@ export function FinancialModule({ invoices, walletBalance, creditLimit, creditUs
           </div>
         </div>
 
+        {success && <p className="sent-message" role="status"><Check size={14} /> {success}</p>}
         <div className="stock-table-wrap">
           <table className="rma-table">
             <thead>
@@ -138,32 +162,41 @@ export function FinancialModule({ invoices, walletBalance, creditLimit, creditUs
                     <td>{inv.customer_name || '—'}</td>
                     <td>{inv.number || inv.sale_id?.slice(0, 8) || '—'}</td>
                     <td><strong>{money.format(inv.amount)}</strong></td>
-                    <td>{money.format(Number(inv.paid_amount ?? (inv.status === 'paga' ? inv.amount : 0)))}</td>
-                    <td>{money.format(Math.max(0, Number(inv.amount) - Number(inv.paid_amount ?? (inv.status === 'paga' ? inv.amount : 0))))}</td>
+                    <td>{money.format(paidAmount(inv))}</td>
+                    <td>{money.format(balance(inv))}</td>
+                    <td>{inv.due_date ? new Date(inv.due_date).toLocaleDateString('pt-BR') : '—'}</td>
                     <td>
                       <span className="rma-status-badge" style={{
                         color: inv.status === 'paga' ? '#5bbc87' : '#e6a06d',
                         borderColor: inv.status === 'paga' ? '#5bbc87' : '#e6a06d',
                       }}>
-                        {inv.status === 'paga' ? 'Paga' : 'Em Aberto'}
+                        {inv.status === 'paga' ? 'Paga' : inv.status === 'parcial' ? 'Parcialmente paga' : inv.status === 'cancelada' ? 'Cancelada' : 'Em Aberto'}
                       </span>
                     </td>
-                    <td>{inv.due_date ? new Date(inv.due_date).toLocaleDateString('pt-BR') : '—'}</td>
                     <td>
-                      {inv.status === 'aberta' && (
+                      {isOpen(inv) && (
                         <>
                           {payingId === inv.id ? (
-                            <div className="pix-actions">
-                              <button className="module-submit-btn" onClick={() => confirmPay(inv.id)}><Check size={16} /> Confirmar quitação</button>
-                              <button className="rma-advance-btn" onClick={() => setPayingId(null)}>Cancelar</button>
-                            </div>
+                            <form onSubmit={(event) => { event.preventDefault(); void confirmPay(inv); }}>
+                              <p>Saldo em aberto: {money.format(balance(inv))}</p>
+                              {paymentMode === 'partial' && (
+                                <label>
+                                  Valor a amortizar (R$)
+                                  <input type="text" inputMode="decimal" placeholder="0,00" value={amount} onChange={(event) => setAmount(event.target.value)} disabled={submitting} required autoFocus />
+                                </label>
+                              )}
+                              <div className="pix-actions">
+                                <button type="submit" className="module-submit-btn" disabled={submitting}><Check size={16} /> {submitting ? 'Registrando...' : paymentMode === 'partial' ? 'Confirmar amortização' : 'Confirmar quitação'}</button>
+                                <button type="button" className="rma-advance-btn" disabled={submitting} onClick={() => setPayingId(null)}>Cancelar</button>
+                              </div>
+                            </form>
                           ) : (
-                            <button className="rma-advance-btn" onClick={() => handlePay(inv.id)}>
-                              Quitar título
-                            </button>
+                            <div className="pix-actions">
+                              <button className="rma-advance-btn" disabled={submitting} onClick={() => handlePay(inv.id, 'partial')}>Amortizar</button>
+                              <button className="rma-advance-btn" disabled={submitting} onClick={() => handlePay(inv.id, 'full')}>Quitar título</button>
+                            </div>
                           )}
-                          {paid === inv.id && <span className="sent-message inline"><Check size={14} /> Quitada!</span>}
-                          {paymentError && payingId === inv.id && <p className="otp-error-msg">{paymentError}</p>}
+                          {paymentError && payingId === inv.id && <p className="otp-error-msg" role="alert">{paymentError}</p>}
                         </>
                       )}
                     </td>

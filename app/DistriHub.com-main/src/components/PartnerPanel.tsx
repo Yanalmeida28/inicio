@@ -2061,7 +2061,7 @@ export function PartnerPanel({
                     .filter(
                       (invoice) =>
                         invoice.status ===
-                        'aberta',
+                        'aberta' || invoice.status === 'parcial',
                     )
                     .reduce(
                       (
