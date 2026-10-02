@@ -1731,6 +1731,22 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
   border-color: #2563EB !important;
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12) !important;
 }
+.partner-panel .pdv-search-picker { min-width: 0; }
+.partner-panel .pdv-search-picker > label { display: block; margin-bottom: 4px; }
+.partner-panel .pdv-search-control { position: relative; min-width: 0; }
+.partner-panel .pdv-search-input-row { position: relative; display: flex; align-items: center; }
+.partner-panel .pdv-search-input-row > svg { position: absolute; left: 10px; z-index: 1; color: #64748B; pointer-events: none; }
+.partner-panel .pdv-search-input-row input { width: 100%; min-width: 0; padding-left: 34px !important; padding-right: 38px !important; }
+.partner-panel .pdv-search-clear { position: absolute; right: 5px; display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: #64748B; cursor: pointer; }
+.partner-panel .pdv-search-clear:hover { background: #F1F5F9; color: #172033; }
+.partner-panel .pdv-search-results { position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 40; max-height: 220px; overflow-y: auto; border: 1px solid #CBD5E1; border-radius: 6px; background: #FFFFFF; box-shadow: 0 8px 20px rgba(15, 23, 42, .16); }
+.partner-panel .pdv-search-result { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; padding: 10px 12px; border: 0; border-bottom: 1px solid #E2E8F0; background: #FFFFFF; color: #172033; cursor: pointer; text-align: left; }
+.partner-panel .pdv-search-result:last-child { border-bottom: 0; }
+.partner-panel .pdv-search-result:hover, .partner-panel .pdv-search-result:focus-visible { background: #EFF6FF; outline: none; }
+.partner-panel .pdv-search-result span { min-width: 0; overflow-wrap: anywhere; font-weight: 600; }
+.partner-panel .pdv-search-result small { flex: 0 0 auto; color: #64748B; font-size: 11px; }
+.partner-panel .pdv-search-no-results { padding: 12px; color: #64748B; font-size: 12px; }
+.partner-panel .pdv-search-hint { display: block; margin-top: 4px; color: #64748B; font-size: 11px; font-weight: 400; }
 .partner-panel .pdv-product-card small {
   color: #64748B !important;
 }

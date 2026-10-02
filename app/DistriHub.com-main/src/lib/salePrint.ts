@@ -72,7 +72,17 @@ export function printSale(sale: PrintableSale, format: 'receipt' | 'label', deta
       line(row, `${item.quantity} × ${money.format(item.unit_price)} = ${money.format(item.quantity * item.unit_price)}`);
       main.append(row);
     }
-    line(main, `TOTAL: ${money.format(sale.total)}`, true);
+    const totalQuantity = sale.items.reduce((total, item) => total + item.quantity, 0);
+    const totalSummary = doc.createElement('div');
+    totalSummary.style.cssText = 'display:flex;align-items:baseline;justify-content:space-between;gap:8px;padding:4px 0';
+    const totalLabel = doc.createElement('strong');
+    totalLabel.textContent = `TOTAL: ${money.format(sale.total)}`;
+    totalLabel.style.cssText = 'min-width:0;font-size:16px';
+    const quantityLabel = doc.createElement('span');
+    quantityLabel.textContent = `Qtd. produtos: ${totalQuantity}`;
+    quantityLabel.style.cssText = 'flex:0 0 auto;font-size:11px;white-space:nowrap';
+    totalSummary.append(totalLabel, quantityLabel);
+    main.append(totalSummary);
     const payments: Record<string, string> = { pix: 'PIX', cartao: 'Cartão', dinheiro: 'Dinheiro', faturado: 'Faturado B2B' };
     line(main, `Pagamento: ${payments[sale.payment_method ?? ''] ?? sale.payment_method ?? 'Não informado'}`);
     if (details.settings?.receipt_footer_text) line(main, details.settings.receipt_footer_text);

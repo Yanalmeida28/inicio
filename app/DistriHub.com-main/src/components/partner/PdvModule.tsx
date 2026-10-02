@@ -12,6 +12,212 @@ type PriceTable = 'varejo' | 'atacado';
 type ClientType = 'varejo' | 'atacado';
 type PdvSubTab = 'pdv' | 'pre-venda';
 
+function CustomerSearchPicker({ id, customers, customerId, clientType, onSelect }: {
+  id: string;
+  customers: PartnerCustomer[];
+  customerId: string;
+  clientType: ClientType;
+  onSelect: (id: string) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [isOpen, setIsOpen] = useState(false);
+  const selectedCustomer = customers.find((customer) => customer.id === customerId) ?? null;
+
+  useEffect(() => {
+    if (selectedCustomer) setQuery(selectedCustomer.name);
+    else if (!isOpen) setQuery('');
+  }, [customerId, selectedCustomer?.name, isOpen]);
+
+  const filteredCustomers = useMemo(() => {
+    const normalize = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    const term = normalize(query.trim());
+    const digits = query.replace(/\D/g, '');
+    if (!term) return [];
+    return customers.filter((customer) => {
+      if (customer.customer_type !== clientType) return false;
+      const contact = [customer.phone, customer.phone_commercial_1, customer.phone_commercial_2].filter(Boolean).join(' ');
+      return normalize(customer.name).includes(term) || (digits.length > 0 && contact.replace(/\D/g, '').includes(digits));
+    }).slice(0, 8);
+  }, [customers, clientType, query]);
+
+  function selectCustomer(customer: PartnerCustomer) {
+    onSelect(customer.id);
+    setQuery(customer.name);
+    setIsOpen(false);
+  }
+
+  return (
+    <div className="pdv-search-picker">
+      <label htmlFor={id}>Cliente</label>
+      <div className="pdv-search-control">
+        <div className="pdv-search-input-row">
+          <Search size={16} aria-hidden="true" />
+          <input
+            id={id}
+            type="text"
+            role="combobox"
+            aria-autocomplete="list"
+            aria-expanded={isOpen && query.trim().length > 0}
+            aria-controls={`${id}-results`}
+            value={query}
+            placeholder={`Buscar cliente ${clientType}...`}
+            onFocus={() => setIsOpen(true)}
+            onBlur={() => window.setTimeout(() => setIsOpen(false), 120)}
+            onChange={(event) => {
+              if (customerId) onSelect('');
+              setQuery(event.target.value);
+              setIsOpen(true);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') setIsOpen(false);
+              if (event.key === 'Enter' && filteredCustomers.length === 1) {
+                event.preventDefault();
+                selectCustomer(filteredCustomers[0]);
+              }
+            }}
+          />
+          {customerId && (
+            <button
+              type="button"
+              className="pdv-search-clear"
+              aria-label="Limpar cliente e continuar sem cadastro"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => {
+                onSelect('');
+                setQuery('');
+                setIsOpen(false);
+              }}
+            >
+              <X size={15} />
+            </button>
+          )}
+        </div>
+        {isOpen && query.trim() && (
+          <div id={`${id}-results`} className="pdv-search-results" role="listbox">
+            {filteredCustomers.length > 0 ? filteredCustomers.map((customer) => (
+              <button
+                key={customer.id}
+                type="button"
+                role="option"
+                aria-selected={customer.id === customerId}
+                className="pdv-search-result"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => selectCustomer(customer)}
+              >
+                <span>{customer.name}</span>
+                {customer.phone && <small>{customer.phone}</small>}
+              </button>
+            )) : (
+              <div className="pdv-search-no-results">Nenhum cliente encontrado.</div>
+            )}
+          </div>
+        )}
+      </div>
+      {!customerId && <small className="pdv-search-hint">Sem cliente selecionado: venda avulsa.</small>}
+    </div>
+  );
+}
+
+function SalespersonSearchPicker({ id, salespeople, salespersonId, onSelect }: {
+  id: string;
+  salespeople: PartnerSalesperson[];
+  salespersonId: string;
+  onSelect: (id: string) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [isOpen, setIsOpen] = useState(false);
+  const selectedSalesperson = salespeople.find((salesperson) => salesperson.id === salespersonId) ?? null;
+
+  useEffect(() => {
+    if (selectedSalesperson) setQuery(selectedSalesperson.name);
+    else if (!isOpen) setQuery('');
+  }, [salespersonId, selectedSalesperson?.name, isOpen]);
+
+  const filteredSalespeople = useMemo(() => {
+    const normalize = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    const term = normalize(query.trim());
+    if (!term) return [];
+    return salespeople.filter((salesperson) => normalize(`${salesperson.name} ${salesperson.email ?? ''}`).includes(term)).slice(0, 8);
+  }, [salespeople, query]);
+
+  function selectSalesperson(salesperson: PartnerSalesperson) {
+    onSelect(salesperson.id);
+    setQuery(salesperson.name);
+    setIsOpen(false);
+  }
+
+  return (
+    <div className="pdv-search-picker">
+      <label htmlFor={id}>Vendedor responsável</label>
+      <div className="pdv-search-control">
+        <div className="pdv-search-input-row">
+          <Search size={16} aria-hidden="true" />
+          <input
+            id={id}
+            type="text"
+            role="combobox"
+            aria-autocomplete="list"
+            aria-expanded={isOpen && query.trim().length > 0}
+            aria-controls={`${id}-results`}
+            value={query}
+            placeholder="Buscar colaborador..."
+            onFocus={() => setIsOpen(true)}
+            onBlur={() => window.setTimeout(() => setIsOpen(false), 120)}
+            onChange={(event) => {
+              if (salespersonId) onSelect('');
+              setQuery(event.target.value);
+              setIsOpen(true);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') setIsOpen(false);
+              if (event.key === 'Enter' && filteredSalespeople.length === 1) {
+                event.preventDefault();
+                selectSalesperson(filteredSalespeople[0]);
+              }
+            }}
+          />
+          {salespersonId && (
+            <button
+              type="button"
+              className="pdv-search-clear"
+              aria-label="Limpar colaborador responsável"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => {
+                onSelect('');
+                setQuery('');
+                setIsOpen(false);
+              }}
+            >
+              <X size={15} />
+            </button>
+          )}
+        </div>
+        {isOpen && query.trim() && (
+          <div id={`${id}-results`} className="pdv-search-results" role="listbox">
+            {filteredSalespeople.length > 0 ? filteredSalespeople.map((salesperson) => (
+              <button
+                key={salesperson.id}
+                type="button"
+                role="option"
+                aria-selected={salesperson.id === salespersonId}
+                className="pdv-search-result"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => selectSalesperson(salesperson)}
+              >
+                <span>{salesperson.name}</span>
+                {salesperson.email && <small>{salesperson.email}</small>}
+              </button>
+            )) : (
+              <div className="pdv-search-no-results">Nenhum colaborador encontrado.</div>
+            )}
+          </div>
+        )}
+      </div>
+      {!salespersonId && <small className="pdv-search-hint">Sem atribuição de colaborador.</small>}
+    </div>
+  );
+}
+
 type Props = {
   products: PartnerProduct[];
   customers: PartnerCustomer[];
@@ -497,15 +703,14 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
                     </button>
                   </div>
                 </label>
-                <label>
-                  Cliente
-                  <select value={customerId} onChange={(e) => handleCustomerChange(e.target.value)}>
-                    <option value="">{clientType === 'atacado' ? 'Cliente Atacado (sem cadastro)' : 'Cliente Varejo (sem cadastro)'}</option>
-                    {customers
-                      .filter((c) => c.customer_type === clientType)
-                      .map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-                </label>
+                <CustomerSearchPicker
+                  key={`sale-${clientType}`}
+                  id="pdv-customer-search"
+                  customers={customers}
+                  customerId={customerId}
+                  clientType={clientType}
+                  onSelect={handleCustomerChange}
+                />
                 <details className="pdv-traceability">
                   <summary>Mais detalhes · IMEI / série{imei || serial ? ' · preenchida' : ''}</summary>
                 <div className="form-row">
@@ -545,13 +750,12 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
                     </select>
                   </label>
                   {!activeSalespersonId && (
-                    <label>
-                      Vendedor responsável
-                      <select value={salespersonId} onChange={(e) => setSalespersonId(e.target.value)}>
-                        <option value="">Sem atribuição</option>
-                        {salespeople.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                      </select>
-                    </label>
+                    <SalespersonSearchPicker
+                      id="pdv-salesperson-search"
+                      salespeople={salespeople}
+                      salespersonId={salespersonId}
+                      onSelect={setSalespersonId}
+                    />
                   )}
                 </div>
               </div>
@@ -892,15 +1096,14 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
                     </button>
                   </div>
                 </label>
-                <label>
-                  Cliente
-                  <select value={customerId} onChange={(e) => handleCustomerChange(e.target.value)}>
-                    <option value="">{clientType === 'atacado' ? 'Cliente Atacado (sem cadastro)' : 'Cliente Varejo (sem cadastro)'}</option>
-                    {customers
-                      .filter((c) => c.customer_type === clientType)
-                      .map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-                </label>
+                <CustomerSearchPicker
+                  key={`pre-sale-${clientType}`}
+                  id="presale-customer-search"
+                  customers={customers}
+                  customerId={customerId}
+                  clientType={clientType}
+                  onSelect={handleCustomerChange}
+                />
                 <div className="form-row">
                   <label>
                     <ScanLine size={14} /> {traceabilityLabel}
@@ -912,13 +1115,12 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
                   </label>
                 </div>
                 {!activeSalespersonId && (
-                  <label>
-                    Vendedor responsável
-                    <select value={salespersonId} onChange={(e) => setSalespersonId(e.target.value)}>
-                      <option value="">Sem atribuição</option>
-                      {salespeople.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                    </select>
-                  </label>
+                  <SalespersonSearchPicker
+                    id="presale-salesperson-search"
+                    salespeople={salespeople}
+                    salespersonId={salespersonId}
+                    onSelect={setSalespersonId}
+                  />
                 )}
                 <label>
                   Tipo de atendimento
