@@ -2058,6 +2058,19 @@ html, body {
 .partner-panel .product-identity-row { grid-template-columns: minmax(0, 2fr) minmax(170px, 1fr); }
 .partner-panel .product-stock-row { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
 .partner-panel .product-entry-form input:not([type="checkbox"]), .partner-panel .product-entry-form select { min-width: 0; min-height: 42px; border-radius: 6px !important; }
+.partner-panel .rma-history-selection { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.partner-panel .rma-customer-search-label { position: relative; }
+.partner-panel .rma-customer-suggestions { position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 40; max-height: 220px; overflow-y: auto; border: 1px solid var(--dh-border); border-radius: var(--dh-radius-sm); background: var(--dh-surface); box-shadow: 0 8px 20px rgba(15, 23, 42, .16); }
+.partner-panel .rma-customer-suggestions button { display: flex; justify-content: space-between; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; border: 0; border-bottom: 1px solid var(--dh-border); background: var(--dh-surface); color: var(--dh-text); cursor: pointer; text-align: left; }
+.partner-panel .rma-customer-suggestions button:last-child { border-bottom: 0; }
+.partner-panel .rma-customer-suggestions button:hover, .partner-panel .rma-customer-suggestions button:focus-visible { background: var(--dh-blue-soft); outline: none; }
+.partner-panel .rma-customer-suggestions button span { overflow-wrap: anywhere; font-weight: 600; }
+.partner-panel .rma-customer-suggestions button small { flex: 0 0 auto; color: var(--dh-text-secondary); font-size: 11px; }
+.partner-panel .rma-history-hint { margin: 0; color: var(--dh-text-secondary); font-size: 12px; }
+.partner-panel .rma-history-product-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 14px; padding: 12px; border: 1px solid var(--dh-border); border-radius: var(--dh-radius-sm); background: var(--dh-surface); }
+.partner-panel .rma-history-product-summary span { display: grid; gap: 3px; min-width: 0; }
+.partner-panel .rma-history-product-summary small { color: var(--dh-text-secondary); font-size: 11px; }
+.partner-panel .rma-history-product-summary strong { overflow-wrap: anywhere; color: var(--dh-text); font-size: 12px; }
 .partner-panel .product-entry-form .checkbox-label { align-self: end; min-height: 42px; }
 .partner-panel .product-entry-form .product-gain-preview { margin-top: 0; }
 .partner-panel .cadastros-scope .category-browser-list { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -2075,6 +2088,8 @@ html, body {
 .partner-panel .cadastros-scope .category-product-heading span { color: var(--dh-text-secondary); font-size: 12px; }
 @media (max-width: 520px) {
   .partner-panel .product-identity-row { grid-template-columns: 1fr; }
+  .partner-panel .rma-history-selection { grid-template-columns: 1fr; }
+  .partner-panel .rma-history-product-summary { grid-template-columns: 1fr; }
   .partner-panel .product-form-row { grid-template-columns: 1fr; }
 }
 

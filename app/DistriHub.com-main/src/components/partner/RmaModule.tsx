@@ -3,12 +3,15 @@ import {
   ArrowRightCircle, Camera, FileText, Package, Printer, QrCode, Upload,
   Wallet, X, Pencil, Trash2, AlertCircle,
 } from 'lucide-react';
-import type { RmaPayload, RmaRequest, RmaStatus, SalespersonRole } from '../../types';
+import type { PartnerCustomer, PartnerProduct, PartnerSale, RmaPayload, RmaRequest, RmaStatus, SalespersonRole } from '../../types';
 import { rmaStatusLabels, rmaStatusColors, rmaStatusFlow } from '../../data';
 import { money } from '../../utils';
 
 type RmaModuleProps = {
   rmaRequests: RmaRequest[];
+  customers: PartnerCustomer[];
+  products: PartnerProduct[];
+  sales: PartnerSale[];
   walletBalance: number;
   warrantyTerms: string;
   currentRole: SalespersonRole;
@@ -20,9 +23,15 @@ type RmaModuleProps = {
 const deleteAllowedRoles: SalespersonRole[] = ['administrador', 'gerente'];
 
 export function RmaModule({
-  rmaRequests, walletBalance, warrantyTerms, currentRole, onCreate, onUpdateStatus, onDelete,
+  rmaRequests, customers, products, sales, walletBalance, warrantyTerms, currentRole, onCreate, onUpdateStatus, onDelete,
 }: RmaModuleProps) {
   const [showForm, setShowForm] = useState(false);
+  const [manualEntry, setManualEntry] = useState(false);
+  const [customerSearch, setCustomerSearch] = useState('');
+  const [customerId, setCustomerId] = useState('');
+  const [saleId, setSaleId] = useState('');
+  const [saleItemIndex, setSaleItemIndex] = useState('');
+  const [manualCustomerName, setManualCustomerName] = useState('');
   const [productName, setProductName] = useState('');
   const [productSku, setProductSku] = useState('');
   const [batchOrOrder, setBatchOrOrder] = useState('');
@@ -40,6 +49,22 @@ export function RmaModule({
   const [filter, setFilter] = useState<'all' | RmaStatus>('all');
 
   const canDelete = deleteAllowedRoles.includes(currentRole);
+  const selectedCustomer = customers.find((customer) => customer.id === customerId) ?? null;
+  const matchingCustomers = useMemo(() => {
+    const normalize = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    const term = normalize(customerSearch.trim());
+    const digits = customerSearch.replace(/\D/g, '');
+    if (!term || customerId) return [];
+    return customers.filter((customer) => {
+      const contact = [customer.document, customer.phone].filter(Boolean).join(' ');
+      return normalize(customer.name).includes(term) || (digits.length > 0 && contact.replace(/\D/g, '').includes(digits));
+    }).slice(0, 8);
+  }, [customers, customerId, customerSearch]);
+  const customerSales = useMemo(() => sales
+    .filter((sale) => sale.customer_id === customerId && sale.status === 'concluida')
+    .sort((first, second) => new Date(second.created_at).getTime() - new Date(first.created_at).getTime()), [customerId, sales]);
+  const selectedSale = customerSales.find((sale) => sale.id === saleId) ?? null;
+  const selectedSaleItem = selectedSale && saleItemIndex !== '' ? selectedSale.items[Number(saleItemIndex)] : null;
 
   const statusSummary = useMemo(() => ({
     total: rmaRequests.length,
@@ -54,16 +79,57 @@ export function RmaModule({
     return rmaRequests.filter((request) => request.status === filter);
   }, [filter, rmaRequests]);
 
+  function selectCustomer(customer: PartnerCustomer) {
+    setCustomerId(customer.id);
+    setCustomerSearch(customer.name);
+    setSaleId('');
+    setSaleItemIndex('');
+    setProductName('');
+    setProductSku('');
+    setBatchOrOrder('');
+    setFormError(null);
+  }
+
+  function selectSale(id: string) {
+    const sale = customerSales.find((item) => item.id === id);
+    setSaleId(id);
+    setSaleItemIndex('');
+    setProductName('');
+    setProductSku('');
+    setBatchOrOrder(sale ? `Venda #${sale.id}` : '');
+    setFormError(null);
+  }
+
+  function selectSaleItem(index: string) {
+    setSaleItemIndex(index);
+    const item = selectedSale && index !== '' ? selectedSale.items[Number(index)] : null;
+    if (!item) {
+      setProductName('');
+      setProductSku('');
+      return;
+    }
+    const product = products.find((candidate) => candidate.id === item.product_id);
+    setProductName(item.name);
+    setProductSku(product?.sku?.trim() || 'Sem SKU');
+    setFormError(null);
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!manualEntry && (!selectedCustomer || !selectedSale || !selectedSaleItem)) {
+      setFormError('Selecione o cliente, uma venda concluída e o produto comprado.');
+      return;
+    }
     if (!productName.trim() || !productSku.trim() || !batchOrOrder.trim() || !defect.trim()) return;
     onCreate({
+      customer_name: selectedCustomer?.name || manualCustomerName.trim() || undefined,
       product_name: productName,
       product_sku: productSku,
       batch_or_order: batchOrOrder,
       defect_description: defect,
       media_url: mediaName || null,
     });
+    setCustomerSearch(''); setCustomerId(''); setSaleId(''); setSaleItemIndex(''); setManualCustomerName('');
     setProductName(''); setProductSku(''); setBatchOrOrder(''); setDefect(''); setMediaName('');
     setBeforePhoto(null); setAfterPhoto(null);
     setShowForm(false);
@@ -181,6 +247,81 @@ export function RmaModule({
 
       {showForm && (
         <form className="rma-form" onSubmit={handleSubmit}>
+          <label className="checkbox-label">
+            <input type="checkbox" checked={manualEntry} onChange={(event) => { setManualEntry(event.target.checked); setFormError(null); }} />
+            Informar manualmente, sem histórico de venda
+          </label>
+          {!manualEntry ? (
+            <>
+              <div className="rma-history-selection">
+                <label className="rma-customer-search-label">
+                  Buscar cliente
+                  <input
+                    value={customerSearch}
+                    onChange={(event) => {
+                      setCustomerSearch(event.target.value);
+                      setCustomerId('');
+                      setSaleId('');
+                      setSaleItemIndex('');
+                      setProductName('');
+                      setProductSku('');
+                      setBatchOrOrder('');
+                    }}
+                    placeholder="Digite nome, documento ou telefone"
+                    autoComplete="off"
+                  />
+                  {matchingCustomers.length > 0 && (
+                    <div className="rma-customer-suggestions" role="listbox">
+                      {matchingCustomers.map((customer) => (
+                        <button key={customer.id} type="button" role="option" onMouseDown={(event) => event.preventDefault()} onClick={() => selectCustomer(customer)}>
+                          <span>{customer.name}</span>
+                          <small>{customer.document || customer.phone || ''}</small>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </label>
+                <label>
+                  Venda concluída
+                  <select value={saleId} onChange={(event) => selectSale(event.target.value)} disabled={!selectedCustomer}>
+                    <option value="">{selectedCustomer ? 'Selecione uma venda...' : 'Busque e selecione um cliente'}</option>
+                    {customerSales.map((sale) => (
+                      <option key={sale.id} value={sale.id}>
+                        {new Date(sale.created_at).toLocaleDateString('pt-BR')} · {money.format(sale.total)} · #{sale.id.slice(0, 8).toUpperCase()}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              {selectedCustomer && customerSales.length === 0 && (
+                <p className="rma-history-hint">Este cliente não tem vendas concluídas nesta filial. Ative a entrada manual para continuar.</p>
+              )}
+              {selectedSale && (
+                <label>
+                  Produto da venda
+                  <select value={saleItemIndex} onChange={(event) => selectSaleItem(event.target.value)}>
+                    <option value="">Selecione o produto...</option>
+                    {selectedSale.items.map((item, index) => (
+                      <option key={`${item.product_id}-${index}`} value={index}>{item.name} · Qtd. {item.quantity}</option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              {selectedSaleItem && (
+                <div className="rma-history-product-summary">
+                  <span><small>Cliente</small><strong>{selectedCustomer?.name}</strong></span>
+                  <span><small>Produto</small><strong>{productName}</strong></span>
+                  <span><small>SKU</small><strong>{productSku}</strong></span>
+                  <span><small>Pedido de origem</small><strong>Venda #{selectedSale?.id}</strong></span>
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <label>
+                Cliente (opcional)
+                <input value={manualCustomerName} onChange={(event) => setManualCustomerName(event.target.value)} placeholder="Nome do cliente" />
+              </label>
           <div className="form-row">
             <label>
               Produto
@@ -195,6 +336,8 @@ export function RmaModule({
             Número do Lote/Pedido
             <input value={batchOrOrder} onChange={(e) => setBatchOrOrder(e.target.value)} placeholder="Ex: PED-2024-0891" required />
           </label>
+            </>
+          )}
           <label>
             Descrição do Defeito
             <textarea value={defect} onChange={(e) => setDefect(e.target.value)} placeholder="Descreva o problema encontrado..." rows={3} required />
@@ -247,6 +390,7 @@ export function RmaModule({
             </label>
           </div>
 
+          {formError && <p className="form-error-msg" role="alert">{formError}</p>}
           <button type="submit" className="module-submit-btn">Enviar solicitação</button>
         </form>
       )}

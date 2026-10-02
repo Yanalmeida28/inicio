@@ -2120,6 +2120,15 @@ export function PartnerPanel({
                 rmaRequests={
                   filteredRmaRequests
                 }
+                customers={
+                  filteredCustomers
+                }
+                products={
+                  filteredProducts
+                }
+                sales={
+                  filteredSales
+                }
                 walletBalance={0}
                 warrantyTerms={
                   storeSettings.warranty_terms ??

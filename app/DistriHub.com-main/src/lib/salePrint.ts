@@ -56,7 +56,6 @@ export function printSale(sale: PrintableSale, format: 'receipt' | 'label', deta
     }
     line(main, 'CUPOM NÃO FISCAL', true);
     identification(main);
-    line(main, `Colaborador: ${details.salespersonName || 'Não informado'}`);
     const customer = details.customer;
     const phones = [...new Set([customer?.phone, customer?.phone_commercial_1, customer?.phone_commercial_2].map((value) => value?.trim()).filter(Boolean))].join(' / ');
     const address = [customer?.address, customer?.address_number, customer?.complement, customer?.neighborhood].map((value) => value?.trim()).filter(Boolean).join(', ');
@@ -84,7 +83,16 @@ export function printSale(sale: PrintableSale, format: 'receipt' | 'label', deta
     totalSummary.append(totalLabel, quantityLabel);
     main.append(totalSummary);
     const payments: Record<string, string> = { pix: 'PIX', cartao: 'Cartão', dinheiro: 'Dinheiro', faturado: 'Faturado B2B' };
-    line(main, `Pagamento: ${payments[sale.payment_method ?? ''] ?? sale.payment_method ?? 'Não informado'}`);
+    const paymentSummary = doc.createElement('div');
+    paymentSummary.style.cssText = 'display:flex;justify-content:space-between;gap:8px;padding:2px 0;font-size:11px';
+    const paymentLabel = doc.createElement('span');
+    paymentLabel.textContent = `Pagamento: ${payments[sale.payment_method ?? ''] ?? sale.payment_method ?? 'Não informado'}`;
+    paymentLabel.style.cssText = 'flex:1;min-width:0;overflow-wrap:anywhere';
+    const salespersonLabel = doc.createElement('span');
+    salespersonLabel.textContent = `Colaborador: ${details.salespersonName || 'Não informado'}`;
+    salespersonLabel.style.cssText = 'flex:1;min-width:0;text-align:right;overflow-wrap:anywhere';
+    paymentSummary.append(paymentLabel, salespersonLabel);
+    main.append(paymentSummary);
     if (details.settings?.receipt_footer_text) line(main, details.settings.receipt_footer_text);
   } else {
     for (const item of sale.items) {
