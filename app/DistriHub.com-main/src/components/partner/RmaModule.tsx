@@ -26,6 +26,7 @@ export function RmaModule({
   rmaRequests, customers, products, sales, walletBalance, warrantyTerms, currentRole, onCreate, onUpdateStatus, onDelete,
 }: RmaModuleProps) {
   const [showForm, setShowForm] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
   const [manualEntry, setManualEntry] = useState(false);
   const [customerSearch, setCustomerSearch] = useState('');
   const [customerId, setCustomerId] = useState('');

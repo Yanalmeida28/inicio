@@ -540,6 +540,16 @@ function ProductEditModal({ product, categories, saving, error, onClose, onSave 
   const [pisRate, setPisRate] = useState(String(product.pis_rate ?? 0));
   const [cofinsRate, setCofinsRate] = useState(String(product.cofins_rate ?? 0));
 
+  function getGainPercentage(price: string) {
+    const costValue = Number(cost);
+    const priceValue = Number(price);
+    if (!cost.trim() || !price.trim() || !Number.isFinite(costValue) || !Number.isFinite(priceValue) || costValue <= 0 || priceValue <= 0) return null;
+    return ((priceValue - costValue) / costValue) * 100;
+  }
+
+  const retailGain = getGainPercentage(sale);
+  const wholesaleGain = getGainPercentage(wholesale);
+
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     if (!name.trim() || !sale) return;
@@ -559,7 +569,13 @@ function ProductEditModal({ product, categories, saving, error, onClose, onSave 
         <div className="modal-header"><h4>Editar produto</h4><button type="button" className="modal-close" onClick={onClose} aria-label="Fechar">×</button></div>
         <div className="product-edit-body">
           <div className="form-row"><label>Nome<input value={name} onChange={(e) => setName(e.target.value)} required /></label><label>SKU<input value={sku} onChange={(e) => setSku(e.target.value)} /></label></div>
+          <h4>Preços e ganho</h4>
           <div className="form-row"><label>Preço de custo<input type="number" min="0" step="0.01" value={cost} onChange={(e) => setCost(e.target.value)} /></label><label>Preço varejo<input type="number" min="0" step="0.01" value={sale} onChange={(e) => setSale(e.target.value)} required /></label><label>Preço atacado<input type="number" min="0" step="0.01" value={wholesale} onChange={(e) => setWholesale(e.target.value)} /></label></div>
+          <div className="product-gain-preview" aria-live="polite">
+            <span>Ganho no varejo: <strong className={retailGain !== null && retailGain < 0 ? 'is-loss' : ''}>{retailGain === null ? 'Informe custo e preço' : `${retailGain.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`}</strong></span>
+            <span>Ganho no atacado: <strong className={wholesaleGain !== null && wholesaleGain < 0 ? 'is-loss' : ''}>{wholesaleGain === null ? 'Informe custo e preço' : `${wholesaleGain.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`}</strong></span>
+            <small>Percentual calculado sobre o preço de custo.</small>
+          </div>
           <div className="form-row"><label>Estoque<input type="number" min="0" step="1" value={stock} onChange={(e) => setStock(e.target.value)} /></label><label>Estoque mínimo<input type="number" min="0" step="1" value={minStock} onChange={(e) => setMinStock(e.target.value)} /></label><label>Categoria<select value={category} onChange={(e) => setCategory(e.target.value)}><option value="">Selecione...</option>{categories.map((item) => <option key={item.id} value={item.name}>{item.name}</option>)}</select></label></div>
           <label className="checkbox-label"><input type="checkbox" checked={isService} onChange={(e) => setIsService(e.target.checked)} /> É um serviço (sem estoque)</label>
           <div className="form-row"><label>NCM<input value={ncm} onChange={(e) => setNcm(e.target.value)} /></label><label>CFOP<input value={cfop} onChange={(e) => setCfop(e.target.value)} /></label><label>CST/CSOSN<input value={cstCsosn} onChange={(e) => setCstCsosn(e.target.value)} /></label></div>
