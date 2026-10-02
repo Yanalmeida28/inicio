@@ -442,7 +442,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
             )}
           </div>
 
-          <div className="pdv-cart-table-wrap">
+          <div className={`pdv-cart-table-wrap${cart.length >= 10 ? ' pdv-cart-table-scrollable' : ''}`}>
           <table className="rma-table pdv-cart-table">
             <thead><tr><th>Produto</th><th>Quantidade</th><th>Preço</th><th>Subtotal</th><th>Remover</th></tr></thead>
             <tbody>
