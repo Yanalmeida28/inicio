@@ -322,8 +322,10 @@ function ProductsSubTab({ products, allProducts, branches, selectedBranchId, cat
         <ExportButtons target="produtos" products={products} customers={[]} />
       </div>
       {showForm && (
-        <form className="rma-form" onSubmit={handleSubmit}>
-          <div className="form-row">
+        <form className="rma-form product-entry-form" onSubmit={handleSubmit}>
+          <section className="product-form-section">
+            <h4>Identificação</h4>
+          <div className="form-row product-form-row product-identity-row">
             <label>
               Nome
               <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex: Display Moto G8" required />
@@ -333,7 +335,10 @@ function ProductsSubTab({ products, allProducts, branches, selectedBranchId, cat
               <input value={sku} onChange={(e) => setSku(e.target.value)} placeholder="Ex: DH-MG8-012" />
             </label>
           </div>
-          <div className="form-row">
+          </section>
+          <section className="product-form-section">
+            <h4>Preços e ganho</h4>
+          <div className="form-row product-form-row">
             <label>
               Preço de Custo
               <input type="number" step="0.01" value={cost} onChange={(e) => setCost(e.target.value)} placeholder="0,00" />
@@ -352,7 +357,10 @@ function ProductsSubTab({ products, allProducts, branches, selectedBranchId, cat
             <span>Ganho no atacado: <strong className={wholesaleGain !== null && wholesaleGain < 0 ? 'is-loss' : ''}>{wholesaleGain === null ? 'Informe custo e preço' : `${wholesaleGain.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`}</strong></span>
             <small>Percentual calculado sobre o preço de custo.</small>
           </div>
-          <div className="form-row">
+          </section>
+          <section className="product-form-section">
+            <h4>Estoque e categoria</h4>
+          <div className="form-row product-form-row product-stock-row">
             <label>
               Estoque
               <input type="number" value={stock} onChange={(e) => setStock(e.target.value)} placeholder="0" />
@@ -373,7 +381,10 @@ function ProductsSubTab({ products, allProducts, branches, selectedBranchId, cat
               É um serviço (sem estoque)
             </label>
           </div>
-          <div className="form-row">
+          </section>
+          <section className="product-form-section">
+            <h4>Dados fiscais</h4>
+          <div className="form-row product-form-row">
             <label>
               NCM
               <input value={ncm} onChange={(e) => setNcm(e.target.value)} placeholder="0000.00.00" />
@@ -401,6 +412,7 @@ function ProductsSubTab({ products, allProducts, branches, selectedBranchId, cat
               <input type="number" step="0.01" value={cofinsRate} onChange={(e) => setCofinsRate(e.target.value)} placeholder="0" />
             </label>
           </div>
+          </section>
           {formError && <p className="form-error-msg" style={{ color: '#e3829b', fontSize: '13px' }}>{formError}</p>}
           <button type="submit" className="module-submit-btn" disabled={saving}>{saving ? 'Salvando...' : 'Cadastrar'}</button>
         </form>

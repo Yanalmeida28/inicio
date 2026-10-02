@@ -2034,6 +2034,20 @@ html, body {
 .partner-panel .cadastros-scope .product-gain-preview strong { color: var(--dh-success); }
 .partner-panel .cadastros-scope .product-gain-preview strong.is-loss { color: var(--dh-danger); }
 .partner-panel .cadastros-scope .product-gain-preview small { flex-basis: 100%; color: var(--dh-text-secondary); font-size: 11px; }
+.partner-panel .product-entry-form { gap: 0; }
+.partner-panel .product-form-section { display: grid; gap: 10px; padding: 14px 0; border-top: 1px solid var(--dh-border); }
+.partner-panel .product-form-section:first-child { padding-top: 0; border-top: 0; }
+.partner-panel .product-form-section h4 { margin: 0; color: var(--dh-text-secondary); font-size: 11px; font-weight: 700; text-transform: uppercase; }
+.partner-panel .product-form-row { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+.partner-panel .product-identity-row { grid-template-columns: minmax(0, 2fr) minmax(170px, 1fr); }
+.partner-panel .product-stock-row { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.partner-panel .product-entry-form input:not([type="checkbox"]), .partner-panel .product-entry-form select { min-width: 0; min-height: 42px; border-radius: 6px !important; }
+.partner-panel .product-entry-form .checkbox-label { align-self: end; min-height: 42px; }
+.partner-panel .product-entry-form .product-gain-preview { margin-top: 0; }
+@media (max-width: 520px) {
+  .partner-panel .product-identity-row { grid-template-columns: 1fr; }
+  .partner-panel .product-form-row { grid-template-columns: 1fr; }
+}
 
 /* --- Tabelas: densidade profissional com texto escuro --- */
 .partner-panel .cadastros-scope .rma-table thead th { padding: 9px 12px; }
