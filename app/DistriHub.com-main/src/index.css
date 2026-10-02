@@ -2044,6 +2044,19 @@ html, body {
 .partner-panel .product-entry-form input:not([type="checkbox"]), .partner-panel .product-entry-form select { min-width: 0; min-height: 42px; border-radius: 6px !important; }
 .partner-panel .product-entry-form .checkbox-label { align-self: end; min-height: 42px; }
 .partner-panel .product-entry-form .product-gain-preview { margin-top: 0; }
+.partner-panel .cadastros-scope .category-browser-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.partner-panel .cadastros-scope .category-browser-item { display: inline-flex; align-items: stretch; overflow: hidden; border: 1px solid var(--dh-border); border-radius: var(--dh-radius-sm); background: var(--dh-surface); }
+.partner-panel .cadastros-scope .category-browser-item.active { border-color: var(--dh-blue); background: var(--dh-blue-soft); }
+.partner-panel .cadastros-scope .category-browser-select { display: inline-flex; align-items: center; gap: 8px; min-width: 0; padding: 8px 10px; border: 0; background: transparent; color: var(--dh-text); cursor: pointer; text-align: left; }
+.partner-panel .cadastros-scope .category-browser-select span { overflow-wrap: anywhere; font-weight: 600; }
+.partner-panel .cadastros-scope .category-browser-select small { flex: 0 0 auto; color: var(--dh-text-secondary); font-size: 11px; }
+.partner-panel .cadastros-scope .category-browser-item.active .category-browser-select { color: var(--dh-blue); }
+.partner-panel .cadastros-scope .category-browser-delete { display: inline-flex; align-items: center; justify-content: center; width: 34px; padding: 0; border: 0; border-left: 1px solid var(--dh-border); border-radius: 0; background: transparent; color: var(--dh-text-secondary); cursor: pointer; }
+.partner-panel .cadastros-scope .category-browser-delete:hover { color: var(--dh-danger); background: var(--dh-danger-bg); }
+.partner-panel .cadastros-scope .category-product-results { display: grid; gap: 10px; margin-top: 16px; }
+.partner-panel .cadastros-scope .category-product-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.partner-panel .cadastros-scope .category-product-heading h4 { margin: 0; color: var(--dh-text); font-size: 15px; }
+.partner-panel .cadastros-scope .category-product-heading span { color: var(--dh-text-secondary); font-size: 12px; }
 @media (max-width: 520px) {
   .partner-panel .product-identity-row { grid-template-columns: 1fr; }
   .partner-panel .product-form-row { grid-template-columns: 1fr; }

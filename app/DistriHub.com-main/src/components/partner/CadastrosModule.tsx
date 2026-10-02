@@ -138,7 +138,7 @@ export function CadastrosModule({
           />
         )}
         {subTab === 'categorias' && (
-          <CategoriesSubTab categories={categories} onAdd={onAddCategory} onDelete={onDeleteCategory} />
+          <CategoriesSubTab categories={categories} products={filteredProducts} onAdd={onAddCategory} onDelete={onDeleteCategory} />
         )}
         {subTab === 'xml' && <XmlSubTab selectedBranchId={selectedBranchId} onAddProduct={onAddProduct} />}
         {subTab === 'combos' && (
@@ -667,12 +667,19 @@ function ThermalLabelModal({ product, onClose }: {
   );
 }
 
-function CategoriesSubTab({ categories, onAdd, onDelete }: {
+function CategoriesSubTab({ categories, products, onAdd, onDelete }: {
   categories: PartnerCategory[];
+  products: PartnerProduct[];
   onAdd: (name: string) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
 }) {
   const [name, setName] = useState('');
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
+  const selectedCategory = categories.find((category) => category.id === selectedCategoryId) ?? null;
+  const categoryProducts = selectedCategory
+    ? products.filter((product) => product.category === selectedCategory.name)
+    : [];
+
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) return;
@@ -688,18 +695,69 @@ function CategoriesSubTab({ categories, onAdd, onDelete }: {
         </label>
         <button type="submit" className="module-submit-btn"><Plus size={16} /> Adicionar</button>
       </form>
-      <div className="chip-list">
+      <div className="category-browser-list">
         {categories.length === 0 ? (
           <p className="empty-row">Nenhuma categoria cadastrada.</p>
         ) : (
-          categories.map((c) => (
-            <span key={c.id} className="chip">
-              <Tag size={13} /> {c.name}
-              <button onClick={() => onDelete(c.id)}><Trash2 size={12} /></button>
-            </span>
-          ))
+          categories.map((category) => {
+            const productCount = products.filter((product) => product.category === category.name).length;
+            const isSelected = selectedCategoryId === category.id;
+            return (
+              <div key={category.id} className={`category-browser-item ${isSelected ? 'active' : ''}`}>
+                <button
+                  type="button"
+                  className="category-browser-select"
+                  aria-pressed={isSelected}
+                  onClick={() => setSelectedCategoryId(isSelected ? null : category.id)}
+                >
+                  <Tag size={14} />
+                  <span>{category.name}</span>
+                  <small>{productCount}</small>
+                </button>
+                <button
+                  type="button"
+                  className="category-browser-delete"
+                  aria-label={`Excluir categoria ${category.name}`}
+                  title="Excluir categoria"
+                  onClick={() => onDelete(category.id)}
+                >
+                  <Trash2 size={13} />
+                </button>
+              </div>
+            );
+          })
         )}
       </div>
+      {selectedCategory && (
+        <section className="category-product-results">
+          <div className="category-product-heading">
+            <h4>{selectedCategory.name}</h4>
+            <span>{categoryProducts.length} {categoryProducts.length === 1 ? 'produto' : 'produtos'}</span>
+          </div>
+          <div className="stock-table-wrap">
+            <table className="rma-table">
+              <thead>
+                <tr><th>Produto</th><th>SKU</th><th>Varejo</th><th>Atacado</th><th>Estoque</th></tr>
+              </thead>
+              <tbody>
+                {categoryProducts.length === 0 ? (
+                  <tr><td colSpan={5} className="empty-row">Nenhum produto nesta categoria.</td></tr>
+                ) : (
+                  categoryProducts.map((product) => (
+                    <tr key={product.id}>
+                      <td><strong>{product.name}</strong>{product.is_service && <small className="tag-service">Serviço</small>}</td>
+                      <td>{product.sku ?? '—'}</td>
+                      <td>{money.format(product.sale_price)}</td>
+                      <td>{product.wholesale_price > 0 ? money.format(product.wholesale_price) : '—'}</td>
+                      <td>{product.is_service ? '—' : product.stock}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
     </div>
   );
 }
