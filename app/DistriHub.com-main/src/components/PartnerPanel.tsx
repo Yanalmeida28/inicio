@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft,
   Boxes,
@@ -26,24 +26,25 @@ import type { User } from '@supabase/supabase-js';
 
 import { usePartnerData } from '../hooks/usePartnerData';
 
-import { CadastrosModule } from './partner/CadastrosModule';
-import { PdvModule } from './partner/PdvModule';
 import { pdvErrorMessage } from '../lib/pdv';
-import { FinancialModule } from './partner/FinancialModule';
-import { RmaModule } from './partner/RmaModule';
-import { ReportsModule } from './partner/ReportsModule';
-import { WhiteLabelModule } from './partner/WhiteLabelModule';
-import { MultiStoreModule } from './partner/MultiStoreModule';
-import { DeliveryModule } from './partner/DeliveryModule';
-import { SettingsModule } from './partner/SettingsModule';
-import { OpenOrdersModule } from './partner/OpenOrdersModule';
-import { FiscalModule } from './partner/FiscalModule';
-import { AdminModule } from './partner/AdminModule';
-import { SalesHistoryModule } from './partner/SalesHistoryModule';
-import { OrderHistoryModule } from './partner/OrderHistoryModule';
-import { SupportChatModule } from './partner/SupportChatModule';
-import { ServiceOrdersModule } from './partner/ServiceOrdersModule';
 import { supabase } from '../lib/supabase';
+
+const CadastrosModule = lazy(() => import('./partner/CadastrosModule').then((module) => ({ default: module.CadastrosModule })));
+const PdvModule = lazy(() => import('./partner/PdvModule').then((module) => ({ default: module.PdvModule })));
+const FinancialModule = lazy(() => import('./partner/FinancialModule').then((module) => ({ default: module.FinancialModule })));
+const RmaModule = lazy(() => import('./partner/RmaModule').then((module) => ({ default: module.RmaModule })));
+const ReportsModule = lazy(() => import('./partner/ReportsModule').then((module) => ({ default: module.ReportsModule })));
+const WhiteLabelModule = lazy(() => import('./partner/WhiteLabelModule').then((module) => ({ default: module.WhiteLabelModule })));
+const MultiStoreModule = lazy(() => import('./partner/MultiStoreModule').then((module) => ({ default: module.MultiStoreModule })));
+const DeliveryModule = lazy(() => import('./partner/DeliveryModule').then((module) => ({ default: module.DeliveryModule })));
+const SettingsModule = lazy(() => import('./partner/SettingsModule').then((module) => ({ default: module.SettingsModule })));
+const OpenOrdersModule = lazy(() => import('./partner/OpenOrdersModule').then((module) => ({ default: module.OpenOrdersModule })));
+const FiscalModule = lazy(() => import('./partner/FiscalModule').then((module) => ({ default: module.FiscalModule })));
+const AdminModule = lazy(() => import('./partner/AdminModule').then((module) => ({ default: module.AdminModule })));
+const SalesHistoryModule = lazy(() => import('./partner/SalesHistoryModule').then((module) => ({ default: module.SalesHistoryModule })));
+const OrderHistoryModule = lazy(() => import('./partner/OrderHistoryModule').then((module) => ({ default: module.OrderHistoryModule })));
+const SupportChatModule = lazy(() => import('./partner/SupportChatModule').then((module) => ({ default: module.SupportChatModule })));
+const ServiceOrdersModule = lazy(() => import('./partner/ServiceOrdersModule').then((module) => ({ default: module.ServiceOrdersModule })));
 
 import type {
   StoreSettings,
@@ -1719,6 +1720,7 @@ export function PartnerPanel({
 
           <div className="partner-content">
             {storeSettings.internal_notice && <div role="note" className="store-internal-notice">{storeSettings.internal_notice}</div>}
+            <Suspense fallback={<div className="partner-loading" role="status">Carregando módulo...</div>}>
             {activeTab === 'filiais' && (
               <MultiStoreModule
                 branches={partner.branches}
@@ -2177,6 +2179,7 @@ export function PartnerPanel({
                 }
               />
             )}
+            </Suspense>
           </div>
         </div>
       </div>

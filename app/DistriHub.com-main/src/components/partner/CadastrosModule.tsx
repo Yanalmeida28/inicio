@@ -234,6 +234,17 @@ function ProductsSubTab({ products, allProducts, branches, selectedBranchId, cat
   const [savingEdit, setSavingEdit] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
 
+  function getGainPercentage(price: string) {
+    if (!cost.trim() || !price.trim()) return null;
+    const costValue = Number(cost);
+    const priceValue = Number(price);
+    if (!Number.isFinite(costValue) || !Number.isFinite(priceValue) || costValue <= 0 || priceValue <= 0) return null;
+    return ((priceValue - costValue) / costValue) * 100;
+  }
+
+  const retailGain = getGainPercentage(sale);
+  const wholesaleGain = getGainPercentage(wholesale);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim() || !sale) return;
@@ -335,6 +346,11 @@ function ProductsSubTab({ products, allProducts, branches, selectedBranchId, cat
               Preço Atacado
               <input type="number" step="0.01" value={wholesale} onChange={(e) => setWholesale(e.target.value)} placeholder="0,00" />
             </label>
+          </div>
+          <div className="product-gain-preview" aria-live="polite">
+            <span>Ganho no varejo: <strong className={retailGain !== null && retailGain < 0 ? 'is-loss' : ''}>{retailGain === null ? 'Informe custo e preço' : `${retailGain.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`}</strong></span>
+            <span>Ganho no atacado: <strong className={wholesaleGain !== null && wholesaleGain < 0 ? 'is-loss' : ''}>{wholesaleGain === null ? 'Informe custo e preço' : `${wholesaleGain.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`}</strong></span>
+            <small>Percentual calculado sobre o preço de custo.</small>
           </div>
           <div className="form-row">
             <label>

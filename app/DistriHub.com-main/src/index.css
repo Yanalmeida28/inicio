@@ -2030,6 +2030,10 @@ html, body {
 .partner-panel .cadastros-scope .action-row { margin-bottom: 10px; gap: 8px; }
 .partner-panel .cadastros-scope .rma-form { padding: 16px; gap: 12px; margin-bottom: 12px; }
 .partner-panel .cadastros-scope .form-row { gap: 10px; }
+.partner-panel .cadastros-scope .product-gain-preview { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; padding: 10px 12px; border: 1px solid var(--dh-border); border-radius: var(--dh-radius-sm); background: var(--dh-surface); color: var(--dh-text-secondary); font-size: 13px; }
+.partner-panel .cadastros-scope .product-gain-preview strong { color: var(--dh-success); }
+.partner-panel .cadastros-scope .product-gain-preview strong.is-loss { color: var(--dh-danger); }
+.partner-panel .cadastros-scope .product-gain-preview small { flex-basis: 100%; color: var(--dh-text-secondary); font-size: 11px; }
 
 /* --- Tabelas: densidade profissional com texto escuro --- */
 .partner-panel .cadastros-scope .rma-table thead th { padding: 9px 12px; }
