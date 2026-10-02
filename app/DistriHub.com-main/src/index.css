@@ -285,7 +285,7 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
   position: fixed; inset: 0; z-index: 100; padding: 12px;
   background: var(--dh-bg, #f4f7fb); overflow: auto;
 }
-@media (min-width: 1201px) {
+@media (min-width: 1001px) {
   .partner-panel .pdv-workspace-checkout {
     height: var(--pdv-height, 650px); min-height: 420px; gap: 10px;
   }
@@ -294,7 +294,7 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
   .pdv-workspace-checkout > .pdv-subtabs { flex-shrink: 0; }
   .pdv-workspace-checkout > .pdv-subtabs { margin-bottom: 0; }
   .partner-panel .pdv-checkout-layout {
-    flex: 1; min-height: 0; grid-template-columns: minmax(0, 1fr) 340px; gap: 12px;
+    flex: 1; min-height: 0; grid-template-columns: minmax(0, 1fr) 300px; gap: 12px;
   }
   .pdv-checkout-layout .pdv-left,
   .partner-panel .pdv-checkout-layout .pdv-right { min-height: 0; min-width: 0; gap: 10px; }
@@ -305,7 +305,7 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
   .pdv-checkout-layout .pdv-sale-footer { flex-shrink: 0; }
   .pdv-checkout-layout .pdv-cart-main { flex: 1; min-height: 0; }
   .pdv-checkout-layout .pdv-sale-scroll { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding-right: 4px; }
-  .pdv-checkout-layout .pdv-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .pdv-checkout-layout .pdv-form { display: flex; flex-direction: column; gap: 8px; }
   .pdv-checkout-layout .pdv-form > .form-row { grid-column: 1 / -1; }
   .pdv-checkout-layout .pdv-form > label:has(.pdv-client-type-toggle) { grid-column: 1 / -1; }
   .pdv-checkout-layout .pdv-form label,
@@ -315,7 +315,7 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
   .pdv-checkout-layout .pdv-sale-footer .otp-error-msg,
   .pdv-checkout-layout .pdv-sale-footer .sent-message { margin: 0; max-height: 72px; overflow-y: auto; }
 }
-@media (max-width: 1200px) {
+@media (max-width: 1000px) {
   .partner-panel .pdv-checkout-layout { grid-template-columns: minmax(0, 1fr); }
   .pdv-workspace > .module-header { flex-wrap: wrap; }
   .pdv-checkout-layout .pdv-sale-footer { position: sticky; bottom: 0; background: var(--dh-surface, white); padding: 10px 0; z-index: 1; }
@@ -2104,4 +2104,29 @@ html, body {
   .customer-profile-modal .customer-profile-tabs .subtab { min-height: 40px; padding: 8px 10px; }
   .customer-profile-modal .fiscal-modal-actions { flex-direction: column-reverse; }
   .customer-profile-modal .fiscal-modal-actions button { width: 100%; min-height: 44px; }
+}
+
+/* PDV workspace and sales history */
+.sidebar-desktop-toggle { display: none; }
+.pdv-operator-line { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 12px; }
+.sales-history-filters { flex-wrap: wrap; align-items: end; gap: 12px; }
+.sales-history-filters label { display: flex; flex-direction: column; gap: 4px; }
+.sales-history-id { display: block; color: var(--dh-text-secondary); }
+@media (min-width: 1001px) {
+  .partner-pdv-mode .sidebar-main-inner { padding: 8px 12px; }
+  .partner-pdv-mode .pdv-workspace > .module-header { margin: 0; padding-bottom: 0; }
+  .partner-pdv-mode .pdv-workspace > .module-header h3 { font-size: 18px; }
+  .partner-pdv-mode .pdv-subtab { padding: 7px 14px; }
+  .partner-pdv-mode .sidebar-desktop-toggle { display: flex; align-items: center; justify-content: center; color: white; padding: 12px; }
+  .partner-menu-collapsed .partner-sidebar { width: 64px; }
+  .partner-menu-collapsed .sidebar-main { margin-left: 64px; }
+  .partner-menu-collapsed .sidebar-header,
+  .partner-menu-collapsed .sidebar-operator,
+  .partner-menu-collapsed .sidebar-nav-label,
+  .partner-menu-collapsed .sidebar-footer { display: none; }
+  .partner-menu-collapsed .sidebar-nav { padding: 4px 6px; flex: 0; }
+  .partner-menu-collapsed .sidebar-nav-item { justify-content: center; padding: 10px; }
+  .partner-menu-collapsed .sidebar-nav-item svg { flex-shrink: 0; }
+  .partner-menu-collapsed .sidebar-nav-item.active::before { left: -6px; }
+  .partner-pdv-mode .pdv-search-results { max-height: min(180px, 28vh); }
 }

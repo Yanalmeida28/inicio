@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Building2, CheckCircle2, Lock, MapPin, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { ActionsMenu } from './SaleActionsMenu';
 import type { PartnerBranch } from '../../types';
 
 type MultiStoreModuleProps = {
+  operatorControls?: ReactNode;
   branches: PartnerBranch[];
   selectedBranchId: string | null;
   onSelectBranch: (id: string) => void;
@@ -16,7 +17,7 @@ type MultiStoreModuleProps = {
 
 export function MultiStoreModule({
   branches, selectedBranchId, onSelectBranch, onAddBranch, onUpdateBranch, onDeleteBranch,
-  isEmployeeLocked = false, lockedBranchName,
+  isEmployeeLocked = false, lockedBranchName, operatorControls,
 }: MultiStoreModuleProps) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [newName, setNewName] = useState('');
@@ -125,6 +126,7 @@ export function MultiStoreModule({
           {allBranches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
         </select>
         {isEmployeeLocked && <span className="branch-toolbar-locked"><Lock size={14} /> Filial fixa</span>}
+        {operatorControls}
       </div>
 
       {!isEmployeeLocked && (

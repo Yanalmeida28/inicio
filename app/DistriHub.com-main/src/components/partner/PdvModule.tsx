@@ -6,16 +6,13 @@ import {
 import type { DeliveryType, PartnerProduct, PartnerCustomer, PartnerSale, PartnerSalesperson, SaleItem, SalespersonRole } from '../../types';
 import { SaleActionsMenu } from './SaleActionsMenu';
 import { money } from '../../utils';
-import { printSale, type PrintableSale, type ReceiptDetails } from '../../lib/salePrint';
-import { saleShareUrl } from '../../lib/saleShare';
 import { billedSaleError, pdvErrorMessage, pdvTotal, type CustomerCredit } from '../../lib/pdv';
 
 type PriceTable = 'varejo' | 'atacado';
 type ClientType = 'varejo' | 'atacado';
-type PdvSubTab = 'pdv' | 'pre-venda' | 'vendas-recentes';
+type PdvSubTab = 'pdv' | 'pre-venda';
 
 type Props = {
-  receiptDetails?: ReceiptDetails;
   products: PartnerProduct[];
   customers: PartnerCustomer[];
   sales: PartnerSale[];
@@ -60,7 +57,7 @@ const PRODUCT_PAGE_SIZE = 30;
 
 export function PdvModule({
   products, customers, sales, credits, hasPendingSale, salespeople, segment, selectedBranchId,
-  currentRole, receiptDetails, onCreateSale, onCreatePreSale, onFinalizePreSale, onCancelSale, onDeleteSale,
+  currentRole, onCreateSale, onCreatePreSale, onFinalizePreSale, onCancelSale, onDeleteSale,
 }: Props) {
   const [subTab, setSubTab] = useState<PdvSubTab>('pdv');
   const [expanded, setExpanded] = useState(false);
@@ -76,6 +73,8 @@ export function PdvModule({
     updateHeight();
     const observer = new ResizeObserver(updateHeight);
     if (element.parentElement) observer.observe(element.parentElement);
+    const toolbar = element.closest('.sidebar-main-inner')?.querySelector('.branch-toolbar');
+    if (toolbar) observer.observe(toolbar);
     window.addEventListener('resize', updateHeight);
     return () => {
       observer.disconnect();
@@ -105,8 +104,7 @@ export function PdvModule({
       <div className="module-header">
         <span className="module-icon"><ShoppingCart size={20} /></span>
         <div>
-          <h3>PDV Ultrarrápido & Validação de Garantia</h3>
-          <p>Venda no balcão com rastreabilidade e cupom térmico</p>
+          <h3>PDV</h3>
         </div>
         <button type="button" className="rma-advance-btn pdv-expand-btn" aria-pressed={expanded} onClick={() => setExpanded((value) => !value)}>
           {expanded ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
@@ -128,21 +126,13 @@ export function PdvModule({
           <ClipboardList size={16} /> Pré-vendas
           {preSales.length > 0 && <span className="pdv-subtab-badge">{preSales.length}</span>}
         </button>
-        <button
-          className={`pdv-subtab ${subTab === 'vendas-recentes' ? 'active' : ''}`}
-          onClick={() => setSubTab('vendas-recentes')}
-        >
-          <ClipboardList size={16} /> Vendas recentes
-        </button>
+
       </div>
 
       {subTab !== 'pre-venda' && (
         <PdvCheckout
-          receiptDetails={receiptDetails}
-          showRecentSales={subTab === 'vendas-recentes'}
           products={products}
           customers={customers}
-          sales={sales}
           credits={credits}
           hasPendingSale={hasPendingSale}
           salespeople={salespeople}
@@ -150,8 +140,6 @@ export function PdvModule({
           selectedBranchId={selectedBranchId}
           canCheckout={canCheckout}
           onCreateSale={onCreateSale}
-          onCancelSale={onCancelSale}
-          onDeleteSale={onDeleteSale}
         />
       )}
 
@@ -176,12 +164,9 @@ export function PdvModule({
 
 /* ============ PDV Checkout ============ */
 
-function PdvCheckout({ receiptDetails, showRecentSales, products, customers, sales, credits, hasPendingSale, salespeople, segment, selectedBranchId, canCheckout, onCreateSale, onCancelSale, onDeleteSale }: {
-  receiptDetails?: ReceiptDetails;
-  showRecentSales: boolean;
+function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople, segment, selectedBranchId, canCheckout, onCreateSale }: {
   products: PartnerProduct[];
   customers: PartnerCustomer[];
-  sales: PartnerSale[];
   credits: CustomerCredit[];
   hasPendingSale?: boolean;
   salespeople: PartnerSalesperson[];
@@ -189,8 +174,6 @@ function PdvCheckout({ receiptDetails, showRecentSales, products, customers, sal
   selectedBranchId: string | null;
   canCheckout: boolean;
   onCreateSale: (sale: { customer_id: string | null; customer_name: string; items: SaleItem[]; total: number; customer_type: ClientType; delivery_type: DeliveryType; imei?: string; serial_number?: string; payment_method?: string; salesperson_id?: string | null; branch_id?: string | null }) => Promise<void>;
-  onCancelSale: (id: string, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
-  onDeleteSale: (id: string, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
 }) {
   const [search, setSearch] = useState('');
   const [visibleProductCount, setVisibleProductCount] = useState(PRODUCT_PAGE_SIZE);
@@ -208,55 +191,10 @@ function PdvCheckout({ receiptDetails, showRecentSales, products, customers, sal
   const [deliveryType, setDeliveryType] = useState<DeliveryType>('balcao');
   const [salespersonId, setSalespersonId] = useState('');
   const [completed, setCompleted] = useState(false);
-  const [printError, setPrintError] = useState<string | null>(null);
-  const [shareNotice, setShareNotice] = useState<string | null>(null);
-
-  function handleShare(sale: PrintableSale, channel: 'whatsapp' | 'email') {
-    setPrintError(null);
-    setShareNotice(null);
-    try {
-      const url = saleShareUrl(sale, channel,
-        customers.find((customer) => customer.id === sale.customer_id),
-        salespeople.find((person) => person.id === sale.salesperson_id)?.name);
-      if (channel === 'whatsapp') {
-        const popup = window.open('about:blank', '_blank');
-        if (!popup) throw new Error('Permita pop-ups neste navegador para abrir o WhatsApp.');
-        popup.opener = null;
-        popup.location.replace(url);
-        setShareNotice('Confirme o envio no WhatsApp conectado ao número da empresa. O resumo vai em texto, sem PDF anexado.');
-      } else {
-        const link = document.createElement('a');
-        link.href = url;
-        document.body.append(link);
-        link.click();
-        link.remove();
-        setShareNotice('Confirme o envio usando o e-mail da empresa. Se nada abriu, configure um aplicativo de e-mail padrão no dispositivo. O resumo vai em texto, sem PDF anexado.');
-      }
-    } catch (error) {
-      setPrintError(error instanceof Error ? error.message : 'Não foi possível preparar o envio.');
-    }
-  }
-
-  function handlePrint(sale: PrintableSale, format: 'receipt' | 'label') {
-    setPrintError(null);
-    try { printSale(sale, format, {
-      ...receiptDetails,
-      customer: customers.find((customer) => customer.id === sale.customer_id),
-      salespersonName: salespeople.find((person) => person.id === sale.salesperson_id)?.name,
-    }); } catch (error) {
-      setPrintError(error instanceof Error ? error.message : 'Não foi possível abrir a impressão.');
-    }
-  }
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const checkoutInFlight = useRef(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [priceTable, setPriceTable] = useState<PriceTable>('varejo');
-  const [cancelTarget, setCancelTarget] = useState<PartnerSale | null>(null);
-  const [supervisorId, setSupervisorId] = useState('');
-  const [pinInput, setPinInput] = useState('');
-  const [pinError, setPinError] = useState<string | null>(null);
-  const [isVerifyingPin, setIsVerifyingPin] = useState(false);
-  const managers = salespeople.filter((s) => s.role === 'administrador' || s.role === 'gerente');
   const [selectionNotice, setSelectionNotice] = useState<string | null>(null);
   const [lastAddedId, setLastAddedId] = useState<string | null>(null);
   const lastClickRef = useRef<{ id: string; time: number }>({ id: '', time: 0 });
@@ -421,8 +359,6 @@ function PdvCheckout({ receiptDetails, showRecentSales, products, customers, sal
       setVisibleProductCount(PRODUCT_PAGE_SIZE);
       setSelectionNotice(null);
       setLastAddedId(null);
-      setPrintError(null);
-      setShareNotice(null);
     } catch (error) {
       setCheckoutError(pdvErrorMessage(error));
     } finally {
@@ -431,45 +367,8 @@ function PdvCheckout({ receiptDetails, showRecentSales, products, customers, sal
     }
   }
 
-  function requestCancelSale(sale: PartnerSale) {
-    setCancelTarget(sale);
-    setSupervisorId(managers[0]?.id ?? '');
-    setPinInput('');
-    setPinError(null);
-  }
-
-  async function verifyPinAndCancel(action: 'cancel' | 'delete') {
-    if (!cancelTarget) return;
-    if (!supervisorId) {
-      setPinError('Selecione o responsável (Administrador ou Gerente).');
-      return;
-    }
-    if (!pinInput) {
-      setPinError('Digite o PIN do responsável selecionado.');
-      return;
-    }
-    setIsVerifyingPin(true);
-    setPinError(null);
-    try {
-      if (action === 'cancel') {
-        await onCancelSale(cancelTarget.id, supervisorId, pinInput);
-      } else {
-        await onDeleteSale(cancelTarget.id, supervisorId, pinInput);
-      }
-      setCancelTarget(null);
-      setSupervisorId('');
-      setPinInput('');
-      setPinError(null);
-    } catch (error) {
-      setPinError(error instanceof Error ? error.message : 'Não foi possível autorizar. Verifique o PIN.');
-    } finally {
-      setIsVerifyingPin(false);
-    }
-  }
-
   return (
     <>
-      {!showRecentSales && (
       <div className="pdv-layout pdv-checkout-layout">
         <div className="pdv-left">
           <div className="pdv-search-bar">
@@ -703,7 +602,7 @@ function PdvCheckout({ receiptDetails, showRecentSales, products, customers, sal
 
           {completed && (
             <div className="sent-message" role="status">
-              <Check size={15} /> Venda finalizada! Pronto para uma nova venda. Cupom, etiqueta e envio em Vendas recentes.
+              <Check size={15} /> Venda finalizada! Pronto para uma nova venda. Cupom, etiqueta e envio no Histórico.
             </div>
           )}
           {checkoutError && <p className="otp-error-msg">{checkoutError}</p>}
@@ -711,106 +610,6 @@ function PdvCheckout({ receiptDetails, showRecentSales, products, customers, sal
         </div>
       </div>
 
-      )}
-
-      {showRecentSales && printError && <p className="otp-error-msg" role="alert">{printError}</p>}
-      {showRecentSales && shareNotice && <p role="status">{shareNotice}</p>}
-      {showRecentSales && (
-      <div className="pdv-recent-sales">
-        <h4>Vendas Recentes</h4>
-        <div className="stock-table-wrap">
-          <table className="rma-table">
-            <thead><tr><th>Cliente</th><th>Itens</th><th>Total</th><th>Pagamento</th><th>{traceabilityLabel}</th><th>Status</th><th>Data</th><th></th></tr></thead>
-            <tbody>
-              {sales.filter((s) => s.status !== 'pre_venda').length === 0 ? (
-                <tr><td colSpan={8} className="empty-row">Nenhuma venda registrada.</td></tr>
-              ) : (
-                sales.filter((s) => s.status !== 'pre_venda').slice(0, 10).map((s) => (
-                  <tr key={s.id} className={s.status === 'cancelada' ? 'cancelled-row' : ''}>
-                    <td><strong>{s.customer_name ?? '—'}</strong></td>
-                    <td>{s.items.length} {s.items.length === 1 ? 'item' : 'itens'}</td>
-                    <td>{money.format(s.total)}</td>
-                    <td>{s.payment_method ?? '—'}</td>
-                    <td>{s.imei ?? s.serial_number ?? '—'}</td>
-                    <td>
-                      {s.status === 'cancelada' ? (
-                        <span className="rma-status-badge" style={{ color: '#e3829b', borderColor: '#e3829b' }}>Cancelada</span>
-                      ) : (
-                        <span className="rma-status-badge" style={{ color: '#5bbc87', borderColor: '#5bbc87' }}>Concluída</span>
-                      )}
-                    </td>
-                    <td>{new Date(s.created_at).toLocaleDateString('pt-BR')}</td>
-                    <td>
-                      {s.status !== 'cancelada' && (
-                        <SaleActionsMenu
-                          onPrintReceipt={() => handlePrint(s, 'receipt')}
-                          onPrintLabel={() => handlePrint(s, 'label')}
-                          onWhatsApp={() => handleShare(s, 'whatsapp')}
-                          onEmail={() => handleShare(s, 'email')}
-                          onCancel={() => requestCancelSale(s)}
-                        />
-                      )}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      )}
-
-      {showRecentSales && cancelTarget && (
-        <div className="modal-backdrop" onClick={() => setCancelTarget(null)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '380px' }}>
-            <div className="modal-header">
-              <h3><Lock size={18} style={{ display: 'inline', marginRight: '6px' }} /> Confirmação Necessária</h3>
-              <button onClick={() => setCancelTarget(null)}><X size={18} /></button>
-            </div>
-            <p className="otp-description">
-              Cancelar ou apagar uma venda requer permissão de Administrador ou Gerente. Selecione o responsável e digite o PIN dele para continuar.
-            </p>
-            {managers.length === 0 ? (
-              <p className="otp-error-msg">Nenhum Administrador ou Gerente cadastrado com PIN. Cadastre um em Colaboradores antes de continuar.</p>
-            ) : (
-              <>
-                <label style={{ display: 'block', marginBottom: '12px' }}>
-                  <strong>Responsável</strong>
-                  <select
-                    value={supervisorId}
-                    onChange={(e) => { setSupervisorId(e.target.value); setPinError(null); }}
-                    style={{ width: '100%', marginTop: '6px' }}
-                  >
-                    {managers.map((m) => <option key={m.id} value={m.id}>{m.name} ({m.role === 'administrador' ? 'Administrador' : 'Gerente'})</option>)}
-                  </select>
-                </label>
-                <label style={{ display: 'block', marginBottom: '12px' }}>
-                  <strong>PIN do responsável</strong>
-                  <input
-                    type="password"
-                    value={pinInput}
-                    onChange={(e) => { setPinInput(e.target.value); setPinError(null); }}
-                    placeholder="Digite o PIN"
-                    maxLength={8}
-                    style={{ width: '100%', marginTop: '6px' }}
-                    autoFocus
-                  />
-                </label>
-              </>
-            )}
-            {pinError && <p className="otp-error-msg">{pinError}</p>}
-            <div className="otp-actions">
-              <button className="rma-advance-btn danger" onClick={() => verifyPinAndCancel('delete')} disabled={isVerifyingPin || managers.length === 0}>
-                <Trash2 size={16} /> {isVerifyingPin ? 'Verificando...' : 'Apagar Venda'}
-              </button>
-              <button className="module-submit-btn" onClick={() => verifyPinAndCancel('cancel')} disabled={isVerifyingPin || managers.length === 0}>
-                <Ban size={16} /> {isVerifyingPin ? 'Verificando...' : 'Cancelar Venda'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </>
   );
 }

@@ -1,9 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { ClipboardList, PackageCheck, Search } from 'lucide-react';
 import type { B2BOrder } from '../../types';
 import { money } from '../../utils';
 
-type Props = { orders?: B2BOrder[] };
+type Props = { orders?: B2BOrder[]; salesHistory?: ReactNode };
 
 const statusMap: Record<string, { label: string; color: string }> = {
   pendente: { label: 'Pendente', color: '#e6a06d' },
@@ -23,7 +23,8 @@ const paymentMap: Record<string, string> = {
   dinheiro: 'Dinheiro',
 };
 
-export function OrderHistoryModule({ orders = [] }: Props) {
+export function OrderHistoryModule({ orders = [], salesHistory }: Props) {
+  const [section, setSection] = useState<'sales' | 'purchases'>('sales');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
 
@@ -52,6 +53,12 @@ export function OrderHistoryModule({ orders = [] }: Props) {
 
   return (
     <div className="panel-module">
+      {salesHistory && <div className="pdv-subtabs">
+        <button className={`pdv-subtab ${section === 'sales' ? 'active' : ''}`} onClick={() => setSection('sales')}>Vendas</button>
+        <button className={`pdv-subtab ${section === 'purchases' ? 'active' : ''}`} onClick={() => setSection('purchases')}>Compras</button>
+      </div>}
+      {salesHistory && section === 'sales' ? salesHistory : <>
+
       <div className="module-header">
         <span className="module-icon"><ClipboardList size={20} /></span>
         <div>
@@ -155,6 +162,7 @@ export function OrderHistoryModule({ orders = [] }: Props) {
           </tbody>
         </table>
       </div>
+      </>}
     </div>
   );
 }

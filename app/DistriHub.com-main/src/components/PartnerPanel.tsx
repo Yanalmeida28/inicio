@@ -39,6 +39,7 @@ import { SettingsModule } from './partner/SettingsModule';
 import { OpenOrdersModule } from './partner/OpenOrdersModule';
 import { FiscalModule } from './partner/FiscalModule';
 import { AdminModule } from './partner/AdminModule';
+import { SalesHistoryModule } from './partner/SalesHistoryModule';
 import { OrderHistoryModule } from './partner/OrderHistoryModule';
 import { SupportChatModule } from './partner/SupportChatModule';
 import { ServiceOrdersModule } from './partner/ServiceOrdersModule';
@@ -112,7 +113,7 @@ const allTabs: {
   },
   {
     id: 'historico',
-    label: 'Histórico de Compras',
+    label: 'Histórico',
     icon: FileText,
   },
   {
@@ -219,6 +220,7 @@ export function PartnerPanel({
   const [activeTab, setActiveTab] = useState<Tab>('cadastros');
   const [selectedBranchId, setSelectedBranchId] = useState<string>('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [pdvMenuExpanded, setPdvMenuExpanded] = useState(false);
   const [currentRole, setCurrentRole] =
     useState<SalespersonRole>('administrador');
 
@@ -273,7 +275,7 @@ export function PartnerPanel({
     lockedBranchId ?? selectedBranchId;
 
   useEffect(() => {
-    if (!effectiveBranchId || partner.loading || (activeTab !== 'pdv' && activeTab !== 'pedidos')) return;
+    if (!effectiveBranchId || partner.loading || (activeTab !== 'pdv' && activeTab !== 'pedidos' && activeTab !== 'historico')) return;
     let active = true;
     setPdvReadError(null);
     void refreshPdv(effectiveBranchId).catch(error => { if (active) setPdvReadError(pdvErrorMessage(error)); });
@@ -1473,11 +1475,12 @@ export function PartnerPanel({
 
   function handleTabClick(tab: Tab) {
     setActiveTab(tab);
+    setPdvMenuExpanded(false);
     setSidebarOpen(false);
   }
 
   return (
-    <div className="partner-panel sidebar-layout" style={{ '--dh-blue': storeSettings.primary_color, '--store-nav': storeSettings.nav_color } as React.CSSProperties}>
+    <div className={`partner-panel sidebar-layout${activeTab === 'pdv' ? ' partner-pdv-mode' : ''}${activeTab === 'pdv' && !pdvMenuExpanded ? ' partner-menu-collapsed' : ''}`} style={{ '--dh-blue': storeSettings.primary_color, '--store-nav': storeSettings.nav_color } as React.CSSProperties}>
       <div className="sidebar-mobile-bar">
         <button
           className="sidebar-toggle"
@@ -1528,6 +1531,7 @@ export function PartnerPanel({
           sidebarOpen ? 'open' : ''
         }`}
       >
+        {activeTab === 'pdv' && <button type="button" className="sidebar-desktop-toggle" onClick={() => setPdvMenuExpanded(value => !value)} aria-label={pdvMenuExpanded ? 'Recolher menu' : 'Expandir menu'} title={pdvMenuExpanded ? 'Recolher menu' : 'Expandir menu'} aria-expanded={pdvMenuExpanded}><Menu size={20} /></button>}
         <div className="sidebar-header">
           <div className="sidebar-brand">
             <span className="sidebar-brand-mark">
@@ -1551,6 +1555,7 @@ export function PartnerPanel({
         </div>
 
         <div
+          className="sidebar-operator"
           style={{
             padding: '10px 12px',
             margin: '8px 12px',
@@ -1666,6 +1671,8 @@ export function PartnerPanel({
             }) => (
               <button
                 key={id}
+                title={label}
+                aria-label={label}
                 className={`sidebar-nav-item ${
                   activeTab === id
                     ? 'active'
@@ -1676,7 +1683,7 @@ export function PartnerPanel({
                 }
               >
                 <Icon size={20} />
-                {label}
+                <span className="sidebar-nav-label">{label}</span>
               </button>
             ),
           )}
@@ -1699,7 +1706,9 @@ export function PartnerPanel({
             </p>
           )}
 
+
           <MultiStoreModule
+            operatorControls={activeTab === 'pdv' && <div className="pdv-operator-line">Operador: <strong>{activeSalesperson?.name ?? 'Proprietário (Admin)'}</strong><button className="rma-advance-btn" onClick={openOperatorModal}><UserCheck size={14} /> Trocar operador</button></div>}
             branches={
               partner.branches
             }
@@ -1827,7 +1836,7 @@ export function PartnerPanel({
               />
             )}
 
-            {(activeTab === 'pdv' || activeTab === 'pedidos') && (
+            {(activeTab === 'pdv' || activeTab === 'pedidos' || activeTab === 'historico') && (
               <div role="status">
                 {(pdvReadError || partner.pdvSyncWarning) && <p className="otp-error-msg">{pdvReadError || partner.pdvSyncWarning}</p>}
                 <button className="rma-advance-btn" onClick={handleRefreshPdv}>Atualizar dados do PDV</button>
@@ -1839,9 +1848,9 @@ export function PartnerPanel({
                 </>}
               </div>
             )}
-            {activeTab === 'pdv' && (
+            {(activeTab === 'pdv' || activeTab === 'historico') && !blockedTabs.includes('pdv') && (
+              <div hidden={activeTab !== 'pdv'}>
               <PdvModule
-                receiptDetails={{ settings: storeSettings, companyName: partner.profile?.account_name || partner.profile?.name, companyDocument: partner.profile?.document, companyAddress: partner.branches.find((branch) => branch.id === effectiveBranchId)?.address }}
                 key={pdvRevision}
                 hasPendingSale={Boolean(partner.pendingSale)}
                 products={
@@ -1881,6 +1890,7 @@ export function PartnerPanel({
                   handleDeleteSale
                 }
               />
+              </div>
             )}
 
             {activeTab === 'pedidos' && (
@@ -1946,6 +1956,15 @@ export function PartnerPanel({
 
             {activeTab === 'historico' && (
               <OrderHistoryModule
+                salesHistory={!blockedTabs.includes('pdv') ? <SalesHistoryModule
+                  sales={filteredSales}
+                  customers={filteredCustomers}
+                  salespeople={filteredSalespeople}
+                  segment={segment}
+                  receiptDetails={{ settings: storeSettings, companyName: partner.profile?.account_name || partner.profile?.name, companyDocument: partner.profile?.document, companyAddress: partner.branches.find((branch) => branch.id === effectiveBranchId)?.address }}
+                  onCancelSale={handleCancelSale}
+                  onDeleteSale={handleDeleteSale}
+                /> : undefined}
                 orders={
                   filteredOrders
                 }
