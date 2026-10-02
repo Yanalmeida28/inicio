@@ -1866,6 +1866,9 @@ export function PartnerPanel({
                 salespeople={
                   filteredSalespeople
                 }
+                activeSalespersonId={
+                  activeSalesperson?.id ?? null
+                }
                 segment={segment}
                 selectedBranchId={
                   effectiveBranchId ||

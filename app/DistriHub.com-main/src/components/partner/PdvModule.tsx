@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Search, Trash2, ShoppingCart, Check, Maximize2, Minimize2,
+  Search, Trash2, ShoppingCart, Check,
   ScanLine, X, Tag, Ban, Lock, ClipboardList, Wallet, Lock as LockIcon,
 } from 'lucide-react';
 import type { DeliveryType, PartnerProduct, PartnerCustomer, PartnerSale, PartnerSalesperson, SaleItem, SalespersonRole } from '../../types';
@@ -19,6 +19,7 @@ type Props = {
   credits: CustomerCredit[];
   hasPendingSale?: boolean;
   salespeople: PartnerSalesperson[];
+  activeSalespersonId?: string | null;
   segment: string;
   selectedBranchId: string | null;
   currentRole: SalespersonRole;
@@ -57,10 +58,9 @@ const PRODUCT_PAGE_SIZE = 30;
 
 export function PdvModule({
   products, customers, sales, credits, hasPendingSale, salespeople, segment, selectedBranchId,
-  currentRole, onCreateSale, onCreatePreSale, onFinalizePreSale, onCancelSale, onDeleteSale,
+  activeSalespersonId, currentRole, onCreateSale, onCreatePreSale, onFinalizePreSale, onCancelSale, onDeleteSale,
 }: Props) {
   const [subTab, setSubTab] = useState<PdvSubTab>('pdv');
-  const [expanded, setExpanded] = useState(false);
   const moduleRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -68,7 +68,7 @@ export function PdvModule({
     if (!element) return;
     const updateHeight = () => {
       const top = element.getBoundingClientRect().top + window.scrollY;
-      element.style.setProperty('--pdv-height', `${Math.max(420, window.innerHeight - (expanded ? 24 : top + 20))}px`);
+      element.style.setProperty('--pdv-height', `${Math.max(420, window.innerHeight - (top + 20))}px`);
     };
     updateHeight();
     const observer = new ResizeObserver(updateHeight);
@@ -80,36 +80,18 @@ export function PdvModule({
       observer.disconnect();
       window.removeEventListener('resize', updateHeight);
     };
-  }, [expanded, subTab]);
-
-  useEffect(() => {
-    if (!expanded) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setExpanded(false);
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener('keydown', onKeyDown);
-    };
-  }, [expanded]);
+  }, [subTab]);
 
   const canCheckout = cashierRoles.includes(currentRole);
   const preSales = sales.filter((s) => s.status === 'pre_venda');
 
   return (
-    <div ref={moduleRef} className={`panel-module pdv-workspace${subTab === 'pdv' ? ' pdv-workspace-checkout' : ''}${expanded ? ' pdv-workspace-expanded' : ''}`}>
+    <div ref={moduleRef} className={`panel-module pdv-workspace${subTab === 'pdv' ? ' pdv-workspace-checkout' : ''}`}>
       <div className="module-header">
         <span className="module-icon"><ShoppingCart size={20} /></span>
         <div>
           <h3>PDV</h3>
         </div>
-        <button type="button" className="rma-advance-btn pdv-expand-btn" aria-pressed={expanded} onClick={() => setExpanded((value) => !value)}>
-          {expanded ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-          {expanded ? 'Sair do modo ampliado' : 'Ampliar PDV'}
-        </button>
       </div>
 
       <div className="pdv-subtabs">
@@ -136,6 +118,7 @@ export function PdvModule({
           credits={credits}
           hasPendingSale={hasPendingSale}
           salespeople={salespeople}
+          activeSalespersonId={activeSalespersonId}
           segment={segment}
           selectedBranchId={selectedBranchId}
           canCheckout={canCheckout}
@@ -149,6 +132,7 @@ export function PdvModule({
           customers={customers}
           sales={sales}
           salespeople={salespeople}
+          activeSalespersonId={activeSalespersonId}
           segment={segment}
           selectedBranchId={selectedBranchId}
           canCheckout={canCheckout}
@@ -164,12 +148,13 @@ export function PdvModule({
 
 /* ============ PDV Checkout ============ */
 
-function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople, segment, selectedBranchId, canCheckout, onCreateSale }: {
+function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople, activeSalespersonId, segment, selectedBranchId, canCheckout, onCreateSale }: {
   products: PartnerProduct[];
   customers: PartnerCustomer[];
   credits: CustomerCredit[];
   hasPendingSale?: boolean;
   salespeople: PartnerSalesperson[];
+  activeSalespersonId?: string | null;
   segment: string;
   selectedBranchId: string | null;
   canCheckout: boolean;
@@ -557,13 +542,15 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
                       <option value="faturado">Faturado B2B</option>
                     </select>
                   </label>
-                  <label>
-                    Colaborador
-                    <select value={salespersonId} onChange={(e) => setSalespersonId(e.target.value)}>
-                      <option value="">Selecione...</option>
-                      {salespeople.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                    </select>
-                  </label>
+                  {!activeSalespersonId && (
+                    <label>
+                      Vendedor responsável
+                      <select value={salespersonId} onChange={(e) => setSalespersonId(e.target.value)}>
+                        <option value="">Sem atribuição</option>
+                        {salespeople.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                      </select>
+                    </label>
+                  )}
                 </div>
               </div>
               {paymentMethod === 'faturado' && selectedCustomer && !credit && (
@@ -616,11 +603,12 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
 
 /* ============ Pré-Venda / Orçamentos ============ */
 
-function PreVendaTab({ products, customers, sales, salespeople, segment, selectedBranchId, canCheckout, onCreatePreSale, onFinalizePreSale, onCancelSale, onDeleteSale }: {
+function PreVendaTab({ products, customers, sales, salespeople, activeSalespersonId, segment, selectedBranchId, canCheckout, onCreatePreSale, onFinalizePreSale, onCancelSale, onDeleteSale }: {
   products: PartnerProduct[];
   customers: PartnerCustomer[];
   sales: PartnerSale[];
   salespeople: PartnerSalesperson[];
+  activeSalespersonId?: string | null;
   segment: string;
   selectedBranchId: string | null;
   canCheckout: boolean;
@@ -921,13 +909,15 @@ function PreVendaTab({ products, customers, sales, salespeople, segment, selecte
                     <input value={serial} onChange={(e) => setSerial(e.target.value)} placeholder="Opcional" />
                   </label>
                 </div>
-                <label>
-                  Colaborador
-                  <select value={salespersonId} onChange={(e) => setSalespersonId(e.target.value)}>
-                    <option value="">Selecione...</option>
-                    {salespeople.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                  </select>
-                </label>
+                {!activeSalespersonId && (
+                  <label>
+                    Vendedor responsável
+                    <select value={salespersonId} onChange={(e) => setSalespersonId(e.target.value)}>
+                      <option value="">Sem atribuição</option>
+                      {salespeople.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </select>
+                  </label>
+                )}
                 <label>
                   Tipo de atendimento
                   <div className="pdv-client-type-toggle">
