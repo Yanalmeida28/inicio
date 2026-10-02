@@ -20,6 +20,7 @@ type Props = {
   hasPendingSale?: boolean;
   salespeople: PartnerSalesperson[];
   activeSalespersonId?: string | null;
+  activeBranchName: string;
   segment: string;
   selectedBranchId: string | null;
   currentRole: SalespersonRole;
@@ -58,7 +59,7 @@ const PRODUCT_PAGE_SIZE = 30;
 
 export function PdvModule({
   products, customers, sales, credits, hasPendingSale, salespeople, segment, selectedBranchId,
-  activeSalespersonId, currentRole, onCreateSale, onCreatePreSale, onFinalizePreSale, onCancelSale, onDeleteSale,
+  activeSalespersonId, activeBranchName, currentRole, onCreateSale, onCreatePreSale, onFinalizePreSale, onCancelSale, onDeleteSale,
 }: Props) {
   const [subTab, setSubTab] = useState<PdvSubTab>('pdv');
   const moduleRef = useRef<HTMLDivElement>(null);
@@ -91,6 +92,7 @@ export function PdvModule({
         <span className="module-icon"><ShoppingCart size={20} /></span>
         <div>
           <h3>PDV</h3>
+          <small className="pdv-branch-context">{activeBranchName}</small>
         </div>
       </div>
 
@@ -554,7 +556,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
                 </div>
               </div>
               {paymentMethod === 'faturado' && selectedCustomer && !credit && (
-                <p role="status">Crédito não consultado. Use Atualizar dados do PDV.</p>
+                <p role="status">Não foi possível consultar o crédito deste cliente.</p>
               )}
               {paymentMethod === 'faturado' && selectedCustomer && credit && (
                 <div className="b2b-credit-summary">

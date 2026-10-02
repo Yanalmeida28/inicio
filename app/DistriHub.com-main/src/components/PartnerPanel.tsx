@@ -84,7 +84,8 @@ type Tab =
   | 'relatorios'
   | 'white-label'
   | 'configuracoes'
-  | 'entregas';
+  | 'entregas'
+  | 'filiais';
 
 const allTabs: {
   id: Tab;
@@ -95,6 +96,11 @@ const allTabs: {
     id: 'cadastros',
     label: 'Cadastros',
     icon: Boxes,
+  },
+  {
+    id: 'filiais',
+    label: 'Filiais',
+    icon: Store,
   },
   {
     id: 'pdv',
@@ -239,6 +245,7 @@ export function PartnerPanel({
   const [pdvRevision, setPdvRevision] = useState(0);
   const [pdvReadError, setPdvReadError] = useState<string | null>(null);
   const [recoveringSale, setRecoveringSale] = useState(false);
+  const [refreshingPdv, setRefreshingPdv] = useState(false);
   const { refreshPdv } = partner;
 
   const activeSalesperson = identity?.salespersonId
@@ -283,9 +290,11 @@ export function PartnerPanel({
   }, [effectiveBranchId, activeTab, partner.loading, refreshPdv]);
 
   async function handleRefreshPdv() {
-    if (!effectiveBranchId) return;
+    if (!effectiveBranchId || refreshingPdv) return;
+    setRefreshingPdv(true);
     try { await refreshPdv(effectiveBranchId); setPdvReadError(null); }
     catch (error) { setPdvReadError(pdvErrorMessage(error)); }
+    finally { setRefreshingPdv(false); }
   }
 
   async function handleRecoverSale() {
@@ -363,10 +372,11 @@ export function PartnerPanel({
   }, [effectiveRole]);
 
   const visibleTabs = useMemo(() => {
-    return allTabs.filter(
-      (tab) => !blockedTabs.includes(tab.id),
+    return allTabs.filter((tab) =>
+      !blockedTabs.includes(tab.id) &&
+      (!isEmployeeRestricted || tab.id !== 'filiais'),
     );
-  }, [blockedTabs]);
+  }, [blockedTabs, isEmployeeRestricted]);
 
   useEffect(() => {
     if (
@@ -1707,36 +1717,20 @@ export function PartnerPanel({
           )}
 
 
-          <MultiStoreModule
-            operatorControls={activeTab === 'pdv' && <div className="pdv-operator-line">Operador: <strong>{activeSalesperson?.name ?? 'Proprietário (Admin)'}</strong><button className="rma-advance-btn" onClick={openOperatorModal}><UserCheck size={14} /> Trocar operador</button></div>}
-            branches={
-              partner.branches
-            }
-            selectedBranchId={
-              effectiveBranchId || null
-            }
-            onSelectBranch={
-              handleSelectBranch
-            }
-            onAddBranch={
-              handleAddBranch
-            }
-            onUpdateBranch={
-              handleUpdateBranch
-            }
-            onDeleteBranch={
-              handleDeleteBranch
-            }
-            isEmployeeLocked={
-              isEmployeeRestricted
-            }
-            lockedBranchName={
-              lockedBranch?.name
-            }
-          />
-
           <div className="partner-content">
             {storeSettings.internal_notice && <div role="note" className="store-internal-notice">{storeSettings.internal_notice}</div>}
+            {activeTab === 'filiais' && (
+              <MultiStoreModule
+                branches={partner.branches}
+                selectedBranchId={effectiveBranchId || null}
+                onSelectBranch={handleSelectBranch}
+                onAddBranch={handleAddBranch}
+                onUpdateBranch={handleUpdateBranch}
+                onDeleteBranch={handleDeleteBranch}
+                isEmployeeLocked={isEmployeeRestricted}
+                lockedBranchName={lockedBranch?.name}
+              />
+            )}
             {activeTab === 'cadastros' && (
               <CadastrosModule
                 products={
@@ -1836,10 +1830,17 @@ export function PartnerPanel({
               />
             )}
 
-            {(activeTab === 'pdv' || activeTab === 'pedidos' || activeTab === 'historico') && (
+            {(activeTab === 'pdv' || activeTab === 'pedidos' || activeTab === 'historico') &&
+              (pdvReadError || partner.pdvSyncWarning || partner.pendingSale) && (
               <div role="status">
-                {(pdvReadError || partner.pdvSyncWarning) && <p className="otp-error-msg">{pdvReadError || partner.pdvSyncWarning}</p>}
-                <button className="rma-advance-btn" onClick={handleRefreshPdv}>Atualizar dados do PDV</button>
+                {(pdvReadError || partner.pdvSyncWarning) && (
+                  <>
+                    <p className="otp-error-msg">{pdvReadError || partner.pdvSyncWarning}</p>
+                    <button className="rma-advance-btn" onClick={handleRefreshPdv} disabled={refreshingPdv}>
+                      {refreshingPdv ? 'Sincronizando...' : 'Tentar sincronizar novamente'}
+                    </button>
+                  </>
+                )}
                 {partner.pendingSale && <>
                   <p>Venda com resultado pendente. Recupere esta tentativa antes de iniciar outra venda.</p>
                   <button className="module-submit-btn" disabled={recoveringSale} onClick={handleRecoverSale}>
@@ -1868,6 +1869,11 @@ export function PartnerPanel({
                 }
                 activeSalespersonId={
                   activeSalesperson?.id ?? null
+                }
+                activeBranchName={
+                  effectiveBranchId
+                    ? partner.branches.find((branch) => branch.id === effectiveBranchId)?.name ?? 'Filial selecionada'
+                    : 'Todas as filiais'
                 }
                 segment={segment}
                 selectedBranchId={
