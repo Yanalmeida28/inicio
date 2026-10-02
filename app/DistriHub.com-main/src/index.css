@@ -277,7 +277,7 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
   position: fixed; inset: 0; z-index: 100; padding: 12px;
   background: var(--dh-bg, #f4f7fb); overflow: auto;
 }
-@media (min-width: 901px) {
+@media (min-width: 1201px) {
   .partner-panel .pdv-workspace-checkout {
     height: var(--pdv-height, 650px); min-height: 420px; gap: 10px;
   }
@@ -286,7 +286,7 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
   .pdv-workspace-checkout > .pdv-subtabs { flex-shrink: 0; }
   .pdv-workspace-checkout > .pdv-subtabs { margin-bottom: 0; }
   .partner-panel .pdv-checkout-layout {
-    flex: 1; min-height: 0; grid-template-columns: minmax(0, 1fr) minmax(360px, 440px); gap: 12px;
+    flex: 1; min-height: 0; grid-template-columns: minmax(0, 1fr) 340px; gap: 12px;
   }
   .pdv-checkout-layout .pdv-left,
   .partner-panel .pdv-checkout-layout .pdv-right { min-height: 0; min-width: 0; gap: 10px; }
@@ -295,16 +295,8 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
   .pdv-checkout-layout .pdv-left > button,
   .pdv-checkout-layout .pdv-cart-header,
   .pdv-checkout-layout .pdv-sale-footer { flex-shrink: 0; }
-  .pdv-checkout-layout .pdv-search-bar input { min-width: 0; }
-  .pdv-checkout-layout .pdv-product-grid {
-    flex: 1; min-height: 0; overflow-y: auto; align-content: start;
-    padding: 3px; overscroll-behavior: contain;
-  }
+  .pdv-checkout-layout .pdv-cart-main { flex: 1; min-height: 0; }
   .pdv-checkout-layout .pdv-sale-scroll { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding-right: 4px; }
-  .pdv-checkout-layout .pdv-cart-items { max-height: none; overflow: visible; flex-shrink: 0; }
-  .pdv-checkout-layout .pdv-cart-item { gap: 8px; flex-wrap: wrap; padding: 6px 0; }
-  .pdv-checkout-layout .pdv-cart-item > div:first-child { min-width: 0; overflow-wrap: anywhere; }
-  .pdv-checkout-layout .pdv-item-controls { margin-left: auto; }
   .pdv-checkout-layout .pdv-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .pdv-checkout-layout .pdv-form > .form-row { grid-column: 1 / -1; }
   .pdv-checkout-layout .pdv-form > label:has(.pdv-client-type-toggle) { grid-column: 1 / -1; }
@@ -315,11 +307,24 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
   .pdv-checkout-layout .pdv-sale-footer .otp-error-msg,
   .pdv-checkout-layout .pdv-sale-footer .sent-message { margin: 0; max-height: 72px; overflow-y: auto; }
 }
-@media (max-width: 900px) {
+@media (max-width: 1200px) {
+  .partner-panel .pdv-checkout-layout { grid-template-columns: minmax(0, 1fr); }
   .pdv-workspace > .module-header { flex-wrap: wrap; }
-  .pdv-checkout-layout .pdv-product-grid { max-height: 320px; overflow-y: auto; }
   .pdv-checkout-layout .pdv-sale-footer { position: sticky; bottom: 0; background: var(--dh-surface, white); padding: 10px 0; z-index: 1; }
 }
+.pdv-checkout-layout .pdv-left { min-width: 0; min-height: 0; }
+.pdv-checkout-layout .pdv-search-bar { flex-shrink: 0; }
+.pdv-checkout-layout .pdv-search-results { max-height: 240px; overflow-y: auto; flex-shrink: 0; padding: 3px; }
+.pdv-checkout-layout .pdv-search-bar input { min-width: 0; }
+.partner-panel .pdv-checkout-layout .pdv-search-results .pdv-product-grid { grid-template-columns: 1fr !important; }
+.pdv-checkout-layout .pdv-cart-main { display: flex; flex-direction: column; gap: 12px; padding: 14px; border: 1px solid var(--dh-border); border-radius: var(--dh-radius); background: var(--dh-surface); }
+.pdv-checkout-layout .pdv-cart-table-wrap { overflow: auto; flex: 1; min-height: 100px; }
+.pdv-checkout-layout .pdv-cart-table { width: 100%; min-width: 550px; }
+.pdv-checkout-layout .pdv-cart-table td:first-child { min-width: 160px; overflow-wrap: anywhere; white-space: normal; }
+.pdv-checkout-layout .pdv-cart-table th { position: sticky; top: 0; background: var(--dh-surface); }
+.pdv-checkout-layout .pdv-item-controls button { min-width: 30px; height: 30px; }
+.pdv-checkout-layout .pdv-form .form-row { display: flex; flex-direction: column; }
+.pdv-checkout-layout .pdv-client-type-toggle { flex-wrap: wrap; }
 .pdv-layout { display: grid; grid-template-columns: 1fr 380px; gap: 18px; }
 .pdv-left { display: flex; flex-direction: column; gap: 14px; }
 .pdv-search-bar { display: flex; align-items: center; gap: 10px; padding: 0 14px; height: 44px; border: 1px solid #283d52; border-radius: 7px; background: #101f2e; color: #7790a6; }

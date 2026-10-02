@@ -194,6 +194,7 @@ function PdvCheckout({ receiptDetails, showRecentSales, products, customers, sal
 }) {
   const [search, setSearch] = useState('');
   const [visibleProductCount, setVisibleProductCount] = useState(PRODUCT_PAGE_SIZE);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     setVisibleProductCount(PRODUCT_PAGE_SIZE);
   }, [search, selectedBranchId]);
@@ -304,12 +305,13 @@ function PdvCheckout({ receiptDetails, showRecentSales, products, customers, sal
   const filtered = useMemo(() => {
     const normalize = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
     const term = normalize(search.trim());
+    if (!term) return [];
     return products.filter((p) => {
       // `products` já chega filtrado pela filial ativa (ou pela filial fixa do funcionário).
       // Aplica o filtro local apenas quando uma filial específica está selecionada,
       // mantendo a Visão Consolidada do proprietário funcional.
       if (selectedBranchId && p.branch_id !== selectedBranchId) return false;
-      return !term || normalize(p.name).includes(term) || normalize(p.sku ?? '').includes(term);
+      return normalize(p.name).includes(term) || normalize(p.sku ?? '').includes(term);
     });
   }, [products, search, selectedBranchId]);
 
@@ -354,6 +356,8 @@ function PdvCheckout({ receiptDetails, showRecentSales, products, customers, sal
     setCheckoutError(null);
     setSelectionNotice(null);
     setLastAddedId(product.id);
+    setSearch('');
+    searchInputRef.current?.focus();
     if (addedTimeoutRef.current !== null) window.clearTimeout(addedTimeoutRef.current);
     addedTimeoutRef.current = window.setTimeout(() => setLastAddedId(null), 1200);
   }
@@ -472,6 +476,7 @@ function PdvCheckout({ receiptDetails, showRecentSales, products, customers, sal
             <Search size={18} />
            <input
   type="search"
+  ref={searchInputRef}
   name="new-product-search"
   autoComplete="new-password"
   autoCorrect="off"
@@ -491,14 +496,12 @@ function PdvCheckout({ receiptDetails, showRecentSales, products, customers, sal
             <p className="pdv-selection-notice" role="alert">{selectionNotice}</p>
           )}
 
+          {search.trim() && (
+          <div className="pdv-search-results" aria-label="Resultados da pesquisa">
           <div className="pdv-product-grid">
             {filtered.length === 0 ? (
               <p className="empty-row">
-                {search.trim()
-                  ? `Nenhum produto encontrado para "${search.trim()}".`
-                  : selectedBranchId
-                    ? 'Nenhum produto cadastrado nesta filial.'
-                    : 'Nenhum produto cadastrado.'}
+                {`Nenhum produto encontrado para "${search.trim()}".`}
               </p>
             ) : (
               filtered.slice(0, visibleProductCount).map((p) => {
@@ -541,11 +544,11 @@ function PdvCheckout({ receiptDetails, showRecentSales, products, customers, sal
               Carregar mais ({Math.min(visibleProductCount, filtered.length)} de {filtered.length})
             </button>
           )}
-        </div>
-
-        <div className="pdv-right">
+          </div>
+          )}
+          <section className="pdv-cart-main" aria-label="Carrinho">
           <div className="pdv-cart-header">
-            <h4>Carrinho Atual</h4>
+            <h4>Carrinho · {cart.reduce((count, item) => count + item.quantity, 0)} itens</h4>
             {cart.length > 0 && (
               <button className="rma-advance-btn danger" onClick={() => setCart([])}>
                 <X size={14} /> Limpar
@@ -553,28 +556,38 @@ function PdvCheckout({ receiptDetails, showRecentSales, products, customers, sal
             )}
           </div>
 
-          <div className="pdv-sale-scroll">
-          <div className="pdv-cart-items">
+          <div className="pdv-cart-table-wrap">
+          <table className="rma-table pdv-cart-table">
+            <thead><tr><th>Produto</th><th>Quantidade</th><th>Preço</th><th>Subtotal</th><th>Remover</th></tr></thead>
+            <tbody>
             {cart.length === 0 ? (
-              <p className="empty-row">Carrinho vazio. Selecione produtos ao lado.</p>
+              <tr><td colSpan={5} className="empty-row">Carrinho vazio. Pesquise um produto acima para começar.</td></tr>
             ) : (
               cart.map((item) => (
-                <div key={item.product_id} className="pdv-cart-item">
-                  <div>
+                <tr key={item.product_id}>
+                  <td>
                     <strong>{item.name}</strong>
-                    <small>{money.format(item.unit_price)} / un.</small>
-                  </div>
-                  <div className="pdv-item-controls">
-                    <button onClick={() => changeQty(item.product_id, -1)}>-</button>
+                  </td>
+                  <td><div className="pdv-item-controls">
+                    <button aria-label={`Diminuir quantidade de ${item.name}`} onClick={() => changeQty(item.product_id, -1)}>−</button>
                     <b>{item.quantity}</b>
-                    <button onClick={() => changeQty(item.product_id, 1)}>+</button>
-                    <span>{money.format(item.unit_price * item.quantity)}</span>
-                    <button className="pdv-remove" onClick={() => removeFromCart(item.product_id)}><Trash2 size={13} /></button>
-                  </div>
-                </div>
+                    <button aria-label={`Aumentar quantidade de ${item.name}`} onClick={() => changeQty(item.product_id, 1)}>+</button>
+                  </div></td>
+                  <td>{money.format(item.unit_price)}</td>
+                  <td>{money.format(item.unit_price * item.quantity)}</td>
+                  <td><button className="pdv-remove" aria-label={`Remover ${item.name}`} onClick={() => removeFromCart(item.product_id)}><Trash2 size={16} /></button></td>
+                </tr>
               ))
             )}
+            </tbody>
+          </table>
           </div>
+          </section>
+        </div>
+
+        <div className="pdv-right">
+          <div className="pdv-cart-header"><h4>Dados da venda</h4></div>
+          <div className="pdv-sale-scroll">
 
           {cart.length > 0 && (
             <>
@@ -608,7 +621,7 @@ function PdvCheckout({ receiptDetails, showRecentSales, products, customers, sal
                   </select>
                 </label>
                 <details className="pdv-traceability">
-                  <summary>Rastreabilidade (opcional){imei || serial ? ' · preenchida' : ''}</summary>
+                  <summary>Mais detalhes · IMEI / série{imei || serial ? ' · preenchida' : ''}</summary>
                 <div className="form-row">
                   <label>
                     <ScanLine size={14} /> {traceabilityLabel}
