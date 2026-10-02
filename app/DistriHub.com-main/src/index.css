@@ -294,11 +294,18 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
   .pdv-workspace-checkout > .pdv-subtabs { flex-shrink: 0; }
   .pdv-workspace-checkout > .pdv-subtabs { margin-bottom: 0; }
   .partner-panel .pdv-checkout-layout {
-    flex: 1; min-height: 0; grid-template-columns: minmax(0, 1fr) 300px; gap: 12px;
+    flex: 1; min-height: 0; grid-template-columns: minmax(0, 1.4fr) minmax(360px, 1fr); gap: 12px;
   }
   .pdv-checkout-layout .pdv-left,
   .partner-panel .pdv-checkout-layout .pdv-right { min-height: 0; min-width: 0; gap: 10px; }
   .partner-panel .pdv-checkout-layout .pdv-right { padding: 12px; }
+  .pdv-checkout-layout .pdv-left { position: relative; }
+  .pdv-checkout-layout .pdv-search-results {
+    position: absolute; top: 54px; left: 0; right: 0; z-index: 5;
+    max-height: min(320px, 45vh); padding: 8px;
+    border: 1px solid var(--dh-border); border-radius: var(--dh-radius);
+    background: var(--dh-surface); box-shadow: 0 12px 28px rgba(15, 23, 42, .18);
+  }
   .pdv-checkout-layout .pdv-search-bar,
   .pdv-checkout-layout .pdv-left > button,
   .pdv-checkout-layout .pdv-cart-header,
@@ -318,13 +325,14 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
 @media (max-width: 1000px) {
   .partner-panel .pdv-checkout-layout { grid-template-columns: minmax(0, 1fr); }
   .pdv-workspace > .module-header { flex-wrap: wrap; }
+  .pdv-checkout-layout .pdv-search-results { position: static; max-height: 180px; }
   .pdv-checkout-layout .pdv-sale-footer { position: sticky; bottom: 0; background: var(--dh-surface, white); padding: 10px 0; z-index: 1; }
 }
 .pdv-checkout-layout .pdv-left { min-width: 0; min-height: 0; }
 .pdv-checkout-layout .pdv-search-bar { flex-shrink: 0; }
 .pdv-checkout-layout .pdv-search-results { max-height: 240px; overflow-y: auto; flex-shrink: 0; padding: 3px; }
 .pdv-checkout-layout .pdv-search-bar input { min-width: 0; }
-.partner-panel .pdv-checkout-layout .pdv-search-results .pdv-product-grid { grid-template-columns: 1fr !important; }
+.partner-panel .pdv-checkout-layout .pdv-search-results .pdv-product-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
 .pdv-checkout-layout .pdv-cart-main { display: flex; flex-direction: column; gap: 12px; padding: 14px; border: 1px solid var(--dh-border); border-radius: var(--dh-radius); background: var(--dh-surface); }
 .pdv-checkout-layout .pdv-cart-table-wrap { overflow: auto; flex: 1; min-height: 100px; }
 .pdv-checkout-layout .pdv-cart-table { width: 100%; min-width: 550px; }
