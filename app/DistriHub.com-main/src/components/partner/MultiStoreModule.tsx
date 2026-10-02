@@ -107,26 +107,29 @@ export function MultiStoreModule({
       ];
 
   return (
-    <div className="panel-module">
-      <div className="module-header">
-        <span className="module-icon"><Building2 size={20} /></span>
-        <div>
-          <h3>Seletor de Filiais</h3>
-          <p>
-            {isEmployeeLocked
-              ? `Filial fixa atribuída ao seu usuário (${lockedBranchName ?? 'Filial Vinculada'})`
-              : 'Alterne entre lojas individuais ou visão consolidada'}
-          </p>
-        </div>
+    <div className="panel-module branch-toolbar">
+      <div className="branch-toolbar-selection">
+        <Building2 size={18} aria-hidden="true" />
+        <label htmlFor="active-partner-branch">Filial ativa</label>
+        <select
+          id="active-partner-branch"
+          value={selectedBranchId || 'consolidado'}
+          disabled={isEmployeeLocked}
+          onChange={(event) => {
+            if (!isEmployeeLocked) onSelectBranch(event.target.value === 'consolidado' ? '' : event.target.value);
+          }}
+        >
+          {isEmployeeLocked && allBranches.length === 0 && (
+            <option value={selectedBranchId || 'consolidado'}>{lockedBranchName ?? 'Filial vinculada'}</option>
+          )}
+          {allBranches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
+        </select>
+        {isEmployeeLocked && <span className="branch-toolbar-locked"><Lock size={14} /> Filial fixa</span>}
       </div>
 
-      {isEmployeeLocked && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px', borderRadius: '6px', background: 'rgba(59,155,237,0.1)', border: '1px solid rgba(59,155,237,0.3)', color: '#5cb5f1', fontSize: '13px', fontWeight: 600 }}>
-          <Lock size={16} />
-          <span>Acesso de Funcionário: Operando estritamente na filial {lockedBranchName ?? ''}. Troca de filial desativada.</span>
-        </div>
-      )}
-
+      {!isEmployeeLocked && (
+      <details className="branch-management">
+        <summary>Gerenciar filiais</summary>
       <div className="branch-selector">
         <span className="branch-selector-label">Filial ativa:</span>
         <div className="branch-cards">
@@ -190,6 +193,9 @@ export function MultiStoreModule({
           </div>
           <button type="submit" className="module-submit-btn" disabled={saving}>{saving ? 'Salvando...' : 'Adicionar filial'}</button>
         </form>
+      )}
+
+      </details>
       )}
 
       {error && <p className="branch-action-error" role="alert">{error}</p>}

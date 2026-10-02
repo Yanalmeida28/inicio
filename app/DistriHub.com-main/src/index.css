@@ -155,6 +155,14 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
 .rma-advance-btn:hover { background: #1a3d56; color: #7bc8f5; }
 
 .branch-selector { margin-bottom: 4px; }
+.partner-panel .branch-toolbar { padding: 10px 14px; gap: 10px; }
+.branch-toolbar-selection { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-width: 0; }
+.branch-toolbar-selection label { font-size: 13px; font-weight: 600; }
+.branch-toolbar-selection select { flex: 1; min-width: 0; max-width: 360px; padding: 7px 10px; border: 1px solid var(--dh-border); border-radius: 6px; background: var(--dh-surface); color: var(--dh-text); }
+.branch-toolbar-locked { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--dh-text-secondary); }
+.branch-management summary { width: fit-content; cursor: pointer; font-size: 12px; color: var(--dh-blue); padding: 4px 0; }
+.branch-management[open] summary { margin-bottom: 12px; }
+.branch-management .rma-form { margin-top: 12px; }
 .branch-selector-label { display: block; color: #889eaf; font-size: 12.5px; margin-bottom: 10px; }
 .branch-cards { display: flex; flex-wrap: wrap; gap: 10px; }
 .branch-card { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border: 1px solid #1d3445; border-radius: 7px; background: #0e1d2b; color: #c1d1dc; text-align: left; transition: .2s; position: relative; min-width: 200px; }
@@ -731,7 +739,8 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
 .sidebar-nav-item.active { color: #eaf1f6; background: #14304a; }
 .sidebar-footer { padding: 14px 18px; border-top: 1px solid #1d3547; }
 .sidebar-main { flex: 1; margin-left: 240px; min-width: 0; }
-.sidebar-main-inner { padding: 24px 28px 56px; max-width: 960px; }
+.sidebar-main-inner { padding: 16px 20px 32px; width: 100%; }
+.partner-panel .sidebar-main-inner > .partner-content { max-width: none; }
 .sidebar-mobile-bar { display: none; }
 .sidebar-overlay { display: none; }
 
