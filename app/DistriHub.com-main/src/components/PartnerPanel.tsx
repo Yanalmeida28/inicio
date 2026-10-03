@@ -28,6 +28,7 @@ import { usePartnerData } from '../hooks/usePartnerData';
 
 import { pdvErrorMessage } from '../lib/pdv';
 import { supabase } from '../lib/supabase';
+import { BranchSelector } from './partner/BranchSelector';
 
 const CadastrosModule = lazy(() => import('./partner/CadastrosModule').then((module) => ({ default: module.CadastrosModule })));
 const PdvModule = lazy(() => import('./partner/PdvModule').then((module) => ({ default: module.PdvModule })));
@@ -87,8 +88,7 @@ type Tab =
   | 'relatorios'
   | 'white-label'
   | 'configuracoes'
-  | 'entregas'
-  | 'filiais';
+  | 'entregas';
 
 const allTabs: {
   id: Tab;
@@ -99,11 +99,6 @@ const allTabs: {
     id: 'cadastros',
     label: 'Cadastros',
     icon: Boxes,
-  },
-  {
-    id: 'filiais',
-    label: 'Filiais',
-    icon: Store,
   },
   {
     id: 'pdv',
@@ -346,7 +341,7 @@ export function PartnerPanel({
   useEffect(() => {
     if (initialTab) {
       const validTab = allTabs.find(
-        (tab) => tab.id === initialTab,
+        (tab) => tab.id === (initialTab === 'filiais' ? 'configuracoes' : initialTab),
       );
 
       if (validTab) {
@@ -384,8 +379,7 @@ export function PartnerPanel({
 
   const visibleTabs = useMemo(() => {
     return allTabs.filter((tab) =>
-      !blockedTabs.includes(tab.id) &&
-      (!isEmployeeRestricted || tab.id !== 'filiais'),
+      !blockedTabs.includes(tab.id),
     );
   }, [blockedTabs, isEmployeeRestricted]);
 
@@ -1721,6 +1715,13 @@ export function PartnerPanel({
 
       <div className="sidebar-main">
         <div className="sidebar-main-inner">
+          <BranchSelector
+            branches={partner.branches}
+            selectedBranchId={effectiveBranchId}
+            onSelectBranch={handleSelectBranch}
+            isEmployeeLocked={isEmployeeRestricted}
+            lockedBranchName={lockedBranch?.name}
+          />
           {partner.error && (
             <p className="partner-loading">
               {partner.error}
@@ -1731,18 +1732,6 @@ export function PartnerPanel({
           <div className="partner-content">
             {storeSettings.internal_notice && <div role="note" className="store-internal-notice">{storeSettings.internal_notice}</div>}
             <Suspense fallback={<div className="partner-loading" role="status">Carregando módulo...</div>}>
-            {activeTab === 'filiais' && (
-              <MultiStoreModule
-                branches={partner.branches}
-                selectedBranchId={effectiveBranchId || null}
-                onSelectBranch={handleSelectBranch}
-                onAddBranch={handleAddBranch}
-                onUpdateBranch={handleUpdateBranch}
-                onDeleteBranch={handleDeleteBranch}
-                isEmployeeLocked={isEmployeeRestricted}
-                lockedBranchName={lockedBranch?.name}
-              />
-            )}
             {activeTab === 'cadastros' && (
               <CadastrosModule
                 products={
@@ -2201,6 +2190,13 @@ export function PartnerPanel({
 
             {activeTab === 'configuracoes' && (
               <SettingsModule
+                branchManagement={!isEmployeeRestricted ? <MultiStoreModule
+                  branches={partner.branches}
+                  selectedBranchId={effectiveBranchId || null}
+                  onAddBranch={handleAddBranch}
+                  onUpdateBranch={handleUpdateBranch}
+                  onDeleteBranch={handleDeleteBranch}
+                /> : undefined}
                 user={user}
                 profile={
                   partner.profile

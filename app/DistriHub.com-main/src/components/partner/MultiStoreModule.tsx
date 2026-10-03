@@ -1,23 +1,18 @@
-import { useState, type ReactNode } from 'react';
-import { Building2, CheckCircle2, Lock, MapPin, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { useState } from 'react';
+import { CheckCircle2, MapPin, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { ActionsMenu } from './SaleActionsMenu';
 import type { PartnerBranch } from '../../types';
 
 type MultiStoreModuleProps = {
-  operatorControls?: ReactNode;
   branches: PartnerBranch[];
   selectedBranchId: string | null;
-  onSelectBranch: (id: string) => void;
   onAddBranch: (name: string, address: string) => Promise<void>;
   onUpdateBranch: (id: string, name: string, address: string) => Promise<void>;
   onDeleteBranch: (id: string) => Promise<void>;
-  isEmployeeLocked?: boolean;
-  lockedBranchName?: string;
 };
 
 export function MultiStoreModule({
-  branches, selectedBranchId, onSelectBranch, onAddBranch, onUpdateBranch, onDeleteBranch,
-  isEmployeeLocked = false, lockedBranchName, operatorControls,
+  branches, selectedBranchId, onAddBranch, onUpdateBranch, onDeleteBranch,
 }: MultiStoreModuleProps) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [newName, setNewName] = useState('');
@@ -36,10 +31,6 @@ export function MultiStoreModule({
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
-    if (isEmployeeLocked) {
-      window.alert('Funcionários não têm permissão para adicionar novas filiais.');
-      return;
-    }
     if (!newName.trim() || !newAddress.trim()) return;
     setError(null);
     setSaving(true);
@@ -100,67 +91,25 @@ export function MultiStoreModule({
     }
   }
 
-  const allBranches: PartnerBranch[] = isEmployeeLocked
-    ? branches.filter((b) => b.id === selectedBranchId)
-    : [
-        { id: 'consolidado', user_id: '', created_at: '', name: 'Visão Consolidada', address: 'Todas as filiais', is_active: true },
-        ...branches,
-      ];
-
   return (
-    <div className="panel-module branch-toolbar">
-      <div className="branch-toolbar-selection">
-        <Building2 size={18} aria-hidden="true" />
-        <label htmlFor="active-partner-branch">Filial ativa</label>
-        <select
-          id="active-partner-branch"
-          value={selectedBranchId || 'consolidado'}
-          disabled={isEmployeeLocked}
-          onChange={(event) => {
-            if (!isEmployeeLocked) onSelectBranch(event.target.value === 'consolidado' ? '' : event.target.value);
-          }}
-        >
-          {isEmployeeLocked && allBranches.length === 0 && (
-            <option value={selectedBranchId || 'consolidado'}>{lockedBranchName ?? 'Filial vinculada'}</option>
-          )}
-          {allBranches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
-        </select>
-        {isEmployeeLocked && <span className="branch-toolbar-locked"><Lock size={14} /> Filial fixa</span>}
-        {operatorControls}
-      </div>
-
-      {!isEmployeeLocked && (
-      <details className="branch-management">
-        <summary>Gerenciar filiais</summary>
+    <section className="branch-management" aria-label="Gerenciar filiais">
       <div className="branch-selector">
-        <span className="branch-selector-label">Filial ativa:</span>
+        <p>Cadastre, edite ou exclua suas filiais. Para trocar a filial ativa, use o seletor no topo do painel.</p>
         <div className="branch-cards">
-          {allBranches.map((branch) => (
-            <div key={branch.id} className={`branch-card branch-card-container ${selectedBranchId === branch.id || (branch.id === 'consolidado' && !selectedBranchId) ? 'active' : ''}`}>
-            <button
-              type="button"
+          {branches.map((branch) => (
+            <div key={branch.id} className={`branch-card branch-card-container ${selectedBranchId === branch.id ? 'active' : ''}`}>
+            <div
               className="branch-card-select"
-              disabled={isEmployeeLocked}
-              onClick={() => {
-                if (isEmployeeLocked) return;
-                if (branch.id === 'consolidado') {
-                  onSelectBranch('');
-                  return;
-                }
-                onSelectBranch(branch.id);
-              }}
-              style={isEmployeeLocked ? { cursor: 'default' } : undefined}
             >
               <MapPin size={15} />
               <div>
                 <strong>{branch.name}</strong>
                 <small>{branch.address}</small>
               </div>
-              {(selectedBranchId === branch.id || (branch.id === 'consolidado' && !selectedBranchId)) && (
+              {selectedBranchId === branch.id && (
                 <CheckCircle2 size={16} className="branch-check" />
               )}
-            </button>
-            {branch.id !== 'consolidado' && !isEmployeeLocked && (
+            </div>
               <ActionsMenu
                 label={`Ações da filial ${branch.name}`}
                 disabled={Boolean(deletingBranchId)}
@@ -169,10 +118,9 @@ export function MultiStoreModule({
                   { label: 'Excluir filial', icon: Trash2, run: () => { void handleDelete(branch); } },
                 ]}
               />
-            )}
             </div>
           ))}
-          {!isEmployeeLocked && branches.length < 4 && (
+          {branches.length < 4 && (
             <button className="branch-card add" onClick={() => setShowAddForm(!showAddForm)}>
               <Plus size={18} />
               <span>{showAddForm ? 'Cancelar' : 'Nova filial'}</span>
@@ -181,7 +129,7 @@ export function MultiStoreModule({
         </div>
       </div>
 
-      {!isEmployeeLocked && showAddForm && (
+      {showAddForm && (
         <form className="rma-form" onSubmit={handleAdd}>
           <div className="form-row">
             <label>
@@ -197,8 +145,6 @@ export function MultiStoreModule({
         </form>
       )}
 
-      </details>
-      )}
 
       {error && <p className="branch-action-error" role="alert">{error}</p>}
 
@@ -229,6 +175,6 @@ export function MultiStoreModule({
           </form>
         </div>
       )}
-    </div>
+    </section>
   );
 }

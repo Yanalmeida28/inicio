@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import {
   Settings, User, Mail, Phone, FileText, Lock, CreditCard, Calendar,
   Check, X, Crown, Zap, Building2, Receipt, ArrowUpCircle, ArrowDownCircle,
@@ -13,6 +13,7 @@ type Props = {
   user: SupabaseUser | null;
   profile: PartnerProfile | null;
   onProfileUpdate: (profile: Partial<PartnerProfile>) => void;
+  branchManagement?: ReactNode;
 };
 
 type Plan = {
@@ -62,7 +63,7 @@ const statusLabels: Record<string, { label: string; color: string }> = {
   suspensa: { label: 'Suspensa', color: '#e6a06d' },
 };
 
-export function SettingsModule({ user, profile, onProfileUpdate }: Props) {
+export function SettingsModule({ user, profile, onProfileUpdate, branchManagement }: Props) {
   const [accountName, setAccountName] = useState(profile?.account_name ?? '');
   const [email, setEmail] = useState(user?.email ?? '');
   const [whatsapp, setWhatsapp] = useState(profile?.whatsapp ?? '');
@@ -133,6 +134,13 @@ export function SettingsModule({ user, profile, onProfileUpdate }: Props) {
       </div>
 
       {/* Profile Section */}
+      {branchManagement && <>
+        <div className="section-divider">
+          <span className="section-divider-label"><Building2 size={14} /> Filiais</span>
+        </div>
+        {branchManagement}
+      </>}
+
       <div className="section-divider">
         <span className="section-divider-label"><User size={14} /> Perfil da Conta</span>
       </div>

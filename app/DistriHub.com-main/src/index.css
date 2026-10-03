@@ -160,6 +160,8 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
 .branch-toolbar-selection label { font-size: 13px; font-weight: 600; }
 .branch-toolbar-selection select { flex: 1; min-width: 0; max-width: 360px; padding: 7px 10px; border: 1px solid var(--dh-border); border-radius: 6px; background: var(--dh-surface); color: var(--dh-text); }
 .branch-toolbar-locked { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--dh-text-secondary); }
+.partner-branch-topbar { margin-bottom: 16px; }
+.branch-management .branch-card-select { cursor: default; }
 .branch-management summary { width: fit-content; cursor: pointer; font-size: 12px; color: var(--dh-blue); padding: 4px 0; }
 .branch-management[open] summary { margin-bottom: 12px; }
 .branch-management .rma-form { margin-top: 12px; }
