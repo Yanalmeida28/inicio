@@ -5,12 +5,16 @@ import {
 import type { PartnerSale, PartnerCustomer, PartnerSalesperson, SalespersonRole } from '../../types';
 import { money } from '../../utils';
 import { pdvErrorMessage } from '../../lib/pdv';
+import { SaleActionsMenu } from './SaleActionsMenu';
+import { printSale, type ReceiptDetails } from '../../lib/salePrint';
+import { saleShareUrl } from '../../lib/saleShare';
 
 type Props = {
   sales: PartnerSale[];
   customers: PartnerCustomer[];
   salespeople: PartnerSalesperson[];
   currentRole: SalespersonRole;
+  receiptDetails?: ReceiptDetails;
   onFinalizePreSale?: (id: string, paymentMethod: string) => Promise<void>;
   onCancelSale: (id: string, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
   onDeleteSale: (id: string, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
@@ -32,7 +36,7 @@ const payStatusLabels: Record<string, { label: string; color: string }> = {
   cancelado: { label: 'Cancelado', color: '#e3829b' },
 };
 
-export function OpenOrdersModule({ sales, customers, salespeople, currentRole, onFinalizePreSale, onCancelSale, onDeleteSale, onPullToPdv }: Props) {
+export function OpenOrdersModule({ sales, customers, salespeople, currentRole, receiptDetails, onFinalizePreSale, onCancelSale, onDeleteSale, onPullToPdv }: Props) {
   const [dateStart, setDateStart] = useState('');
   const [dateEnd, setDateEnd] = useState('');
   const [orderId, setOrderId] = useState('');
@@ -51,6 +55,49 @@ export function OpenOrdersModule({ sales, customers, salespeople, currentRole, o
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState<string | null>(null);
   const [isVerifyingPin, setIsVerifyingPin] = useState(false);
+
+  const [documentError, setDocumentError] = useState<string | null>(null);
+  const [shareNotice, setShareNotice] = useState<string | null>(null);
+
+  function handlePrint(sale: PartnerSale, format: 'receipt' | 'label') {
+    setDocumentError(null);
+    setShareNotice(null);
+    try {
+      printSale(sale, format, {
+        ...receiptDetails,
+        customer: customers.find((customer) => customer.id === sale.customer_id),
+        salespersonName: salespeople.find((person) => person.id === sale.salesperson_id)?.name,
+      });
+    } catch (error) {
+      setDocumentError(error instanceof Error ? error.message : 'Não foi possível abrir a impressão.');
+    }
+  }
+
+  function handleShare(sale: PartnerSale, channel: 'whatsapp' | 'email') {
+    setDocumentError(null);
+    setShareNotice(null);
+    try {
+      const url = saleShareUrl(sale, channel,
+        customers.find((customer) => customer.id === sale.customer_id),
+        salespeople.find((person) => person.id === sale.salesperson_id)?.name);
+      if (channel === 'whatsapp') {
+        const popup = window.open('about:blank', '_blank');
+        if (!popup) throw new Error('Permita pop-ups neste navegador para abrir o WhatsApp.');
+        popup.opener = null;
+        popup.location.replace(url);
+        setShareNotice('Confirme o envio no WhatsApp. O orçamento vai em texto, sem PDF anexado.');
+      } else {
+        const link = document.createElement('a');
+        link.href = url;
+        document.body.append(link);
+        link.click();
+        link.remove();
+        setShareNotice('Confirme o envio no aplicativo de e-mail. Se nada abriu, configure um aplicativo de e-mail padrão. O orçamento vai em texto, sem PDF anexado.');
+      }
+    } catch (error) {
+      setDocumentError(error instanceof Error ? error.message : 'Não foi possível preparar o envio.');
+    }
+  }
 
   const canCheckout = cashierRoles.includes(currentRole);
 
@@ -189,6 +236,9 @@ export function OpenOrdersModule({ sales, customers, salespeople, currentRole, o
         </div>
       </div>
 
+      {documentError && <p className="otp-error-msg" role="alert">{documentError}</p>}
+      {shareNotice && <p role="status">{shareNotice}</p>}
+
       {/* Filter Bar */}
       <div className="orders-filter-bar">
         <div className="orders-filter-row">
@@ -310,9 +360,13 @@ export function OpenOrdersModule({ sales, customers, salespeople, currentRole, o
                             <ArrowRight size={14} />
                           </button>
                         )}
-                        <button className="rma-advance-btn" onClick={() => requestCancel(s)} title="Cancelar/Apagar">
-                          <X size={14} />
-                        </button>
+                        <SaleActionsMenu
+                          onPrintReceipt={() => handlePrint(s, 'receipt')}
+                          onPrintLabel={() => handlePrint(s, 'label')}
+                          onWhatsApp={() => handleShare(s, 'whatsapp')}
+                          onEmail={() => handleShare(s, 'email')}
+                          onCancel={() => requestCancel(s)}
+                        />
                       </div>
                     </td>
                   </tr>

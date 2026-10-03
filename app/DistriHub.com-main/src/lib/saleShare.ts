@@ -18,8 +18,10 @@ export function saleShareUrl(sale: PrintableSale, channel: 'whatsapp' | 'email',
   if (!customer) throw new Error('Esta venda não possui um cliente cadastrado vinculado. Cadastre e selecione o cliente para compartilhar seus próximos cupons.');
   const currency = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
   const payments: Record<string, string> = { pix: 'PIX', cartao: 'Cartão', dinheiro: 'Dinheiro', faturado: 'Faturado B2B' };
+  const isQuote = sale.status === 'pre_venda' || sale.status === 'aberta';
   const message = [
-    'CUPOM NÃO FISCAL',
+    isQuote ? 'ORÇAMENTO — CUPOM NÃO FISCAL' : 'CUPOM NÃO FISCAL',
+    ...(isQuote ? ['Pedido em aberto — pagamento não confirmado.'] : []),
     ...(sale.id ? [`Venda: ${sale.id}`] : []),
     `Data: ${new Date(sale.created_at).toLocaleString('pt-BR')}`,
     `Cliente: ${sale.customer_name || customer.name}`,
@@ -42,6 +44,6 @@ export function saleShareUrl(sale: PrintableSale, channel: 'whatsapp' | 'email',
   if (!/^[^\s@<>,;:?&#%]+@[^\s@<>,;:?&#%]+\.[^\s@<>,;:?&#%]+$/.test(email)) {
     throw new Error('Cadastre um e-mail válido no cadastro do cliente para enviar o cupom.');
   }
-  const subject = sale.id ? `Cupom da venda ${sale.id}` : 'Cupom da sua compra';
+  const subject = isQuote ? (sale.id ? `Orçamento do pedido ${sale.id}` : 'Orçamento') : sale.id ? `Cupom da venda ${sale.id}` : 'Cupom da sua compra';
   return `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}`;
 }

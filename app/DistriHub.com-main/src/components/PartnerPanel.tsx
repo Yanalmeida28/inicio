@@ -1906,6 +1906,7 @@ export function PartnerPanel({
 
             {activeTab === 'pedidos' && (
               <OpenOrdersModule
+                receiptDetails={{ settings: storeSettings, companyName: partner.profile?.account_name || partner.profile?.name, companyDocument: partner.profile?.document, companyAddress: partner.branches.find((branch) => branch.id === effectiveBranchId)?.address }}
                 sales={
                   filteredSales
                 }

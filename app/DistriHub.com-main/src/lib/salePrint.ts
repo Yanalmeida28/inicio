@@ -1,7 +1,7 @@
 import type { PartnerCustomer, PartnerSale, StoreSettings } from '../types';
 import { money } from '../utils';
 
-export type PrintableSale = Pick<PartnerSale, 'customer_name' | 'items' | 'total' | 'imei' | 'serial_number' | 'payment_method' | 'created_at' | 'branch_id' | 'customer_id' | 'salesperson_id'> & { id?: string };
+export type PrintableSale = Pick<PartnerSale, 'customer_name' | 'items' | 'total' | 'imei' | 'serial_number' | 'payment_method' | 'created_at' | 'branch_id' | 'customer_id' | 'salesperson_id'> & { id?: string; status?: PartnerSale['status'] };
 
 export type ReceiptDetails = { customer?: PartnerCustomer; salespersonName?: string; settings?: StoreSettings; companyName?: string; companyDocument?: string | null; companyAddress?: string | null };
 
@@ -9,8 +9,9 @@ export function printSale(sale: PrintableSale, format: 'receipt' | 'label', deta
   const popup = window.open('', '_blank', 'width=440,height=700');
   if (!popup) throw new Error('Permita pop-ups neste navegador para imprimir o cupom ou a etiqueta.');
 
+  const isQuote = sale.status === 'pre_venda' || sale.status === 'aberta';
   const doc = popup.document;
-  doc.title = format === 'receipt' ? 'Cupom não fiscal' : 'Etiqueta da venda';
+  doc.title = format === 'receipt' ? (isQuote ? 'Orçamento — cupom não fiscal' : 'Cupom não fiscal') : 'Etiqueta da venda';
   doc.documentElement.lang = 'pt-BR';
   const style = doc.createElement('style');
   style.textContent = `
@@ -54,7 +55,8 @@ export function printSale(sale: PrintableSale, format: 'receipt' | 'label', deta
       if (details.companyDocument) line(main, `CNPJ/CPF: ${details.companyDocument}`);
       if (details.companyAddress) line(main, `Endereço da loja: ${details.companyAddress}`);
     }
-    line(main, 'CUPOM NÃO FISCAL', true);
+    line(main, isQuote ? 'ORÇAMENTO — CUPOM NÃO FISCAL' : 'CUPOM NÃO FISCAL', true);
+    if (isQuote) line(main, 'Pedido em aberto — pagamento não confirmado.');
     identification(main);
     const customer = details.customer;
     const phones = [...new Set([customer?.phone, customer?.phone_commercial_1, customer?.phone_commercial_2].map((value) => value?.trim()).filter(Boolean))].join(' / ');
