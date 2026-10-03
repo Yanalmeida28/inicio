@@ -2200,3 +2200,13 @@ html, body {
   .partner-menu-collapsed .sidebar-nav-item.active::before { left: -6px; }
   .partner-pdv-mode .pdv-search-results { max-height: min(180px, 28vh); }
 }
+.cash-card { margin-top: 18px; padding: 18px; border: 1px solid rgba(127,151,169,.25); border-radius: 12px; }
+.cash-card h4 { margin: 12px 0; }
+.cash-card form + form { margin-top: 22px; padding-top: 16px; border-top: 1px solid rgba(127,151,169,.25); }
+.cash-fields { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin: 12px 0; }
+.cash-fields label { display: grid; gap: 6px; flex: 1 1 180px; }
+.cash-module input, .cash-module select { width: 100%; min-width: 0; padding: 10px; border-radius: 8px; }
+.cash-summary { display: grid; grid-template-columns: repeat(auto-fit,minmax(160px,1fr)); gap: 12px; margin: 16px 0; }
+.cash-summary > div { padding: 12px; border: 1px solid rgba(127,151,169,.25); border-radius: 8px; }
+.cash-summary small, .cash-summary strong { display: block; }
+.cash-summary strong { margin-top: 6px; font-size: 20px; }

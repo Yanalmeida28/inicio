@@ -31,6 +31,7 @@ import { supabase } from '../lib/supabase';
 
 const CadastrosModule = lazy(() => import('./partner/CadastrosModule').then((module) => ({ default: module.CadastrosModule })));
 const PdvModule = lazy(() => import('./partner/PdvModule').then((module) => ({ default: module.PdvModule })));
+const CashRegisterModule = lazy(() => import('./partner/CashRegisterModule').then((module) => ({ default: module.CashRegisterModule })));
 const FinancialModule = lazy(() => import('./partner/FinancialModule').then((module) => ({ default: module.FinancialModule })));
 const RmaModule = lazy(() => import('./partner/RmaModule').then((module) => ({ default: module.RmaModule })));
 const ReportsModule = lazy(() => import('./partner/ReportsModule').then((module) => ({ default: module.ReportsModule })));
@@ -74,6 +75,7 @@ type PartnerPanelProps = {
 type Tab =
   | 'cadastros'
   | 'pdv'
+  | 'caixa'
   | 'pedidos'
   | 'os'
   | 'historico'
@@ -107,6 +109,11 @@ const allTabs: {
     id: 'pdv',
     label: 'PDV & Vendas',
     icon: ShoppingCart,
+  },
+  {
+    id: 'caixa',
+    label: 'Caixa',
+    icon: Wallet,
   },
   {
     id: 'pedidos',
@@ -185,6 +192,7 @@ const vendedorBlockedTabs: Tab[] = [
 ];
 
 const atendenteBlockedTabs: Tab[] = [
+  'caixa',
   'financeiro',
   'white-label',
   'configuracoes',
@@ -194,6 +202,7 @@ const atendenteBlockedTabs: Tab[] = [
 ];
 
 const tecnicoBlockedTabs: Tab[] = [
+  'caixa',
   'cadastros',
   'pdv',
   'financeiro',
@@ -205,6 +214,7 @@ const tecnicoBlockedTabs: Tab[] = [
 ];
 
 const logisticaBlockedTabs: Tab[] = [
+  'caixa',
   'cadastros',
   'pdv',
   'financeiro',
@@ -1902,6 +1912,17 @@ export function PartnerPanel({
                 }
               />
               </div>
+            )}
+
+            {activeTab === 'caixa' && (
+              <CashRegisterModule
+                branchId={effectiveBranchId}
+                scopeKey={`${identity?.authUserId}:${identity?.companyUserId}:${activeSalesperson?.id ?? 'owner'}:${effectiveBranchId}`}
+                branchName={partner.branches.find(branch => branch.id === effectiveBranchId)?.name ?? 'Filial'}
+                operatorId={getOperatorContext().operatorId}
+                operatorPin={getOperatorContext().operatorPin}
+                salespeople={filteredSalespeople}
+              />
             )}
 
             {activeTab === 'pedidos' && (
