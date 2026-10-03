@@ -42,9 +42,18 @@ export function OpenOrdersModule({ sales, customers, salespeople, currentRole, r
   const [orderId, setOrderId] = useState('');
   const [customerSearch, setCustomerSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [paymentFilter, setPaymentFilter] = useState('all');
   const [sourceFilter, setSourceFilter] = useState('all');
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [searchResults, setSearchResults] = useState<PartnerSale[] | null>(null);
+  const [appliedFilters, setAppliedFilters] = useState<{
+    dateStart: string;
+    dateEnd: string;
+    orderId: string;
+    customerSearch: string;
+    statusFilter: string;
+    paymentFilter: string;
+    sourceFilter: string;
+  } | null>(null);
   const [finalizeTarget, setFinalizeTarget] = useState<PartnerSale | null>(null);
   const [finalizePayment, setFinalizePayment] = useState('pix');
   const [isFinalizing, setIsFinalizing] = useState(false);
@@ -109,41 +118,40 @@ export function OpenOrdersModule({ sales, customers, salespeople, currentRole, r
     return sales.filter((s) => s.status === 'aberta' || s.status === 'pre_venda');
   }, [sales]);
 
-  const displayedOrders = searchResults ?? openOrders;
+  const displayedOrders = useMemo(() => {
+    if (!appliedFilters) return openOrders;
+    const filters = appliedFilters;
+    return openOrders.filter((sale) => {
+      if (filters.dateStart && new Date(sale.created_at) < new Date(filters.dateStart)) return false;
+      if (filters.dateEnd) {
+        const end = new Date(filters.dateEnd);
+        end.setHours(23, 59, 59, 999);
+        if (new Date(sale.created_at) > end) return false;
+      }
+      if (filters.orderId) {
+        const term = filters.orderId.toLowerCase();
+        if (!sale.id.toLowerCase().includes(term) && !sale.id.slice(0, 8).toUpperCase().includes(term)) return false;
+      }
+      if (filters.customerSearch) {
+        const term = filters.customerSearch.toLowerCase();
+        if (!(sale.customer_name ?? '').toLowerCase().includes(term) &&
+          !customers.some((customer) => customer.id === sale.customer_id && customer.name.toLowerCase().includes(term))) return false;
+      }
+      if (filters.statusFilter !== 'all' && sale.status !== filters.statusFilter) return false;
+      if (filters.paymentFilter !== 'all' && sale.payment_status !== filters.paymentFilter) return false;
+      if (filters.sourceFilter !== 'all' && sale.origin !== filters.sourceFilter) return false;
+      return true;
+    });
+  }, [appliedFilters, customers, openOrders]);
 
   function handleSearch() {
-    let filtered = [...openOrders];
-    if (dateStart) {
-      filtered = filtered.filter((s) => new Date(s.created_at) >= new Date(dateStart));
-    }
-    if (dateEnd) {
-      const end = new Date(dateEnd);
-      end.setHours(23, 59, 59, 999);
-      filtered = filtered.filter((s) => new Date(s.created_at) <= end);
-    }
-    if (orderId) {
-      const term = orderId.toLowerCase();
-      filtered = filtered.filter((s) => s.id.toLowerCase().includes(term) || s.id.slice(0, 8).toUpperCase().includes(term));
-    }
-    if (customerSearch) {
-      const term = customerSearch.toLowerCase();
-      filtered = filtered.filter((s) =>
-        (s.customer_name ?? '').toLowerCase().includes(term) ||
-        customers.some((c) => c.id === s.customer_id && c.name.toLowerCase().includes(term)),
-      );
-    }
-    if (statusFilter !== 'all') {
-      filtered = filtered.filter((s) => s.status === statusFilter);
-    }
-    if (sourceFilter !== 'all') {
-      filtered = filtered.filter((s) => s.origin === sourceFilter);
-    }
-    setSearchResults(filtered);
+    setAppliedFilters({ dateStart, dateEnd, orderId, customerSearch, statusFilter, paymentFilter, sourceFilter });
   }
 
   function clearFilters() {
-    setDateStart(''); setDateEnd(''); setOrderId(''); setCustomerSearch(''); setStatusFilter('all'); setSourceFilter('all');
-    setSearchResults(null);
+    setDateStart(''); setDateEnd(''); setOrderId(''); setCustomerSearch('');
+    setStatusFilter('all'); setPaymentFilter('all'); setSourceFilter('all');
+    setAppliedFilters(null);
   }
 
   const totalAmount = displayedOrders.reduce((sum, s) => sum + s.total, 0);
@@ -278,14 +286,12 @@ export function OpenOrdersModule({ sales, customers, salespeople, currentRole, r
                 <option value="all">Todos</option>
                 <option value="aberta">Aberta</option>
                 <option value="pre_venda">Pré-venda</option>
-                <option value="concluida">Concluída</option>
-                <option value="cancelada">Cancelada</option>
               </select>
             </label>
             <label className="orders-filter-field">
               Status do pagamento
-              <select>
-                <option value="">Todos</option>
+              <select value={paymentFilter} onChange={(e) => setPaymentFilter(e.target.value)}>
+                <option value="all">Todos</option>
                 <option value="pago">Pago</option>
                 <option value="pendente">Pendente</option>
                 <option value="cancelado">Cancelado</option>

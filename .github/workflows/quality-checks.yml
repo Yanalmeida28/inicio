@@ -1,0 +1,28 @@
+name: Quality checks
+
+on:
+  pull_request:
+  push:
+  workflow_call:
+
+defaults:
+  run:
+    working-directory: app/DistriHub.com-main
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            app/DistriHub.com-main/package-lock.json
+            app/DistriHub.com-main/supabase/tests/package-lock.json
+      - run: npm ci
+      - run: npm ci --prefix supabase/tests
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build

@@ -8,7 +8,7 @@ import ts from '../../node_modules/typescript/lib/typescript.js';
 const db = new PGlite();
 const read = path => readFile(new URL(path, import.meta.url), 'utf8');
 const sql = (text, args = []) => db.query(text, args);
-let owner, other, branch, foreignBranch, employee, employeeAuth, manager, product;
+let owner, other, branch, foreignBranch, employee, employeeAuth, manager, product, fiscalDefaultsBefore;
 const login = id => sql("SELECT set_config('test.auth_uid',$1,false)", [id]);
 async function mutate(action, amount, extra = {}) {
   const request = { branch, session: null, kind: null, reason: '', supervisor: null, pin: null, request: randomUUID(), ...extra };
@@ -25,17 +25,35 @@ async function sale(extra = {}) {
 before(async () => {
   await db.exec(await read('./fixtures/pdv_schema.sql'));
   await db.exec(await read('./fixtures/pdv_production.sql'));
+  await db.exec('GRANT SELECT ON public.partner_profiles TO authenticated');
+  await db.exec('CREATE TABLE auth.users(id uuid PRIMARY KEY)');
+  await db.exec('ALTER TABLE partner_profiles ADD COLUMN document text, ADD COLUMN whatsapp text, ADD COLUMN segment text, ADD COLUMN subscription_plan text NOT NULL DEFAULT \'basico\', ADD COLUMN subscription_status text NOT NULL DEFAULT \'trial\', ADD COLUMN next_billing_date date, ADD COLUMN payment_method text');
+  await db.exec('ALTER TABLE partner_branches ADD COLUMN name text, ADD COLUMN address text, ADD COLUMN is_active boolean NOT NULL DEFAULT true, ADD COLUMN created_at timestamptz NOT NULL DEFAULT now(), ADD COLUMN updated_at timestamptz');
+  await db.exec('CREATE TABLE public.b2b_orders(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),user_id uuid,total numeric,created_at timestamptz DEFAULT now())');
+  await db.exec('CREATE VIEW public.admin_financial_months AS SELECT 1 AS financial_total');
+  await db.exec('GRANT SELECT ON public.admin_financial_months TO anon, authenticated');
   await db.exec(await read('../migrations/20260928044542_fix_pdv_sales_reconciliation.sql'));
   await db.exec(await read('../migrations/20260928195329_enforce_pdv_authoritative_pricing.sql'));
+  await db.exec(await read('../migrations/20260826110000_add_fiscal_documents_foundation.sql'));
+  await db.exec(await read('../migrations/20260826150000_add_fiscal_rules_and_inutilizations.sql'));
+  await db.exec("CREATE FUNCTION public.verify_super_admin(input_password text) RETURNS boolean LANGUAGE sql AS $$ SELECT input_password='admin-secret' $$");
+  await db.exec("CREATE FUNCTION public.is_super_admin() RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT auth.uid() IS NOT NULL AND auth.uid()::text=current_setting('test.super_admin_uid',true) $$");
+  await db.exec(await read('../migrations/20260826140000_add_super_admin_financial_overview.sql'));
+  await db.exec("CREATE FUNCTION public.record_fiscal_document(p_document_id uuid DEFAULT NULL, p_document_type text DEFAULT 'nfe', p_status text DEFAULT 'pending', p_document_number text DEFAULT NULL, p_access_key text DEFAULT NULL, p_payload jsonb DEFAULT '{}'::jsonb) RETURNS uuid LANGUAGE sql AS $$ SELECT NULL::uuid $$");
+  fiscalDefaultsBefore = (await sql("SELECT pg_get_function_arguments('public.record_fiscal_document(uuid,text,text,text,text,jsonb)'::regprocedure) AS args")).rows[0].args;
   await db.exec('ALTER TABLE partner_salespeople ADD COLUMN name text');
   await db.exec(await read('../migrations/20261003182612_partner_cash_register.sql'));
+  await db.exec(await read('../migrations/20261003190000_secure_financial_subscription_fiscal_and_branch_flows.sql'));
+  await db.exec(await read('../migrations/20261003193000_add_post_close_cash_refunds.sql'));
 });
 after(() => db.close());
 beforeEach(async () => {
-  await db.exec('RESET ROLE; TRUNCATE partner_cash_movements,partner_cash_sessions,partner_audit_logs,stock_movements,partner_invoices,partner_sales,partner_products,partner_customers,partner_salespeople,partner_branches,partner_profiles CASCADE');
+  await db.exec('RESET ROLE; TRUNCATE partner_plan_change_requests,fiscal_documents,fiscal_tax_rules,fiscal_inutilizations,partner_cash_movements,partner_cash_sessions,partner_audit_logs,stock_movements,partner_invoices,partner_sales,partner_products,partner_customers,partner_salespeople,partner_branches,partner_profiles CASCADE; TRUNCATE auth.users CASCADE');
   [owner,other,branch,foreignBranch,employee,employeeAuth,manager,product]=Array.from({length:8},()=>randomUUID());
-  await sql("INSERT INTO partner_profiles VALUES($1,'Owner','Test'),($2,'Other','Test')",[owner,other]);
-  await sql('INSERT INTO partner_branches VALUES($1,$3),($2,$4)',[branch,foreignBranch,owner,other]);
+  await sql('INSERT INTO auth.users(id) VALUES($1),($2)',[owner,other]);
+  await sql("SELECT set_config('test.super_admin_uid',$1,false)",[owner]);
+  await sql("INSERT INTO partner_profiles(id,account_name,business_name,document,whatsapp,subscription_plan) VALUES($1,'Owner','Test',NULL,NULL,'basico'),($2,'Other','Test',NULL,NULL,'basico')",[owner,other]);
+  await sql('INSERT INTO partner_branches(id,user_id,name) VALUES($1,$3,\'Main\'),($2,$4,\'Foreign\')',[branch,foreignBranch,owner,other]);
   await sql("INSERT INTO partner_salespeople(id,user_id,auth_user_id,branch_id,role,active,pin_hash,name) VALUES($1,$4,$2,$5,'caixa',true,md5('1234'),'Caixa'),($3,$4,NULL,$5,'gerente',true,md5('9876'),'Gerente')",[employee,employeeAuth,manager,owner,branch]);
   await sql("INSERT INTO partner_products(id,user_id,branch_id,name,stock,is_service) VALUES($1,$2,$3,'Produto',10,false)",[product,owner,branch]);
   await login(owner);
@@ -79,6 +97,220 @@ test('cash expected amount includes opening, cash sales, supplies and withdrawal
   assert.equal(Number(s.expected_amount),230); assert.equal(Number(s.difference),0);
   assert.deepEqual(s.closing_totals,{dinheiro:130,pix:100,cartao:100,faturado:0});
   await assert.rejects(sale(),/Abra o caixa/);
+});
+
+test('post-close partial refunds are linked, authorized, bounded and recorded in a new session', async () => {
+  const closedSession = await mutate('abrir', 0);
+  const originalSale = await sale();
+  await mutate('fechar', 100, { session: closedSession });
+  const closing = (await sql('SELECT closing_totals FROM partner_cash_sessions WHERE id=$1', [closedSession])).rows[0];
+  assert.deepEqual(closing.closing_totals, { dinheiro: 100, pix: 0, cartao: 0, faturado: 0 });
+
+  await login(employeeAuth);
+  const refundSession = await mutate('abrir', 100);
+  const firstRequest = randomUUID();
+  const refund = (request, amount, supervisor = null, pin = null) => sql(
+    'SELECT record_partner_cash_refund($1,NULL,NULL,$2,$3,$4,$5,$6,$7,$8) AS id',
+    [branch, refundSession, originalSale.id, amount, 'Devolução parcial', supervisor, pin, request],
+  );
+  await assert.rejects(refund(firstRequest, 25), /Responsável inválido/);
+  await assert.rejects(refund(firstRequest, 25, manager, 'bad-pin'), /PIN incorreto/);
+  await refund(firstRequest, 25, manager, '9876');
+  await refund(firstRequest, 25, manager, '9876');
+  const fullRefundRequest = randomUUID();
+  await refund(fullRefundRequest, 75, manager, '9876');
+  await assert.rejects(refund(randomUUID(), 1, manager, '9876'), /excede o saldo disponível/);
+  await assert.rejects(
+    sql("UPDATE public.partner_sales SET status='cancelada' WHERE id=$1", [originalSale.id]),
+    /Venda com devolução financeira não pode ser cancelada/,
+  );
+  assert.equal((await sql('SELECT status FROM public.partner_sales WHERE id=$1', [originalSale.id])).rows[0].status, 'concluida');
+  await mutate('fechar', 0, { session: refundSession });
+  await refund(fullRefundRequest, 75, manager, '9876');
+  await assert.rejects(refund(fullRefundRequest, 74, manager, '9876'), /Operação repetida com dados diferentes/);
+
+  const movements = (await sql(
+    "SELECT kind,amount,session_id,sale_id FROM partner_cash_movements WHERE kind='devolucao' ORDER BY amount",
+  )).rows;
+  assert.equal(movements.length, 2);
+  assert.deepEqual(movements.map(row => Number(row.amount)), [25, 75]);
+  assert.ok(movements.every(row => row.session_id === refundSession && row.sale_id === originalSale.id));
+  assert.deepEqual((await sql('SELECT partner_cash_private.totals($1) AS totals', [refundSession])).rows[0].totals,
+    { dinheiro: -100, pix: 0, cartao: 0, faturado: 0 });
+  assert.deepEqual((await sql('SELECT closing_totals FROM partner_cash_sessions WHERE id=$1', [closedSession])).rows[0].closing_totals, closing.closing_totals);
+});
+
+test('cash refunds cannot precede closing the original sale session', async () => {
+  const originalSession = await mutate('abrir', 0);
+  const originalSale = await sale();
+  await login(employeeAuth);
+  const refundSession = await mutate('abrir', 0);
+  await assert.rejects(
+    sql(
+      'SELECT record_partner_cash_refund($1,NULL,NULL,$2,$3,10,$4,$5,$6,$7)',
+      [branch, refundSession, originalSale.id, 'Teste antes do fechamento', manager, '9876', randomUUID()],
+    ),
+    /somente após o fechamento da sessão original/,
+  );
+  await login(owner);
+  await mutate('fechar', 100, { session: originalSession });
+});
+
+test('administrative financial view is not readable by anonymous or authenticated clients', async () => {
+  await db.exec('SET ROLE anon');
+  await assert.rejects(sql('SELECT * FROM public.admin_financial_months'), /permission denied/);
+  await db.exec('RESET ROLE; SET ROLE authenticated');
+  await assert.rejects(sql('SELECT * FROM public.admin_financial_months'), /permission denied/);
+  await db.exec('RESET ROLE');
+  assert.equal((await sql("SELECT has_function_privilege('anon','public.get_super_admin_financial_overview(text)','EXECUTE') AS allowed")).rows[0].allowed, true);
+  assert.equal((await sql("SELECT count(*)::int AS n FROM public.get_super_admin_financial_overview('wrong-password')")).rows[0].n, 0);
+});
+
+test('subscription values cannot be chosen at signup or changed by an owner', async () => {
+  await db.exec('SET ROLE authenticated');
+  for (const column of ['subscription_plan', 'subscription_status', 'next_billing_date', 'payment_method']) {
+    assert.equal(
+      (await sql("SELECT has_column_privilege('authenticated','public.partner_profiles',$1,'UPDATE') AS allowed", [column])).rows[0].allowed,
+      false,
+    );
+    assert.equal(
+      (await sql("SELECT has_column_privilege('authenticated','public.partner_profiles',$1,'INSERT') AS allowed", [column])).rows[0].allowed,
+      false,
+    );
+  }
+  await assert.rejects(
+    sql("UPDATE public.partner_profiles SET subscription_plan='enterprise',subscription_status='ativa' WHERE id=$1", [owner]),
+    /permission denied/,
+  );
+  const newUser = randomUUID();
+  await db.exec('RESET ROLE');
+  await sql('INSERT INTO auth.users(id) VALUES($1)', [newUser]);
+  await login(newUser);
+  await db.exec('SET ROLE authenticated');
+  await assert.rejects(
+    sql("INSERT INTO public.partner_profiles(id,business_name,subscription_plan,subscription_status,next_billing_date) VALUES($1,'New','enterprise','ativa',CURRENT_DATE)", [newUser]),
+    /permission denied/,
+  );
+  await sql("INSERT INTO public.partner_profiles(id,business_name,whatsapp,segment) VALUES($1,'New','555','assistencia')", [newUser]);
+  const created = (await sql('SELECT subscription_plan,subscription_status,next_billing_date,payment_method FROM public.partner_profiles WHERE id=$1', [newUser])).rows[0];
+  assert.deepEqual(created, { subscription_plan: 'basico', subscription_status: 'trial', next_billing_date: null, payment_method: null });
+  await assert.rejects(sql('DELETE FROM public.partner_profiles WHERE id=$1', [newUser]), /permission denied/);
+  await db.exec('RESET ROLE');
+  await login(owner);
+  await db.exec('SET ROLE authenticated');
+  const { rows } = await sql("SELECT public.request_partner_plan_change('profissional') AS request_id");
+  const requestId = rows[0].request_id;
+  assert.equal((await sql("SELECT public.request_partner_plan_change('profissional') AS request_id")).rows[0].request_id, requestId);
+  await assert.rejects(
+    sql("SELECT public.request_partner_plan_change('enterprise')"),
+    /Já existe uma solicitação de mudança de plano pendente/,
+  );
+  const profile = (await sql('SELECT subscription_plan FROM public.partner_profiles WHERE id=$1', [owner])).rows[0];
+  const request = (await sql('SELECT requested_plan,status FROM public.partner_plan_change_requests WHERE id=$1', [requestId])).rows[0];
+  assert.equal(profile.subscription_plan, 'basico');
+  assert.deepEqual(request, { requested_plan: 'profissional', status: 'pending' });
+  assert.deepEqual(
+    (await sql('SELECT company_name,current_plan,requested_plan,status FROM public.get_partner_plan_change_requests()')).rows,
+    [{ company_name: 'Test', current_plan: 'basico', requested_plan: 'profissional', status: 'pending' }],
+  );
+  await db.exec('RESET ROLE');
+  await login(other);
+  await db.exec('SET ROLE authenticated');
+  await assert.rejects(
+    sql('SELECT public.get_partner_plan_change_requests()'),
+    /Operador não autorizado/,
+  );
+  await assert.rejects(
+    sql('SELECT public.resolve_partner_plan_change($1,true)', [requestId]),
+    /Operador não autorizado/,
+  );
+  await db.exec('RESET ROLE');
+  await login(owner);
+  await db.exec('SET ROLE authenticated');
+  await sql('SELECT public.resolve_partner_plan_change($1,true)', [requestId]);
+  const approved = (await sql('SELECT subscription_plan,subscription_status,next_billing_date FROM public.partner_profiles WHERE id=$1', [owner])).rows[0];
+  assert.equal(approved.subscription_plan, 'profissional');
+  assert.equal(approved.subscription_status, 'trial');
+  assert.equal(approved.next_billing_date, null);
+  assert.equal((await sql('SELECT status FROM public.partner_plan_change_requests WHERE id=$1', [requestId])).rows[0].status, 'approved');
+  await assert.rejects(
+    sql('SELECT public.resolve_partner_plan_change($1,true)', [requestId]),
+    /Solicitação pendente não encontrada/,
+  );
+  const rejectionId = (await sql("SELECT public.request_partner_plan_change('basico') AS request_id")).rows[0].request_id;
+  await sql('SELECT public.resolve_partner_plan_change($1,false)', [rejectionId]);
+  assert.equal((await sql('SELECT subscription_plan FROM public.partner_profiles WHERE id=$1', [owner])).rows[0].subscription_plan, 'profissional');
+  assert.equal((await sql('SELECT status FROM public.partner_plan_change_requests WHERE id=$1', [rejectionId])).rows[0].status, 'rejected');
+});
+
+test('Fiscal RPC replacement preserves the deployed signature default arguments', async () => {
+  const after = (await sql("SELECT pg_get_function_arguments('public.record_fiscal_document(uuid,text,text,text,text,jsonb)'::regprocedure) AS args")).rows[0].args;
+  assert.equal(after, fiscalDefaultsBefore);
+  await assert.rejects(
+    sql('SELECT public.record_fiscal_document()'),
+    /Selecione uma filial/,
+  );
+});
+
+test('branch creation enforces one, three and unlimited plan quotas server-side', async () => {
+  await assert.rejects(
+    sql("SELECT public.create_partner_branch('Second branch',NULL)"),
+    /permite até 1 filial/,
+  );
+  await sql("UPDATE public.partner_profiles SET subscription_plan='profissional' WHERE id=$1", [owner]);
+  await sql("SELECT public.create_partner_branch('Second branch',NULL)");
+  await sql("SELECT public.create_partner_branch('Third branch',NULL)");
+  await assert.rejects(
+    sql("SELECT public.create_partner_branch('Fourth branch',NULL)"),
+    /permite até 3 filial/,
+  );
+  await sql("UPDATE public.partner_profiles SET subscription_plan='enterprise' WHERE id=$1", [owner]);
+  await sql("SELECT public.create_partner_branch('Fourth branch',NULL)");
+  await sql("SELECT public.create_partner_branch('Fifth branch',NULL)");
+  assert.equal((await sql('SELECT count(*)::int AS total FROM public.partner_branches WHERE user_id=$1', [owner])).rows[0].total, 5);
+});
+
+test('fiscal RPCs persist branch-scoped pending requests and reject cross-branch writes', async () => {
+  await mutate('abrir', 0);
+  const completedSale = await sale();
+  const payload = {
+    branch_id: branch,
+    sale_id: completedSale.id,
+    series: '001',
+    items: [],
+    totals: { total: 100 },
+  };
+  const documentId = (await sql(
+    "SELECT public.record_fiscal_document(NULL,'nfe','pending','123',NULL,$1::jsonb) AS id",
+    [JSON.stringify(payload)],
+  )).rows[0].id;
+  const document = (await sql('SELECT user_id,branch_id,status,number FROM public.fiscal_documents WHERE id=$1', [documentId])).rows[0];
+  assert.deepEqual(document, { user_id: owner, branch_id: branch, status: 'pending', number: '123' });
+  await assert.rejects(
+    sql("SELECT public.record_fiscal_document(NULL,'nfe','pending',NULL,NULL,$1::jsonb)", [
+      JSON.stringify({ ...payload, branch_id: foreignBranch }),
+    ]),
+    /Filial inválida/,
+  );
+
+  const inutilizationId = (await sql(
+    "SELECT public.create_fiscal_inutilization($1::jsonb) AS id",
+    [JSON.stringify({
+      branch_id: branch, document_type: 'nfce', series: '001',
+      number_start: 10, number_end: 11,
+      justification: 'Falha de sequência no sistema',
+    })],
+  )).rows[0].id;
+  assert.equal((await sql('SELECT branch_id,status FROM public.fiscal_inutilizations WHERE id=$1', [inutilizationId])).rows[0].branch_id, branch);
+
+  const ruleId = (await sql(
+    "SELECT public.save_fiscal_branch_settings($1::jsonb) AS id",
+    [JSON.stringify({
+      branch_id: branch, name: 'Regra padrão', cfop: '5102', cst_csosn: '102',
+      ncm: '12345678', icms_rate: 0, pis_rate: 0, cofins_rate: 0, active: true,
+    })],
+  )).rows[0].id;
+  assert.equal((await sql('SELECT branch_id FROM public.fiscal_tax_rules WHERE id=$1', [ruleId])).rows[0].branch_id, branch);
 });
 
 test('cashier cannot withdraw or close a difference without manager PIN and justification', async () => {

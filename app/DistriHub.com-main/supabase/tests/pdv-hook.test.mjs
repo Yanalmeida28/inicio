@@ -18,17 +18,20 @@ async function harness({initialSales=[],initialInvoices=[],rpc,values=new Map()}
   const storage={getItem:k=>values.get(k)??null,setItem:(k,v)=>values.set(k,v),removeItem:k=>values.delete(k)};
   const identity={authUserId:'owner',companyUserId:'owner',salespersonId:null,branchId:null,role:'administrador'};
   const initial={partner_sales:initialSales,partner_invoices:initialInvoices};
+  const channel={on(){return channel;},subscribe(){return channel;}};
   const client={rpc,from(table){
-    const q={select(){return q;},eq(){return q;},order(){return q;},limit(){return q;},
+    const q={select(){return q;},eq(){return q;},order(){return q;},limit(){return q;},range(){return q;},
       maybeSingle(){return Promise.resolve({data:null,error:null});},
       then(resolve,reject){return Promise.resolve({data:initial[table]??[],error:null}).then(resolve,reject);}};
     return q;
-  }};
+  },channel(){return channel;},removeChannel(){return Promise.resolve('ok');}};
   const helperModule={exports:{}};
   vm.runInNewContext(compile(helperSource),{exports:helperModule.exports,require});
   const hookModule={exports:{}};
   vm.runInNewContext(compile(source),{
     exports:hookModule.exports,sessionStorage:storage,crypto:{randomUUID},console,
+    window:{addEventListener(){},removeEventListener(){}},
+    document:{visibilityState:'visible',addEventListener(){},removeEventListener(){}},
     require(name){
       if(name==='react')return React;
       if(name==='../lib/supabase')return {supabase:client,isSupabaseConfigured:true};

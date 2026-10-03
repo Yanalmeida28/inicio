@@ -16,10 +16,11 @@ export interface CashSession {
 
 export interface CashRequest {
   id: string;
-  action: 'abrir' | 'movimentar' | 'fechar';
+  action: 'abrir' | 'movimentar' | 'fechar' | 'devolver';
   sessionId: string | null;
+  saleId?: string | null;
   amount: number;
-  kind: 'sangria' | 'suprimento';
+  kind: 'sangria' | 'suprimento' | 'dinheiro' | 'pix' | 'cartao' | 'faturado';
   reason: string;
 }
 
@@ -31,7 +32,7 @@ export class CashRequestStore {
     const raw = this.storage.getItem(this.key);
     if (!raw) return null;
     const request = JSON.parse(raw) as CashRequest;
-    if (!request.id || !['abrir', 'movimentar', 'fechar'].includes(request.action) || !Number.isFinite(request.amount)) {
+    if (!request.id || !['abrir', 'movimentar', 'fechar', 'devolver'].includes(request.action) || !Number.isFinite(request.amount)) {
       throw new Error('Operação pendente inválida. Solicite a conferência do caixa.');
     }
     return request;
@@ -43,7 +44,7 @@ export class CashRequestStore {
 export interface CashMovement {
   id: string;
   session_id: string;
-  kind: 'venda' | 'estorno' | 'sangria' | 'suprimento';
+  kind: 'venda' | 'estorno' | 'devolucao' | 'sangria' | 'suprimento';
   payment_method: string;
   amount: number;
   reason: string;
@@ -59,7 +60,7 @@ export function cashTotals(movements: CashMovement[]): Record<string, number> {
   const cents: Record<string, number> = { dinheiro: 0, pix: 0, cartao: 0, faturado: 0 };
   for (const movement of movements) {
     const key = movement.payment_method;
-    const sign = movement.kind === 'estorno' || movement.kind === 'sangria' ? -1 : 1;
+    const sign = movement.kind === 'estorno' || movement.kind === 'devolucao' || movement.kind === 'sangria' ? -1 : 1;
     cents[key] = (cents[key] ?? 0) + sign * Math.round(Number(movement.amount) * 100);
   }
   return Object.fromEntries(Object.entries(cents).map(([key, value]) => [key, value / 100]));

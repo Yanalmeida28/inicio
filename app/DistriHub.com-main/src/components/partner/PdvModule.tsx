@@ -375,6 +375,19 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
     setVisibleProductCount(PRODUCT_PAGE_SIZE);
   }, [search, selectedBranchId]);
   const [cart, setCart] = useState<{ product_id: string; name: string; quantity: number; unit_price: number }[]>([]);
+  const previousBranchId = useRef(selectedBranchId);
+  const [branchChangedWithCart, setBranchChangedWithCart] = useState(false);
+  useEffect(() => {
+    if (previousBranchId.current !== selectedBranchId && cart.length > 0) {
+      setBranchChangedWithCart(true);
+    }
+    if (cart.length === 0) setBranchChangedWithCart(false);
+    previousBranchId.current = selectedBranchId;
+  }, [cart.length, selectedBranchId]);
+  const cartHasWrongBranch = Boolean(selectedBranchId && cart.some((item) => {
+    const product = products.find((candidate) => candidate.id === item.product_id);
+    return !product || (product.branch_id != null && product.branch_id !== selectedBranchId);
+  }));
   const [customerId, setCustomerId] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [clientType, setClientType] = useState<ClientType>('varejo');
@@ -680,6 +693,16 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
         <div className="pdv-right">
           <div className="pdv-cart-header"><h4>Dados da venda</h4></div>
           <div className="pdv-sale-scroll">
+          {branchChangedWithCart && cart.length > 0 && (
+            <div className="pdv-restricted-checkout" role="alert">
+              <LockIcon size={16} />
+              <span>A filial foi alterada e o carrinho foi mantido. Confira os produtos antes de finalizar.</span>
+              <button type="button" className="rma-advance-btn" onClick={() => setCart([])}>Esvaziar carrinho</button>
+            </div>
+          )}
+          {cartHasWrongBranch && (
+            <p className="otp-error-msg" role="alert">O carrinho contém produtos de outra filial. Remova os itens incompatíveis ou esvazie o carrinho.</p>
+          )}
 
           {cart.length > 0 && (
             <>
@@ -783,7 +806,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
               </div>
 
               {canCheckout ? (
-                <button className="module-submit-btn pdv-checkout-btn" onClick={handleCheckout} disabled={cart.length === 0 || isCheckingOut || billedSaleBlocked || hasPendingSale}>
+                <button className="module-submit-btn pdv-checkout-btn" onClick={handleCheckout} disabled={cart.length === 0 || isCheckingOut || billedSaleBlocked || hasPendingSale || cartHasWrongBranch}>
                   <Check size={18} /> {isCheckingOut ? 'Finalizando...' : 'Finalizar Venda'}
                 </button>
               ) : (

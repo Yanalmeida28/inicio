@@ -1,20 +1,22 @@
 import { useEffect, useState } from 'react';
 import {
-  ArrowLeft, Users, Check, BarChart3,
-  Receipt, ShieldCheck, Lock, Eye, EyeOff,
+  ArrowLeft, Users, Check, BarChart3, ClipboardList,
+  Receipt, ShieldCheck, Lock, Eye, EyeOff, Headphones,
 } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { useSuperAdminAuth } from '../hooks/useSuperAdminAuth';
 import type { AdminCompany, AdminLojista, PartnerInvoice } from '../types';
 import { money } from '../utils';
 import { AdminFinancialModule } from './AdminFinancialModule';
+import { AdminSupportModule } from './AdminSupportModule';
+import { AdminPlanRequestsModule } from './AdminPlanRequestsModule';
 import type { AdminFinancialMonth } from '../types';
 
 type AdminPanelProps = {
   onBack: () => void;
 };
 
-type AdminTab = 'lojistas' | 'financeiro' | 'faturas' | 'seguranca';
+type AdminTab = 'lojistas' | 'financeiro' | 'faturas' | 'planos' | 'seguranca' | 'suporte';
 
 function invoiceStatusStyle(status: PartnerInvoice['status']) {
   const color = status === 'paga' ? '#5bbc87' : '#e6a06d';
@@ -85,6 +87,8 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
     { id: 'lojistas', label: 'Gestão de Clientes', icon: Users },
     { id: 'financeiro', label: 'Financeiro SaaS', icon: BarChart3 },
     { id: 'faturas', label: 'Faturas SaaS', icon: Receipt },
+    { id: 'planos', label: 'Solicitações de Plano', icon: ClipboardList },
+    { id: 'suporte', label: 'Suporte', icon: Headphones },
     { id: 'seguranca', label: 'Segurança', icon: ShieldCheck },
   ];
 
@@ -200,6 +204,10 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
               </div>
             </div>
           )}
+
+          {tab === 'suporte' && <AdminSupportModule companies={lojistas} />}
+
+          {tab === 'planos' && <AdminPlanRequestsModule />}
 
           {tab === 'seguranca' && (
             <ChangePasswordSection auth={superAdminAuth} />

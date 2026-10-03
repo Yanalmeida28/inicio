@@ -48,6 +48,7 @@ function detectDocType(doc: string | null | undefined): DocType {
 export function FiscalModule({ products, sales, customers, profile, currentRole, selectedBranchId }: Props) {
   const [selectedSaleId, setSelectedSaleId] = useState('');
   const [emitResult, setEmitResult] = useState<{ type: EmitType; success: boolean } | null>(null);
+  const [fiscalError, setFiscalError] = useState<string | null>(null);
   const hasActiveBranch = Boolean(selectedBranchId);
   const [fiscalTab, setFiscalTab] = useState<FiscalTab>('cupom');
   const [emitType, setEmitType] = useState<EmitType>('nfce');
@@ -191,32 +192,39 @@ export function FiscalModule({ products, sales, customers, profile, currentRole,
 
   async function handleEmit() {
     if (!selectedSale || !canEmit || !hasActiveBranch) return;
-    if (!profile?.id || !supabase) return;
-
-    const { error } = await supabase.rpc('record_fiscal_document', {
-      p_user_id: profile.id,
-      p_branch_id: selectedBranchId,
-      p_order_id: null,
-      p_document_type: emitType,
-      p_status: 'pending',
-      p_series: emitSerie,
-      p_number: emitNumero || null,
-      p_provider_response: {
-        sale_id: selectedSale.id,
-        branch_id: selectedBranchId,
-        items: fiscalItems,
-        totals,
-        finalidade: emitFinalidade,
-        presenca: emitPresenca,
-        tipo_cliente: emitTipoCliente,
-        observations: emitObservations,
-      },
-    });
-
-    if (error) return;
-    setEmitResult({ type: emitType, success: true });
-    setShowEmitModal(false);
-    setTimeout(() => setEmitResult(null), 3500);
+    if (!supabase) {
+      setFiscalError('Conexão fiscal indisponível. Tente novamente.');
+      return;
+    }
+    setFiscalError(null);
+    try {
+      const { error } = await supabase.rpc('record_fiscal_document', {
+        p_document_id: null,
+        p_document_type: emitType,
+        p_status: 'pending',
+        p_document_number: emitNumero || null,
+        p_access_key: null,
+        p_payload: {
+          branch_id: selectedBranchId,
+          sale_id: selectedSale.id,
+          series: emitSerie,
+          items: fiscalItems,
+          totals,
+          finalidade: emitFinalidade,
+          presenca: emitPresenca,
+          tipo_cliente: emitTipoCliente,
+          observations: emitObservations,
+          customer_name: emitCustomerName,
+          customer_document: customerDoc,
+        },
+      });
+      if (error) throw error;
+      setEmitResult({ type: emitType, success: true });
+      setShowEmitModal(false);
+      setTimeout(() => setEmitResult(null), 3500);
+    } catch (error) {
+      setFiscalError(error instanceof Error ? error.message : 'Não foi possível registrar a solicitação fiscal.');
+    }
   }
 
   async function handleInutilization() {
@@ -224,24 +232,28 @@ export function FiscalModule({ products, sales, customers, profile, currentRole,
       setInutilStatus('Selecione uma filial para continuar.');
       return;
     }
-    if (!profile?.id || !supabase || !inutilInicio || !inutilFim || inutilJustificativa.trim().length < 15) {
+    if (!supabase || !inutilInicio || !inutilFim || inutilJustificativa.trim().length < 15) {
       setInutilStatus('Informe a série, a faixa numérica e uma justificativa com pelo menos 15 caracteres.');
       return;
     }
 
-    const { error } = await supabase.rpc('create_fiscal_inutilization', {
-      p_user_id: profile.id,
-      p_branch_id: selectedBranchId,
-      p_document_type: emitType,
-      p_series: inutilSerie,
-      p_number_start: Number(inutilInicio),
-      p_number_end: Number(inutilFim),
-      p_justification: inutilJustificativa.trim(),
-      p_status: 'pending',
-    });
-
-    setInutilStatus(error ? error.message : 'Solicitação registrada e aguardando envio à API fiscal.');
-    if (!error) { setInutilInicio(''); setInutilFim(''); setInutilJustificativa(''); }
+    try {
+      const { error } = await supabase.rpc('create_fiscal_inutilization', {
+        p_data: {
+          branch_id: selectedBranchId,
+          document_type: emitType,
+          series: inutilSerie,
+          number_start: Number(inutilInicio),
+          number_end: Number(inutilFim),
+          justification: inutilJustificativa.trim(),
+        },
+      });
+      if (error) throw error;
+      setInutilStatus('Registro pendente salvo no DistriHub, mas não foi enviado à SEFAZ. Falta integrar o provedor fiscal, suas credenciais de servidor e o certificado exigido por ele.');
+      setInutilInicio(''); setInutilFim(''); setInutilJustificativa('');
+    } catch (error) {
+      setInutilStatus(error instanceof Error ? error.message : 'Não foi possível registrar a solicitação.');
+    }
   }
 
   const dispatchOptions: { id: DispatchMethod; label: string; shortcut: string; icon: typeof Printer }[] = [
@@ -522,9 +534,10 @@ export function FiscalModule({ products, sales, customers, profile, currentRole,
 
           {emitResult && (
             <div className="sent-message">
-              <Check size={15} /> Solicitação de {emitResult.type === 'nfce' ? 'NFC-e' : 'NF-e'} registrada. A autorização dependerá da API fiscal.
+              <Check size={15} /> Solicitação de {emitResult.type === 'nfce' ? 'NFC-e' : 'NF-e'} salva como pendente. Não foi transmitida nem autorizada: falta integrar o provedor fiscal, suas credenciais de servidor e o certificado exigido por ele.
             </div>
           )}
+          {fiscalError && <p className="otp-error-msg" role="alert">{fiscalError}</p>}
 
         </>
       )}

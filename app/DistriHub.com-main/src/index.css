@@ -2202,6 +2202,11 @@ html, body {
   .partner-menu-collapsed .sidebar-nav-item.active::before { left: -6px; }
   .partner-pdv-mode .pdv-search-results, .partner-pdv-mode .pdv-product-search-results { max-height: min(180px, 28vh); }
 }
+.admin-support-conversations { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
+.admin-support-conversation { display: flex; flex-direction: column; gap: 6px; text-align: left; padding: 14px; border: 1px solid #CBD5E1; border-radius: 8px; background: #FFFFFF; color: #172033; cursor: pointer; min-width: 0; }
+.admin-support-conversation.active { border-color: #2563EB; background: #EFF6FF; }
+.admin-support-conversation span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.admin-support-conversation small { color: #475569; }
 .cash-card { margin-top: 18px; padding: 18px; border: 1px solid rgba(127,151,169,.25); border-radius: 12px; }
 .cash-card h4 { margin: 12px 0; }
 .cash-card form + form { margin-top: 22px; padding-top: 16px; border-top: 1px solid rgba(127,151,169,.25); }

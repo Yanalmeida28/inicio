@@ -1906,6 +1906,7 @@ export function PartnerPanel({
             {activeTab === 'caixa' && (
               <CashRegisterModule
                 branchId={effectiveBranchId}
+                sales={partner.sales}
                 scopeKey={`${identity?.authUserId}:${identity?.companyUserId}:${activeSalesperson?.id ?? 'owner'}:${effectiveBranchId}`}
                 branchName={partner.branches.find(branch => branch.id === effectiveBranchId)?.name ?? 'Filial'}
                 operatorId={getOperatorContext().operatorId}

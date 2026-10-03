@@ -4,18 +4,19 @@ import { supabase } from '../../lib/supabase';
 import { isDefinitiveSaleRejection, pdvErrorMessage } from '../../lib/pdv';
 import { CashRequestStore, cashAmount, cashPaymentLabels, cashTotals, printCashReport, type CashMovement, type CashRequest, type CashSession } from '../../lib/cashRegister';
 import { money } from '../../utils';
-import type { PartnerSalesperson } from '../../types';
+import type { PartnerSale, PartnerSalesperson } from '../../types';
 
 type Props = {
   branchId: string;
   branchName: string;
   scopeKey: string;
+  sales: PartnerSale[];
   operatorId: string | null;
   operatorPin: string | null;
   salespeople: PartnerSalesperson[];
 };
 
-export function CashRegisterModule({ branchId, branchName, scopeKey, operatorId, operatorPin, salespeople }: Props) {
+export function CashRegisterModule({ branchId, branchName, scopeKey, sales, operatorId, operatorPin, salespeople }: Props) {
   const [sessions, setSessions] = useState<CashSession[]>([]);
   const [movements, setMovements] = useState<CashMovement[]>([]);
   const [selectedId, setSelectedId] = useState('');
@@ -25,6 +26,9 @@ export function CashRegisterModule({ branchId, branchName, scopeKey, operatorId,
   const [reason, setReason] = useState('');
   const [counted, setCounted] = useState('');
   const [notes, setNotes] = useState('');
+  const [refundSaleId, setRefundSaleId] = useState('');
+  const [refundAmount, setRefundAmount] = useState('');
+  const [refundReason, setRefundReason] = useState('');
   const [supervisorId, setSupervisorId] = useState('');
   const [supervisorPin, setSupervisorPin] = useState('');
   const [busy, setBusy] = useState(false);
@@ -71,8 +75,26 @@ export function CashRegisterModule({ branchId, branchName, scopeKey, operatorId,
   const totals = selected?.closing_totals ?? cashTotals(selectedMovements);
   const expected = selected ? Math.round((Number(selected.opening_amount) + (totals.dinheiro ?? 0)) * 100) / 100 : 0;
   const managers = salespeople.filter(p => p.is_active && ['administrador', 'gerente'].includes(p.role));
+  const originalSaleMovements = movements.filter(movement => movement.kind === 'venda');
+  const refundableSales = sales.filter((sale) => {
+    if (sale.branch_id !== branchId || sale.status !== 'concluida') return false;
+    const original = originalSaleMovements.find(movement => movement.sale_id === sale.id);
+    if (!original || !['dinheiro', 'pix', 'cartao'].includes(original.payment_method)) return false;
+    const originalSession = sessions.find(session => session.id === original.session_id);
+    if (!originalSession?.closed_at) return false;
+    const refunded = movements.filter(movement => movement.sale_id === sale.id && movement.kind === 'devolucao')
+      .reduce((sum, movement) => sum + Number(movement.amount), 0);
+    return refunded < Number(original.amount);
+  });
+  const selectedRefundSale = refundableSales.find(sale => sale.id === refundSaleId);
+  const refundOriginal = selectedRefundSale && originalSaleMovements.find(movement => movement.sale_id === selectedRefundSale.id);
+  const refundRemaining = refundOriginal
+    ? Number(refundOriginal.amount) - movements.filter(movement =>
+      movement.sale_id === selectedRefundSale?.id && movement.kind === 'devolucao')
+      .reduce((sum, movement) => sum + Number(movement.amount), 0)
+    : 0;
 
-  async function mutate(action: 'abrir' | 'movimentar' | 'fechar', recovery = false) {
+  async function mutate(action: 'abrir' | 'movimentar' | 'fechar' | 'devolver', recovery = false) {
     if (!supabase || inFlight.current) return;
     const startedContext = context.current;
     inFlight.current = true; setBusy(true); setError(null); setNotice(null);
@@ -80,21 +102,46 @@ export function CashRegisterModule({ branchId, branchName, scopeKey, operatorId,
     try {
       const previous = store.read();
       if (previous && !recovery) throw new Error('Confirme a operação pendente antes de registrar outra movimentação.');
-      const request = recovery ? previous : {
+      const request: CashRequest | null = recovery ? previous : {
         id: crypto.randomUUID(), action, sessionId: action === 'abrir' ? null : current?.id ?? null,
-        amount: cashAmount(action === 'abrir' ? opening : action === 'fechar' ? counted : amount),
-        kind, reason: action === 'fechar' ? notes.trim() : reason.trim(),
+        saleId: action === 'devolver' ? refundSaleId : null,
+        amount: cashAmount(action === 'abrir' ? opening : action === 'fechar' ? counted : action === 'devolver' ? refundAmount : amount),
+        kind: action === 'devolver' ? 'dinheiro' : kind,
+        reason: action === 'fechar' ? notes.trim() : action === 'devolver' ? refundReason.trim() : reason.trim(),
       };
       if (!request) throw new Error('Nenhuma operação pendente.');
       if (request.action === 'movimentar' && (!request.reason || request.amount <= 0)) throw new Error('Informe um valor maior que zero e o motivo da movimentação.');
+      if (request.action === 'devolver') {
+        if (!request.saleId || !request.reason || request.amount <= 0) {
+          throw new Error('A solicitação de devolução pendente está incompleta.');
+        }
+        if (!recovery && (!selectedRefundSale || !refundOriginal ||
+          !['dinheiro', 'pix', 'cartao'].includes(refundOriginal.payment_method) ||
+          request.amount > refundRemaining)) {
+          throw new Error('Selecione uma venda elegível e informe um valor dentro do saldo disponível.');
+        }
+      }
       store.save(request); setPending(request);
-      const { error } = await supabase.rpc('mutate_partner_cash_register', {
-        p_action: request.action, p_branch_id: branchId, p_salesperson_id: operatorId, p_pin: operatorPin,
-        p_session_id: request.sessionId,
-        p_amount: request.amount, p_kind: request.kind, p_reason: request.reason,
-        p_supervisor_id: supervisorId || null, p_supervisor_pin: supervisorPin || null,
-        p_request_id: request.id,
-      });
+      const { error } = request.action === 'devolver'
+        ? await supabase.rpc('record_partner_cash_refund', {
+          p_branch_id: branchId,
+          p_salesperson_id: operatorId,
+          p_pin: operatorPin,
+          p_session_id: request.sessionId,
+          p_sale_id: request.saleId,
+          p_amount: request.amount,
+          p_reason: request.reason,
+          p_supervisor_id: supervisorId || null,
+          p_supervisor_pin: supervisorPin || null,
+          p_request_id: request.id,
+        })
+        : await supabase.rpc('mutate_partner_cash_register', {
+          p_action: request.action, p_branch_id: branchId, p_salesperson_id: operatorId, p_pin: operatorPin,
+          p_session_id: request.sessionId,
+          p_amount: request.amount, p_kind: request.kind, p_reason: request.reason,
+          p_supervisor_id: supervisorId || null, p_supervisor_pin: supervisorPin || null,
+          p_request_id: request.id,
+        });
       if (error) {
         if (!previous && isDefinitiveSaleRejection(error.code ?? '')) { store.clear(); setPending(null); }
         throw error;
@@ -102,8 +149,9 @@ export function CashRegisterModule({ branchId, branchName, scopeKey, operatorId,
       store.clear();
       if (context.current !== startedContext && (context.current.scopeKey !== scopeKey || context.current.branchId !== branchId || context.current.operatorId !== operatorId || context.current.operatorPin !== operatorPin)) return;
       setPending(null);
-      setNotice(request.action === 'abrir' ? 'Caixa aberto.' : request.action === 'fechar' ? 'Caixa fechado. O relatório está no histórico.' : 'Movimentação registrada.');
+      setNotice(request.action === 'abrir' ? 'Caixa aberto.' : request.action === 'fechar' ? 'Caixa fechado. O relatório está no histórico.' : request.action === 'devolver' ? 'Devolução financeira registrada nesta sessão.' : 'Movimentação registrada.');
       setAmount(''); setReason(''); setCounted(''); setNotes(''); setSupervisorPin(''); setSelectedId('');
+      if (request.action === 'devolver') { setRefundSaleId(''); setRefundAmount(''); setRefundReason(''); }
       try { await refresh(); } catch (e) { setError('Operação confirmada, mas a atualização falhou. Clique em Atualizar. ' + pdvErrorMessage(e)); }
     } catch (e) { setError(pdvErrorMessage(e)); }
     finally { inFlight.current = false; setBusy(false); }
@@ -145,6 +193,28 @@ export function CashRegisterModule({ branchId, branchName, scopeKey, operatorId,
             <label>Valor (R$)<input inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} required disabled={busy} /></label>
             <label>Motivo<input value={reason} onChange={e => setReason(e.target.value)} maxLength={500} required disabled={busy} /></label>
           </div>{kind === 'sangria' && authorization()}<button className="module-submit-btn" disabled={busy}>Registrar</button>
+        </form>
+        <form onSubmit={e => { e.preventDefault(); void mutate('devolver'); }}>
+          <h4>Registrar devolução financeira</h4>
+          <p>A devolução fica vinculada à venda original e à sessão aberta. O caixa já fechado permanece imutável. Vendas faturadas e devoluções de estoque precisam do fluxo correspondente.</p>
+          <div className="cash-fields">
+            <label>Venda<select value={refundSaleId} onChange={e => { setRefundSaleId(e.target.value); setRefundAmount(''); }} required disabled={busy}>
+              <option value="">Selecione uma venda elegível</option>
+              {refundableSales.map(sale => {
+                const original = originalSaleMovements.find(movement => movement.sale_id === sale.id);
+                const refunded = movements.filter(movement => movement.sale_id === sale.id && movement.kind === 'devolucao')
+                  .reduce((sum, movement) => sum + Number(movement.amount), 0);
+                return <option key={sale.id} value={sale.id}>#{sale.id.slice(0, 8).toUpperCase()} · {money.format(Number(original?.amount ?? 0) - refunded)} restantes</option>;
+              })}
+            </select></label>
+            {selectedRefundSale && refundOriginal && <>
+              <label>Valor da devolução (máx. {money.format(refundRemaining)})<input inputMode="decimal" value={refundAmount} onChange={e => setRefundAmount(e.target.value)} required disabled={busy} /></label>
+              <label>Motivo<input value={refundReason} onChange={e => setRefundReason(e.target.value)} maxLength={500} required disabled={busy} /></label>
+              <p>Forma de saída: {cashPaymentLabels[refundOriginal.payment_method] ?? refundOriginal.payment_method} (mesma forma da venda).</p>
+            </>}
+          </div>
+          {authorization()}
+          <button className="module-submit-btn" disabled={busy || !selectedRefundSale || !refundAmount || !refundReason.trim()}>Registrar devolução</button>
         </form>
         <form onSubmit={e => { e.preventDefault(); void mutate('fechar'); }}>
           <h4>Fechar caixa</h4><p>Dinheiro esperado: <strong>{money.format(Number(current.opening_amount) + (cashTotals(movements.filter(m => m.session_id === current.id)).dinheiro ?? 0))}</strong></p>

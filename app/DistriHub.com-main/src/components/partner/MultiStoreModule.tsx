@@ -120,12 +120,10 @@ export function MultiStoreModule({
               />
             </div>
           ))}
-          {branches.length < 4 && (
-            <button className="branch-card add" onClick={() => setShowAddForm(!showAddForm)}>
-              <Plus size={18} />
-              <span>{showAddForm ? 'Cancelar' : 'Nova filial'}</span>
-            </button>
-          )}
+          <button className="branch-card add" onClick={() => setShowAddForm(!showAddForm)}>
+            <Plus size={18} />
+            <span>{showAddForm ? 'Cancelar' : 'Nova filial'}</span>
+          </button>
         </div>
       </div>
 

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { PostgrestError } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { billedSaleError, isDefinitiveSaleRejection, PdvSaleAttemptStore, pdvErrorMessage, type CustomerCredit } from '../lib/pdv';
 import type {
@@ -200,6 +201,21 @@ function normalizeError(error: unknown): Error {
   return new Error(String(error));
 }
 
+const DATA_PAGE_SIZE = 500;
+
+async function fetchAllPages<T>(
+  fetchPage: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: PostgrestError | null }>,
+): Promise<{ data: T[] | null; error: PostgrestError | null }> {
+  const rows: T[] = [];
+  for (let from = 0; ; from += DATA_PAGE_SIZE) {
+    const { data, error } = await fetchPage(from, from + DATA_PAGE_SIZE - 1);
+    if (error) return { data: null, error };
+    const page = data ?? [];
+    rows.push(...page);
+    if (page.length < DATA_PAGE_SIZE) return { data: rows, error: null };
+  }
+}
+
 function isEmployeeIdentity(identity: PartnerIdentity | null): boolean {
   return Boolean(identity?.salespersonId);
 }
@@ -331,7 +347,7 @@ export function usePartnerData(identity: PartnerIdentity | null) {
       // `active`.
       // `client` fixa o narrowing de `supabase` (nao-nulo neste ponto).
       const client = supabase;
-      const fetchSalespeople = async () =>
+      const fetchSalespeople = () =>
         client
           .from('partner_salespeople')
           .select(
@@ -350,37 +366,45 @@ export function usePartnerData(identity: PartnerIdentity | null) {
         salespeopleResult,
         salesResult,
       ] = await Promise.all([
-        supabase
+        client
   .from('partner_profiles')
   .select('*')
   .eq('id', companyUserId)
   .maybeSingle(),
 
-supabase
+fetchAllPages((from, to) => client
   .from('partner_branches')
   .select('*')
   .eq('user_id', companyUserId)
-  .order('name'),
+  .order('name')
+  .order('id')
+  .range(from, to)),
 
-        supabase
-          .from('partner_customers')
-          .select('*')
-          .eq('user_id', companyUserId)
-          .order('name'),
+fetchAllPages((from, to) => client
+  .from('partner_customers')
+  .select('*')
+  .eq('user_id', companyUserId)
+  .order('name')
+  .order('id')
+  .range(from, to)),
 
-        supabase
-          .from('partner_products')
-          .select('*')
-          .eq('user_id', companyUserId)
-          .order('name'),
+fetchAllPages((from, to) => client
+  .from('partner_products')
+  .select('*')
+  .eq('user_id', companyUserId)
+  .order('name')
+  .order('id')
+  .range(from, to)),
 
-        fetchSalespeople(),
+fetchAllPages((from, to) => fetchSalespeople().range(from, to)),
 
-        supabase
-          .from('partner_sales')
-          .select('*')
-          .eq('user_id', companyUserId)
-          .order('created_at', { ascending: false }),
+fetchAllPages((from, to) => client
+  .from('partner_sales')
+  .select('*')
+  .eq('user_id', companyUserId)
+  .order('created_at', { ascending: false })
+  .order('id', { ascending: false })
+  .range(from, to)),
       ]);
 
       const essentialResults = [
@@ -417,23 +441,24 @@ supabase
         serviceOrderItemsResult,
         serviceOrderPhotosResult,
       ] = await Promise.all([
-        supabase
+        fetchAllPages((from, to) => client
           .from('partner_suppliers')
           .select('*')
           .eq('user_id', companyUserId)
-          .order('name'),
+          .order('name').order('id').range(from, to)),
 
-        supabase
+        fetchAllPages((from, to) => client
           .from('partner_categories')
           .select('*')
           .eq('user_id', companyUserId)
-          .order('name'),
+          .order('name').order('id').range(from, to)),
 
-        supabase
+        fetchAllPages((from, to) => client
           .from('partner_stock_movements')
           .select('*')
           .eq('user_id', companyUserId)
-          .order('created_at', { ascending: false }),
+          .order('created_at', { ascending: false })
+          .order('id', { ascending: false }).range(from, to)),
 
         supabase
           .from('partner_store_settings')
@@ -441,58 +466,64 @@ supabase
           .eq('user_id', companyUserId)
           .maybeSingle(),
 
-        supabase
+        fetchAllPages((from, to) => client
           .from('rma_requests_v2')
           .select('*')
           .eq('user_id', companyUserId)
-          .order('created_at', { ascending: false }),
+          .order('created_at', { ascending: false })
+          .order('id', { ascending: false }).range(from, to)),
 
-        supabase
+        fetchAllPages((from, to) => client
           .from('partner_combos')
           .select('*')
           .eq('user_id', companyUserId)
-          .order('name'),
+          .order('name').order('id').range(from, to)),
 
-        supabase
+        fetchAllPages((from, to) => client
           .from('partner_modifiers')
           .select('*')
           .eq('user_id', companyUserId)
-          .order('name'),
+          .order('name').order('id').range(from, to)),
 
-        supabase
+        fetchAllPages((from, to) => client
           .from('partner_invoices')
           .select('*')
           .eq('user_id', companyUserId)
-          .order('due_date'),
+          .order('due_date').order('id').range(from, to)),
 
-        supabase
+        fetchAllPages((from, to) => client
           .from('b2b_orders')
           .select('*')
           .eq('user_id', companyUserId)
-          .order('created_at', { ascending: false }),
+          .order('created_at', { ascending: false })
+          .order('id', { ascending: false }).range(from, to)),
 
-        supabase
+        fetchAllPages((from, to) => client
           .from('partner_audit_logs')
           .select('*')
           .eq('user_id', companyUserId)
-          .order('created_at', { ascending: false }),
+          .order('created_at', { ascending: false })
+          .order('id', { ascending: false }).range(from, to)),
 
-        supabase
+        fetchAllPages((from, to) => client
           .from('service_orders')
           .select('*')
           .eq('user_id', companyUserId)
-          .order('created_at', { ascending: false }),
+          .order('created_at', { ascending: false })
+          .order('id', { ascending: false }).range(from, to)),
 
-        supabase
+        fetchAllPages((from, to) => client
           .from('service_order_items')
           .select('*')
-          .eq('user_id', companyUserId),
+          .eq('user_id', companyUserId)
+          .range(from, to)),
 
-        supabase
+        fetchAllPages((from, to) => client
           .from('service_order_photos')
           .select('*')
           .eq('user_id', companyUserId)
-          .order('created_at'),
+          .order('created_at')
+          .order('id').range(from, to)),
       ]);
 
       // Diagnóstico técnico de falhas secundárias — sem PIN, tokens
@@ -637,6 +668,54 @@ supabase
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    const profileId = identity?.companyUserId;
+    if (!profileId || !isSupabaseConfigured || !supabase) return;
+
+    const client = supabase;
+    let active = true;
+    const refreshProfile = async () => {
+      const { data: profile, error: profileError } = await client
+        .from('partner_profiles')
+        .select('*')
+        .eq('id', profileId)
+        .maybeSingle();
+      if (!active) return;
+      if (profileError) {
+        setError(profileError.message);
+        return;
+      }
+      if (profile) {
+        setData((previous) => ({ ...previous, profile: profile as PartnerProfile }));
+      }
+    };
+    const channel = client
+      .channel(`partner-profile-${profileId}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'partner_profiles', filter: `id=eq.${profileId}` },
+        (payload) => {
+          const updatedProfile = payload.new as PartnerProfile;
+          if (updatedProfile.id === profileId) {
+            setData((previous) => ({ ...previous, profile: updatedProfile }));
+          }
+        },
+      )
+      .subscribe();
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') void refreshProfile();
+    };
+    window.addEventListener('focus', refreshWhenVisible);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+
+    return () => {
+      active = false;
+      window.removeEventListener('focus', refreshWhenVisible);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+      void client.removeChannel(channel);
+    };
+  }, [identity?.companyUserId]);
 
   const addCustomer = useCallback(
     async (
@@ -1374,15 +1453,10 @@ supabase
         throw new Error('Supabase não configurado.');
       }
 
-      const { data: created, error } = await supabase
-        .from('partner_branches')
-        .insert({
-          name,
-          address: address || null,
-          user_id: currentIdentity.companyUserId,
-        })
-        .select()
-        .single();
+      const { data: created, error } = await supabase.rpc(
+        'create_partner_branch',
+        { p_name: name.trim(), p_address: address.trim() || null },
+      );
 
       if (error) {
         throw error;
@@ -2086,10 +2160,7 @@ supabase
       const { data: updated, error } = await supabase
         .from('partner_profiles')
         .update(profile)
-        .eq(
-          'user_id',
-          currentIdentity.companyUserId,
-        )
+        .eq('id', currentIdentity.companyUserId)
         .select()
         .single();
 

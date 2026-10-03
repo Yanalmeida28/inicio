@@ -12,7 +12,7 @@ import { money } from '../../utils';
 type Props = {
   user: SupabaseUser | null;
   profile: PartnerProfile | null;
-  onProfileUpdate: (profile: Partial<PartnerProfile>) => void;
+  onProfileUpdate: (profile: Partial<PartnerProfile>) => Promise<unknown>;
   branchManagement?: ReactNode;
 };
 
@@ -70,6 +70,10 @@ export function SettingsModule({ user, profile, onProfileUpdate, branchManagemen
   const [document, setDocument] = useState(profile?.document ?? '');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [planRequesting, setPlanRequesting] = useState(false);
+  const [planRequestMessage, setPlanRequestMessage] = useState<string | null>(null);
+  const [planRequestError, setPlanRequestError] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showPlanModal, setShowPlanModal] = useState<Plan | null>(null);
 
@@ -79,24 +83,19 @@ export function SettingsModule({ user, profile, onProfileUpdate, branchManagemen
   const paymentMethod = profile?.payment_method;
 
   async function handleSave() {
+    setError(null);
     setSaving(true);
     try {
-      onProfileUpdate({
+      await onProfileUpdate({
         account_name: accountName || null,
         whatsapp: whatsapp || null,
         document: document || null,
       });
 
-      if (user && supabase) {
-        await supabase.from('partner_profiles').update({
-          account_name: accountName || null,
-          whatsapp: whatsapp || null,
-          document: document || null,
-        }).eq('id', user.id);
-      }
-
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Não foi possível salvar as configurações.');
     } finally {
       setSaving(false);
     }
@@ -109,18 +108,23 @@ export function SettingsModule({ user, profile, onProfileUpdate, branchManagemen
   }
 
   async function handlePlanChange(plan: Plan) {
-    if (!user || !supabase) return;
-    onProfileUpdate({
-      subscription_plan: plan.id,
-      subscription_status: 'ativa',
-      next_billing_date: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
-    });
-    await supabase.from('partner_profiles').update({
-      subscription_plan: plan.id,
-      subscription_status: 'ativa',
-      next_billing_date: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
-    }).eq('id', user.id);
-    setShowPlanModal(null);
+    if (!user || !supabase || planRequesting) return;
+    setPlanRequesting(true);
+    setPlanRequestMessage(null);
+    setPlanRequestError(false);
+    try {
+      const { error: requestError } = await supabase.rpc('request_partner_plan_change', {
+        p_requested_plan: plan.id,
+      });
+      if (requestError) throw requestError;
+      setPlanRequestMessage('Solicitação registrada para análise administrativa. A aprovação atualiza o plano, mas não confirma pagamento.');
+      setShowPlanModal(null);
+    } catch (requestError) {
+      setPlanRequestMessage(requestError instanceof Error ? requestError.message : 'Não foi possível solicitar a mudança de plano.');
+      setPlanRequestError(true);
+    } finally {
+      setPlanRequesting(false);
+    }
   }
 
   return (
@@ -181,6 +185,7 @@ export function SettingsModule({ user, profile, onProfileUpdate, branchManagemen
             {saved ? <><Check size={16} /> Salvo!</> : saving ? 'Salvando...' : <><Check size={16} /> Salvar Configurações</>}
           </button>
         </div>
+        {error && <p className="otp-error-msg" role="alert">{error}</p>}
       </div>
 
       {/* Security Section */}
@@ -207,6 +212,7 @@ export function SettingsModule({ user, profile, onProfileUpdate, branchManagemen
       </div>
 
       <div className="module-card subscription-card">
+        {planRequestMessage && <p role={planRequestError ? 'alert' : 'status'}>{planRequestMessage}</p>}
         <div className="subscription-header">
           <div className="subscription-status-badge" style={{ color: statusLabels[subStatus]?.color, background: `${statusLabels[subStatus]?.color}1f`, borderColor: `${statusLabels[subStatus]?.color}55` }}>
             <span className="subscription-status-dot" style={{ background: statusLabels[subStatus]?.color }} />
@@ -302,7 +308,8 @@ export function SettingsModule({ user, profile, onProfileUpdate, branchManagemen
           plan={showPlanModal}
           currentPlanName={planLabels[currentPlan] ?? currentPlan}
           onClose={() => setShowPlanModal(null)}
-          onConfirm={() => handlePlanChange(showPlanModal)}
+          onConfirm={() => { void handlePlanChange(showPlanModal); }}
+          submitting={planRequesting}
         />
       )}
     </div>
@@ -387,7 +394,7 @@ function PasswordModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (
   );
 }
 
-function PlanModal({ plan, currentPlanName, onClose, onConfirm }: { plan: Plan; currentPlanName: string; onClose: () => void; onConfirm: () => void }) {
+function PlanModal({ plan, currentPlanName, onClose, onConfirm, submitting }: { plan: Plan; currentPlanName: string; onClose: () => void; onConfirm: () => void; submitting: boolean }) {
   const Icon = plan.icon;
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -414,12 +421,12 @@ function PlanModal({ plan, currentPlanName, onClose, onConfirm }: { plan: Plan; 
             ))}
           </ul>
           <div className="otp-sent-hint">
-            A cobrança será ajustada na próxima fatura. Você pode cancelar a qualquer momento.
+            Esta solicitação não ativa o plano. A alteração só será aplicada após confirmação do pagamento ou aprovação administrativa.
           </div>
           <div className="otp-actions">
             <button className="rma-advance-btn" onClick={onClose}>Cancelar</button>
-            <button className="module-submit-btn" onClick={onConfirm}>
-              <Check size={16} /> Confirmar Mudança
+            <button className="module-submit-btn" onClick={onConfirm} disabled={submitting}>
+              <Check size={16} /> {submitting ? 'Enviando...' : 'Solicitar Mudança'}
             </button>
           </div>
         </div>
