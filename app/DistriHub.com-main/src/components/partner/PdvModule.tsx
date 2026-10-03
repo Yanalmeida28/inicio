@@ -589,7 +589,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
           )}
 
           {search.trim() && (
-          <div className="pdv-search-results" aria-label="Resultados da pesquisa">
+          <div className="pdv-product-search-results" aria-label="Resultados da pesquisa">
           <div className="pdv-product-grid">
             {filtered.length === 0 ? (
               <p className="empty-row">
