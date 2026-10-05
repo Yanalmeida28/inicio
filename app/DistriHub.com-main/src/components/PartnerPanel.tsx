@@ -1850,6 +1850,7 @@ export function PartnerPanel({
             {(activeTab === 'pdv' || activeTab === 'historico') && !blockedTabs.includes('pdv') && (
               <div hidden={activeTab !== 'pdv'}>
               <PdvModule
+                canEditPrice={effectiveRole === 'gerente' || (!isEmployeeRestricted && effectiveRole === 'administrador')}
                 key={pdvRevision}
                 hasPendingSale={Boolean(partner.pendingSale)}
                 products={
@@ -1914,6 +1915,7 @@ export function PartnerPanel({
 
             {activeTab === 'pedidos' && (
               <OpenOrdersModule
+                canEditPrice={effectiveRole === 'gerente' || (!isEmployeeRestricted && effectiveRole === 'administrador')}
                 products={filteredProducts}
                 onUpdateItems={async (id, items) => {
                   const { operatorId, operatorPin } = getOperatorContext();

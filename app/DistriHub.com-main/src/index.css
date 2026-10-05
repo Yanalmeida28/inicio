@@ -2179,6 +2179,8 @@ html, body {
 }
 
 /* PDV workspace and sales history */
+.partner-panel .pdv-sale-price-input { width: 105px; min-width: 0; padding: 6px 8px; border: 1px solid var(--dh-border); border-radius: 5px; color: var(--dh-text); background: var(--dh-surface); }
+.partner-panel .pdv-sale-price-input[aria-invalid="true"] { border-color: #DC2626; }
 .pdv-operator-line { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 12px; }
 .sales-history-filters { flex-wrap: wrap; align-items: end; gap: 12px; }
 .sales-history-filters label { display: flex; flex-direction: column; gap: 4px; }

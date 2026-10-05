@@ -45,6 +45,7 @@ before(async () => {
   await db.exec(await read('../migrations/20261003182612_partner_cash_register.sql'));
   await db.exec(await read('../migrations/20261003190000_secure_financial_subscription_fiscal_and_branch_flows.sql'));
   await db.exec(await read('../migrations/20261003193000_add_post_close_cash_refunds.sql'));
+  await db.exec(await read('../migrations/20261005211357_allow_owner_manager_sale_prices.sql'));
 });
 after(() => db.close());
 beforeEach(async () => {
@@ -57,6 +58,60 @@ beforeEach(async () => {
   await sql("INSERT INTO partner_salespeople(id,user_id,auth_user_id,branch_id,role,active,pin_hash,name) VALUES($1,$4,$2,$5,'caixa',true,md5('1234'),'Caixa'),($3,$4,NULL,$5,'gerente',true,md5('9876'),'Gerente')",[employee,employeeAuth,manager,owner,branch]);
   await sql("INSERT INTO partner_products(id,user_id,branch_id,name,stock,is_service) VALUES($1,$2,$3,'Produto',10,false)",[product,owner,branch]);
   await login(owner);
+});
+
+async function negotiatedSale(price, extra = {}) {
+  const r = { id: randomUUID(), status: 'pre_venda', method: null, operator: null, pin: null, total: price, ...extra };
+  await sql('SELECT execute_partner_sale_mutation($1,$2,$3,NULL,$4,$5::jsonb,$6,NULL,NULL,$7,$8,$9,$10,$11,$12,NULL)',
+    [r.operator,r.pin,r.id,'Cliente',JSON.stringify([{product_id:product,name:'Produto',quantity:1,unit_price:price}]),r.total,r.method,branch,r.status,'pdv','varejo','balcao']);
+  return r;
+}
+
+test('negotiated prices: owner and authenticated manager save prices without editing the catalog', async () => {
+  await negotiatedSale(75.5);
+  await negotiatedSale(120,{operator:manager,pin:'9876'});
+  assert.equal(Number((await sql('SELECT sale_price FROM partner_products WHERE id=$1',[product])).rows[0].sale_price),100);
+  assert.deepEqual((await sql('SELECT total FROM partner_sales ORDER BY total')).rows.map(row=>Number(row.total)),[75.5,120]);
+  assert.equal((await sql('SELECT count(*)::int AS n FROM partner_pdv_price_snapshots')).rows[0].n,2);
+  assert.equal((await sql('SELECT stock FROM partner_products WHERE id=$1',[product])).rows[0].stock,10);
+});
+
+test('negotiated prices: cashier, seller and employee administrator cannot override prices', async () => {
+  await login(employeeAuth);
+  for (const role of ['caixa','vendedor','administrador']) {
+    await sql('UPDATE partner_salespeople SET role=$1 WHERE id=$2',[role,employee]);
+    await assert.rejects(negotiatedSale(70),/Somente o gerente ou o dono/);
+  }
+  await sql("UPDATE partner_salespeople SET role='gerente' WHERE id=$1",[employee]);
+  await negotiatedSale(70);
+  await sql("UPDATE partner_salespeople SET active=false WHERE id=$1",[employee]);
+  await assert.rejects(negotiatedSale(70));
+});
+
+test('negotiated prices: selected seller and invalid supervisor PIN do not inherit owner permission', async () => {
+  await assert.rejects(negotiatedSale(70,{operator:employee,pin:'1234'}),/Somente o gerente ou o dono/);
+  await assert.rejects(negotiatedSale(70,{operator:manager,pin:'wrong'}));
+  assert.equal((await sql('SELECT count(*)::int AS n FROM partner_sales')).rows[0].n,0);
+});
+
+test('negotiated prices: cashier finalizes the saved manager quote and cash uses its actual amount', async () => {
+  const pre=await negotiatedSale(75.5,{operator:manager,pin:'9876'});
+  await login(employeeAuth);
+  const session=await mutate('abrir',0);
+  await assert.rejects(negotiatedSale(74,{id:pre.id,status:'concluida',method:'dinheiro'}),/Finalizacao nao pode alterar/);
+  await negotiatedSale(75.5,{id:pre.id,status:'concluida',method:'dinheiro'});
+  await negotiatedSale(75.5,{id:pre.id,status:'concluida',method:'dinheiro'});
+  assert.equal((await sql('SELECT stock FROM partner_products WHERE id=$1',[product])).rows[0].stock,9);
+  const movements=(await sql("SELECT amount FROM partner_cash_movements WHERE session_id=$1 AND kind='venda'",[session])).rows;
+  assert.equal(movements.length,1);assert.equal(Number(movements[0].amount),75.5);
+});
+
+test('negotiated prices: invalid amounts, totals, direct helper and direct quote writes remain blocked', async () => {
+  for (const price of [-1,1.001,100000000]) await assert.rejects(negotiatedSale(price));
+  await assert.rejects(negotiatedSale(75,{total:74}),/Total diverge/);
+  await db.exec('SET ROLE authenticated');
+  await assert.rejects(sql('SELECT partner_cash_private.validate_partner_pdv_negotiated_prices($1,$2,NULL,$3,$4::jsonb,75,true)',[owner,branch,'varejo',JSON.stringify([{product_id:product,name:'Produto',quantity:1,unit_price:75}])]),/permission denied/);
+  await assert.rejects(sql('UPDATE partner_pdv_price_snapshots SET total=75'),/permission denied/);
 });
 
 test('requires open cash for checkout; pre-sale is excluded; rolls stock back on refusal', async () => {

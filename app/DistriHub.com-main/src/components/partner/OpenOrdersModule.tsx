@@ -11,6 +11,7 @@ import { printSale, type ReceiptDetails } from '../../lib/salePrint';
 import { saleShareUrl } from '../../lib/saleShare';
 
 type Props = {
+  canEditPrice: boolean;
   products: PartnerProduct[];
   onUpdateItems: (id: string, items: PartnerSale['items']) => Promise<void>;
   sales: PartnerSale[];
@@ -39,7 +40,7 @@ const payStatusLabels: Record<string, { label: string; color: string }> = {
   cancelado: { label: 'Cancelado', color: '#e3829b' },
 };
 
-export function OpenOrdersModule({ products, onUpdateItems, sales, customers, salespeople, currentRole, receiptDetails, onFinalizePreSale, onCancelSale, onDeleteSale, onPullToPdv }: Props) {
+export function OpenOrdersModule({ canEditPrice, products, onUpdateItems, sales, customers, salespeople, currentRole, receiptDetails, onFinalizePreSale, onCancelSale, onDeleteSale, onPullToPdv }: Props) {
   const [editTarget, setEditTarget] = useState<PartnerSale | null>(null);
   const [dateStart, setDateStart] = useState('');
   const [dateEnd, setDateEnd] = useState('');
@@ -394,6 +395,7 @@ export function OpenOrdersModule({ products, onUpdateItems, sales, customers, sa
       {/* Finalize Modal */}
       {editTarget && (
         <OpenOrderItemsEditor
+          canEditPrice={canEditPrice}
           sale={editTarget}
           products={products}
           onSave={onUpdateItems}

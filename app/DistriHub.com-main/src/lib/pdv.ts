@@ -1,5 +1,9 @@
 import type { PartnerSale } from '../types';
 
+export function validSalePrice(value: number): boolean {
+  return Number.isFinite(value) && value >= 0 && value <= 99999999.99 && Math.abs(value * 100 - Math.round(value * 100)) < 0.000001;
+}
+
 // Catalog prices are stored in cents. Avoid binary floating point drift in the declared total.
 // This is display/request arithmetic only; the RPC validates every price and the total.
 export function pdvTotal(items: Pick<PartnerSale['items'][number], 'unit_price' | 'quantity'>[]): number {

@@ -4,9 +4,9 @@ import {
   ScanLine, X, Tag, Ban, Lock, ClipboardList, Wallet, Lock as LockIcon,
 } from 'lucide-react';
 import type { DeliveryType, PartnerProduct, PartnerCustomer, PartnerSale, PartnerSalesperson, SaleItem, SalespersonRole } from '../../types';
-import { SaleActionsMenu } from './SaleActionsMenu';
+import { SalePriceInput } from './SalePriceInput';
 import { money } from '../../utils';
-import { billedSaleError, pdvErrorMessage, pdvTotal, type CustomerCredit } from '../../lib/pdv';
+import { billedSaleError, pdvErrorMessage, pdvTotal, validSalePrice, type CustomerCredit } from '../../lib/pdv';
 
 type PriceTable = 'varejo' | 'atacado';
 type ClientType = 'varejo' | 'atacado';
@@ -219,6 +219,7 @@ function SalespersonSearchPicker({ id, salespeople, salespersonId, onSelect }: {
 }
 
 type Props = {
+  canEditPrice: boolean;
   products: PartnerProduct[];
   customers: PartnerCustomer[];
   sales: PartnerSale[];
@@ -265,7 +266,7 @@ const PRODUCT_PAGE_SIZE = 30;
 
 export function PdvModule({
   products, customers, sales, credits, hasPendingSale, salespeople, segment, selectedBranchId,
-  activeSalespersonId, activeBranchName, currentRole, onCreateSale, onCreatePreSale, onFinalizePreSale, onCancelSale, onDeleteSale,
+  activeSalespersonId, activeBranchName, currentRole, canEditPrice, onCreateSale, onCreatePreSale, onFinalizePreSale, onCancelSale, onDeleteSale,
 }: Props) {
   const [subTab, setSubTab] = useState<PdvSubTab>('pdv');
   const moduleRef = useRef<HTMLDivElement>(null);
@@ -330,6 +331,7 @@ export function PdvModule({
           segment={segment}
           selectedBranchId={selectedBranchId}
           canCheckout={canCheckout}
+          canEditPrice={canEditPrice}
           onCreateSale={onCreateSale}
         />
       )}
@@ -344,6 +346,7 @@ export function PdvModule({
           segment={segment}
           selectedBranchId={selectedBranchId}
           canCheckout={canCheckout}
+          canEditPrice={canEditPrice}
           onCreatePreSale={onCreatePreSale}
           onFinalizePreSale={onFinalizePreSale}
           onCancelSale={onCancelSale}
@@ -356,10 +359,11 @@ export function PdvModule({
 
 /* ============ PDV Checkout ============ */
 
-function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople, activeSalespersonId, segment, selectedBranchId, canCheckout, onCreateSale }: {
+function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople, activeSalespersonId, segment, selectedBranchId, canCheckout, canEditPrice, onCreateSale }: {
   products: PartnerProduct[];
   customers: PartnerCustomer[];
   credits: CustomerCredit[];
+  canEditPrice: boolean;
   hasPendingSale?: boolean;
   salespeople: PartnerSalesperson[];
   activeSalespersonId?: string | null;
@@ -528,6 +532,10 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
 
   async function handleCheckout() {
     if (cart.length === 0 || checkoutInFlight.current || hasPendingSale) return;
+    if (cart.some(item => !validSalePrice(item.unit_price))) {
+      setCheckoutError('Informe preços válidos com até duas casas decimais.');
+      return;
+    }
     if (!selectedBranchId) {
       alert('Selecione uma filial antes de finalizar a venda.');
       return;
@@ -678,7 +686,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
                     <b>{item.quantity}</b>
                     <button aria-label={`Aumentar quantidade de ${item.name}`} onClick={() => changeQty(item.product_id, 1)}>+</button>
                   </div></td>
-                  <td>{money.format(item.unit_price)}</td>
+                  <td>{canEditPrice ? <SalePriceInput value={item.unit_price} name={item.name} disabled={isCheckingOut || hasPendingSale} onChange={value => setCart(previous => previous.map(row => row.product_id === item.product_id ? { ...row, unit_price: value } : row))} /> : money.format(item.unit_price)}</td>
                   <td>{money.format(item.unit_price * item.quantity)}</td>
                   <td><button className="pdv-remove" aria-label={`Remover ${item.name}`} onClick={() => removeFromCart(item.product_id)}><Trash2 size={16} /></button></td>
                 </tr>
@@ -832,7 +840,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
 
 /* ============ Pré-Venda / Orçamentos ============ */
 
-function PreVendaTab({ products, customers, sales, salespeople, activeSalespersonId, segment, selectedBranchId, canCheckout, onCreatePreSale, onFinalizePreSale, onCancelSale, onDeleteSale }: {
+function PreVendaTab({ products, customers, sales, salespeople, activeSalespersonId, segment, selectedBranchId, canCheckout, canEditPrice, onCreatePreSale, onFinalizePreSale, onCancelSale, onDeleteSale }: {
   products: PartnerProduct[];
   customers: PartnerCustomer[];
   sales: PartnerSale[];
@@ -842,6 +850,7 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
   selectedBranchId: string | null;
   canCheckout: boolean;
   onCreatePreSale: (sale: { customer_id: string | null; customer_name: string; items: SaleItem[]; total: number; customer_type: ClientType; delivery_type: DeliveryType; imei?: string; serial_number?: string; salesperson_id?: string | null; branch_id?: string | null }) => Promise<void>;
+  canEditPrice: boolean;
   onFinalizePreSale: (id: string, paymentMethod: string) => Promise<void>;
   onCancelSale: (id: string, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
   onDeleteSale: (id: string, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
@@ -941,6 +950,10 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
 
   async function handleSavePreSale() {
     if (cart.length === 0) return;
+    if (cart.some(item => !validSalePrice(item.unit_price))) {
+      setSaveError('Informe preços válidos com até duas casas decimais.');
+      return;
+    }
     if (!selectedBranchId) {
       alert('Selecione uma filial antes de salvar a pré-venda.');
       return;
@@ -1083,7 +1096,7 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
                 <div key={item.product_id} className="pdv-cart-item">
                   <div>
                     <strong>{item.name}</strong>
-                    <small>{money.format(item.unit_price)} / un.</small>
+                    {canEditPrice ? <SalePriceInput value={item.unit_price} name={item.name} disabled={isSaving} onChange={value => setCart(previous => previous.map(row => row.product_id === item.product_id ? { ...row, unit_price: value } : row))} /> : <small>{money.format(item.unit_price)} / un.</small>}
                   </div>
                   <div className="pdv-item-controls">
                     <button onClick={() => changeQty(item.product_id, -1)}>-</button>
