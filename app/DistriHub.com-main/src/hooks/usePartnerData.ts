@@ -970,6 +970,7 @@ fetchAllPages((from, to) => client
             p_sku: product.sku,
             p_is_service: product.is_service,
             p_image_url: product.image_url ?? null,
+            p_supplier_id: product.supplier_id ?? null,
           },
         );
 
@@ -1060,6 +1061,7 @@ fetchAllPages((from, to) => client
               product.is_service ?? existing.is_service,
             p_image_url:
               product.image_url ?? existing.image_url ?? null,
+            p_supplier_id: product.supplier_id === undefined ? existing.supplier_id ?? null : product.supplier_id,
           },
         );
 

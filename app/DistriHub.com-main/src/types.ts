@@ -164,6 +164,7 @@ export interface PartnerCategory {
 }
 
 export interface PartnerProduct {
+  supplier_id?: string | null;
   brand: any;
   active: any;
   price: any;

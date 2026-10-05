@@ -46,7 +46,7 @@ type Props = {
   onDeleteProduct: (id: string) => Promise<void>;
   onAddCategory: (name: string) => Promise<void>;
   onDeleteCategory: (id: string) => Promise<void>;
-  onAddSupplier: (s: Omit<PartnerSupplier, 'id' | 'user_id' | 'created_at' | 'payable_balance'>) => Promise<void>;
+  onAddSupplier: (s: Omit<PartnerSupplier, 'id' | 'user_id' | 'created_at' | 'payable_balance'>) => Promise<PartnerSupplier>;
   onUpdateSupplier: (id: string, updates: Partial<PartnerSupplier>) => Promise<void>;
   onDeleteSupplier: (id: string) => Promise<void>;
   onAddSalesperson: (
@@ -131,6 +131,8 @@ export function CadastrosModule({
             branches={branches}
             selectedBranchId={selectedBranchId}
             categories={categories}
+            suppliers={suppliers}
+            onAddSupplier={onAddSupplier}
             segment={segment}
             onAddProduct={onAddProduct}
             onUpdateProduct={onUpdateProduct}
@@ -189,17 +191,20 @@ export function CadastrosModule({
   );
 }
 
-function ProductsSubTab({ products, allProducts, branches, selectedBranchId, categories, segment, onAddProduct, onUpdateProduct, onDeleteProduct }: {
+function ProductsSubTab({ products, allProducts, branches, selectedBranchId, categories, suppliers, onAddSupplier, segment, onAddProduct, onUpdateProduct, onDeleteProduct }: {
   products: PartnerProduct[];
   allProducts: PartnerProduct[];
   branches: PartnerBranch[];
   selectedBranchId: string | null;
   categories: PartnerCategory[];
+  suppliers: PartnerSupplier[];
+  onAddSupplier: Props['onAddSupplier'];
   segment: string;
   onAddProduct: (p: Omit<PartnerProduct, 'id' | 'user_id' | 'created_at' | 'updated_at'>) => Promise<void>;
   onUpdateProduct: (id: string, updates: Partial<PartnerProduct>) => Promise<void>;
   onDeleteProduct: (id: string) => Promise<void>;
 }) {
+  const [supplierSaving, setSupplierSaving] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [productSearch, setProductSearch] = useState('');
   const matchingProducts = useMemo(() => {
@@ -217,6 +222,7 @@ function ProductsSubTab({ products, allProducts, branches, selectedBranchId, cat
   const [stock, setStock] = useState('');
   const [minStock, setMinStock] = useState('5');
   const [category, setCategory] = useState('');
+  const [supplierId, setSupplierId] = useState('');
   const [isService, setIsService] = useState(false);
   const [ncm, setNcm] = useState('');
   const [cfop, setCfop] = useState('');
@@ -259,7 +265,7 @@ function ProductsSubTab({ products, allProducts, branches, selectedBranchId, cat
         name, sku: sku || null, cost_price: Number(cost) || 0, sale_price: Number(sale) || 0,
         wholesale_price: Number(wholesale) || 0,
         stock: Number(stock) || 0, min_stock: Number(minStock) || 0,
-        image_url: null, category: category || null, is_service: isService, branch_id: selectedBranchId,
+        image_url: null, supplier_id: supplierId || null, category: category || null, is_service: isService, branch_id: selectedBranchId,
         ncm: ncm || null, cfop: cfop || null, cst_csosn: cstCsosn || null,
         icms_rate: Number(icmsRate) || 0, pis_rate: Number(pisRate) || 0, cofins_rate: Number(cofinsRate) || 0,
         brand: undefined,
@@ -268,7 +274,7 @@ function ProductsSubTab({ products, allProducts, branches, selectedBranchId, cat
         image: undefined,
         description: undefined
       });
-      setName(''); setSku(''); setCost(''); setSale(''); setWholesale(''); setStock(''); setMinStock('5'); setCategory(''); setIsService(false);
+      setName(''); setSku(''); setCost(''); setSale(''); setWholesale(''); setStock(''); setMinStock('5'); setCategory(''); setSupplierId(''); setIsService(false);
       setNcm(''); setCfop(''); setCstCsosn(''); setIcmsRate(''); setPisRate(''); setCofinsRate('');
       setShowForm(false);
     } catch (error) {
@@ -382,6 +388,7 @@ function ProductsSubTab({ products, allProducts, branches, selectedBranchId, cat
             </label>
           </div>
           </section>
+          <SupplierField suppliers={suppliers} value={supplierId} onChange={setSupplierId} onAdd={onAddSupplier} disabled={saving} onBusyChange={setSupplierSaving} />
           <section className="product-form-section">
             <h4>Dados fiscais</h4>
           <div className="form-row product-form-row">
@@ -414,7 +421,7 @@ function ProductsSubTab({ products, allProducts, branches, selectedBranchId, cat
           </div>
           </section>
           {formError && <p className="form-error-msg" style={{ color: '#e3829b', fontSize: '13px' }}>{formError}</p>}
-          <button type="submit" className="module-submit-btn" disabled={saving}>{saving ? 'Salvando...' : 'Cadastrar'}</button>
+          <button type="submit" className="module-submit-btn" disabled={saving || supplierSaving}>{saving ? 'Salvando...' : 'Cadastrar'}</button>
         </form>
       )}
 
@@ -506,6 +513,8 @@ function ProductsSubTab({ products, allProducts, branches, selectedBranchId, cat
         <ProductEditModal
           product={editProduct}
           categories={categories}
+          suppliers={suppliers}
+          onAddSupplier={onAddSupplier}
           saving={savingEdit}
           error={editError}
           onClose={() => !savingEdit && setEditProduct(null)}
@@ -516,14 +525,64 @@ function ProductsSubTab({ products, allProducts, branches, selectedBranchId, cat
   );
 }
 
-function ProductEditModal({ product, categories, saving, error, onClose, onSave }: {
+
+function SupplierField({ suppliers, value, onChange, onAdd, disabled, onBusyChange }: {
+  suppliers: PartnerSupplier[];
+  value: string;
+  onChange: (id: string) => void;
+  onAdd: Props['onAddSupplier'];
+  disabled: boolean;
+  onBusyChange: (busy: boolean) => void;
+}) {
+  const [adding, setAdding] = useState(false);
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function add() {
+    if (!name.trim() || saving) return;
+    setSaving(true);
+    onBusyChange(true);
+    setError(null);
+    try {
+      const supplier = await onAdd({ name: name.trim(), phone: phone.trim() || null, notes: null, status: undefined, zip_code: undefined, state: undefined });
+      onChange(supplier.id);
+      setAdding(false);
+      setName('');
+      setPhone('');
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Não foi possível cadastrar o fornecedor.');
+    } finally { setSaving(false); onBusyChange(false); }
+  }
+  return <section className="product-form-section">
+    <h4>Fornecedor</h4>
+    <div className="form-row">
+      <label>Fornecedor do produto<select value={value} onChange={(event) => onChange(event.target.value)} disabled={disabled || saving}>
+        <option value="">Sem fornecedor</option>
+        {suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}
+      </select></label>
+      <button type="button" className="rma-advance-btn" disabled={disabled || saving} onClick={() => { setAdding(!adding); setError(null); }}><Plus size={16} /> {adding ? 'Cancelar novo fornecedor' : 'Novo fornecedor'}</button>
+    </div>
+    {adding && <div className="form-row">
+      <label>Nome do fornecedor<input value={name} onChange={(event) => setName(event.target.value)} disabled={disabled || saving} /></label>
+      <label>Telefone (opcional)<input type="tel" value={phone} onChange={(event) => setPhone(event.target.value)} disabled={disabled || saving} /></label>
+      <button type="button" className="module-submit-btn" disabled={disabled || saving || !name.trim()} onClick={add}>{saving ? 'Salvando...' : 'Adicionar fornecedor'}</button>
+    </div>}
+    {error && <p className="branch-action-error" role="alert">{error}</p>}
+  </section>;
+}
+
+function ProductEditModal({ product, categories, suppliers, onAddSupplier, saving, error, onClose, onSave }: {
   product: PartnerProduct;
   categories: PartnerCategory[];
+  suppliers: PartnerSupplier[];
+  onAddSupplier: Props['onAddSupplier'];
   saving: boolean;
   error: string | null;
   onClose: () => void;
   onSave: (updates: Partial<PartnerProduct>) => Promise<void>;
 }) {
+  const [supplierSaving, setSupplierSaving] = useState(false);
   const [name, setName] = useState(product.name);
   const [sku, setSku] = useState(product.sku ?? '');
   const [cost, setCost] = useState(String(product.cost_price));
@@ -532,6 +591,7 @@ function ProductEditModal({ product, categories, saving, error, onClose, onSave 
   const [stock, setStock] = useState(String(product.stock));
   const [minStock, setMinStock] = useState(String(product.min_stock));
   const [category, setCategory] = useState(product.category ?? '');
+  const [supplierId, setSupplierId] = useState(product.supplier_id ?? '');
   const [isService, setIsService] = useState(product.is_service);
   const [ncm, setNcm] = useState(product.ncm ?? '');
   const [cfop, setCfop] = useState(product.cfop ?? '');
@@ -557,7 +617,7 @@ function ProductEditModal({ product, categories, saving, error, onClose, onSave 
       name: name.trim(), sku: sku.trim() || null, cost_price: Number(cost) || 0,
       sale_price: Number(sale) || 0, wholesale_price: Number(wholesale) || 0,
       stock: Math.max(0, Number(stock) || 0), min_stock: Math.max(0, Number(minStock) || 0),
-      category: category || null, is_service: isService, ncm: ncm || null,
+      supplier_id: supplierId || null, category: category || null, is_service: isService, ncm: ncm || null,
       cfop: cfop || null, cst_csosn: cstCsosn || null, icms_rate: Number(icmsRate) || 0,
       pis_rate: Number(pisRate) || 0, cofins_rate: Number(cofinsRate) || 0,
     });
@@ -577,12 +637,13 @@ function ProductEditModal({ product, categories, saving, error, onClose, onSave 
             <small>Percentual calculado sobre o preço de custo.</small>
           </div>
           <div className="form-row"><label>Estoque<input type="number" min="0" step="1" value={stock} onChange={(e) => setStock(e.target.value)} /></label><label>Estoque mínimo<input type="number" min="0" step="1" value={minStock} onChange={(e) => setMinStock(e.target.value)} /></label><label>Categoria<select value={category} onChange={(e) => setCategory(e.target.value)}><option value="">Selecione...</option>{categories.map((item) => <option key={item.id} value={item.name}>{item.name}</option>)}</select></label></div>
+          <SupplierField suppliers={suppliers} value={supplierId} onChange={setSupplierId} onAdd={onAddSupplier} disabled={saving} onBusyChange={setSupplierSaving} />
           <label className="checkbox-label"><input type="checkbox" checked={isService} onChange={(e) => setIsService(e.target.checked)} /> É um serviço (sem estoque)</label>
           <div className="form-row"><label>NCM<input value={ncm} onChange={(e) => setNcm(e.target.value)} /></label><label>CFOP<input value={cfop} onChange={(e) => setCfop(e.target.value)} /></label><label>CST/CSOSN<input value={cstCsosn} onChange={(e) => setCstCsosn(e.target.value)} /></label></div>
           <div className="form-row"><label>ICMS (%)<input type="number" min="0" step="0.01" value={icmsRate} onChange={(e) => setIcmsRate(e.target.value)} /></label><label>PIS (%)<input type="number" min="0" step="0.01" value={pisRate} onChange={(e) => setPisRate(e.target.value)} /></label><label>COFINS (%)<input type="number" min="0" step="0.01" value={cofinsRate} onChange={(e) => setCofinsRate(e.target.value)} /></label></div>
           {error && <div className="branch-action-error" role="alert">{error}</div>}
         </div>
-        <div className="product-edit-footer"><button type="button" className="rma-advance-btn" onClick={onClose} disabled={saving}>Cancelar</button><button type="submit" className="module-submit-btn" disabled={saving}>{saving ? 'Salvando...' : 'Salvar alterações'}</button></div>
+        <div className="product-edit-footer"><button type="button" className="rma-advance-btn" onClick={onClose} disabled={saving}>Cancelar</button><button type="submit" className="module-submit-btn" disabled={saving || supplierSaving}>{saving ? 'Salvando...' : 'Salvar alterações'}</button></div>
       </form>
     </div>
   );
@@ -1585,7 +1646,7 @@ function CustomerProfileModal({ customer, sales, salespeople, onUpdate, onClose 
 
 function SuppliersSubTab({ suppliers, onAdd, onUpdate, onDelete }: {
   suppliers: PartnerSupplier[];
-  onAdd: (s: Omit<PartnerSupplier, 'id' | 'user_id' | 'created_at' | 'payable_balance'>) => Promise<void>;
+  onAdd: Props['onAddSupplier'];
   onUpdate: (id: string, updates: Partial<PartnerSupplier>) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
 }) {

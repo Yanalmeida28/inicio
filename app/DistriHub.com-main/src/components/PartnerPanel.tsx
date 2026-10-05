@@ -883,7 +883,7 @@ export function PartnerPanel({
       operatorPin,
     } = getOperatorContext();
 
-    await partner.addSupplier(
+    return await partner.addSupplier(
       supplier,
       operatorId,
       operatorPin,
