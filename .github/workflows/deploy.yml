@@ -7,11 +7,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  quality-checks:
-    uses: ./.github/workflows/quality-checks.yml
-
   build-and-deploy:
-    needs: quality-checks
     runs-on: ubuntu-22.04
 
     defaults:
@@ -27,10 +23,21 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: app/DistriHub.com-main/package-lock.json
+          cache-dependency-path: |
+            app/DistriHub.com-main/package-lock.json
+            app/DistriHub.com-main/supabase/tests/package-lock.json
 
       - name: Instalar dependências
         run: npm ci
+
+      - name: Instalar dependências dos testes
+        run: npm ci --prefix supabase/tests
+
+      - name: Validar TypeScript
+        run: npm run typecheck
+
+      - name: Executar testes
+        run: npm test
 
       - name: Verificar configuração do Supabase
         run: |
