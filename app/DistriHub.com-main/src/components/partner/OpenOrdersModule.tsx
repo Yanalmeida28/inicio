@@ -1,8 +1,9 @@
 import { useMemo, useRef, useState } from 'react';
 import {
-  ClipboardList, Search, X, Calendar, Filter, ArrowRight, Wallet, Lock,
+  ClipboardList, Search, X, Calendar, Filter, ArrowRight, Wallet, Lock, Pencil,
 } from 'lucide-react';
-import type { PartnerSale, PartnerCustomer, PartnerSalesperson, SalespersonRole } from '../../types';
+import type { PartnerSale, PartnerCustomer, PartnerSalesperson, SalespersonRole, PartnerProduct } from '../../types';
+import { OpenOrderItemsEditor } from './OpenOrderItemsEditor';
 import { money } from '../../utils';
 import { pdvErrorMessage } from '../../lib/pdv';
 import { SaleActionsMenu } from './SaleActionsMenu';
@@ -10,6 +11,8 @@ import { printSale, type ReceiptDetails } from '../../lib/salePrint';
 import { saleShareUrl } from '../../lib/saleShare';
 
 type Props = {
+  products: PartnerProduct[];
+  onUpdateItems: (id: string, items: PartnerSale['items']) => Promise<void>;
   sales: PartnerSale[];
   customers: PartnerCustomer[];
   salespeople: PartnerSalesperson[];
@@ -36,7 +39,8 @@ const payStatusLabels: Record<string, { label: string; color: string }> = {
   cancelado: { label: 'Cancelado', color: '#e3829b' },
 };
 
-export function OpenOrdersModule({ sales, customers, salespeople, currentRole, receiptDetails, onFinalizePreSale, onCancelSale, onDeleteSale, onPullToPdv }: Props) {
+export function OpenOrdersModule({ products, onUpdateItems, sales, customers, salespeople, currentRole, receiptDetails, onFinalizePreSale, onCancelSale, onDeleteSale, onPullToPdv }: Props) {
+  const [editTarget, setEditTarget] = useState<PartnerSale | null>(null);
   const [dateStart, setDateStart] = useState('');
   const [dateEnd, setDateEnd] = useState('');
   const [orderId, setOrderId] = useState('');
@@ -356,6 +360,11 @@ export function OpenOrdersModule({ sales, customers, salespeople, currentRole, r
                     </td>
                     <td>
                       <div className="row-action-group">
+                        {s.status === 'pre_venda' && (
+                          <button className="rma-advance-btn" onClick={() => setEditTarget(s)} title="Editar produtos">
+                            <Pencil size={14} /> Editar produtos
+                          </button>
+                        )}
                         {canCheckout && s.status === 'pre_venda' && (
                           <button className="module-submit-btn compact" onClick={() => requestFinalize(s)} title="Finalizar no caixa">
                             <Wallet size={14} /> Finalizar
@@ -391,6 +400,14 @@ export function OpenOrdersModule({ sales, customers, salespeople, currentRole, r
       </div>
 
       {/* Finalize Modal */}
+      {editTarget && (
+        <OpenOrderItemsEditor
+          sale={editTarget}
+          products={products}
+          onSave={onUpdateItems}
+          onClose={() => setEditTarget(null)}
+        />
+      )}
       {finalizeTarget && (
         <div className="modal-backdrop" onClick={() => setFinalizeTarget(null)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '400px' }}>

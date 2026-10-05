@@ -1033,7 +1033,7 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
 
   return (
     <>
-      <div className="pdv-layout">
+      <div className="pdv-layout pdv-presale-layout">
         <div className="pdv-left">
           <div className="pdv-search-bar">
             <Search size={18} />
@@ -1183,7 +1183,7 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
       </div>
 
       {/* Pending Pre-Sales List */}
-      <div className="pdv-recent-sales">
+      <div className="pdv-recent-sales pdv-presale-pending">
         <h4>Pré-Vendas Pendentes ({preSales.length})</h4>
         <div className="stock-table-wrap">
           <table className="rma-table">

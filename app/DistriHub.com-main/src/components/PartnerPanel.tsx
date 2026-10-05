@@ -1917,6 +1917,11 @@ export function PartnerPanel({
 
             {activeTab === 'pedidos' && (
               <OpenOrdersModule
+                products={filteredProducts}
+                onUpdateItems={async (id, items) => {
+                  const { operatorId, operatorPin } = getOperatorContext();
+                  await partner.updatePreSaleItems(id, items, operatorId, operatorPin);
+                }}
                 receiptDetails={{ settings: storeSettings, companyName: partner.profile?.account_name || partner.profile?.name, companyDocument: partner.profile?.document, companyAddress: partner.branches.find((branch) => branch.id === effectiveBranchId)?.address }}
                 sales={
                   filteredSales

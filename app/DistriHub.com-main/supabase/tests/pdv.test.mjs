@@ -50,6 +50,21 @@ beforeEach(async()=>{
   await login(owner);
 });
 
+test('open pre-sale edits replace products on the same order and finalize only the saved quantities', async () => {
+  const pre = await sale({status:'pre_venda',method:null});
+  const revised = [
+    {product_id:product,name:'Produto',quantity:3,unit_price:100},
+    {product_id:service,name:'Servico',quantity:1,unit_price:100},
+  ];
+  await sale({...pre,items:revised,total:400});
+  assert.deepEqual(await state(),{stock:10,sales:1,invoices:0,movements:0,logs:2});
+  assert.deepEqual((await sql('SELECT items FROM partner_sales WHERE id=$1',[pre.id])).rows[0].items,revised);
+  const remaining = [revised[0]];
+  await sale({...pre,items:remaining,total:300});
+  await sale({...pre,items:remaining,total:300,status:'concluida',method:'pix'});
+  assert.deepEqual(await state(),{stock:7,sales:1,invoices:0,movements:1,logs:4});
+});
+
 for(const method of ['pix','dinheiro','cartao']) test(`${method}: no credit dependency; one stock movement`,async()=>{
   await sql('UPDATE partner_customers SET allow_credit=false,credit_limit=0');
   await sale({method,customer:null});

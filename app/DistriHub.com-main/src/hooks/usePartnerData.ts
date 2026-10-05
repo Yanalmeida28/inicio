@@ -1682,6 +1682,33 @@ fetchAllPages((from, to) => client
     [createSale],
   );
 
+  const updatePreSaleItems = useCallback(async (id: string, items: PartnerSale['items'], operatorId?: string | null, operatorPin?: string | null) => {
+    if (saleInFlight.current) throw new Error('Aguarde a operação em andamento.');
+    saleInFlight.current = true;
+    try {
+      const currentIdentity = requireIdentity();
+      const sale = data.sales.find(item => item.id === id);
+      if (!sale?.branch_id || sale.status !== 'pre_venda') throw new Error('Somente pré-vendas pendentes podem ser editadas.');
+      ensureEmployeeBranch(currentIdentity, sale.branch_id);
+      if (!items.length || items.some(item => !Number.isInteger(item.quantity) || item.quantity <= 0)) throw new Error('Adicione pelo menos um produto com quantidade válida.');
+      const total = Math.round(items.reduce((sum, item) => sum + Math.round(item.unit_price * 100) * item.quantity, 0)) / 100;
+      if (isSupabaseConfigured && supabase) {
+        const { data: confirmedId, error } = await supabase.rpc('execute_partner_sale_mutation', {
+          p_salesperson_id: operatorId ?? null, p_pin: operatorPin ?? null,
+          p_commercial_salesperson_id: sale.salesperson_id, p_sale_id: sale.id,
+          p_customer_id: sale.customer_id, p_customer_name: sale.customer_name,
+          p_items: items, p_total: total, p_imei: sale.imei, p_serial_number: sale.serial_number,
+          p_payment_method: sale.payment_method, p_branch_id: sale.branch_id, p_status: 'pre_venda',
+          p_origin: sale.origin, p_customer_type: sale.customer_type, p_delivery_type: sale.delivery_type,
+        });
+        if (error) throw new Error(pdvErrorMessage(error));
+        if (confirmedId !== id) throw new Error('Não foi possível confirmar a edição. Atualize os pedidos antes de tentar novamente.');
+      }
+      setData(prev => ({ ...prev, sales: prev.sales.map(item => item.id === id ? { ...item, items, total } : item) }));
+      if (isSupabaseConfigured && supabase) await syncConfirmedSale(sale.branch_id);
+    } finally { saleInFlight.current = false; }
+  }, [data.sales, requireIdentity, syncConfirmedSale]);
+
   const finalizePreSale = useCallback(
     async (
       id: string,
@@ -3589,6 +3616,7 @@ fetchAllPages((from, to) => client
     retryPendingSale,
     createSale,
     createPreSale,
+    updatePreSaleItems,
     finalizePreSale,
     cancelSale,
     deleteSale,

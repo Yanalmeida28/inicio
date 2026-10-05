@@ -2217,3 +2217,37 @@ html, body {
 .cash-summary > div { padding: 12px; border: 1px solid rgba(127,151,169,.25); border-radius: 8px; }
 .cash-summary small, .cash-summary strong { display: block; }
 .cash-summary strong { margin-top: 6px; font-size: 20px; }
+
+/* Keep pre-sales compact even with a large catalog or many pending orders. */
+.open-order-editor { width: min(680px, 95vw); max-width: 680px; max-height: 90dvh; overflow-y: auto; }
+.open-order-editor-fields { border: 0; padding: 0; margin: 0 0 12px; min-width: 0; }
+.open-order-editor-results { display: flex; flex-direction: column; gap: 6px; max-height: 160px; overflow-y: auto; margin: 10px 0; }
+.open-order-editor .pdv-cart-item { gap: 8px; flex-wrap: wrap; }
+.open-order-editor .pdv-cart-item > div:first-child { min-width: 0; overflow-wrap: anywhere; }
+.open-order-editor .pdv-item-controls { margin-left: auto; }
+.partner-panel .pdv-presale-layout { align-items: start; gap: 12px; }
+.pdv-presale-layout .pdv-left,
+.pdv-presale-layout .pdv-right { min-width: 0; }
+.pdv-presale-layout .pdv-left { gap: 10px; }
+.partner-panel .pdv-presale-layout .pdv-product-grid {
+  max-height: min(48vh, 360px);
+  overflow-y: auto;
+  align-content: start;
+  gap: 8px;
+  padding: 3px;
+}
+.partner-panel .pdv-presale-layout .pdv-product-card { padding: 10px !important; }
+.pdv-presale-layout .pdv-product-card strong { overflow-wrap: anywhere; }
+.partner-panel .pdv-presale-layout .pdv-right { gap: 10px; padding: 12px !important; }
+.pdv-presale-layout .pdv-cart-items { max-height: 180px; gap: 4px; }
+.pdv-presale-layout .pdv-cart-item { gap: 8px; padding: 6px 0; flex-wrap: wrap; }
+.pdv-presale-layout .pdv-cart-item > div:first-child { min-width: 0; overflow-wrap: anywhere; }
+.pdv-presale-layout .pdv-item-controls { margin-left: auto; flex-shrink: 0; }
+.pdv-presale-layout .pdv-form { gap: 8px; }
+.pdv-presale-layout .pdv-total-bar { padding: 10px 12px; }
+.partner-panel .pdv-presale-pending { margin-top: 14px; }
+.pdv-presale-pending .stock-table-wrap { max-height: 300px; overflow: auto; }
+.pdv-presale-pending .rma-table th { position: sticky; top: 0; z-index: 1; background: var(--dh-surface, #0e1d2b); }
+@media (max-width: 900px) {
+  .partner-panel .pdv-presale-layout .pdv-product-grid { max-height: 220px; }
+}

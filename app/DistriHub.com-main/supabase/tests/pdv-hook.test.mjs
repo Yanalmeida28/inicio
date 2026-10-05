@@ -47,6 +47,25 @@ async function harness({initialSales=[],initialInvoices=[],rpc,values=new Map()}
 const payload=()=>({customer_id:'customer',customer_name:'Cliente',items:[{product_id:'physical',name:'Produto',quantity:1,unit_price:100}],total:100,branch_id:'branch',salesperson_id:null,customer_type:'varejo',delivery_type:'balcao',payment_method:'pix'});
 const snapshot=(overrides={})=>({credits:[{customer_id:'customer',allow_credit:true,credit_limit:1000,used:0,available:1000}],products:[],movements:[],sales:[],invoices:[],...overrides});
 
+test('editing pre-sale retains its ID and metadata while replacing items and total',async()=>{
+  const original={...payload(),id:'existing-order',user_id:'owner',status:'pre_venda',origin:'pdv',payment_method:null,imei:'trace',serial_number:null};
+  const items=[{...original.items[0],quantity:3}];
+  let mutation;
+  const h=await harness({initialSales:[original],rpc:async(name,args)=>{
+    if(name==='execute_partner_sale_mutation') {mutation=args; return {data:args.p_sale_id,error:null};}
+    return {data:snapshot({sales:[{...original,items,total:300}]}),error:null};
+  }});
+  await act(async()=>{await h.current.updatePreSaleItems(original.id,items);});
+  assert.equal(mutation.p_sale_id,original.id);
+  assert.equal(mutation.p_total,300);
+  assert.equal(mutation.p_status,'pre_venda');
+  assert.equal(mutation.p_imei,'trace');
+  assert.deepEqual(mutation.p_items,items);
+  assert.equal(h.current.sales.length,1);
+  assert.equal(h.current.sales[0].total,300);
+  await act(async()=>{await assert.rejects(h.current.updatePreSaleItems(original.id,[]),/pelo menos um/);});
+});
+
 test('receipt frontend declares exact remaining cents for full payment',async()=>{
   let received;
   const h=await harness({initialInvoices:[{id:'invoice',user_id:'owner',amount:0.3,paid_amount:0.1,status:'parcial'}],rpc:async(name,args)=>{
