@@ -82,6 +82,7 @@ export function ServiceOrdersModule({
   customers,
   products,
   selectedBranchId,
+  warrantyTerms,
 }: Props) {
   const [orders, setOrders] = useState<ServiceOrder[]>([]);
   const [open, setOpen] = useState(false);
@@ -564,6 +565,13 @@ export function ServiceOrdersModule({
           Nova OS
         </button>
       </div>
+
+      {warrantyTerms?.trim() && (
+        <details className="module-card">
+          <summary style={{ cursor: 'pointer', fontWeight: 600 }}>Termo de Garantia de Serviços</summary>
+          <p style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', marginTop: 12 }}>{warrantyTerms}</p>
+        </details>
+      )}
 
       {!selectedBranchId && (
         <div

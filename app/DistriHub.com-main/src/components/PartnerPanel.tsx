@@ -1966,7 +1966,7 @@ export function PartnerPanel({
                   effectiveBranchId
                 }
                 warrantyTerms={
-                  storeSettings.warranty_terms ??
+                  storeSettings.service_warranty_terms ??
                   ''
                 }
                 onUpdateWarrantyTerms={(
@@ -1974,7 +1974,7 @@ export function PartnerPanel({
                 ) =>
                   partner.updateStoreSettings(
                     {
-                      warranty_terms:
+                      service_warranty_terms:
                         value,
                     },
                   )

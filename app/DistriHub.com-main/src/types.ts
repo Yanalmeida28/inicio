@@ -295,6 +295,7 @@ export interface StoreSettings {
   nav_color: string;
   internal_notice: string;
   warranty_terms: string;
+  service_warranty_terms?: string;
   receipt_footer_text: string;
   show_logo_on_receipt: boolean;
   show_cnpj_on_receipt: boolean;

@@ -2141,7 +2141,7 @@ fetchAllPages((from, to) => client
       }
 
       const { data: updated, error } = await supabase
-        .from('partner_store_settings')
+        .from('store_settings_v2')
         .upsert(
           {
             ...settings,

@@ -51,8 +51,8 @@ export function WhiteLabelModule({ settings: initialSettings, onUpdate: persist 
   async function handleSave() {
     setSaving(true); setError(null); setSaved(false);
     try {
-      const { logo_url, banner_url, primary_color, nav_color, receipt_footer_text, show_logo_on_receipt, show_cnpj_on_receipt, internal_notice } = settings;
-      await persist({ logo_url, banner_url, primary_color, nav_color, receipt_footer_text, show_logo_on_receipt, show_cnpj_on_receipt, internal_notice });
+      const { logo_url, banner_url, primary_color, nav_color, receipt_footer_text, show_logo_on_receipt, show_cnpj_on_receipt, internal_notice, service_warranty_terms } = settings;
+      await persist({ logo_url, banner_url, primary_color, nav_color, receipt_footer_text, show_logo_on_receipt, show_cnpj_on_receipt, internal_notice, service_warranty_terms: service_warranty_terms ?? '' });
       setDirty(false);
       setSaved(true);
     } catch (cause) {
@@ -161,6 +161,19 @@ export function WhiteLabelModule({ settings: initialSettings, onUpdate: persist 
           onChange={(e) => onUpdate({ receipt_footer_text: e.target.value })}
           placeholder="Ex: Obrigado pela preferência! Volte sempre. / Garantia de 90 dias conforme termo."
           rows={3}
+        />
+      </div>
+
+      <div className="module-card">
+        <label className="module-card-title" htmlFor="service-warranty-terms">Termo de Garantia de Serviços</label>
+        <p className="otp-description">Informe os prazos, a cobertura e as condições de garantia dos serviços prestados. Este termo será exibido nas Ordens de Serviço.</p>
+        <textarea
+          id="service-warranty-terms"
+          className="notice-input"
+          value={settings.service_warranty_terms ?? ''}
+          onChange={(e) => onUpdate({ service_warranty_terms: e.target.value })}
+          placeholder="Digite o termo de garantia dos serviços da sua loja..."
+          rows={6}
         />
       </div>
 
