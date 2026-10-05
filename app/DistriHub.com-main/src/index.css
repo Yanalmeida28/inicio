@@ -2219,6 +2219,34 @@ html, body {
 .cash-summary strong { margin-top: 6px; font-size: 20px; }
 
 /* Keep pre-sales compact even with a large catalog or many pending orders. */
+.partner-panel .open-orders-table-wrap { overflow: visible; }
+.partner-panel .open-orders-table-wrap .orders-table { width: 100%; min-width: 0; table-layout: fixed; }
+.partner-panel .open-orders-table-wrap th,
+.partner-panel .open-orders-table-wrap td { padding: 10px; white-space: normal; overflow-wrap: anywhere; }
+.open-orders-table-wrap th:nth-child(1) { width: 21%; }
+.open-orders-table-wrap th:nth-child(2) { width: 24%; }
+.open-orders-table-wrap th:nth-child(3) { width: 17%; }
+.open-orders-table-wrap th:nth-child(4) { width: 15%; }
+.open-orders-table-wrap th:nth-child(5) { width: 23%; }
+.open-order-secondary { display: block; margin: 4px 0; color: var(--dh-text-secondary); font-size: 12px; }
+.partner-panel .open-orders-table-wrap .row-action-group { flex-wrap: wrap; gap: 6px; }
+.open-orders-table-wrap .row-action-group > button { min-height: 34px; }
+@media (max-width: 900px) {
+  .partner-panel .open-orders-table-wrap { border: 0; background: transparent; }
+  .open-orders-table-wrap .orders-table,
+  .open-orders-table-wrap tbody { display: block; }
+  .open-orders-table-wrap thead { display: none; }
+  .open-orders-table-wrap tbody tr { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); margin-bottom: 12px; border: 1px solid var(--dh-border); border-radius: 8px; background: var(--dh-surface); }
+  .partner-panel .open-orders-table-wrap tbody td { display: block; min-width: 0; border: 0; }
+  .open-orders-table-wrap tbody td[data-label]::before { content: attr(data-label); display: block; margin-bottom: 5px; font-size: 11px; font-weight: 600; color: var(--dh-text-secondary); }
+  .open-orders-table-wrap .open-order-actions,
+  .open-orders-table-wrap .empty-row { grid-column: 1 / -1; }
+  .partner-panel .open-orders-table-wrap .row-action-group { gap: 8px; }
+  .open-orders-table-wrap .row-action-group > button { min-height: 40px; }
+  .open-orders-table-wrap tfoot { display: block; }
+  .open-orders-table-wrap tfoot tr { display: flex; flex-wrap: wrap; justify-content: space-between; }
+  .open-orders-table-wrap tfoot td:empty { display: none; }
+}
 .open-order-editor { width: min(680px, 95vw); max-width: 680px; max-height: 90dvh; overflow-y: auto; }
 .open-order-editor-fields { border: 0; padding: 0; margin: 0 0 12px; min-width: 0; }
 .open-order-editor-results { display: flex; flex-direction: column; gap: 6px; max-height: 160px; overflow-y: auto; margin: 10px 0; }

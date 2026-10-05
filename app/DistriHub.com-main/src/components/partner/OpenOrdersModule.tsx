@@ -314,55 +314,47 @@ export function OpenOrdersModule({ products, onUpdateItems, sales, customers, sa
       </div>
 
       {/* Data Table */}
-      <div className="stock-table-wrap">
+      <div className="stock-table-wrap open-orders-table-wrap">
         <table className="rma-table orders-table">
           <thead>
             <tr>
               <th>Pedido</th>
               <th>Cliente</th>
-              <th>Status</th>
               <th>Pagamento</th>
-              <th>Origem</th>
-              <th>Criado em</th>
               <th>Total (R$)</th>
-              <th>Status pgto</th>
-              <th>Pgto online</th>
               <th>Ações</th>
             </tr>
           </thead>
           <tbody>
             {displayedOrders.length === 0 ? (
-              <tr><td colSpan={10} className="empty-row">Nenhum pedido em aberto.</td></tr>
+              <tr><td colSpan={5} className="empty-row">Nenhum pedido em aberto.</td></tr>
             ) : (
               displayedOrders.map((s) => {
                 const st = statusLabels[s.status] ?? { label: s.status, color: '#7f97a9' };
                 const pst = payStatusLabels[s.payment_status] ?? { label: s.payment_status, color: '#7f97a9' };
                 return (
                   <tr key={s.id}>
-                    <td><strong>#{s.id.slice(0, 8).toUpperCase()}</strong></td>
-                    <td>{s.customer_name ?? '—'}</td>
-                    <td>
-                      <span className="rma-status-badge" style={{ color: st.color, borderColor: st.color }}>{st.label}</span>
-                    </td>
-                    <td>{s.payment_method ?? '—'}</td>
-                    <td>
+                    <td data-label="Pedido">
+                      <strong>#{s.id.slice(0, 8).toUpperCase()}</strong>
+                      <small className="open-order-secondary">{new Date(s.created_at).toLocaleString('pt-BR')}</small>
                       <span className="order-origin-badge">{s.origin === 'catalogo' ? 'Online' : 'PDV'}</span>
                     </td>
-                    <td>{new Date(s.created_at).toLocaleString('pt-BR')}</td>
-                    <td><strong>{money.format(s.total)}</strong></td>
-                    <td>
+                    <td data-label="Cliente">
+                      <strong>{s.customer_name ?? '—'}</strong>
+                      <small className="open-order-secondary">{s.items.length} {s.items.length === 1 ? 'item' : 'itens'}</small>
+                      <span className="rma-status-badge" style={{ color: st.color, borderColor: st.color }}>{st.label}</span>
+                    </td>
+                    <td data-label="Pagamento">
+                      <small className="open-order-secondary">{s.payment_method ?? 'A definir'}</small>
                       <span className="rma-status-badge" style={{ color: pst.color, borderColor: pst.color }}>{pst.label}</span>
+                      {s.online_payment && <small className="open-order-secondary">Pagamento online</small>}
                     </td>
-                    <td>
-                      <span className={`order-online-badge ${s.online_payment ? 'yes' : 'no'}`}>
-                        {s.online_payment ? 'SIM' : 'NÃO'}
-                      </span>
-                    </td>
-                    <td>
+                    <td data-label="Total"><strong>{money.format(s.total)}</strong></td>
+                    <td data-label="Ações" className="open-order-actions">
                       <div className="row-action-group">
                         {s.status === 'pre_venda' && (
                           <button className="rma-advance-btn" onClick={() => setEditTarget(s)} title="Editar produtos">
-                            <Pencil size={14} /> Editar produtos
+                            <Pencil size={14} /> Editar
                           </button>
                         )}
                         {canCheckout && s.status === 'pre_venda' && (
@@ -391,9 +383,9 @@ export function OpenOrdersModule({ products, onUpdateItems, sales, customers, sa
           </tbody>
           <tfoot>
             <tr className="orders-footer-row">
-              <td colSpan={6}><strong>{displayedOrders.length} registro(s)</strong></td>
+              <td colSpan={3}><strong>{displayedOrders.length} registro(s)</strong></td>
               <td><strong>{money.format(totalAmount)}</strong></td>
-              <td colSpan={3}></td>
+              <td></td>
             </tr>
           </tfoot>
         </table>
