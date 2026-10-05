@@ -232,7 +232,6 @@ export function PartnerPanel({
   const [activeTab, setActiveTab] = useState<Tab>('cadastros');
   const [selectedBranchId, setSelectedBranchId] = useState<string>('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [pdvMenuExpanded, setPdvMenuExpanded] = useState(false);
   const [currentRole, setCurrentRole] =
     useState<SalespersonRole>('administrador');
 
@@ -1490,12 +1489,11 @@ export function PartnerPanel({
 
   function handleTabClick(tab: Tab) {
     setActiveTab(tab);
-    setPdvMenuExpanded(false);
     setSidebarOpen(false);
   }
 
   return (
-    <div className={`partner-panel sidebar-layout${activeTab === 'pdv' ? ' partner-pdv-mode' : ''}${activeTab === 'pdv' && !pdvMenuExpanded ? ' partner-menu-collapsed' : ''}`} style={{ '--dh-blue': storeSettings.primary_color, '--store-nav': storeSettings.nav_color } as React.CSSProperties}>
+    <div className={`partner-panel sidebar-layout${activeTab === 'pdv' ? ' partner-pdv-mode' : ''}`} style={{ '--dh-blue': storeSettings.primary_color, '--store-nav': storeSettings.nav_color } as React.CSSProperties}>
       <div className="sidebar-mobile-bar">
         <button
           className="sidebar-toggle"
@@ -1546,7 +1544,6 @@ export function PartnerPanel({
           sidebarOpen ? 'open' : ''
         }`}
       >
-        {activeTab === 'pdv' && <button type="button" className="sidebar-desktop-toggle" onClick={() => setPdvMenuExpanded(value => !value)} aria-label={pdvMenuExpanded ? 'Recolher menu' : 'Expandir menu'} title={pdvMenuExpanded ? 'Recolher menu' : 'Expandir menu'} aria-expanded={pdvMenuExpanded}><Menu size={20} /></button>}
         <div className="sidebar-header">
           <div className="sidebar-brand">
             <span className="sidebar-brand-mark">

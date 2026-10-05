@@ -2179,7 +2179,6 @@ html, body {
 }
 
 /* PDV workspace and sales history */
-.sidebar-desktop-toggle { display: none; }
 .pdv-operator-line { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 12px; }
 .sales-history-filters { flex-wrap: wrap; align-items: end; gap: 12px; }
 .sales-history-filters label { display: flex; flex-direction: column; gap: 4px; }
@@ -2189,17 +2188,6 @@ html, body {
   .partner-pdv-mode .pdv-workspace > .module-header { margin: 0; padding-bottom: 0; }
   .partner-pdv-mode .pdv-workspace > .module-header h3 { font-size: 18px; }
   .partner-pdv-mode .pdv-subtab { padding: 7px 14px; }
-  .partner-pdv-mode .sidebar-desktop-toggle { display: flex; align-items: center; justify-content: center; color: white; padding: 12px; }
-  .partner-menu-collapsed .partner-sidebar { width: 64px; }
-  .partner-menu-collapsed .sidebar-main { margin-left: 64px; }
-  .partner-menu-collapsed .sidebar-header,
-  .partner-menu-collapsed .sidebar-operator,
-  .partner-menu-collapsed .sidebar-nav-label,
-  .partner-menu-collapsed .sidebar-footer { display: none; }
-  .partner-menu-collapsed .sidebar-nav { padding: 4px 6px; flex: 0; }
-  .partner-menu-collapsed .sidebar-nav-item { justify-content: center; padding: 10px; }
-  .partner-menu-collapsed .sidebar-nav-item svg { flex-shrink: 0; }
-  .partner-menu-collapsed .sidebar-nav-item.active::before { left: -6px; }
   .partner-pdv-mode .pdv-search-results, .partner-pdv-mode .pdv-product-search-results { max-height: min(180px, 28vh); }
 }
 .admin-support-conversations { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
