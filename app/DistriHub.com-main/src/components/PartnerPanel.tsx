@@ -1896,7 +1896,7 @@ export function PartnerPanel({
                 cashContext={checkoutCash}
                 onOpenCash={() => setActiveTab('caixa')}
                 onConfirmCashOperator={!isEmployeeRestricted ? (operatorId) => {
-                  setSelectedOperatorId(operatorId ?? currentSalespersonId ?? 'owner');
+                  setSelectedOperatorId(operatorId === undefined ? currentSalespersonId ?? 'owner' : operatorId ?? 'owner');
                   setOperatorPinInput('');
                   setOperatorPinError('');
                   setShowOperatorModal(true);
