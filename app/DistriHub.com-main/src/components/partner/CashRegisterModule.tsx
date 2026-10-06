@@ -70,6 +70,7 @@ export function CashRegisterModule({ branchId, branchName, scopeKey, sales, oper
   }, [branchId, operatorId, operatorPin, scopeKey, refresh, invalidateReads]);
 
   const current = sessions.find(s => !s.closed_at && s.actor_key === actorKey);
+  const otherOpenSessions = sessions.filter(s => !s.closed_at && s.actor_key !== actorKey);
   const selected = sessions.find(s => s.id === selectedId) ?? current ?? sessions[0];
   const selectedMovements = movements.filter(m => m.session_id === selected?.id);
   const totals = selected?.closing_totals ?? cashTotals(selectedMovements);
@@ -180,6 +181,7 @@ export function CashRegisterModule({ branchId, branchName, scopeKey, sales, oper
       {authorization()}<button className="module-submit-btn" disabled={busy || loading} onClick={() => void mutate(pending.action, true)}>Confirmar operação pendente</button>
     </section>}
     {loading ? <p>Carregando caixa...</p> : <>
+      {!current && !error && otherOpenSessions.length > 0 && <p role="status">Os caixas abertos de {otherOpenSessions.map(session => session.operator_name).join(', ')} pertencem a outros operadores. Para finalizar vendas, confirme o operador correspondente ou abra o seu próprio caixa nesta filial.</p>}
       {!current && !error && <section className="cash-card"><h4>Abrir caixa</h4><p>Informe o dinheiro disponível para troco. Pré-vendas não entram no saldo até serem finalizadas.</p>
         <form onSubmit={e => { e.preventDefault(); void mutate('abrir'); }} className="cash-fields">
           <label>Troco inicial (R$)<input inputMode="decimal" value={opening} onChange={e => setOpening(e.target.value)} disabled={busy} required /></label>
@@ -229,6 +231,7 @@ export function CashRegisterModule({ branchId, branchName, scopeKey, sales, oper
         {sessions.map(s => <option key={s.id} value={s.id}>{new Date(s.opened_at).toLocaleString('pt-BR')} · {s.operator_name} · {s.closed_at ? 'Fechado' : 'Aberto'}</option>)}
       </select></label>
       {selected && <>
+        {selected.actor_key !== actorKey && <p>Consulta do caixa de {selected.operator_name}. Selecionar este relatório não troca o operador nem o caixa usado nas vendas.</p>}
         <div className="cash-summary"><div><small>Troco inicial</small><strong>{money.format(selected.opening_amount)}</strong></div>
           {Object.entries(totals).map(([key, value]) => <div key={key}><small>{cashPaymentLabels[key] ?? key} · líquido</small><strong>{money.format(value)}</strong></div>)}
           <div><small>Dinheiro esperado</small><strong>{money.format(selected.expected_amount ?? expected)}</strong></div>

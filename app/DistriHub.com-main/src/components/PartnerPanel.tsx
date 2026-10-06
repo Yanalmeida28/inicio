@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
   Boxes,
@@ -29,6 +29,8 @@ import { usePartnerData } from '../hooks/usePartnerData';
 import { pdvErrorMessage } from '../lib/pdv';
 import { supabase } from '../lib/supabase';
 import { BranchSelector } from './partner/BranchSelector';
+import { useCheckoutCash } from '../hooks/useCheckoutCash';
+import { OperatorSelectionStore } from '../lib/checkoutCash';
 
 const CadastrosModule = lazy(() => import('./partner/CadastrosModule').then((module) => ({ default: module.CadastrosModule })));
 const PdvModule = lazy(() => import('./partner/PdvModule').then((module) => ({ default: module.PdvModule })));
@@ -239,6 +241,8 @@ export function PartnerPanel({
     useState<string | null>(null);
   const [activeOperatorPin, setActiveOperatorPin] =
     useState<string | null>(null);
+  const operatorRestoredScope = useRef('');
+  const [operatorSelectionScope, setOperatorSelectionScope] = useState('');
 
   const [showOperatorModal, setShowOperatorModal] = useState(false);
   const [selectedOperatorId, setSelectedOperatorId] =
@@ -318,6 +322,42 @@ export function PartnerPanel({
   const effectiveRole: SalespersonRole = activeSalesperson
     ? activeSalesperson.role
     : 'administrador';
+
+  const operatorScope = `${identity?.authUserId}:${identity?.companyUserId}`;
+  useEffect(() => {
+    if (!identity || partner.loading || operatorRestoredScope.current === operatorScope) return;
+    operatorRestoredScope.current = operatorScope;
+    setOperatorSelectionScope(operatorScope);
+    if (isEmployeeRestricted) return;
+    setCurrentSalespersonId(null);
+    setActiveOperatorPin(null);
+    setSelectedBranchId('');
+    setShowOperatorModal(false);
+    let saved;
+    try { saved = new OperatorSelectionStore(sessionStorage, operatorScope).read(); }
+    catch { return; }
+    if (!saved) return;
+    if (partner.branches.some(branch => branch.id === saved.branchId)) setSelectedBranchId(saved.branchId);
+    const operator = partner.salespeople.find(person => person.id === saved.operatorId && (person.active ?? person.is_active) !== false);
+    if (operator && (!operator.branch_id || operator.branch_id === saved.branchId)) {
+      setCurrentSalespersonId(operator.id);
+      setActiveOperatorPin(null);
+      setSelectedOperatorId(operator.id);
+      setOperatorPinError('Confirme o PIN para retomar o operador e o caixa selecionados.');
+      setShowOperatorModal(true);
+    }
+  }, [identity, partner.loading, partner.branches, partner.salespeople, operatorScope, isEmployeeRestricted]);
+  useEffect(() => {
+    if (operatorSelectionScope !== operatorScope || !identity || isEmployeeRestricted) return;
+    try { new OperatorSelectionStore(sessionStorage, operatorScope).save({ branchId: selectedBranchId, operatorId: currentSalespersonId }); }
+    catch { /* Storage unavailable: server authorization still applies. */ }
+  }, [operatorScope, operatorSelectionScope, identity, isEmployeeRestricted, selectedBranchId, currentSalespersonId]);
+
+  const checkoutCash = useCheckoutCash(effectiveBranchId, isEmployeeRestricted ? null : currentSalespersonId,
+    isEmployeeRestricted ? null : activeOperatorPin, activeSalesperson?.name ?? 'Proprietário / Administrador', operatorScope);
+  useEffect(() => {
+    if (activeTab === 'pdv' || activeTab === 'pedidos' || activeTab === 'caixa') void checkoutCash.refresh().catch(() => {});
+  }, [activeTab, checkoutCash.refresh]);
 
   useEffect(() => {
     setCurrentRole(effectiveRole);
@@ -1013,6 +1053,7 @@ export function PartnerPanel({
       operatorPin,
     } = getOperatorContext();
 
+    if (!partner.pendingSale) await checkoutCash.assertOpen();
     await partner.createSale(
       {
         ...sale,
@@ -1111,6 +1152,7 @@ export function PartnerPanel({
       operatorPin,
     } = getOperatorContext();
 
+    if (!partner.pendingSale) await checkoutCash.assertOpen();
     await partner.finalizePreSale(
       id,
       paymentMethod,
@@ -1851,6 +1893,14 @@ export function PartnerPanel({
             {(activeTab === 'pdv' || activeTab === 'historico') && !blockedTabs.includes('pdv') && (
               <div hidden={activeTab !== 'pdv'}>
               <PdvModule
+                cashContext={checkoutCash}
+                onOpenCash={() => setActiveTab('caixa')}
+                onConfirmCashOperator={!isEmployeeRestricted ? (operatorId) => {
+                  setSelectedOperatorId(operatorId ?? currentSalespersonId ?? 'owner');
+                  setOperatorPinInput('');
+                  setOperatorPinError('');
+                  setShowOperatorModal(true);
+                } : undefined}
                 canEditPrice={effectiveRole === 'gerente' || (!isEmployeeRestricted && effectiveRole === 'administrador')}
                 key={pdvRevision}
                 hasPendingSale={Boolean(partner.pendingSale)}

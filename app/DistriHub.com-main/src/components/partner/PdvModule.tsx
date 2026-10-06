@@ -219,6 +219,9 @@ function SalespersonSearchPicker({ id, salespeople, salespersonId, onSelect }: {
 }
 
 type Props = {
+  cashContext?: { status: string; message: string; others: { id: string; operator_id: string | null; operator_name: string }[] };
+  onOpenCash?: () => void;
+  onConfirmCashOperator?: (operatorId?: string | null) => void;
   canEditPrice: boolean;
   products: PartnerProduct[];
   customers: PartnerCustomer[];
@@ -265,6 +268,7 @@ const cashierRoles: SalespersonRole[] = ['administrador', 'gerente', 'caixa', 'v
 const PRODUCT_PAGE_SIZE = 30;
 
 export function PdvModule({
+  cashContext, onOpenCash, onConfirmCashOperator,
   products, customers, sales, credits, hasPendingSale, salespeople, segment, selectedBranchId,
   activeSalespersonId, activeBranchName, currentRole, canEditPrice, onCreateSale, onCreatePreSale, onFinalizePreSale, onCancelSale, onDeleteSale,
 }: Props) {
@@ -275,7 +279,8 @@ export function PdvModule({
     const element = moduleRef.current;
     if (!element) return;
     const updateHeight = () => {
-      const top = element.getBoundingClientRect().top + window.scrollY;
+      const checkout = element.querySelector('.pdv-checkout-layout') ?? element;
+      const top = checkout.getBoundingClientRect().top + window.scrollY;
       element.style.setProperty('--pdv-height', `${Math.max(420, window.innerHeight - (top + 20))}px`);
     };
     updateHeight();
@@ -283,6 +288,8 @@ export function PdvModule({
     if (element.parentElement) observer.observe(element.parentElement);
     const toolbar = element.closest('.sidebar-main-inner')?.querySelector('.branch-toolbar');
     if (toolbar) observer.observe(toolbar);
+    const cashContext = element.querySelector('.pdv-cash-context');
+    if (cashContext) observer.observe(cashContext);
     window.addEventListener('resize', updateHeight);
     return () => {
       observer.disconnect();
@@ -319,6 +326,16 @@ export function PdvModule({
         </button>
 
       </div>
+
+      {cashContext && <div className="pdv-cash-context" role="status">
+        <span>{cashContext.message}</span>
+        {cashContext.status === 'authorize' && onConfirmCashOperator && <button type="button" className="rma-advance-btn" onClick={() => onConfirmCashOperator()}>Confirmar operador</button>}
+        {cashContext.status === 'closed' && <>
+          {onOpenCash && <button type="button" className="rma-advance-btn" onClick={onOpenCash}>Ir ao caixa</button>}
+          {onConfirmCashOperator && cashContext.others.map(session => <button key={session.id} type="button" className="rma-advance-btn" onClick={() => onConfirmCashOperator(session.operator_id)}>Operar como {session.operator_name}</button>)}
+        </>}
+        {cashContext.status === 'error' && onOpenCash && <button type="button" className="rma-advance-btn" onClick={onOpenCash}>Conferir caixa</button>}
+      </div>}
 
       {subTab !== 'pre-venda' && (
         <PdvCheckout
