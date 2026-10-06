@@ -10,10 +10,11 @@ import type {
   PartnerProduct, PartnerCategory, PartnerSupplier,
   PartnerSalesperson, PartnerCombo, PartnerModifier, PartnerCustomer,
   PartnerSale, SalespersonRole, PartnerBranch,
-  PersonType,
+  PersonType, RmaRequest,
 } from '../../types';
 import { formatCnpj, formatCpf, isValidCnpj, isValidCpf, money, normalizeDocument } from '../../utils';
 import { ImportExportModule, ExportButtons } from './ImportExportModule';
+import { saleReturnLabel, saleItemDescription } from '../../lib/saleReturns';
 
 // Alias local: payload de atualização de cliente usado pelo perfil de cliente.
 // Campos do formulário (CustomerForm) mais o suporte de foto do modal
@@ -39,6 +40,7 @@ type Props = {
   sales: PartnerSale[];
   /** Todas as vendas da empresa (sem filtro de filial ativa), usadas no histórico de compras do cliente. */
   allSales: PartnerSale[];
+  rmaRequests?: RmaRequest[];
   segment: string;
   onAddProduct: (p: Omit<PartnerProduct, 'id' | 'user_id' | 'created_at' | 'updated_at'>) => Promise<void>;
   onUpdateProduct: (id: string, updates: Partial<PartnerProduct>) => Promise<void>;
@@ -89,7 +91,7 @@ function getActionPopoverPosition(event: React.MouseEvent<HTMLButtonElement>, wi
 
 export function CadastrosModule({
   products, branches, selectedBranchId, categories, suppliers, salespeople, combos, modifiers, customers, sales,
-  allSales, segment, onAddProduct, onUpdateProduct, onDeleteProduct,
+  allSales, rmaRequests = [], segment, onAddProduct, onUpdateProduct, onDeleteProduct,
   onReplenishStock,
   onAddCategory, onDeleteCategory, onAddSupplier, onUpdateSupplier, onDeleteSupplier, onAddSalesperson,
   onUpdateSalesperson, onDeleteSalesperson,
@@ -153,6 +155,7 @@ export function CadastrosModule({
           <CustomersSubTab
             customers={customers}
             sales={allSales}
+            rmaRequests={rmaRequests}
             salespeople={salespeople}
             onLoadCustomer={onLoadCustomer}
             selectedBranchId={selectedBranchId}
@@ -1108,7 +1111,8 @@ function ModifiersSubTab({ modifiers, products, onAdd, onDelete }: {
   );
 }
 
-function CustomersSubTab({ customers, sales, salespeople, selectedBranchId, onAdd, onUpdate, onDelete, onLoadCustomer }: {
+function CustomersSubTab({ customers, sales, rmaRequests, salespeople, selectedBranchId, onAdd, onUpdate, onDelete, onLoadCustomer }: {
+  rmaRequests: RmaRequest[];
   customers: PartnerCustomer[];
   sales: PartnerSale[];
   salespeople: PartnerSalesperson[];
@@ -1475,7 +1479,7 @@ function CustomersSubTab({ customers, sales, salespeople, selectedBranchId, onAd
                     historySales.map((s) => (
                       <tr key={s.id}>
                         <td>{new Date(s.created_at).toLocaleDateString('pt-BR')}</td>
-                        <td>{s.items.map((i) => `${i.name} (${i.quantity})`).join(', ')}</td>
+                        <td>{saleItemDescription(s, rmaRequests)}{saleReturnLabel(s, rmaRequests) && <small>{saleReturnLabel(s, rmaRequests)}</small>}</td>
                         <td>{money.format(s.total)}</td>
                         <td>{s.payment_method ?? '—'}</td>
                         <td>{s.imei ?? s.serial_number ?? '—'}</td>
@@ -1490,7 +1494,7 @@ function CustomersSubTab({ customers, sales, salespeople, selectedBranchId, onAd
       )}
 
       {profileCustomerId && profileCustomer && (
-        <CustomerProfileModal customer={profileCustomer} sales={sales} salespeople={salespeople} onUpdate={onUpdate} onClose={() => setProfileCustomerId(null)} />
+        <CustomerProfileModal customer={profileCustomer} sales={sales} rmaRequests={rmaRequests} salespeople={salespeople} onUpdate={onUpdate} onClose={() => setProfileCustomerId(null)} />
       )}
     </div>
   );
@@ -1499,7 +1503,8 @@ function CustomersSubTab({ customers, sales, salespeople, selectedBranchId, onAd
 type CustomerTab = 'cadastrais' | 'enderecos' | 'observacoes' | 'financeiros' | 'contatos' | 'historico';
 type CustomerForm = Omit<PartnerCustomer, 'id' | 'user_id' | 'created_at' | 'updated_at'>;
 
-function CustomerProfileModal({ customer, sales, salespeople, onUpdate, onClose }: {
+function CustomerProfileModal({ customer, sales, rmaRequests, salespeople, onUpdate, onClose }: {
+  rmaRequests: RmaRequest[];
   customer: PartnerCustomer;
   sales: PartnerSale[];
   salespeople: PartnerSalesperson[];
@@ -1634,7 +1639,7 @@ function CustomerProfileModal({ customer, sales, salespeople, onUpdate, onClose 
             </div>
           </div>}
           {tab === 'contatos' && <div className="rma-form"><div className="form-row">{textField('phone', 'Celular Principal', '(92) 99999-9999')}{textField('phone_commercial_1', 'Fone Comercial 1')}</div><div className="form-row">{textField('phone_commercial_2', 'Fone Comercial 2')}<label><span className="social-label">E-mail</span><input type="email" value={form.email ?? ''} onChange={(event) => setField('email', event.target.value)} /></label></div></div>}
-          {tab === 'historico' && <div className="customer-history-tab"><p>Total em compras: <strong>{money.format(totalPurchases)}</strong></p><div className="stock-table-wrap"><table className="rma-table"><thead><tr><th>Data</th><th>Pedido</th><th>Total</th><th>Status</th></tr></thead><tbody>{customerSales.length === 0 ? <tr><td colSpan={4} className="empty-row">Nenhuma compra registrada.</td></tr> : customerSales.map((sale) => <tr key={sale.id}><td>{new Date(sale.created_at).toLocaleDateString('pt-BR')}</td><td>#{sale.id.slice(0, 8).toUpperCase()}</td><td>{money.format(sale.total)}</td><td>{sale.status}</td></tr>)}</tbody></table></div></div>}
+          {tab === 'historico' && <div className="customer-history-tab"><p>Total em compras: <strong>{money.format(totalPurchases)}</strong></p><div className="stock-table-wrap"><table className="rma-table"><thead><tr><th>Data</th><th>Pedido</th><th>Total</th><th>Status</th></tr></thead><tbody>{customerSales.length === 0 ? <tr><td colSpan={4} className="empty-row">Nenhuma compra registrada.</td></tr> : customerSales.map((sale) => <tr key={sale.id}><td>{new Date(sale.created_at).toLocaleDateString('pt-BR')}</td><td>#{sale.id.slice(0, 8).toUpperCase()}</td><td>{money.format(sale.total)}</td><td>{saleReturnLabel(sale, rmaRequests) || sale.status}<small>{saleItemDescription(sale, rmaRequests)}</small></td></tr>)}</tbody></table></div></div>}
         </div>
         {error && <p className="otp-error-msg">{error}</p>}
         {success && <p style={{ color: '#15803D' }}>Cliente salvo com sucesso.</p>}

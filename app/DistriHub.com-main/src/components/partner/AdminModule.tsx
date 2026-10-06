@@ -776,7 +776,7 @@ function ExecutiveDashboard({
 
         <div className="admin-dashboard-card">
           <h4 className="report-section-title"><Users size={16} /> CRM — Clientes & LTV</h4>
-          <div className="report-cards" style={{ gridTemplateColumns: 'repeat(3,1fr)', marginBottom: '14px' }}>
+          <div className="report-cards admin-crm-metrics">
             <div className="report-card">
               <small>LTV Médio</small>
               <strong>{money.format(crmMetrics.avgLtv)}</strong>
@@ -895,7 +895,8 @@ function ExecutiveDashboard({
 function DailyRevenueChart({ data }: { data: { date: Date; gross: number; net: number }[] }) {
   const width = 800;
   const height = 240;
-  const padding = { top: 20, right: 20, bottom: 30, left: 70 };
+  const labelWidth = Math.max(70, ...data.map(day => Math.max(money.format(day.gross).length, money.format(day.net).length) * 6 + 16));
+  const padding = { top: 20, right: 20, bottom: 30, left: Math.min(labelWidth, 180) };
   const chartW = width - padding.left - padding.right;
   const chartH = height - padding.top - padding.bottom;
 
@@ -904,12 +905,15 @@ function DailyRevenueChart({ data }: { data: { date: Date; gross: number; net: n
   }
 
   const maxVal = Math.max(...data.map((d) => Math.max(d.gross, d.net)), 1);
+  const minVal = Math.min(...data.map((d) => Math.min(d.gross, d.net)), 0);
+  const valueRange = maxVal - minVal;
+  const chartY = (value: number) => padding.top + chartH - ((value - minVal) / valueRange) * chartH;
   const stepX = data.length > 1 ? chartW / (data.length - 1) : chartW;
 
   function pointPath(values: number[]): string {
     return values.map((v, i) => {
       const x = padding.left + i * stepX;
-      const y = padding.top + chartH - (v / maxVal) * chartH;
+      const y = chartY(v);
       return `${i === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`;
     }).join(' ');
   }
@@ -917,7 +921,7 @@ function DailyRevenueChart({ data }: { data: { date: Date; gross: number; net: n
   function areaPath(values: number[]): string {
     const linePath = pointPath(values);
     const lastX = padding.left + (values.length - 1) * stepX;
-    const baseY = padding.top + chartH;
+    const baseY = chartY(0);
     return `${linePath} L ${lastX.toFixed(1)} ${baseY} L ${padding.left} ${baseY} Z`;
   }
 
@@ -927,7 +931,7 @@ function DailyRevenueChart({ data }: { data: { date: Date; gross: number; net: n
 
   const yTicks = 4;
   const tickLabels: number[] = [];
-  for (let i = 0; i <= yTicks; i++) tickLabels.push((maxVal / yTicks) * i);
+  for (let i = 0; i <= yTicks; i++) tickLabels.push(minVal + (valueRange / yTicks) * i);
 
   const xLabelInterval = Math.max(1, Math.floor(data.length / 8));
 
@@ -942,7 +946,7 @@ function DailyRevenueChart({ data }: { data: { date: Date; gross: number; net: n
         </defs>
 
         {tickLabels.map((t, i) => {
-          const y = padding.top + chartH - (t / maxVal) * chartH;
+          const y = chartY(t);
           return (
             <g key={i}>
               <line x1={padding.left} y1={y} x2={width - padding.right} y2={y} stroke="#1d3445" strokeWidth="1" strokeDasharray="3 3" />
@@ -969,8 +973,8 @@ function DailyRevenueChart({ data }: { data: { date: Date; gross: number; net: n
 
         {data.map((d, i) => {
           const x = padding.left + i * stepX;
-          const yGross = padding.top + chartH - (d.gross / maxVal) * chartH;
-          const yNet = padding.top + chartH - (d.net / maxVal) * chartH;
+          const yGross = chartY(d.gross);
+          const yNet = chartY(d.net);
           return (
             <g key={i} className="chart-tooltip-group">
               <circle cx={x} cy={yGross} r="3" fill="#3b9bed" className="chart-dot" />

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Ban, Lock, Trash2, X } from 'lucide-react';
-import type { PartnerSale, PartnerCustomer, PartnerSalesperson } from '../../types';
+import type { PartnerSale, PartnerCustomer, PartnerSalesperson, RmaRequest } from '../../types';
+import { saleReturnLabel, saleItemDescription } from '../../lib/saleReturns';
 import { SaleActionsMenu } from './SaleActionsMenu';
 import { money } from '../../utils';
 import { printSale, type PrintableSale, type ReceiptDetails } from '../../lib/salePrint';
@@ -8,6 +9,7 @@ import { saleShareUrl } from '../../lib/saleShare';
 
 type Props = {
   sales: PartnerSale[];
+  rmaRequests?: RmaRequest[];
   customers: PartnerCustomer[];
   salespeople: PartnerSalesperson[];
   segment: string;
@@ -21,7 +23,7 @@ function localDate(value: string | Date) {
   return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
 }
 
-export function SalesHistoryModule({ sales, customers, salespeople, segment, receiptDetails, onCancelSale, onDeleteSale }: Props) {
+export function SalesHistoryModule({ sales, rmaRequests = [], customers, salespeople, segment, receiptDetails, onCancelSale, onDeleteSale }: Props) {
   const [search, setSearch] = useState('');
   const [startDate, setStartDate] = useState(() => localDate(new Date()));
   const [endDate, setEndDate] = useState(() => localDate(new Date()));
@@ -33,10 +35,10 @@ export function SalesHistoryModule({ sales, customers, salespeople, segment, rec
     return sales.filter(sale => {
       const date = localDate(sale.created_at);
       return sale.status !== 'pre_venda' && (!startDate || date >= startDate) && (!endDate || date <= endDate)
-        && (status === 'all' || sale.status === status)
+        && (status === 'all' || (status === 'devolucao' ? !!saleReturnLabel(sale, rmaRequests) || sale.status === status : sale.status === status && !saleReturnLabel(sale, rmaRequests)))
         && (!term || normalize([sale.id, sale.customer_name, sale.imei, sale.serial_number].join(' ')).includes(term));
     }).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-  }, [sales, search, startDate, endDate, status]);
+  }, [sales, rmaRequests, search, startDate, endDate, status]);
   const [printError, setPrintError] = useState<string | null>(null);
   const [shareNotice, setShareNotice] = useState<string | null>(null);
 
@@ -142,7 +144,7 @@ export function SalesHistoryModule({ sales, customers, salespeople, segment, rec
                 filteredSales.map((s) => (
                   <tr key={s.id} className={s.status === 'cancelada' ? 'cancelled-row' : ''}>
                     <td><strong>{s.customer_name ?? '—'}</strong><small className="sales-history-id" title={s.id}>#{s.id.slice(0, 8)}</small></td>
-                    <td>{s.items.length} {s.items.length === 1 ? 'item' : 'itens'}</td>
+                    <td>{s.items.length} {s.items.length === 1 ? 'item' : 'itens'}<small>{saleItemDescription(s, rmaRequests)}</small></td>
                     <td>{money.format(s.total)}</td>
                     <td>{s.payment_method ?? '—'}</td>
                     <td>{s.imei ?? s.serial_number ?? '—'}</td>
@@ -150,7 +152,7 @@ export function SalesHistoryModule({ sales, customers, salespeople, segment, rec
                       {s.status === 'cancelada' ? (
                         <span className="rma-status-badge" style={{ color: '#e3829b', borderColor: '#e3829b' }}>Cancelada</span>
                       ) : (
-                        <span className="rma-status-badge" style={{ color: '#5bbc87', borderColor: '#5bbc87' }}>{s.status === 'concluida' ? 'Concluída' : s.status === 'aberta' ? 'Aberta' : 'Devolução'}</span>
+                        <span className="rma-status-badge" style={{ color: '#5bbc87', borderColor: '#5bbc87' }}>{saleReturnLabel(s, rmaRequests) || (s.status === 'concluida' ? 'Concluída' : s.status === 'aberta' ? 'Aberta' : 'Devolução')}</span>
                       )}
                     </td>
                     <td>{new Date(s.created_at).toLocaleString('pt-BR')}</td>
@@ -161,7 +163,7 @@ export function SalesHistoryModule({ sales, customers, salespeople, segment, rec
                           onPrintLabel={() => handlePrint(s, 'label')}
                           onWhatsApp={() => handleShare(s, 'whatsapp')}
                           onEmail={() => handleShare(s, 'email')}
-                          onCancel={() => requestCancelSale(s)}
+                          onCancel={saleReturnLabel(s, rmaRequests) ? undefined : () => requestCancelSale(s)}
                         />
                       )}
                     </td>

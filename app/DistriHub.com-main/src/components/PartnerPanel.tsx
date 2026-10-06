@@ -1731,6 +1731,7 @@ export function PartnerPanel({
             <Suspense fallback={<div className="partner-loading" role="status">Carregando módulo...</div>}>
             {activeTab === 'cadastros' && (
               <CadastrosModule
+                rmaRequests={partner.rmas}
                 products={
                   filteredProducts
                 }
@@ -1984,6 +1985,7 @@ export function PartnerPanel({
             {activeTab === 'historico' && (
               <OrderHistoryModule
                 salesHistory={!blockedTabs.includes('pdv') ? <SalesHistoryModule
+                  rmaRequests={partner.rmas}
                   sales={filteredSales}
                   customers={filteredCustomers}
                   salespeople={filteredSalespeople}

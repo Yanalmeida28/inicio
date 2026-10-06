@@ -7,7 +7,7 @@ type Props = {
   onPrintLabel: () => void;
   onWhatsApp: () => void;
   onEmail: () => void;
-  onCancel: () => void;
+  onCancel?: () => void;
 };
 
 export function SaleActionsMenu(props: Props) {
@@ -16,7 +16,7 @@ export function SaleActionsMenu(props: Props) {
     { label: 'Imprimir etiqueta', icon: QrCode, run: props.onPrintLabel },
     { label: 'Enviar por WhatsApp', icon: MessageCircle, run: props.onWhatsApp },
     { label: 'Enviar por e-mail', icon: Mail, run: props.onEmail },
-    { label: 'Cancelar/apagar venda', icon: Ban, run: props.onCancel },
+    ...(props.onCancel ? [{ label: 'Cancelar/apagar venda', icon: Ban, run: props.onCancel }] : []),
   ];
   return <ActionsMenu actions={actions} label="Ações da venda" />;
 }

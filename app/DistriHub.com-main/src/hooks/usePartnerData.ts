@@ -2314,9 +2314,12 @@ fetchAllPages((from, to) => client
         ),
       }));
 
+      if (status === 'reintegrado_estoque' && existing.branch_id) {
+        await syncConfirmedSale(existing.branch_id);
+      }
       return updated as RmaRequest;
     },
-    [data.rmas, requireIdentity],
+    [data.rmas, requireIdentity, syncConfirmedSale],
   );
 
   const deleteRma = useCallback(

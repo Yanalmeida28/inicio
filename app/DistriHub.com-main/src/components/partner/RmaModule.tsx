@@ -6,6 +6,7 @@ import {
 import type { PartnerCustomer, PartnerProduct, PartnerSale, RmaPayload, RmaRequest, RmaStatus, SalespersonRole } from '../../types';
 import { rmaStatusLabels, rmaStatusColors, rmaStatusFlow } from '../../data';
 import { money } from '../../utils';
+import { returnedQuantity } from '../../lib/saleReturns';
 
 type RmaModuleProps = {
   rmaRequests: RmaRequest[];
@@ -15,12 +16,17 @@ type RmaModuleProps = {
   walletBalance: number;
   warrantyTerms: string;
   currentRole: SalespersonRole;
-  onCreate: (rma: RmaPayload) => void;
-  onUpdateStatus: (id: string, status: RmaStatus) => void;
+  onCreate: (rma: RmaPayload) => Promise<void>;
+  onUpdateStatus: (id: string, status: RmaStatus) => Promise<unknown>;
   onDelete: (id: string) => Promise<void>;
 };
 
 const deleteAllowedRoles: SalespersonRole[] = ['administrador', 'gerente'];
+
+function errorMessage(error: unknown, fallback: string) {
+  return error && typeof error === 'object' && 'message' in error && typeof error.message === 'string'
+    ? error.message : fallback;
+}
 
 export function RmaModule({
   rmaRequests, customers, products, sales, walletBalance, warrantyTerms, currentRole, onCreate, onUpdateStatus, onDelete,
@@ -28,10 +34,14 @@ export function RmaModule({
   const [showForm, setShowForm] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [manualEntry, setManualEntry] = useState(false);
+  const [manualProductId, setManualProductId] = useState('');
   const [customerSearch, setCustomerSearch] = useState('');
   const [customerId, setCustomerId] = useState('');
   const [saleId, setSaleId] = useState('');
   const [saleItemIndex, setSaleItemIndex] = useState('');
+  const [quantity, setQuantity] = useState(1);
+  const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [manualCustomerName, setManualCustomerName] = useState('');
   const [productName, setProductName] = useState('');
   const [productSku, setProductSku] = useState('');
@@ -66,6 +76,8 @@ export function RmaModule({
     .sort((first, second) => new Date(second.created_at).getTime() - new Date(first.created_at).getTime()), [customerId, sales]);
   const selectedSale = customerSales.find((sale) => sale.id === saleId) ?? null;
   const selectedSaleItem = selectedSale && saleItemIndex !== '' ? selectedSale.items[Number(saleItemIndex)] : null;
+  const remainingQuantity = selectedSale && selectedSaleItem
+    ? selectedSaleItem.quantity - returnedQuantity(selectedSale, Number(saleItemIndex), rmaRequests) : 0;
 
   const statusSummary = useMemo(() => ({
     total: rmaRequests.length,
@@ -103,6 +115,7 @@ export function RmaModule({
 
   function selectSaleItem(index: string) {
     setSaleItemIndex(index);
+    setQuantity(1);
     const item = selectedSale && index !== '' ? selectedSale.items[Number(index)] : null;
     if (!item) {
       setProductName('');
@@ -115,25 +128,43 @@ export function RmaModule({
     setFormError(null);
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (busy) return;
     if (!manualEntry && (!selectedCustomer || !selectedSale || !selectedSaleItem)) {
       setFormError('Selecione o cliente, uma venda concluída e o produto comprado.');
       return;
     }
     if (!productName.trim() || !productSku.trim() || !batchOrOrder.trim() || !defect.trim()) return;
-    onCreate({
-      customer_name: selectedCustomer?.name || manualCustomerName.trim() || undefined,
-      product_name: productName,
-      product_sku: productSku,
-      batch_or_order: batchOrOrder,
-      defect_description: defect,
-      media_url: mediaName || null,
-    });
-    setCustomerSearch(''); setCustomerId(''); setSaleId(''); setSaleItemIndex(''); setManualCustomerName('');
-    setProductName(''); setProductSku(''); setBatchOrOrder(''); setDefect(''); setMediaName('');
-    setBeforePhoto(null); setAfterPhoto(null);
-    setShowForm(false);
+    if (!Number.isInteger(quantity) || quantity < 1 || (!manualEntry && quantity > remainingQuantity)) {
+      setFormError('Informe uma quantidade válida dentro do saldo da venda.');
+      return;
+    }
+    setBusy(true);
+    setFormError(null);
+    try {
+      await onCreate({
+        sale_id: manualEntry ? null : selectedSale!.id,
+        sale_item_index: manualEntry ? null : Number(saleItemIndex),
+        product_id: manualEntry ? manualProductId || null : selectedSaleItem!.product_id,
+        customer_id: manualEntry ? null : selectedCustomer!.id,
+        quantity,
+        customer_name: manualEntry ? manualCustomerName.trim() || undefined : selectedCustomer!.name,
+        product_name: productName,
+        product_sku: productSku,
+        batch_or_order: batchOrOrder,
+        defect_description: defect,
+        media_url: mediaName || null,
+      });
+      setCustomerSearch(''); setCustomerId(''); setSaleId(''); setSaleItemIndex(''); setManualCustomerName('');
+      setProductName(''); setProductSku(''); setBatchOrOrder(''); setDefect(''); setMediaName('');
+      setBeforePhoto(null); setAfterPhoto(null);
+      setShowForm(false);
+      setQuantity(1);
+      setManualProductId('');
+    } catch (error) {
+      setFormError(errorMessage(error, 'Não foi possível registrar a devolução.'));
+    } finally { setBusy(false); }
   }
 
   function handleMediaChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -149,10 +180,15 @@ export function RmaModule({
     reader.readAsDataURL(file);
   }
 
-  function advanceStatus(rma: RmaRequest) {
+  async function advanceStatus(rma: RmaRequest) {
+    if (busy) return;
     const idx = rmaStatusFlow.indexOf(rma.status);
     if (idx < 0 || idx >= rmaStatusFlow.length - 1) return;
-    onUpdateStatus(rma.id, rmaStatusFlow[idx + 1]);
+    setBusy(true);
+    setActionError(null);
+    try { await onUpdateStatus(rma.id, rmaStatusFlow[idx + 1]); }
+    catch (error) { setActionError(errorMessage(error, 'Não foi possível atualizar o status.')); }
+    finally { setBusy(false); }
   }
 
   function startEdit(rma: RmaRequest) {
@@ -173,8 +209,12 @@ export function RmaModule({
   }
 
   async function confirmDelete(id: string) {
-    await onDelete(id);
-    setDeleteConfirmId(null);
+    if (busy) return;
+    setBusy(true);
+    setActionError(null);
+    try { await onDelete(id); setDeleteConfirmId(null); }
+    catch (error) { setActionError(errorMessage(error, 'Não foi possível excluir.')); }
+    finally { setBusy(false); }
   }
 
   const labelRma = rmaRequests.find((r) => r.id === labelRmaId);
@@ -303,7 +343,7 @@ export function RmaModule({
                   <select value={saleItemIndex} onChange={(event) => selectSaleItem(event.target.value)}>
                     <option value="">Selecione o produto...</option>
                     {selectedSale.items.map((item, index) => (
-                      <option key={`${item.product_id}-${index}`} value={index}>{item.name} · Qtd. {item.quantity}</option>
+                      <option key={`${item.product_id}-${index}`} value={index} disabled={returnedQuantity(selectedSale, index, rmaRequests) >= item.quantity}>{item.name} · Disponível para devolução: {item.quantity - returnedQuantity(selectedSale, index, rmaRequests)}</option>
                     ))}
                   </select>
                 </label>
@@ -319,6 +359,16 @@ export function RmaModule({
             </>
           ) : (
             <>
+              <label>Produto do estoque (para reintegração)
+                <select value={manualProductId} onChange={event => {
+                  setManualProductId(event.target.value);
+                  const product = products.find(candidate => candidate.id === event.target.value);
+                  if (product) { setProductName(product.name); setProductSku(product.sku?.trim() || 'Sem SKU'); }
+                }}>
+                  <option value="">Sem vínculo com estoque</option>
+                  {products.filter(product => !product.is_service).map(product => <option key={product.id} value={product.id}>{product.name} · {product.sku || 'Sem SKU'}</option>)}
+                </select>
+              </label>
               <label>
                 Cliente (opcional)
                 <input value={manualCustomerName} onChange={(event) => setManualCustomerName(event.target.value)} placeholder="Nome do cliente" />
@@ -391,11 +441,14 @@ export function RmaModule({
             </label>
           </div>
 
+          <label>Quantidade devolvida<input type="number" min="1" step="1" max={manualEntry ? undefined : remainingQuantity} value={quantity} onChange={event => setQuantity(Number(event.target.value))} required /></label>
+          <p>A devolução fica no histórico da compra. A entrada no estoque ocorre ao reintegrar a peça; o reembolso financeiro é tratado separadamente.</p>
           {formError && <p className="form-error-msg" role="alert">{formError}</p>}
-          <button type="submit" className="module-submit-btn">Enviar solicitação</button>
+          <button type="submit" className="module-submit-btn" disabled={busy}>{busy ? 'Salvando...' : 'Enviar solicitação'}</button>
         </form>
       )}
 
+      {actionError && <p className="form-error-msg" role="alert">{actionError}</p>}
       <div className="rma-table-wrap">
         <table className="rma-table">
           <thead>
@@ -438,6 +491,7 @@ export function RmaModule({
                       <td>
                         <strong>{rma.product_name}</strong>
                         <small>SKU {rma.product_sku}</small>
+                        <small>Quantidade: {rma.quantity ?? 1}{rma.stock_restored_at ? ' · Entrada no estoque registrada' : ''}</small>
                       </td>
                       <td>{rma.batch_or_order}</td>
                       <td>
@@ -453,14 +507,14 @@ export function RmaModule({
                       <td>
                         <div className="row-action-group">
                           {rma.status !== 'credito_gerado' && (
-                            <button className="rma-advance-btn" onClick={() => advanceStatus(rma)} title="Avançar Status">
+                            <button className="rma-advance-btn" disabled={busy} onClick={() => advanceStatus(rma)} title="Avançar Status">
                               <ArrowRightCircle size={13} /> Avançar
                             </button>
                           )}
                           <button className="rma-advance-btn" onClick={() => startEdit(rma)} title="Editar">
                             <Pencil size={14} />
                           </button>
-                          {canDelete && (
+                          {canDelete && !rma.sale_id && !rma.stock_restored_at && (
                             <>
                               {deleteConfirmId === rma.id ? (
                                 <button className="rma-advance-btn danger" onClick={() => confirmDelete(rma.id)} title="Confirmar exclusão">

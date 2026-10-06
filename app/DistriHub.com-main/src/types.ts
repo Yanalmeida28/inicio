@@ -337,6 +337,12 @@ export interface RmaRequest {
   user_id: string;
   branch_id: string | null;
   customer_name: string;
+  sale_id?: string | null;
+  sale_item_index?: number | null;
+  product_id?: string | null;
+  customer_id?: string | null;
+  quantity?: number;
+  stock_restored_at?: string | null;
   product_name: string;
   product_sku: string;
   batch_or_order: string;
@@ -355,6 +361,7 @@ export type RmaPayload =
     | 'created_at'
     | 'updated_at'
     | 'status'
+    | 'stock_restored_at'
     | 'branch_id'
     | 'customer_name'
   > & {

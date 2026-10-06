@@ -2269,3 +2269,112 @@ html, body {
 @media (max-width: 900px) {
   .partner-panel .pdv-presale-layout .pdv-product-grid { max-height: 220px; }
 }
+
+/* Administrative dashboard: size grids to the space left by both sidebars. */
+.partner-panel .admin-module-layout {
+  min-width: 0;
+  container: admin-layout / inline-size;
+}
+.partner-panel .admin-sidebar-content-wrapper {
+  grid-template-columns: 240px minmax(0, 1fr);
+  min-width: 0;
+}
+.partner-panel .admin-content-area {
+  min-width: 0;
+  container: admin-content / inline-size;
+}
+.partner-panel .admin-module-layout .admin-dashboard-row {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.partner-panel .admin-module-layout .admin-dashboard-card,
+.partner-panel .admin-module-layout .report-card,
+.partner-panel .admin-module-layout .admin-chart-container {
+  min-width: 0;
+  max-width: 100%;
+}
+.partner-panel .admin-module-layout .admin-kpi-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)) !important;
+}
+.partner-panel .admin-module-layout .admin-crm-metrics {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr));
+  margin-bottom: 14px;
+}
+.partner-panel .admin-module-layout .report-card strong {
+  font-size: clamp(18px, 2.5cqi, 24px);
+  overflow-wrap: anywhere;
+}
+.partner-panel .admin-module-layout .report-card small,
+.partner-panel .admin-module-layout .report-section-title {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.partner-panel .admin-module-layout .report-section-title svg,
+.partner-panel .admin-module-layout .admin-legend-row svg {
+  flex-shrink: 0;
+}
+.partner-panel .admin-module-layout .admin-period-filters,
+.partner-panel .admin-module-layout .admin-filter-right,
+.partner-panel .admin-module-layout .kpi-footer,
+.partner-panel .admin-module-layout .admin-chart-legend {
+  flex-wrap: wrap;
+  min-width: 0;
+  max-width: 100%;
+}
+.partner-panel .admin-module-layout .admin-branch-selector {
+  min-width: 0;
+  max-width: 100%;
+}
+.partner-panel .admin-module-layout .admin-branch-selector select,
+.partner-panel .admin-module-layout .admin-date-input {
+  min-width: 0;
+  max-width: 100%;
+}
+.partner-panel .admin-module-layout .admin-bar-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(24px, 1fr) minmax(0, 1fr);
+}
+.partner-panel .admin-module-layout .admin-bar-label {
+  min-width: 0;
+  white-space: normal;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+.partner-panel .admin-module-layout .admin-bar-value {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+.partner-panel .admin-module-layout .admin-donut-legend {
+  min-width: 0;
+  flex-basis: 240px;
+  max-width: 100%;
+}
+.partner-panel .admin-module-layout .admin-legend-row {
+  display: grid;
+  grid-template-columns: 8px 14px minmax(0, 1fr) minmax(0, auto) auto;
+}
+.partner-panel .admin-module-layout .admin-legend-label {
+  white-space: normal;
+  overflow: visible;
+  overflow-wrap: anywhere;
+}
+.partner-panel .admin-module-layout .admin-legend-row strong {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.partner-panel .admin-module-layout .admin-top-items-table td:first-child {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+@container admin-layout (max-width: 800px) {
+  .partner-panel .admin-sidebar-content-wrapper { grid-template-columns: minmax(0, 1fr); }
+  .partner-panel .admin-collapsible-sidebar { position: static; max-height: none; }
+}
+@container admin-content (max-width: 760px) {
+  .partner-panel .admin-module-layout .admin-dashboard-row { grid-template-columns: minmax(0, 1fr); }
+}
+@container admin-content (max-width: 480px) {
+  .partner-panel .admin-module-layout .admin-legend-row { grid-template-columns: 8px 14px minmax(0, 1fr) auto; }
+  .partner-panel .admin-module-layout .admin-legend-row strong { grid-column: 3; }
+}

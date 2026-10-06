@@ -10,6 +10,10 @@ import ts from '../../node_modules/typescript/lib/typescript.js';
 const source = await readFile(new URL('../../src/components/partner/SalesHistoryModule.tsx', import.meta.url), 'utf8');
 const module = { exports: {} };
 const printed = [];
+const returnHelpers = { exports: {} };
+vm.runInNewContext(ts.transpileModule(await readFile(new URL('../../src/lib/saleReturns.ts', import.meta.url), 'utf8'), { compilerOptions: {
+  module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020,
+} }).outputText, { exports: returnHelpers.exports });
 function Actions(props) { return React.createElement('actions', props); }
 vm.runInNewContext(ts.transpileModule(source, { compilerOptions: {
   module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2020,
@@ -20,6 +24,7 @@ vm.runInNewContext(ts.transpileModule(source, { compilerOptions: {
     if (name === 'react/jsx-runtime') return jsx;
     if (name === 'lucide-react') return new Proxy({}, { get: () => () => null });
     if (name === './SaleActionsMenu') return { SaleActionsMenu: Actions };
+    if (name === '../../lib/saleReturns') return returnHelpers.exports;
     if (name === '../../utils') return { money: { format: value => String(value) } };
     if (name === '../../lib/salePrint') return { printSale: (...args) => printed.push(args) };
     return {};
@@ -51,6 +56,24 @@ test('sales history filters local day, period and status without limiting to ten
     assert.equal(rows().length, 13);
     act(() => view.root.findAllByType('button').find(b => b.children.includes('Hoje')).props.onClick());
     assert.equal(rows().length, 12);
+  } finally { act(() => view.unmount()); }
+});
+
+test('sales history shows returned quantities and includes physical returns in the return filter', () => {
+  const sale = { id:'returned',user_id:'owner',customer_name:'Cliente',status:'concluida',created_at:new Date().toISOString(),total:40,
+    items:[{product_id:'piece',name:'Peça',quantity:2,unit_price:20}] };
+  let view;
+  act(() => { view = TestRenderer.create(React.createElement(module.exports.SalesHistoryModule, {
+    sales:[sale],rmaRequests:[{id:'rma',user_id:'owner',sale_id:'returned',sale_item_index:0,quantity:1}],customers:[],salespeople:[],segment:'assistencia',
+  })); });
+  try {
+    assert.match(JSON.stringify(view.toJSON()),/Devolução parcial/);
+    assert.match(JSON.stringify(view.toJSON()),/1 devolvido/);
+    assert.equal(view.root.findByType(Actions).props.onCancel,undefined);
+    act(() => view.root.findByType('select').props.onChange({target:{value:'devolucao'}}));
+    assert.match(JSON.stringify(view.toJSON()),/Devolução parcial/);
+    act(() => view.root.findByType('select').props.onChange({target:{value:'concluida'}}));
+    assert.match(JSON.stringify(view.toJSON()),/Nenhuma venda registrada/);
   } finally { act(() => view.unmount()); }
 });
 
