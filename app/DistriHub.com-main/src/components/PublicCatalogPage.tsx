@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ExternalLink, ShoppingCart, Store, Tag, Image as ImageIcon } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { contrastText, normalizeColor } from '../lib/storeTheme';
 import type { PartnerBranch, PartnerProduct, PartnerProfile, StoreSettings } from '../types';
 
 const DEFAULT_CATALOG = {
@@ -183,7 +184,7 @@ export function PublicCatalogPage({ slug, branchSlug }: PublicCatalogPageProps) 
 
   return (
     <div style={{ minHeight: '100vh', background: '#f3f4f6', color: '#172033', fontFamily: 'sans-serif' }}>
-      <header style={{ background: settings?.nav_color ?? '#0b1927', color: '#fff', padding: '20px 24px' }}>
+      <header style={{ background: normalizeColor(settings?.nav_color, '#0b1927'), color: contrastText(normalizeColor(settings?.nav_color, '#0b1927')), padding: '20px 24px' }}>
         <div style={{ maxWidth: 1200, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             {logoUrl ? <img src={logoUrl} alt={summary.title} style={{ width: 48, height: 48, borderRadius: 12, objectFit: 'cover' }} /> : <Store size={26} />}
@@ -239,7 +240,7 @@ export function PublicCatalogPage({ slug, branchSlug }: PublicCatalogPageProps) 
                     {product.stock > 0 ? `${product.stock} em estoque` : 'Indisponível'}
                   </span>
                 </div>
-                <button style={{ width: '100%', border: 'none', background: settings?.primary_color ?? '#3193e5', color: '#fff', borderRadius: 10, padding: '12px 14px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                <button style={{ width: '100%', border: 'none', background: normalizeColor(settings?.primary_color), color: contrastText(normalizeColor(settings?.primary_color)), borderRadius: 10, padding: '12px 14px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
                   <ShoppingCart size={16} /> Adicionar ao pedido
                 </button>
               </div>

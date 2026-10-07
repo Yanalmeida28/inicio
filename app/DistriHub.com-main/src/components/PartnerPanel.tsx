@@ -27,6 +27,7 @@ import type { User } from '@supabase/supabase-js';
 import { usePartnerData } from '../hooks/usePartnerData';
 
 import { pdvErrorMessage } from '../lib/pdv';
+import { storeTheme } from '../lib/storeTheme';
 import { supabase } from '../lib/supabase';
 import { BranchSelector } from './partner/BranchSelector';
 import { useCheckoutCash } from '../hooks/useCheckoutCash';
@@ -1546,7 +1547,7 @@ export function PartnerPanel({
   }
 
   return (
-    <div className={`partner-panel sidebar-layout${activeTab === 'pdv' ? ' partner-pdv-mode' : ''}`} style={{ '--dh-blue': storeSettings.primary_color, '--store-nav': storeSettings.nav_color } as React.CSSProperties}>
+    <div className={`partner-panel sidebar-layout${activeTab === 'pdv' ? ' partner-pdv-mode' : ''}`} style={storeTheme(storeSettings.primary_color, storeSettings.nav_color) as React.CSSProperties}>
       <div className="sidebar-mobile-bar">
         <button
           className="sidebar-toggle"
@@ -2092,6 +2093,8 @@ export function PartnerPanel({
 
             {activeTab === 'administrativo' && (
               <AdminModule
+                invoices={filteredInvoices}
+                onReceiveInvoice={identity?.salespersonId ? undefined : partner.payInvoice}
                 movements={
                   filteredMovements
                 }

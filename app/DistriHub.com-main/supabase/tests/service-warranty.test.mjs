@@ -11,7 +11,11 @@ const require = createRequire(import.meta.url);
 const source = await readFile(new URL('../../src/components/partner/WhiteLabelModule.tsx', import.meta.url), 'utf8');
 const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX } }).outputText;
 const module = { exports: {} };
-vm.runInNewContext(compiled, { exports: module.exports, require });
+const theme = { exports: {} };
+vm.runInNewContext(ts.transpileModule(await readFile(new URL('../../src/lib/storeTheme.ts', import.meta.url), 'utf8'), {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
+}).outputText, { exports: theme.exports });
+vm.runInNewContext(compiled, { exports: module.exports, require: name => name === '../../lib/storeTheme' ? theme.exports : require(name) });
 const Component = module.exports.WhiteLabelModule;
 const settings = {
   id: 'settings', user_id: 'owner', logo_url: null, banner_url: null,

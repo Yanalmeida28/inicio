@@ -11,6 +11,12 @@ import { money } from '../../utils';
 import { ReportsModule } from './ReportsModule';
 import { supabase } from '../../lib/supabase';
 import { useStagnantStock } from '../../hooks/useStagnantStock';
+import { usePayables } from '../../hooks/usePayables';
+import { AccountsModule } from './AccountsModule';
+import { CustomerAccountsModule } from './CustomerAccountsModule';
+import { FinancialFlowModule } from './FinancialFlowModule';
+import { financialAccounts, type PayableAccount } from '../../lib/accounts';
+import type { PartnerInvoice } from '../../types';
 import type {
   PartnerSale, PartnerProduct, PartnerSalesperson, SalespersonRole,
   PartnerBranch, PartnerCustomer, PartnerSupplier, PartnerCategory,
@@ -49,6 +55,8 @@ class AdminErrorBoundary extends Component<
 }
 
 type Props = {
+  invoices?: PartnerInvoice[];
+  onReceiveInvoice?: (id: string, amount: number) => Promise<void>;
   userId?: string;
   sales: PartnerSale[];
   products: PartnerProduct[];
@@ -151,12 +159,15 @@ const sidebarSections: {
 ];
 
 export function AdminModule({
+  invoices = [], onReceiveInvoice,
   userId, sales = [], products = [], movements = [], salespeople = [], branches = [], customers = [], suppliers = [], categories = [],
   selectedBranchId = '', onSelectBranch, onNavigate,
 }: Props) {
   return (
     <AdminErrorBoundary>
       <AdminModuleInner
+        invoices={invoices}
+        onReceiveInvoice={onReceiveInvoice}
         userId={userId}
         sales={sales}
         products={products}
@@ -175,6 +186,7 @@ export function AdminModule({
 }
 
 function AdminModuleInner({
+  invoices = [], onReceiveInvoice,
   userId, sales, products, movements = [], salespeople, branches = [], customers = [], suppliers = [], categories = [],
   selectedBranchId = '', onSelectBranch, onNavigate,
 }: Props) {
@@ -183,6 +195,9 @@ function AdminModuleInner({
   const [activeItemId, setActiveItemId] = useState('visao-geral');
   const [branchFilter, setBranchFilter] = useState(selectedBranchId);
   const [reportsInitialTab, setReportsInitialTab] = useState<'vendas' | 'sem-giro'>('vendas');
+  const payables = usePayables(userId);
+  const scopedInvoices = invoices.filter(invoice => !branchFilter || invoice.branch_id === branchFilter);
+  const scopedPayables = payables.accounts.filter(account => !branchFilter || account.branch_id === branchFilter);
 
   function handleBranchChange(id: string) {
     setBranchFilter(id);
@@ -282,13 +297,36 @@ function AdminModuleInner({
             />
           )}
           {activeAdminTab === 'financeiro' && (
+            <>
+            {payables.loading && <p role="status">Carregando Contas a Pagar…</p>}
+            {payables.error && <p role="alert">{payables.error}</p>}
+            {activeItemId !== 'pagar' && activeItemId !== 'receber' && activeItemId !== 'cliente-fiado' && activeItemId !== 'fluxo' && (
             <AdminFinancialSummary
+              invoices={scopedInvoices}
+              payables={scopedPayables}
+              payablesUnavailable={payables.loading || Boolean(payables.error)}
               sales={sales}
               products={products}
               branches={branches}
               branchFilter={branchFilter}
               onBranchChange={handleBranchChange}
             />
+            )}
+            {(activeItemId === 'pagar' || activeItemId === 'receber') && (
+              <AccountsModule
+                key={activeItemId}
+                kind={activeItemId === 'pagar' ? 'pagar' : 'receber'}
+                invoices={scopedInvoices}
+                payables={payables}
+                branches={branches}
+                suppliers={suppliers}
+                branchId={branchFilter}
+                onReceive={onReceiveInvoice}
+              />
+            )}
+            {activeItemId === 'cliente-fiado' && <CustomerAccountsModule customers={customers} invoices={scopedInvoices} payables={payables} branches={branches} suppliers={suppliers} branchId={branchFilter} onReceive={onReceiveInvoice} />}
+            {activeItemId === 'fluxo' && <FinancialFlowModule userId={userId} branchId={branchFilter} invoices={scopedInvoices} payables={scopedPayables} sales={sales} movements={movements} payablesUnavailable={payables.loading || Boolean(payables.error)} />}
+            </>
           )}
           {activeAdminTab === 'fiscal' && (
             <InlineFiscalView sales={sales} products={products} />
@@ -1528,8 +1566,12 @@ function DataManagement() {
 /* ============ Inline Financial Summary ============ */
 
 function AdminFinancialSummary({
+  invoices, payables, payablesUnavailable,
   sales, products, branches, branchFilter, onBranchChange,
 }: {
+  invoices: PartnerInvoice[];
+  payables: PayableAccount[];
+  payablesUnavailable: boolean;
   sales: PartnerSale[];
   products: PartnerProduct[];
   branches: PartnerBranch[];
@@ -1558,11 +1600,13 @@ function AdminFinancialSummary({
   const netRevenue = grossRevenue - totalCost;
   const margin = grossRevenue > 0 ? (netRevenue / grossRevenue) * 100 : 0;
 
-  const accountsReceivable = completed
-    .filter((s) => s.payment_method === 'faturado')
-    .reduce((s, x) => s + (x.total ?? 0), 0);
-  const accountsPayable = totalCost * 0.4;
-  const cashBalance = netRevenue - accountsPayable;
+  const accounts = financialAccounts(invoices, payables);
+  const accountsReceivable = accounts.receivable;
+  const accountsPayable = accounts.payable;
+  const billedSaleIds = new Set(invoices.filter(invoice => invoice.status !== 'cancelada').map(invoice => invoice.sale_id));
+  const immediateReceipts = completed.filter(sale => sale.payment_method !== 'faturado' && !billedSaleIds.has(sale.id))
+    .reduce((sum, sale) => sum + Number(sale.total), 0);
+  const cashBalance = immediateReceipts + accounts.received - accounts.paid;
 
   const dreRows = [
     { label: 'Receita Bruta de Vendas', value: grossRevenue, bold: true },
@@ -1578,11 +1622,10 @@ function AdminFinancialSummary({
 
   const cashFlowRows = [
     { label: 'Saldo Inicial', value: 0, bold: false },
-    { label: '(+) Recebimentos (Vendas)', value: grossRevenue - accountsReceivable, bold: false },
-    { label: '(+) Contas a Receber (Faturado)', value: accountsReceivable, bold: false },
-    { label: '(-) Pagamentos (Contas a Pagar)', value: -accountsPayable, bold: false },
-    { label: '(-) Despesas Operacionais', value: -grossRevenue * 0.12, bold: false },
-    { label: 'Saldo Final de Caixa', value: cashBalance, bold: true },
+    { label: '(+) Vendas à vista', value: immediateReceipts, bold: false },
+    { label: '(+) Recebimentos de Faturas', value: accounts.received, bold: false },
+    { label: '(-) Pagamentos de Contas Registrados', value: -accounts.paid, bold: false },
+    { label: 'Saldo dos Movimentos Registrados', value: cashBalance, bold: true },
   ];
 
   return (
@@ -1610,13 +1653,13 @@ function AdminFinancialSummary({
         </div>
         <div className="report-card admin-kpi-card">
           <small><Wallet size={13} /> Contas a Pagar</small>
-          <strong>{money.format(accountsPayable)}</strong>
-          <small>estimado</small>
+          <strong>{payablesUnavailable ? 'Indisponível' : money.format(accountsPayable)}</strong>
+          <small>saldo pendente das contas cadastradas</small>
         </div>
         <div className="report-card admin-kpi-card">
           <small><CreditCard size={13} /> Contas a Receber</small>
           <strong>{money.format(accountsReceivable)}</strong>
-          <small>faturado</small>
+          <small>saldo pendente após recebimentos</small>
         </div>
         <div className="report-card admin-kpi-card">
           <small><Percent size={13} /> Margem Líquida</small>
@@ -1624,9 +1667,9 @@ function AdminFinancialSummary({
           <small>lucro / receita</small>
         </div>
         <div className="report-card admin-kpi-card">
-          <small><Wallet size={13} /> Saldo de Caixa</small>
-          <strong>{money.format(cashBalance)}</strong>
-          <small>após pagamentos</small>
+          <small><Wallet size={13} /> Saldo dos Movimentos</small>
+          <strong>{payablesUnavailable ? 'Indisponível' : money.format(cashBalance)}</strong>
+          <small>vendas e baixas registradas</small>
         </div>
       </div>
 
@@ -1649,6 +1692,7 @@ function AdminFinancialSummary({
         </div>
         <div className="module-card">
           <h4 className="report-section-title"><Wallet size={16} /> Fluxo de Caixa</h4>
+          <p>Movimentos registrados desde o início. Valores a receber ainda não recebidos não entram no saldo. Não inclui saldo bancário inicial ou movimentações externas. {payablesUnavailable ? 'Contas a Pagar indisponíveis: saldo incompleto.' : ''}</p>
           <div className="stock-table-wrap">
             <table className="rma-table">
               <thead><tr><th>Descrição</th><th>Valor</th></tr></thead>

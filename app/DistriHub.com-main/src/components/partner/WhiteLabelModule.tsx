@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react';
 import { Check, ImagePlus, Palette, Printer, Upload, Wand2 } from 'lucide-react';
 import type { StoreSettings } from '../../types';
+import { normalizeColor, storeTheme } from '../../lib/storeTheme';
 
 type WhiteLabelModuleProps = {
   settings: StoreSettings;
   onUpdate: (settings: Partial<StoreSettings>) => Promise<unknown>;
 };
 
-const presetColors = ['#3193e5', '#199863', '#e6a06d', '#e3829b', '#5fd0d1', '#97aabc'];
+const presetColors = ['#3193e5', '#2563eb', '#199863', '#0f766e', '#7c3aed', '#a21caf', '#be185d', '#e3829b', '#c2410c', '#e6a06d', '#ca8a04', '#5fd0d1', '#475569', '#97aabc'];
+const navigationColors = ['#0f2747', '#0f172a', '#1e293b', '#14532d', '#134e4a', '#3b0764', '#4c0519', '#ffffff'];
 
 export function WhiteLabelModule({ settings: initialSettings, onUpdate: persist }: WhiteLabelModuleProps) {
   const [settings, setSettings] = useState(initialSettings);
@@ -122,30 +124,48 @@ export function WhiteLabelModule({ settings: initialSettings, onUpdate: persist 
           <div className="color-field">
             <label>Cor Primária</label>
             <div className="color-input-wrap">
-              <input type="color" value={settings.primary_color} onChange={(e) => onUpdate({ primary_color: e.target.value })} />
+              <input aria-label="Cor primária" type="color" value={normalizeColor(settings.primary_color)} onChange={(e) => onUpdate({ primary_color: e.target.value })} />
               <span>{settings.primary_color}</span>
             </div>
           </div>
           <div className="color-field">
             <label>Cor da Barra de Navegação</label>
             <div className="color-input-wrap">
-              <input type="color" value={settings.nav_color} onChange={(e) => onUpdate({ nav_color: e.target.value })} />
+              <input aria-label="Cor da barra de navegação" type="color" value={normalizeColor(settings.nav_color, '#0f2747')} onChange={(e) => onUpdate({ nav_color: e.target.value })} />
               <span>{settings.nav_color}</span>
             </div>
           </div>
         </div>
         <div className="preset-colors">
-          <span>Predefinições:</span>
+          <span>Cor primária:</span>
           {presetColors.map((color) => (
             <button
               key={color}
+              type="button"
               className="preset-swatch"
+              aria-pressed={normalizeColor(settings.primary_color) === color}
               style={{ background: color }}
               onClick={() => onUpdate({ primary_color: color })}
               aria-label={`Aplicar cor ${color}`}
             />
           ))}
         </div>
+        <div className="preset-colors">
+          <span>Barra de navegação:</span>
+          {navigationColors.map(color => (
+            <button key={color} type="button" className="preset-swatch" style={{ background: color }}
+              aria-label={`Aplicar cor de navegação ${color}`} aria-pressed={normalizeColor(settings.nav_color, '#0f2747') === color}
+              onClick={() => onUpdate({ nav_color: color })} />
+          ))}
+        </div>
+        <div className="store-theme-preview" style={storeTheme(settings.primary_color, settings.nav_color) as React.CSSProperties}>
+          <div className="store-theme-preview-nav">Sua loja · Navegação</div>
+          <div className="store-theme-preview-content">
+            <span className="store-theme-preview-tab">Aba selecionada</span>
+            <span className="store-theme-preview-action">Botão principal</span>
+          </div>
+        </div>
+        <p className="store-theme-help">A cor primária personaliza botões, abas e destaques do painel. A cor de navegação altera o menu principal e o cabeçalho do catálogo. Confira a prévia e clique em Salvar para aplicar. As cores de sucesso, alerta e erro são preservadas.</p>
       </div>
 
       {/* Section 2: Impressão & Cupom Não Fiscal */}
