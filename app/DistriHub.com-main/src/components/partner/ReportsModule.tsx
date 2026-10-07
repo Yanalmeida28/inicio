@@ -1,10 +1,20 @@
 import { useMemo, useState } from 'react';
 import {
   BarChart3, TrendingUp, TrendingDown, Package, Users, Cake, MessageCircle, DollarSign,
-  ShoppingCart, Wrench, UserCheck, CreditCard, Banknote, Wallet, Trophy, Crown, Medal,
+  ShoppingCart, Wrench, UserCheck, CreditCard, Banknote, Wallet, Trophy, Crown, Medal, Download,
 } from 'lucide-react';
 import type { PartnerSale, PartnerProduct, PartnerCustomer, PartnerSalesperson, SalespersonRole, StockMovement } from '../../types';
 import { money } from '../../utils';
+import {
+  birthdayMonth,
+  buildSalesCsv,
+  completedSalesOnly,
+  filterReportSales,
+  getCostOfGoodsSold,
+  getItemRevenueByType,
+  isServiceProductId,
+  type SalesRange,
+} from '../../lib/reportMetrics';
 import {
   stagnantLevelLabels, type StagnantLevel,
 } from '../../lib/stagnantStock';
@@ -21,6 +31,18 @@ type Props = {
 
 type ReportTab = 'vendas' | 'financeiro' | 'estoque' | 'sem-giro' | 'crm';
 
+function localDateInput(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function displayBirthday(birthday: string | null | undefined): string {
+  if (!birthday) return '—';
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(birthday);
+  if (match) return `${match[3]}/${match[2]}/${match[1]}`;
+  const date = new Date(birthday);
+  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleDateString('pt-BR');
+}
+
 const roleLabels: Record<SalespersonRole, string> = {
   administrador: 'Administrador / Proprietário',
   gerente: 'Gerente',
@@ -31,9 +53,14 @@ const roleLabels: Record<SalespersonRole, string> = {
   logistica: 'Logística / Entregador',
 };
 
+const operationalRoles: SalespersonRole[] = ['vendedor', 'tecnico', 'caixa', 'atendente'];
+
 export function ReportsModule({ sales, products, customers, salespeople, movements = [], initialTab = 'vendas' }: Props) {
   const [tab, setTab] = useState<ReportTab>(initialTab);
-  const [range, setRange] = useState<'30d' | '90d' | 'all'>('30d');
+  const [range, setRange] = useState<SalesRange>('30d');
+  const [startDate, setStartDate] = useState(() => localDateInput(new Date(Date.now() - 30 * 86_400_000)));
+  const [endDate, setEndDate] = useState(() => localDateInput(new Date()));
+  const [rangeError, setRangeError] = useState<string | null>(null);
 
   const tabs: { id: ReportTab; label: string; icon: typeof BarChart3 }[] = [
     { id: 'vendas', label: 'Vendas & Serviços', icon: BarChart3 },
@@ -43,15 +70,28 @@ export function ReportsModule({ sales, products, customers, salespeople, movemen
     { id: 'crm', label: 'CRM', icon: Users },
   ];
 
-  const visibleSales = useMemo(() => {
-    if (range === 'all') return sales;
+  const completedSales = useMemo(() => completedSalesOnly(sales), [sales]);
+  const visibleSales = useMemo(
+    () => filterReportSales(sales, range, startDate, endDate),
+    [sales, range, startDate, endDate],
+  );
 
-    const days = range === '30d' ? 30 : 90;
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - days);
-
-    return sales.filter((sale) => new Date(sale.created_at) >= cutoff);
-  }, [range, sales]);
+  function exportCsv() {
+    if (!visibleSales.length) {
+      setRangeError('Não há vendas concluídas no período selecionado para exportar.');
+      return;
+    }
+    setRangeError(null);
+    const blob = new Blob([buildSalesCsv(visibleSales)], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `relatorio-vendas-${localDateInput(new Date())}.csv`;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
 
   return (
     <div className="panel-module">
@@ -65,28 +105,42 @@ export function ReportsModule({ sales, products, customers, salespeople, movemen
 
       <div className="subtab-bar" style={{ marginBottom: '12px' }}>
         {tabs.map(({ id, label, icon: Icon }) => (
-          <button key={id} className={`subtab ${tab === id ? 'active' : ''}`} onClick={() => setTab(id)}>
+          <button key={id} className={`subtab ${tab === id ? 'active' : ''}`} onClick={() => { setTab(id); setRangeError(null); }}>
             <Icon size={15} /> {label}
           </button>
         ))}
       </div>
 
       <div className="orders-filter-row" style={{ marginBottom: '18px', display: tab === 'sem-giro' ? 'none' : undefined }}>
-        {(['30d', '90d', 'all'] as const).map((option) => (
+        {(['30d', '90d', 'all', 'custom'] as const).map((option) => (
           <button
             key={option}
             className={`rma-advance-btn ${range === option ? 'active' : ''}`}
-            onClick={() => setRange(option)}
+            onClick={() => { setRange(option); setRangeError(null); }}
             style={{ minWidth: '110px' }}
           >
-            {option === '30d' ? '30 dias' : option === '90d' ? '90 dias' : 'Tudo'}
+            {option === '30d' ? '30 dias' : option === '90d' ? '90 dias' : option === 'all' ? 'Tudo' : 'Personalizado'}
           </button>
         ))}
+        {range === 'custom' && (
+          <>
+            <label>De <input aria-label="Data inicial do relatório" type="date" value={startDate} onChange={(event) => { setStartDate(event.target.value); setRangeError(null); }} /></label>
+            <label>Até <input aria-label="Data final do relatório" type="date" value={endDate} onChange={(event) => { setEndDate(event.target.value); setRangeError(null); }} min={startDate} /></label>
+          </>
+        )}
+        {tab !== 'sem-giro' && (
+          <button type="button" className="module-action-btn" onClick={exportCsv}>
+            <Download size={15} /> Exportar vendas CSV
+          </button>
+        )}
       </div>
+      {(rangeError || (range === 'custom' && startDate > endDate)) && (
+        <p className="otp-error-msg" role="alert">{rangeError ?? 'A data inicial deve ser anterior ou igual à data final.'}</p>
+      )}
 
       <div className="subtab-content">
         {tab === 'vendas' && <SalesReport sales={visibleSales} products={products} salespeople={salespeople} />}
-        {tab === 'financeiro' && <FinancialReport sales={visibleSales} />}
+        {tab === 'financeiro' && <FinancialReport sales={visibleSales} allSales={completedSales} products={products} />}
         {tab === 'estoque' && <StockReport products={products} sales={visibleSales} />}
         {tab === 'sem-giro' && <StagnantStockReport products={products} sales={sales} movements={movements} />}
         {tab === 'crm' && <CrmReport customers={customers} sales={visibleSales} />}
@@ -97,13 +151,12 @@ export function ReportsModule({ sales, products, customers, salespeople, movemen
 
 function SalesReport({ sales, products, salespeople }: { sales: PartnerSale[]; products: PartnerProduct[]; salespeople: PartnerSalesperson[] }) {
   const totalSales = sales.reduce((s, sale) => s + sale.total, 0);
+  const productById = useMemo(() => new Map(products.map((product) => [product.id, product])), [products]);
+  const { productRevenue, serviceRevenue, productSalesCount, serviceSalesCount } = useMemo(
+    () => getItemRevenueByType(sales, products),
+    [sales, products],
+  );
 
-  const productSales = sales.filter((s) => s.items.some((i) => !i.product_id.includes('svc')));
-  const serviceSales = sales.filter((s) => s.items.some((i) => i.product_id.includes('svc')));
-  const productTotal = productSales.reduce((s, x) => s + x.total, 0);
-  const serviceTotal = serviceSales.reduce((s, x) => s + x.total, 0);
-
-  const operationalRoles: SalespersonRole[] = ['vendedor', 'tecnico', 'caixa', 'atendente'];
   const operationalSalespeople = useMemo(
     () => salespeople.filter((sp) => operationalRoles.includes(sp.role)),
     [salespeople],
@@ -140,8 +193,8 @@ function SalesReport({ sales, products, salespeople }: { sales: PartnerSale[]; p
   const top5Products = useMemo(() => {
     const map: Record<string, { qty: number; revenue: number }> = {};
     for (const sale of sales) {
-      for (const item of sale.items) {
-        if (!item.product_id.includes('svc')) {
+      for (const item of Array.isArray(sale.items) ? sale.items : []) {
+        if (!isServiceProductId(item.product_id, productById)) {
           map[item.product_id] = {
             qty: (map[item.product_id]?.qty ?? 0) + item.quantity,
             revenue: (map[item.product_id]?.revenue ?? 0) + item.unit_price * item.quantity,
@@ -150,13 +203,13 @@ function SalesReport({ sales, products, salespeople }: { sales: PartnerSale[]; p
       }
     }
     return Object.entries(map).sort((a, b) => b[1].revenue - a[1].revenue).slice(0, 5);
-  }, [sales]);
+  }, [sales, productById]);
 
   const top5Services = useMemo(() => {
     const map: Record<string, { qty: number; revenue: number }> = {};
     for (const sale of sales) {
-      for (const item of sale.items) {
-        if (item.product_id.includes('svc')) {
+      for (const item of Array.isArray(sale.items) ? sale.items : []) {
+        if (isServiceProductId(item.product_id, productById)) {
           map[item.product_id] = {
             qty: (map[item.product_id]?.qty ?? 0) + item.quantity,
             revenue: (map[item.product_id]?.revenue ?? 0) + item.unit_price * item.quantity,
@@ -165,7 +218,7 @@ function SalesReport({ sales, products, salespeople }: { sales: PartnerSale[]; p
       }
     }
     return Object.entries(map).sort((a, b) => b[1].revenue - a[1].revenue).slice(0, 5);
-  }, [sales]);
+  }, [sales, productById]);
 
   return (
     <div>
@@ -177,18 +230,18 @@ function SalesReport({ sales, products, salespeople }: { sales: PartnerSale[]; p
         </div>
         <div className="report-card">
           <small><Package size={13} /> Vendas por Produto</small>
-          <strong>{money.format(productTotal)}</strong>
-          <small>{productSales.length} vendas</small>
+          <strong>{money.format(productRevenue)}</strong>
+          <small>{productSalesCount} vendas com produtos</small>
         </div>
         <div className="report-card">
           <small><Wrench size={13} /> Vendas por Serviço</small>
-          <strong>{money.format(serviceTotal)}</strong>
-          <small>{serviceSales.length} vendas</small>
+          <strong>{money.format(serviceRevenue)}</strong>
+          <small>{serviceSalesCount} vendas com serviços</small>
         </div>
         <div className="report-card">
           <small><ShoppingCart size={13} /> Produto + Serviço</small>
-          <strong>{money.format(totalSales)}</strong>
-          <small>receita total combinada</small>
+          <strong>{money.format(productRevenue + serviceRevenue)}</strong>
+          <small>receita detalhada dos itens</small>
         </div>
       </div>
 
@@ -264,11 +317,13 @@ function SalesReport({ sales, products, salespeople }: { sales: PartnerSale[]; p
   );
 }
 
-function FinancialReport({ sales }: { sales: PartnerSale[] }) {
+function FinancialReport({ sales, allSales, products }: { sales: PartnerSale[]; allSales: PartnerSale[]; products: PartnerProduct[] }) {
   const now = new Date();
-  const thisMonth = sales.filter((s) => new Date(s.created_at).getMonth() === now.getMonth() && new Date(s.created_at).getFullYear() === now.getFullYear());
-  const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1);
-  const lastMonth = sales.filter((s) => new Date(s.created_at).getMonth() === lastMonthDate.getMonth() && new Date(s.created_at).getFullYear() === lastMonthDate.getFullYear());
+  const currentMonth = now.getMonth();
+  const currentYear = now.getFullYear();
+  const thisMonth = allSales.filter((s) => new Date(s.created_at).getMonth() === currentMonth && new Date(s.created_at).getFullYear() === currentYear);
+  const lastMonthDate = new Date(currentYear, currentMonth - 1);
+  const lastMonth = allSales.filter((s) => new Date(s.created_at).getMonth() === lastMonthDate.getMonth() && new Date(s.created_at).getFullYear() === lastMonthDate.getFullYear());
 
   const thisTotal = thisMonth.reduce((s, x) => s + x.total, 0);
   const lastTotal = lastMonth.reduce((s, x) => s + x.total, 0);
@@ -277,7 +332,8 @@ function FinancialReport({ sales }: { sales: PartnerSale[] }) {
   const byPayment = useMemo(() => {
     const map: Record<string, number> = {};
     for (const sale of sales) {
-      const m = sale.payment_method ?? 'outros';
+      const method = (sale.payment_method ?? '').toLowerCase();
+      const m = ['cartao', 'credito', 'debito'].includes(method) ? 'cartao' : method || 'outros';
       map[m] = (map[m] ?? 0) + sale.total;
     }
     return map;
@@ -286,25 +342,27 @@ function FinancialReport({ sales }: { sales: PartnerSale[] }) {
   const monthlyData = useMemo(() => {
     const months: { label: string; total: number }[] = [];
     for (let i = 11; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i);
-      const monthSales = sales.filter((s) => new Date(s.created_at).getMonth() === d.getMonth() && new Date(s.created_at).getFullYear() === d.getFullYear());
+      const d = new Date(currentYear, currentMonth - i);
+      const monthSales = allSales.filter((s) => new Date(s.created_at).getMonth() === d.getMonth() && new Date(s.created_at).getFullYear() === d.getFullYear());
       months.push({ label: d.toLocaleDateString('pt-BR', { month: 'short' }), total: monthSales.reduce((sum, x) => sum + x.total, 0) });
     }
     return months;
-  }, [sales]);
+  }, [allSales, currentYear, currentMonth]);
 
   const maxMonthly = Math.max(...monthlyData.map((m) => m.total), 1);
 
   const paymentTypes: { key: string; label: string; icon: typeof CreditCard; color: string }[] = [
     { key: 'pix', label: 'PIX', icon: CreditCard, color: '#5bbc87' },
-    { key: 'credito', label: 'Cartão de Crédito', icon: CreditCard, color: '#55adf1' },
-    { key: 'debito', label: 'Cartão de Débito', icon: CreditCard, color: '#e6a06d' },
+    { key: 'cartao', label: 'Cartão', icon: CreditCard, color: '#55adf1' },
     { key: 'dinheiro', label: 'Dinheiro', icon: Banknote, color: '#5fd0d1' },
     { key: 'faturado', label: 'Crédito/B2B (Faturado)', icon: Wallet, color: '#a78bfa' },
+    { key: 'rma', label: 'Crédito de RMA', icon: Wallet, color: '#dc8bc7' },
     { key: 'outros', label: 'Outros', icon: DollarSign, color: '#97aabc' },
   ];
 
   const totalRevenue = sales.reduce((s, x) => s + x.total, 0);
+  const costOfGoodsSold = getCostOfGoodsSold(sales, products);
+  const grossProfit = totalRevenue - costOfGoodsSold;
 
   return (
     <div>
@@ -359,14 +417,15 @@ function FinancialReport({ sales }: { sales: PartnerSale[] }) {
         })}
       </div>
 
-      <h4 className="report-section-title">DRE Simplificado</h4>
+      <h4 className="report-section-title">Resultado simplificado do período</h4>
+      <p>Estimativa antes de despesas operacionais e impostos; o custo considera apenas produtos com custo cadastrado.</p>
       <div className="stock-table-wrap">
         <table className="rma-table">
           <thead><tr><th>Item</th><th>Valor</th></tr></thead>
           <tbody>
-            <tr><td>Receita Bruta</td><td>{money.format(totalRevenue)}</td></tr>
-            <tr><td>Custo dos Produtos</td><td>—</td></tr>
-            <tr><td>Receita Líquida</td><td>{money.format(totalRevenue)}</td></tr>
+            <tr><td>Receita Bruta (vendas concluídas no período)</td><td>{money.format(totalRevenue)}</td></tr>
+            <tr><td>Custo dos produtos vendidos (CMV)</td><td>{money.format(costOfGoodsSold)}</td></tr>
+            <tr><td>Lucro bruto estimado (antes de despesas e impostos)</td><td>{money.format(grossProfit)}</td></tr>
           </tbody>
         </table>
       </div>
@@ -457,25 +516,33 @@ function StagnantStockReport({ products, sales, movements }: { products: Partner
 }
 
 function StockReport({ products, sales }: { products: PartnerProduct[]; sales: PartnerSale[] }) {
-  const totalInvested = products.reduce((s, p) => s + p.cost_price * p.stock, 0);
-  const slowMovers = products.filter((p) => !sales.some((s) => s.items.some((i) => i.product_id === p.id)));
+  const physicalProducts = useMemo(() => products.filter((product) => !product.is_service), [products]);
+  const totalInvested = physicalProducts.reduce((s, p) => s + p.cost_price * p.stock, 0);
+  const physicalProductIds = useMemo(() => new Set(physicalProducts.map((product) => product.id)), [physicalProducts]);
+  const soldProductIds = new Set(sales.flatMap((sale) =>
+    (Array.isArray(sale.items) ? sale.items : [])
+      .filter((item) => physicalProductIds.has(item.product_id))
+      .map((item) => item.product_id),
+  ));
+  const slowMovers = physicalProducts.filter((product) => product.stock > 0 && !soldProductIds.has(product.id));
 
   const topByQty = useMemo(() => {
     const map: Record<string, number> = {};
     for (const sale of sales) {
-      for (const item of sale.items) {
+      for (const item of Array.isArray(sale.items) ? sale.items : []) {
+        if (!physicalProductIds.has(item.product_id)) continue;
         map[item.product_id] = (map[item.product_id] ?? 0) + item.quantity;
       }
     }
     return Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 5);
-  }, [sales]);
+  }, [sales, physicalProductIds]);
 
   const topByMargin = useMemo(() => {
-    return products
+    return physicalProducts
       .map((p) => ({ product: p, margin: p.sale_price > 0 ? ((p.sale_price - p.cost_price) / p.sale_price) * 100 : 0 }))
       .sort((a, b) => b.margin - a.margin)
       .slice(0, 5);
-  }, [products]);
+  }, [physicalProducts]);
 
   return (
     <div>
@@ -485,9 +552,9 @@ function StockReport({ products, sales }: { products: PartnerProduct[]; sales: P
           <strong>{money.format(totalInvested)}</strong>
         </div>
         <div className="report-card">
-          <small>Produtos Parados</small>
+          <small>Sem venda no período</small>
           <strong>{slowMovers.length}</strong>
-          <small>sem movimentação</small>
+          <small>produtos físicos com estoque</small>
         </div>
       </div>
 
@@ -546,16 +613,16 @@ function CrmReport({ customers, sales }: { customers: PartnerCustomer[]; sales: 
     return Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 5);
   }, [sales]);
 
-  const birthdays = customers.filter((c) => {
-    if (!c.birthday) return false;
-    return new Date(c.birthday).getMonth() === currentMonth;
-  });
+  const birthdays = customers.filter((customer) => birthdayMonth(customer.birthday) === currentMonth);
 
   function sendBirthdayWhatsApp(phone: string | null | undefined, name: string) {
     if (!phone) return;
     const digits = phone.replace(/\D/g, '');
+    const internationalNumber = phone.trim().startsWith('+') || (digits.startsWith('55') && digits.length >= 12)
+      ? digits
+      : `55${digits}`;
     const msg = `Olá ${name}! Parabéns pelo seu aniversário! 🎉 Aproveite um cupom especial de desconto na sua próxima visita!`;
-    window.open(`https://wa.me/55${digits}?text=${encodeURIComponent(msg)}`, '_blank', 'noopener,noreferrer');
+    window.open(`https://wa.me/${internationalNumber}?text=${encodeURIComponent(msg)}`, '_blank', 'noopener,noreferrer');
   }
 
   return (
@@ -593,7 +660,7 @@ function CrmReport({ customers, sales }: { customers: PartnerCustomer[]; sales: 
                 <tr key={c.id}>
                   <td><strong>{c.name}</strong></td>
                   <td>{c.phone ?? '—'}</td>
-                  <td>{c.birthday ? new Date(c.birthday).toLocaleDateString('pt-BR') : '—'}</td>
+                  <td>{displayBirthday(c.birthday)}</td>
                   <td>
                     <button
                       className="rma-advance-btn whatsapp-btn"

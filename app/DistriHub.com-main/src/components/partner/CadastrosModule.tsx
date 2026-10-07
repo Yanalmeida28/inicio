@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Boxes, FileText, Package, Plus, Tag, Trash2, Upload, Users, Wrench,
@@ -28,6 +28,7 @@ type PartnerCustomerUpdate = Partial<
 };
 
 type Props = {
+  adminTarget?: string;
   initialTab?: SubTab;
   productType?: 'produto' | 'servico' | 'todos';
   products: PartnerProduct[];
@@ -92,6 +93,7 @@ function getActionPopoverPosition(event: React.MouseEvent<HTMLButtonElement>, wi
 }
 
 export function CadastrosModule({
+  adminTarget,
   initialTab = 'produtos', productType = 'todos',
   products, branches, selectedBranchId, categories, suppliers, salespeople, combos, modifiers, customers, sales,
   allSales, rmaRequests = [], segment, onAddProduct, onUpdateProduct, onDeleteProduct,
@@ -111,12 +113,12 @@ export function CadastrosModule({
       <div className="module-header">
         <span className="module-icon"><Boxes size={20} /></span>
         <div>
-          <h3>Cadastros Essenciais & Entrada Automática</h3>
-          <p>Produtos, serviços, categorias, clientes, fornecedores e equipe</p>
+          <h3>{adminTarget ? ({ produtos: 'Produtos', servicos: 'Serviços', combos: 'Combos de Produtos', importar: 'Importar / Exportar', fornecedores: 'Fornecedores', estoque: 'Ajuste de Estoque', vendedores: 'Colaboradores', clientes: 'Clientes' } as Record<string, string>)[adminTarget] : 'Cadastros Essenciais & Entrada Automática'}</h3>
+          <p>{adminTarget ? 'Cadastre e gerencie os registros da opção selecionada no Administrativo.' : 'Produtos, serviços, categorias, clientes, fornecedores e equipe'}</p>
         </div>
       </div>
 
-      <div className="subtab-bar cadastros-subtab-bar">
+      {!adminTarget && <div className="subtab-bar cadastros-subtab-bar">
         {subTabs.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
@@ -126,10 +128,11 @@ export function CadastrosModule({
             <Icon size={15} /> {label}
           </button>
         ))}
-      </div>
+      </div>}
 
       <div className="subtab-content">
-        {subTab === 'produtos' && (
+        {adminTarget === 'estoque' && <StockAdjustmentSubTab products={filteredProducts.filter(p => !p.is_service)} branchId={selectedBranchId} onUpdate={onUpdateProduct} />}
+        {subTab === 'produtos' && adminTarget !== 'estoque' && (
           <ProductsSubTab
             products={filteredProducts.filter(product => productType === 'todos' || product.is_service === (productType === 'servico'))}
             defaultIsService={productType === 'servico'}
@@ -196,6 +199,43 @@ export function CadastrosModule({
       </div>
     </div>
   );
+}
+
+function StockAdjustmentSubTab({ products, branchId, onUpdate }: {
+  products: PartnerProduct[]; branchId: string | null; onUpdate: Props['onUpdateProduct'];
+}) {
+  const [query, setQuery] = useState('');
+  const [editing, setEditing] = useState<{ id: string; stock: string } | null>(null);
+  const [saving, setSaving] = useState(false);
+  const lock = useRef(false);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  async function save(event: React.FormEvent) {
+    event.preventDefault();
+    if (lock.current || !editing) return;
+    const stock = Number(editing.stock);
+    if (!branchId || !editing.stock.trim() || !Number.isInteger(stock) || stock < 0) { setError('Selecione uma filial e informe um saldo inteiro maior ou igual a zero.'); return; }
+    lock.current = true; setSaving(true); setError(''); setNotice('');
+    try { await onUpdate(editing.id, { stock }); setEditing(null); setNotice('Saldo de estoque atualizado.'); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : 'Não foi possível ajustar o estoque.'); }
+    finally { lock.current = false; setSaving(false); }
+  }
+  if (!branchId) return <p role="alert">Selecione uma filial para consultar e ajustar seu estoque.</p>;
+  const rows = products.filter(p => `${p.name} ${p.sku ?? ''}`.toLowerCase().includes(query.trim().toLowerCase()));
+  return <div className="module-card">
+    <p>Informe o saldo total contado no estoque. Este ajuste usa o cadastro do produto e registra a diferença como ajuste de estoque.</p>
+    <input aria-label="Buscar produto no estoque" type="search" placeholder="Nome ou SKU" value={query} onChange={e => setQuery(e.target.value)} />
+    {error && <p role="alert" className="otp-error-msg">{error}</p>}
+    {notice && <p role="status">{notice}</p>}
+    <div className="stock-table-wrap"><table className="rma-table"><thead><tr><th>Produto</th><th>SKU</th><th>Saldo atual</th><th>Mínimo</th><th>Ajustar</th></tr></thead>
+      <tbody>{rows.length === 0 ? <tr><td colSpan={5} className="empty-row">Nenhum produto nesta seleção.</td></tr> : rows.map(p => <tr key={p.id}>
+        <td>{p.name}</td><td>{p.sku || '—'}</td><td>{p.stock}</td><td>{p.min_stock}</td><td>{editing?.id === p.id ? <form onSubmit={save}>
+          <input aria-label={`Novo saldo de ${p.name}`} type="number" min="0" step="1" required disabled={saving} value={editing.stock} onChange={e => setEditing({ ...editing, stock: e.target.value })} />
+          <button type="submit" className="module-submit-btn" disabled={saving}>{saving ? 'Salvando…' : 'Salvar saldo'}</button>
+          <button type="button" className="rma-advance-btn" disabled={saving} onClick={() => setEditing(null)}>Cancelar</button>
+        </form> : <button type="button" className="rma-advance-btn" disabled={saving} onClick={() => { setEditing({ id: p.id, stock: String(p.stock) }); setError(''); setNotice(''); }}>Ajustar saldo</button>}</td>
+      </tr>)}</tbody></table></div>
+  </div>;
 }
 
 function ProductsSubTab({ defaultIsService = false, products, allProducts, branches, selectedBranchId, categories, suppliers, onAddSupplier, segment, onAddProduct, onUpdateProduct, onDeleteProduct }: {

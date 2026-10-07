@@ -47,18 +47,17 @@ function assertBranchSelected(branchId: string | null | undefined): asserts bran
 }
 
 export async function getFiscalSettings(userId: string, branchId: string | null | undefined) {
-  assertBranchSelected(branchId);
-
   if (!supabase) {
     return { data: [] as FiscalSettingsRecord[], error: null };
   }
 
-  return supabase
+  let query = supabase
     .from('fiscal_tax_rules')
     .select('*')
     .eq('user_id', userId)
-    .eq('branch_id', branchId)
     .order('created_at', { ascending: false });
+  if (branchId) query = query.eq('branch_id', branchId);
+  return query;
 }
 
 export async function saveFiscalSettings(
@@ -146,18 +145,17 @@ export async function createFiscalDocument(
 }
 
 export async function getFiscalEvents(userId: string, branchId: string | null | undefined) {
-  assertBranchSelected(branchId);
-
   if (!supabase) {
     return { data: [] as FiscalDocumentRecord[], error: null };
   }
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('fiscal_documents')
     .select('*')
     .eq('user_id', userId)
-    .eq('branch_id', branchId)
     .order('created_at', { ascending: false });
+  if (branchId) query = query.eq('branch_id', branchId);
+  const { data, error } = await query;
 
   if (error) {
     return { data: [], error };

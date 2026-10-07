@@ -16,6 +16,7 @@ import { AccountsModule } from './AccountsModule';
 import { CustomerAccountsModule } from './CustomerAccountsModule';
 import { FinancialFlowModule } from './FinancialFlowModule';
 import type { AdminCadastrosTarget } from '../../lib/cadastrosNavigation';
+import { AdminFiscalModule } from './AdminFiscalModule';
 import { financialAccounts, type PayableAccount } from '../../lib/accounts';
 import type { PartnerInvoice } from '../../types';
 import type {
@@ -71,6 +72,7 @@ type Props = {
   selectedBranchId?: string;
   onSelectBranch?: (id: string) => void;
   onNavigate?: (tab: string) => void;
+  ownerView?: boolean;
 };
 
 type AdminSection = 'dashboard' | 'cadastros' | 'relatorios' | 'fiscal' | 'financeiro' | 'configuracoes';
@@ -164,7 +166,7 @@ export function AdminModule({
   renderCadastros,
   invoices = [], onReceiveInvoice,
   userId, sales = [], products = [], movements = [], salespeople = [], branches = [], customers = [], suppliers = [], categories = [],
-  selectedBranchId = '', onSelectBranch, onNavigate,
+  selectedBranchId = '', onSelectBranch, onNavigate, ownerView = false,
 }: Props) {
   return (
     <AdminErrorBoundary>
@@ -184,6 +186,7 @@ export function AdminModule({
         selectedBranchId={selectedBranchId}
         onSelectBranch={onSelectBranch}
         onNavigate={onNavigate}
+        ownerView={ownerView}
       />
     </AdminErrorBoundary>
   );
@@ -193,7 +196,7 @@ function AdminModuleInner({
   renderCadastros,
   invoices = [], onReceiveInvoice,
   userId, sales, products, movements = [], salespeople, branches = [], customers = [], suppliers = [], categories = [],
-  selectedBranchId = '', onSelectBranch, onNavigate,
+  selectedBranchId = '', onSelectBranch, onNavigate, ownerView = false,
 }: Props) {
   const [expandedSection, setExpandedSection] = useState<AdminSection>('dashboard');
   const [activeAdminTab, setActiveAdminTab] = useState<AdminTab>('dashboard');
@@ -203,6 +206,10 @@ function AdminModuleInner({
   const payables = usePayables(userId);
   const scopedInvoices = invoices.filter(invoice => !branchFilter || invoice.branch_id === branchFilter);
   const scopedPayables = payables.accounts.filter(account => !branchFilter || account.branch_id === branchFilter);
+
+  useEffect(() => {
+    setBranchFilter(selectedBranchId);
+  }, [selectedBranchId]);
 
   function handleBranchChange(id: string) {
     setBranchFilter(id);
@@ -334,7 +341,15 @@ function AdminModuleInner({
             </>
           )}
           {activeAdminTab === 'fiscal' && (
-            <InlineFiscalView sales={sales} products={products} />
+            <AdminFiscalModule
+              key={`${activeItemId}:${branchFilter}`}
+              section={activeItemId}
+              userId={userId}
+              branchId={branchFilter || null}
+              sales={sales}
+              branches={branches}
+              ownerView={ownerView}
+            />
           )}
           {activeAdminTab === 'cadastros' && (
             renderCadastros ? renderCadastros(activeItemId as AdminCadastrosTarget) :
@@ -1714,83 +1729,6 @@ function AdminFinancialSummary({
           </div>
         </div>
       </div>
-    </div>
-  );
-}
-
-/* ============ Inline Fiscal View ============ */
-
-function InlineFiscalView({ sales, products }: {
-  sales: PartnerSale[];
-  products: PartnerProduct[];
-}) {
-  const completed = useMemo(() => sales.filter((s) => s.status === 'concluida'), [sales]);
-  const [selectedSaleId, setSelectedSaleId] = useState('');
-  const selectedSale = completed.find((s) => s.id === selectedSaleId);
-
-  const fiscalItems = useMemo(() => {
-    if (!selectedSale) return [];
-    return safeItems(selectedSale).map((item) => {
-      const product = products.find((p) => p.id === item.product_id);
-      const lineTotal = item.unit_price * item.quantity;
-      return {
-        ...item,
-        ncm: product?.ncm ?? '—',
-        cfop: product?.cfop ?? '5102',
-        cst_csosn: product?.cst_csosn ?? '102',
-        icmsValue: (lineTotal * (product?.icms_rate ?? 0)) / 100,
-      };
-    });
-  }, [selectedSale, products]);
-
-  return (
-    <div className="admin-inline-fiscal">
-      <div className="admin-permissions-info">
-        <FileText size={16} />
-        <span>Visualização fiscal inline — selecione uma venda para ver detalhes tributários.</span>
-      </div>
-      <div className="module-card">
-        <label>
-          <span className="social-label"><Receipt size={14} /> Venda Concluída</span>
-          <select value={selectedSaleId} onChange={(e) => setSelectedSaleId(e.target.value)}>
-            <option value="">Selecione uma venda...</option>
-            {completed.map((s) => (
-              <option key={s.id} value={s.id}>
-                #{s.id.slice(0, 8).toUpperCase()} — {s.customer_name ?? 'Cliente'} — {money.format(s.total)} — {new Date(s.created_at).toLocaleDateString('pt-BR')}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-      {selectedSale && fiscalItems.length > 0 && (
-        <div className="stock-table-wrap">
-          <table className="rma-table">
-            <thead>
-              <tr><th>Item</th><th>NCM</th><th>CFOP</th><th>CST/CSOSN</th><th>Qtd</th><th>Valor</th><th>ICMS</th></tr>
-            </thead>
-            <tbody>
-              {fiscalItems.map((item, i) => (
-                <tr key={i}>
-                  <td>{item.name}</td>
-                  <td>{item.ncm}</td>
-                  <td>{item.cfop}</td>
-                  <td>{item.cst_csosn}</td>
-                  <td>{item.quantity}</td>
-                  <td>{money.format(item.unit_price * item.quantity)}</td>
-                  <td>{money.format(item.icmsValue)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-      {!selectedSale && (
-        <div className="admin-inline-placeholder">
-          <FileText size={32} />
-          <h4>Área Fiscal</h4>
-          <p>Selecione uma venda acima para visualizar os detalhes fiscais e tributários inline.</p>
-        </div>
-      )}
     </div>
   );
 }

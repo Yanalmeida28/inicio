@@ -1551,6 +1551,7 @@ export function PartnerPanel({
     return (
               <CadastrosModule
                 key={target ?? 'principal'}
+                adminTarget={target}
                 initialTab={cadastroDestination(target).tab}
                 productType={cadastroDestination(target).productType}
                 rmaRequests={partner.rmas}
@@ -2144,6 +2145,11 @@ export function PartnerPanel({
                     tab as Tab,
                   )
                 }
+                ownerView={Boolean(
+                  identity &&
+                  !identity.salespersonId &&
+                  identity.authUserId === identity.companyUserId
+                )}
               />
             )}
 
