@@ -1773,6 +1773,29 @@ fetchAllPages((from, to) => client
     } finally { saleInFlight.current = false; }
   }, [data.sales, requireIdentity, syncConfirmedSale]);
 
+  const updateOpenOrderCustomer = useCallback(async (id: string, customerId: string, operatorId?: string | null, operatorPin?: string | null) => {
+    if (saleInFlight.current) throw new Error('Aguarde a operação em andamento.');
+    saleInFlight.current = true;
+    try {
+      const currentIdentity = requireIdentity();
+      const sale = data.sales.find(item => item.id === id);
+      if (!sale?.branch_id || !['pre_venda', 'aberta'].includes(sale.status)) throw new Error('Somente pedidos abertos e pré-vendas podem alterar o cliente.');
+      ensureEmployeeBranch(currentIdentity, sale.branch_id);
+      const customer = data.customers.find(item => item.id === customerId && item.user_id === currentIdentity.companyUserId && (!item.branch_id || item.branch_id === sale.branch_id));
+      if (!customer) throw new Error('Cliente inválido para esta filial.');
+      if (sale.payment_status !== 'pendente' || sale.online_payment) throw new Error('Pedidos com pagamento não podem alterar o cliente.');
+      if (isSupabaseConfigured && supabase) {
+        const { data: confirmed, error } = await supabase.rpc('execute_partner_open_order_customer_mutation', {
+          p_salesperson_id: operatorId ?? null, p_pin: operatorPin ?? null, p_sale_id: id, p_customer_id: customerId,
+        });
+        if (error) throw new Error(pdvErrorMessage(error));
+        if (confirmed !== true) throw new Error('O servidor não confirmou a alteração do cliente.');
+      }
+      setData(previous => ({ ...previous, sales: previous.sales.map(item => item.id === id ? { ...item, customer_id: customerId, customer_name: customer.name } : item) }));
+      if (isSupabaseConfigured && supabase) await syncConfirmedSale(sale.branch_id);
+    } finally { saleInFlight.current = false; }
+  }, [data.sales, data.customers, requireIdentity, syncConfirmedSale]);
+
   const updateDelivery = useCallback(
     async (
       saleId: string,
@@ -3730,6 +3753,7 @@ fetchAllPages((from, to) => client
     createSale,
     createPreSale,
     updatePreSaleItems,
+    updateOpenOrderCustomer,
     updateDelivery,
     finalizePreSale,
     cancelSale,

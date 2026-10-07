@@ -2004,6 +2004,10 @@ export function PartnerPanel({
 
             {activeTab === 'pedidos' && (
               <OpenOrdersModule
+                onUpdateCustomer={async (id, customerId) => {
+                  const { operatorId, operatorPin } = getOperatorContext();
+                  await partner.updateOpenOrderCustomer(id, customerId, operatorId, operatorPin);
+                }}
                 canEditPrice={effectiveRole === 'gerente' || (!isEmployeeRestricted && effectiveRole === 'administrador')}
                 products={filteredProducts}
                 onUpdateItems={async (id, items) => {

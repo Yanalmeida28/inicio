@@ -46,6 +46,8 @@ before(async () => {
   await db.exec(await read('../migrations/20261003190000_secure_financial_subscription_fiscal_and_branch_flows.sql'));
   await db.exec(await read('../migrations/20261003193000_add_post_close_cash_refunds.sql'));
   await db.exec(await read('../migrations/20261005211357_allow_owner_manager_sale_prices.sql'));
+  await db.exec('ALTER TABLE partner_customers ADD COLUMN name text');
+  await db.exec(await read('../migrations/20261007211956_change_open_order_customer.sql'));
 });
 after(() => db.close());
 beforeEach(async () => {
@@ -66,6 +68,57 @@ async function negotiatedSale(price, extra = {}) {
     [r.operator,r.pin,r.id,'Cliente',JSON.stringify([{product_id:product,name:'Produto',quantity:1,unit_price:price}]),r.total,r.method,branch,r.status,'pdv','varejo','balcao']);
   return r;
 }
+
+test('changing an open order customer preserves negotiated prices and checkout uses the new customer', async () => {
+  const customer = randomUUID();
+  await sql("INSERT INTO partner_customers(id,user_id,name) VALUES($1,$2,'Novo cliente')",[customer,owner]);
+  const pre = await negotiatedSale(75.5);
+  await login(employeeAuth);
+  assert.equal((await sql('SELECT execute_partner_open_order_customer_mutation(NULL,NULL,$1,$2) AS ok',[pre.id,customer])).rows[0].ok,true);
+  const updated = (await sql('SELECT * FROM partner_sales WHERE id=$1',[pre.id])).rows[0];
+  assert.equal(updated.customer_id,customer);
+  assert.equal(updated.customer_name,'Novo cliente');
+  assert.equal(Number(updated.total),75.5);
+  assert.equal(updated.items[0].unit_price,75.5);
+  assert.equal(updated.status,'pre_venda');
+  assert.equal((await sql('SELECT customer_id FROM partner_pdv_price_snapshots WHERE sale_id=$1',[pre.id])).rows[0].customer_id,customer);
+  await login(owner);
+  await mutate('abrir',0);
+  await sql('SELECT execute_partner_sale_mutation(NULL,NULL,$1,$2,$3,$4::jsonb,$5,NULL,NULL,$6,$7,$8,$9,$10,$11,NULL)',
+    [pre.id,customer,'Novo cliente',JSON.stringify(updated.items),75.5,'pix',branch,'concluida','pdv','varejo','balcao']);
+  await assert.rejects(sql('SELECT execute_partner_open_order_customer_mutation(NULL,NULL,$1,$2)',[pre.id,customer]),/Somente pedidos abertos/);
+});
+
+test('customer change rejects foreign customers, branch access, payments and anonymous callers', async () => {
+  const pre = await sale({status:'pre_venda',method:null});
+  const customer=randomUUID();
+  await sql("INSERT INTO partner_customers(id,user_id,branch_id,name) VALUES($1,$2,$3,'Cliente externo')",[customer,other,foreignBranch]);
+  await assert.rejects(sql('SELECT execute_partner_open_order_customer_mutation(NULL,NULL,$1,$2)',[pre.id,customer]),/Cliente inválido/);
+  await sql('UPDATE partner_customers SET user_id=$1,branch_id=NULL WHERE id=$2',[owner,customer]);
+  await sql("UPDATE partner_salespeople SET branch_id=$1 WHERE id=$2",[foreignBranch,employee]);
+  await login(employeeAuth);
+  await assert.rejects(sql('SELECT execute_partner_open_order_customer_mutation(NULL,NULL,$1,$2)',[pre.id,customer]),/outra filial/);
+  await login(owner);
+  await sql("UPDATE partner_sales SET online_payment=true WHERE id=$1",[pre.id]);
+  await assert.rejects(sql('SELECT execute_partner_open_order_customer_mutation(NULL,NULL,$1,$2)',[pre.id,customer]),/pagamento/);
+  await login(null);
+  await assert.rejects(sql('SELECT execute_partner_open_order_customer_mutation(NULL,NULL,$1,$2)',[pre.id,customer]),/Não autenticado/);
+  await db.exec('SET ROLE anon');
+  await assert.rejects(sql('SELECT execute_partner_open_order_customer_mutation(NULL,NULL,$1,$2)',[pre.id,customer]),/permission denied/);
+});
+
+test('online open orders can change customer without changing totals or creating stock and cash movements', async () => {
+  const id=randomUUID(), customer=randomUUID();
+  await sql("INSERT INTO partner_customers(id,user_id,name) VALUES($1,$2,'Cliente online')",[customer,owner]);
+  await sql("INSERT INTO partner_sales(id,user_id,branch_id,status,payment_status,origin,online_payment,total,items) VALUES($1,$2,$3,'aberta','pendente','catalogo',false,150,'[]')",[id,owner,branch]);
+  await sql('SELECT execute_partner_open_order_customer_mutation(NULL,NULL,$1,$2)',[id,customer]);
+  const order=(await sql('SELECT status,total,customer_id FROM partner_sales WHERE id=$1',[id])).rows[0];
+  assert.equal(order.status,'aberta');
+  assert.equal(Number(order.total),150);
+  assert.equal(order.customer_id,customer);
+  assert.equal((await sql('SELECT count(*)::int AS n FROM stock_movements')).rows[0].n,0);
+  assert.equal((await sql('SELECT count(*)::int AS n FROM partner_cash_movements')).rows[0].n,0);
+});
 
 test('negotiated prices: owner and authenticated manager save prices without editing the catalog', async () => {
   await negotiatedSale(75.5);

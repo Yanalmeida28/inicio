@@ -14,6 +14,7 @@ type Props = {
   canEditPrice: boolean;
   products: PartnerProduct[];
   onUpdateItems: (id: string, items: PartnerSale['items']) => Promise<void>;
+  onUpdateCustomer: (id: string, customerId: string) => Promise<void>;
   sales: PartnerSale[];
   customers: PartnerCustomer[];
   salespeople: PartnerSalesperson[];
@@ -40,7 +41,29 @@ const payStatusLabels: Record<string, { label: string; color: string }> = {
   cancelado: { label: 'Cancelado', color: '#e3829b' },
 };
 
-export function OpenOrdersModule({ canEditPrice, products, onUpdateItems, sales, customers, salespeople, currentRole, receiptDetails, onFinalizePreSale, onCancelSale, onDeleteSale, onPullToPdv }: Props) {
+export function OpenOrdersModule({ canEditPrice, products, onUpdateItems, onUpdateCustomer, sales, customers, salespeople, currentRole, receiptDetails, onFinalizePreSale, onCancelSale, onDeleteSale, onPullToPdv }: Props) {
+  const [customerTarget, setCustomerTarget] = useState<PartnerSale | null>(null);
+  const [newCustomerId, setNewCustomerId] = useState('');
+  const [customerTerm, setCustomerTerm] = useState('');
+  const [customerError, setCustomerError] = useState<string | null>(null);
+  const [savingCustomer, setSavingCustomer] = useState(false);
+  const customerInFlight = useRef(false);
+  const canChangeCustomer = ['administrador', 'gerente', 'caixa', 'vendedor'].includes(currentRole);
+  const availableCustomers = customers.filter(customer =>
+    (!customer.branch_id || customer.branch_id === customerTarget?.branch_id) &&
+    (!customerTerm.trim() || `${customer.name} ${customer.document ?? ''}`.toLocaleLowerCase('pt-BR').includes(customerTerm.trim().toLocaleLowerCase('pt-BR'))));
+
+  async function saveCustomer() {
+    if (!customerTarget || !newCustomerId || customerInFlight.current) return;
+    customerInFlight.current = true;
+    setSavingCustomer(true);
+    setCustomerError(null);
+    try {
+      await onUpdateCustomer(customerTarget.id, newCustomerId);
+      setCustomerTarget(null);
+    } catch (error) { setCustomerError(pdvErrorMessage(error)); }
+    finally { customerInFlight.current = false; setSavingCustomer(false); }
+  }
   const [editTarget, setEditTarget] = useState<PartnerSale | null>(null);
   const [dateStart, setDateStart] = useState('');
   const [dateEnd, setDateEnd] = useState('');
@@ -353,6 +376,11 @@ export function OpenOrdersModule({ canEditPrice, products, onUpdateItems, sales,
                     <td data-label="Total"><strong>{money.format(s.total)}</strong></td>
                     <td data-label="Ações" className="open-order-actions">
                       <div className="row-action-group">
+                        {canChangeCustomer && s.payment_status === 'pendente' && !s.online_payment && (
+                          <button className="rma-advance-btn" title="Alterar cliente" onClick={() => {
+                            setCustomerTarget(s); setNewCustomerId(s.customer_id ?? ''); setCustomerTerm(''); setCustomerError(null);
+                          }}>Alterar cliente</button>
+                        )}
                         {s.status === 'pre_venda' && (
                           <button className="rma-advance-btn" onClick={() => setEditTarget(s)} title="Editar produtos">
                             <Pencil size={14} /> Editar
@@ -431,6 +459,34 @@ export function OpenOrdersModule({ canEditPrice, products, onUpdateItems, sales,
               <button className="module-submit-btn" onClick={confirmFinalize} disabled={isFinalizing}>
                 {isFinalizing ? 'Finalizando...' : 'Confirmar Venda'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {customerTarget && (
+        <div className="modal-backdrop" onClick={() => { if (!customerInFlight.current) setCustomerTarget(null); }}>
+          <div className="modal-content" role="dialog" aria-modal="true" aria-labelledby="change-customer-title" onClick={event => event.stopPropagation()}>
+            <div className="modal-header">
+              <h3 id="change-customer-title">Alterar cliente — #{customerTarget.id.slice(0, 8).toUpperCase()}</h3>
+              <button disabled={savingCustomer} aria-label="Fechar alteração de cliente" onClick={() => setCustomerTarget(null)}><X size={18} /></button>
+            </div>
+            <p>Cliente atual: <strong>{customerTarget.customer_name || 'Sem cliente'}</strong></p>
+            <p>Os produtos, preços e total deste pedido serão mantidos.</p>
+            <fieldset disabled={savingCustomer} className="open-order-editor-fields">
+              <label>Buscar cliente<input value={customerTerm} onChange={event => setCustomerTerm(event.target.value)} placeholder="Nome ou documento" /></label>
+              <label>Novo cliente<select value={newCustomerId} onChange={event => setNewCustomerId(event.target.value)}>
+                <option value="">Selecione um cliente</option>
+                {newCustomerId && !availableCustomers.some(customer => customer.id === newCustomerId) && (
+                  <option value={newCustomerId}>{customers.find(customer => customer.id === newCustomerId)?.name ?? 'Cliente selecionado'}</option>
+                )}
+                {availableCustomers.map(customer => <option key={customer.id} value={customer.id}>{customer.name}{customer.document ? ` — ${customer.document}` : ''}</option>)}
+              </select></label>
+            </fieldset>
+            {customerError && <p className="otp-error-msg" role="alert">{customerError}</p>}
+            <div className="otp-actions">
+              <button className="rma-advance-btn" disabled={savingCustomer} onClick={() => setCustomerTarget(null)}>Cancelar</button>
+              <button className="module-submit-btn" disabled={savingCustomer || !newCustomerId || newCustomerId === customerTarget.customer_id} onClick={() => void saveCustomer()}>{savingCustomer ? 'Salvando...' : 'Salvar cliente'}</button>
             </div>
           </div>
         </div>
