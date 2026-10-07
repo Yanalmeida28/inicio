@@ -25,6 +25,7 @@ import {
 import type { User } from '@supabase/supabase-js';
 
 import { usePartnerData } from '../hooks/usePartnerData';
+import { useDeviceHeartbeat } from '../hooks/useDeviceHeartbeat';
 
 import { pdvErrorMessage } from '../lib/pdv';
 import { storeTheme } from '../lib/storeTheme';
@@ -291,6 +292,7 @@ export function PartnerPanel({
 
   const effectiveBranchId =
     lockedBranchId ?? selectedBranchId;
+  useDeviceHeartbeat(identity?.companyUserId, effectiveBranchId);
 
   useEffect(() => {
     if (!effectiveBranchId || partner.loading || (activeTab !== 'pdv' && activeTab !== 'pedidos' && activeTab !== 'historico')) return;
@@ -2104,6 +2106,7 @@ export function PartnerPanel({
 
             {activeTab === 'administrativo' && (
               <AdminModule
+                renderSettings={() => <SettingsModule user={user} profile={partner.profile} onProfileUpdate={partner.updateProfile} />}
                 renderCadastros={renderCadastros}
                 invoices={filteredInvoices}
                 onReceiveInvoice={identity?.salespersonId ? undefined : partner.payInvoice}

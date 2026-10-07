@@ -1,15 +1,14 @@
 import { Component, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
-  Shield, BarChart3, Users, ScrollText, TrendingUp, TrendingDown,
-  DollarSign, Wallet, Percent, Eye, EyeOff, Save, Check, AlertCircle,
+  Shield, BarChart3, Users, TrendingUp, TrendingDown,
+  DollarSign, Wallet, Percent, AlertCircle,
   Boxes, FileText, Settings, Package,
-  ShoppingCart, CreditCard, Smartphone, Receipt, Monitor, Lock,
-  Database, Building2, Download, Calendar, UserCheck,
-  PieChart, LineChart as LineChartIcon, Filter, MapPin,
+  CreditCard, Smartphone, Receipt,
+  Building2, Download, Calendar, UserCheck,
+  PieChart, LineChart as LineChartIcon, MapPin,
 } from 'lucide-react';
 import { money } from '../../utils';
 import { ReportsModule } from './ReportsModule';
-import { supabase } from '../../lib/supabase';
 import { useStagnantStock } from '../../hooks/useStagnantStock';
 import { usePayables } from '../../hooks/usePayables';
 import { AccountsModule } from './AccountsModule';
@@ -17,12 +16,13 @@ import { CustomerAccountsModule } from './CustomerAccountsModule';
 import { FinancialFlowModule } from './FinancialFlowModule';
 import type { AdminCadastrosTarget } from '../../lib/cadastrosNavigation';
 import { AdminFiscalModule } from './AdminFiscalModule';
+import { AdminDataExports, AdminDeviceRegistry } from './AdminSettingsTools';
 import { financialAccounts, type PayableAccount } from '../../lib/accounts';
 import type { PartnerInvoice } from '../../types';
 import type {
   PartnerSale, PartnerProduct, PartnerSalesperson, SalespersonRole,
   PartnerBranch, PartnerCustomer, PartnerSupplier, PartnerCategory,
-  AuditLog, PermissionOverride, SaleItem, StockMovement,
+  AuditLog, SaleItem, StockMovement,
 } from '../../types';
 
 function safeItems(sale: PartnerSale): SaleItem[] {
@@ -57,6 +57,7 @@ class AdminErrorBoundary extends Component<
 }
 
 type Props = {
+  renderSettings?: () => ReactNode;
   renderCadastros?: (target: AdminCadastrosTarget) => ReactNode;
   invoices?: PartnerInvoice[];
   onReceiveInvoice?: (id: string, amount: number) => Promise<void>;
@@ -154,15 +155,16 @@ const sidebarSections: {
     icon: Settings,
     items: [
       { id: 'dados-negocio', label: 'Dados do Negócio', tab: 'configuracoes' },
-      { id: 'gestao-dados', label: 'Gestão de Dados (Backup/Exportar)', page: 'gestao-dados' },
+      { id: 'gestao-dados', label: 'Exportar Dados', page: 'gestao-dados' },
       { id: 'usuarios', label: 'Usuários & Permissões', page: 'permissoes' },
       { id: 'dispositivos', label: 'Dispositivos/Terminais', page: 'dispositivos' },
-      { id: 'senha-liberacao', label: 'Senha para Liberação de Venda', page: 'senha-liberacao' },
+      { id: 'senha-liberacao', label: 'PIN de Autorização', page: 'senha-liberacao' },
     ],
   },
 ];
 
 export function AdminModule({
+  renderSettings,
   renderCadastros,
   invoices = [], onReceiveInvoice,
   userId, sales = [], products = [], movements = [], salespeople = [], branches = [], customers = [], suppliers = [], categories = [],
@@ -171,6 +173,7 @@ export function AdminModule({
   return (
     <AdminErrorBoundary>
       <AdminModuleInner
+        renderSettings={renderSettings}
         renderCadastros={renderCadastros}
         invoices={invoices}
         onReceiveInvoice={onReceiveInvoice}
@@ -193,6 +196,7 @@ export function AdminModule({
 }
 
 function AdminModuleInner({
+  renderSettings,
   renderCadastros,
   invoices = [], onReceiveInvoice,
   userId, sales, products, movements = [], salespeople, branches = [], customers = [], suppliers = [], categories = [],
@@ -361,17 +365,13 @@ function AdminModuleInner({
               categories={categories}
             />
           )}
-          {activeAdminTab === 'permissoes' && <PermissionsControl userId={userId} salespeople={salespeople} />}
+          {activeAdminTab === 'permissoes' && (ownerView ? <><p>As permissões são definidas pela função do colaborador e aplicadas pelo servidor. Edite a função e o PIN no cadastro abaixo.</p>{renderCadastros?.('vendedores')}</> : <p role="alert">Somente o proprietário pode administrar os acessos.</p>)}
           {activeAdminTab === 'auditoria' && <AuditTrail sales={sales} salespeople={salespeople} />}
-          {activeAdminTab === 'dispositivos' && <DevicesTerminals />}
-          {activeAdminTab === 'senha-liberacao' && <SaleReleasePassword />}
-          {activeAdminTab === 'gestao-dados' && <DataManagement />}
+          {activeAdminTab === 'dispositivos' && (ownerView ? <AdminDeviceRegistry userId={userId} branchId={branchFilter} branches={branches} /> : <p role="alert">Somente o proprietário pode consultar os terminais da loja.</p>)}
+          {activeAdminTab === 'senha-liberacao' && (ownerView ? <><p>As operações protegidas usam o PIN individual de administrador ou gerente. Configure ou altere o PIN em Editar Colaborador; não existe uma senha geral de liberação.</p>{renderCadastros?.('vendedores')}</> : <p role="alert">Somente o proprietário pode alterar os PINs dos colaboradores.</p>)}
+          {activeAdminTab === 'gestao-dados' && (ownerView ? <AdminDataExports products={products} sales={sales} customers={customers} branchId={branchFilter} extra={{ branches, suppliers, categories, invoices: scopedInvoices, stock_movements: movements, payables: scopedPayables }} /> : <p role="alert">Somente o proprietário pode exportar os dados administrativos.</p>)}
           {activeAdminTab === 'configuracoes' && (
-            <div className="admin-inline-placeholder">
-              <Settings size={32} />
-              <h4>Configurações do Sistema</h4>
-              <p>As configurações detalhadas estão disponíveis no módulo dedicado de Configurações.</p>
-            </div>
+            ownerView ? renderSettings?.() : <p role="alert">Somente o proprietário pode alterar os dados do negócio.</p>
           )}
         </div>
       </div>
@@ -1150,182 +1150,6 @@ function PaymentDonut({ data, colors }: { data: { method: string; amount: number
   );
 }
 
-/* ============ Permissions Control ============ */
-
-function PermissionsControl({ userId, salespeople }: { userId?: string; salespeople: PartnerSalesperson[] }) {
-  const [overrides, setOverrides] = useState<Record<string, PermissionOverride>>({});
-  const [savedId, setSavedId] = useState<string | null>(null);
-  const [roleFilter, setRoleFilter] = useState<'all' | SalespersonRole>('all');
-
-  const operationalStaff = useMemo(
-    () => salespeople.filter((sp) => sp.role !== 'administrador'),
-    [salespeople],
-  );
-
-  const filteredStaff = useMemo(
-    () => roleFilter === 'all' ? operationalStaff : operationalStaff.filter((sp) => sp.role === roleFilter),
-    [operationalStaff, roleFilter],
-  );
-
-  const permissionSummary = useMemo(() => {
-    const canCancel = operationalStaff.filter((sp) => getOverride(sp).can_cancel_sales).length;
-    const withDiscount = operationalStaff.filter((sp) => (getOverride(sp).discount_override_limit ?? 0) > 0).length;
-    const withCostAccess = operationalStaff.filter((sp) => getOverride(sp).can_view_cost_prices).length;
-
-    return { total: operationalStaff.length, canCancel, withDiscount, withCostAccess };
-  }, [operationalStaff, overrides]);
-
-  useEffect(() => {
-    if (!supabase || !userId) return;
-    supabase.from('partner_permission_overrides').select('*').eq('user_id', userId).then(({ data }) => {
-      const loaded = (data as PermissionOverride[]) ?? [];
-      setOverrides(Object.fromEntries(loaded.map((item) => [item.salesperson_id, item])));
-    });
-  }, [userId]);
-
-  function getOverride(sp: PartnerSalesperson): PermissionOverride {
-    return overrides[sp.id] ?? {
-      id: crypto.randomUUID(),
-      user_id: sp.user_id,
-      salesperson_id: sp.id,
-      can_cancel_sales: sp.role === 'gerente' || sp.role === 'caixa',
-      discount_override_limit: sp.role === 'gerente' ? 10 : 0,
-      can_view_cost_prices: sp.role === 'gerente',
-      created_at: new Date().toISOString(),
-    };
-  }
-
-  function updateOverride(spId: string, field: keyof PermissionOverride, value: boolean | number) {
-    setOverrides((prev) => ({
-      ...prev,
-      [spId]: { ...getOverride(salespeople.find((s) => s.id === spId)!), [field]: value },
-    }));
-  }
-
-  async function handleSave(spId: string) {
-    const override = getOverride(salespeople.find((sp) => sp.id === spId)!);
-    if (supabase && userId) {
-      await supabase.from('partner_permission_overrides').upsert({ ...override, user_id: userId }, { onConflict: 'user_id,salesperson_id' });
-    }
-    setSavedId(spId);
-    setTimeout(() => setSavedId(null), 2000);
-  }
-
-  return (
-    <div>
-      <div className="admin-permissions-info">
-        <AlertCircle size={16} />
-        <span>Controle granular de privilégios por funcionário. As permissões abaixo complementam as definições baseadas em função.</span>
-      </div>
-
-      <div className="orders-summary" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px', margin: '18px 0' }}>
-        <div className="orders-summary-card" style={{ padding: '14px 16px', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', background: '#0f1f2c' }}>
-          <small style={{ color: '#8ba3b5' }}>Total</small>
-          <strong style={{ display: 'block', fontSize: '22px', marginTop: '6px' }}>{permissionSummary.total}</strong>
-        </div>
-        <div className="orders-summary-card" style={{ padding: '14px 16px', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', background: '#0f1f2c' }}>
-          <small style={{ color: '#8ba3b5' }}>Cancelar vendas</small>
-          <strong style={{ display: 'block', fontSize: '22px', marginTop: '6px' }}>{permissionSummary.canCancel}</strong>
-        </div>
-        <div className="orders-summary-card" style={{ padding: '14px 16px', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', background: '#0f1f2c' }}>
-          <small style={{ color: '#8ba3b5' }}>Desconto especial</small>
-          <strong style={{ display: 'block', fontSize: '22px', marginTop: '6px' }}>{permissionSummary.withDiscount}</strong>
-        </div>
-        <div className="orders-summary-card" style={{ padding: '14px 16px', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', background: '#0f1f2c' }}>
-          <small style={{ color: '#8ba3b5' }}>Ver custo</small>
-          <strong style={{ display: 'block', fontSize: '22px', marginTop: '6px' }}>{permissionSummary.withCostAccess}</strong>
-        </div>
-      </div>
-
-      <div className="orders-filter-row" style={{ marginBottom: '12px' }}>
-        {(['all', 'gerente', 'caixa', 'vendedor', 'tecnico', 'atendente', 'logistica'] as const).map((option) => (
-          <button
-            key={option}
-            className={`rma-advance-btn ${roleFilter === option ? 'active' : ''}`}
-            onClick={() => setRoleFilter(option)}
-            style={{ minWidth: '110px' }}
-          >
-            {option === 'all' ? 'Todos' : roleLabels[option]}
-          </button>
-        ))}
-      </div>
-
-      <div className="stock-table-wrap">
-        <table className="rma-table">
-          <thead>
-            <tr>
-              <th>Funcionário</th>
-              <th>Função</th>
-              <th>Cancelar Vendas</th>
-              <th>Limite de Desconto (%)</th>
-              <th>Ver Preço de Custo</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredStaff.length === 0 ? (
-              <tr><td colSpan={6} className="empty-row">Nenhum funcionário cadastrado.</td></tr>
-            ) : (
-              filteredStaff.map((sp) => {
-                const ov = getOverride(sp);
-                return (
-                  <tr key={sp.id}>
-                    <td><strong>{sp.name}</strong></td>
-                    <td>
-                      <span className="rma-status-badge" style={{ color: '#5cb5f1', borderColor: '#5cb5f1' }}>
-                        {roleLabels[sp.role]}
-                      </span>
-                    </td>
-                    <td>
-                      <label className="admin-toggle-label">
-                        <input
-                          type="checkbox"
-                          checked={ov.can_cancel_sales}
-                          onChange={(e) => updateOverride(sp.id, 'can_cancel_sales', e.target.checked)}
-                        />
-                        <span>{ov.can_cancel_sales ? <Eye size={14} /> : <EyeOff size={14} />}</span>
-                      </label>
-                    </td>
-                    <td>
-                      <input
-                        type="number"
-                        step="0.5"
-                        min="0"
-                        max="100"
-                        value={ov.discount_override_limit}
-                        onChange={(e) => updateOverride(sp.id, 'discount_override_limit', Number(e.target.value))}
-                        className="admin-discount-input"
-                      />
-                    </td>
-                    <td>
-                      <label className="admin-toggle-label">
-                        <input
-                          type="checkbox"
-                          checked={ov.can_view_cost_prices}
-                          onChange={(e) => updateOverride(sp.id, 'can_view_cost_prices', e.target.checked)}
-                        />
-                        <span>{ov.can_view_cost_prices ? <Eye size={14} /> : <EyeOff size={14} />}</span>
-                      </label>
-                    </td>
-                    <td>
-                      <button
-                        className={`rma-advance-btn ${savedId === sp.id ? 'success' : ''}`}
-                        onClick={() => handleSave(sp.id)}
-                      >
-                        {savedId === sp.id ? <><Check size={14} /> Salvo!</> : <><Save size={14} /> Salvar</>}
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
 /* ============ Audit Trail ============ */
 
 function AuditTrail({ sales, salespeople }: { sales: PartnerSale[]; salespeople: PartnerSalesperson[] }) {
@@ -1436,150 +1260,6 @@ function AuditTrail({ sales, salespeople }: { sales: PartnerSale[]; salespeople:
       {filteredLogs.length > 50 && (
         <p className="admin-audit-footer">Exibindo os 50 registros mais recentes de {filteredLogs.length} total.</p>
       )}
-    </div>
-  );
-}
-
-/* ============ Devices / Terminals ============ */
-
-function DevicesTerminals() {
-  const [devices] = useState([
-    { id: 'POS-001', name: 'Caixa Frontal 1', type: 'PDV Desktop', status: 'online', lastSeen: new Date().toISOString() },
-    { id: 'POS-002', name: 'Caixa Balcão 2', type: 'Tablet', status: 'online', lastSeen: new Date().toISOString() },
-    { id: 'POS-003', name: 'Terminal Móvel', type: 'Smartphone', status: 'offline', lastSeen: new Date(Date.now() - 86400000).toISOString() },
-  ]);
-
-  return (
-    <div>
-      <div className="admin-permissions-info">
-        <Monitor size={16} />
-        <span>Cadastre e monitore os dispositivos e terminais conectados ao sistema.</span>
-      </div>
-      <div className="stock-table-wrap">
-        <table className="rma-table">
-          <thead><tr><th>Dispositivo</th><th>Tipo</th><th>Status</th><th>Última Conexão</th></tr></thead>
-          <tbody>
-            {devices.map((d) => (
-              <tr key={d.id}>
-                <td><strong>{d.name}</strong><small>ID: {d.id}</small></td>
-                <td>{d.type}</td>
-                <td>
-                  <span className="rma-status-badge" style={{ color: d.status === 'online' ? '#5bbc87' : '#e3829b', borderColor: d.status === 'online' ? '#5bbc87' : '#e3829b' }}>
-                    {d.status === 'online' ? 'Online' : 'Offline'}
-                  </span>
-                </td>
-                <td><small>{new Date(d.lastSeen).toLocaleString('pt-BR')}</small></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-/* ============ Sale Release Password ============ */
-
-function SaleReleasePassword() {
-  const [enabled, setEnabled] = useState(true);
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [saved, setSaved] = useState(false);
-
-  function handleSave(e: React.FormEvent) {
-    e.preventDefault();
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
-    setPassword('');
-    setConfirmPassword('');
-  }
-
-  return (
-    <div>
-      <div className="admin-permissions-info">
-        <Lock size={16} />
-        <span>Defina uma senha obrigatória para liberar vendas com desconto acima do limite ou operações especiais.</span>
-      </div>
-      <form className="rma-form" onSubmit={handleSave}>
-        <label className="checkbox-label">
-          <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
-          Exigir senha para liberação de venda
-        </label>
-        {enabled && (
-          <>
-            <label>
-              <span className="social-label"><Lock size={14} /> Nova Senha de Liberação</span>
-              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" required />
-            </label>
-            <label>
-              <span className="social-label"><Lock size={14} /> Confirmar Senha</span>
-              <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="••••••••" required />
-            </label>
-          </>
-        )}
-        <button type="submit" className="module-submit-btn">
-          {saved ? <><Check size={16} /> Salvo!</> : <><Save size={16} /> Salvar Senha</>}
-        </button>
-      </form>
-    </div>
-  );
-}
-
-/* ============ Data Management (Backup/Export) ============ */
-
-function DataManagement() {
-  const [exporting, setExporting] = useState(false);
-  const [done, setDone] = useState(false);
-
-  function handleExport() {
-    setExporting(true);
-    setTimeout(() => {
-      setExporting(false);
-      setDone(true);
-      setTimeout(() => setDone(false), 2500);
-    }, 1200);
-  }
-
-  return (
-    <div>
-      <div className="admin-permissions-info">
-        <Database size={16} />
-        <span>Faça backup dos dados do sistema ou exporte para planilhas (XLS/CSV).</span>
-      </div>
-      <div className="admin-data-mgmt-grid">
-        <div className="admin-data-card">
-          <Database size={22} />
-          <strong>Backup Completo</strong>
-          <p>Exporta todos os dados do sistema (produtos, vendas, clientes, financeiro) em um arquivo único.</p>
-          <button className="module-action-btn" onClick={handleExport} disabled={exporting}>
-            {exporting ? 'Exportando...' : done ? <><Check size={15} /> Concluído!</> : 'Gerar Backup'}
-          </button>
-        </div>
-        <div className="admin-data-card">
-          <FileText size={22} />
-          <strong>Exportar Produtos (XLS)</strong>
-          <p>Planilha com todos os produtos, preços, estoque e classificação fiscal.</p>
-          <button className="module-action-btn" onClick={handleExport} disabled={exporting}>
-            {exporting ? 'Exportando...' : 'Exportar XLS'}
-          </button>
-        </div>
-        <div className="admin-data-card">
-          <ShoppingCart size={22} />
-          <strong>Exportar Vendas (CSV)</strong>
-          <p>Histórico de vendas com itens, valores, clientes e vendedores.</p>
-          <button className="module-action-btn" onClick={handleExport} disabled={exporting}>
-            {exporting ? 'Exportando...' : 'Exportar CSV'}
-          </button>
-        </div>
-        <div className="admin-data-card">
-          <Building2 size={22} />
-          <strong>Exportar Clientes (CSV)</strong>
-          <p>Lista de clientes cadastrados com dados de contato e histórico.</p>
-          <button className="module-action-btn" onClick={handleExport} disabled={exporting}>
-            {exporting ? 'Exportando...' : 'Exportar CSV'}
-          </button>
-        </div>
-      </div>
     </div>
   );
 }
