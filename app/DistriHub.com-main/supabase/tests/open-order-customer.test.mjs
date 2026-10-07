@@ -17,7 +17,7 @@ vm.runInNewContext(ts.transpileModule(await readFile(new URL('../../src/componen
     if(name==='lucide-react')return new Proxy({},{get:()=>()=>null});
     if(name==='../../utils')return {money:{format:String}};
     if(name==='../../lib/pdv')return {pdvErrorMessage:error=>error.message};
-    if(name==='./SaleActionsMenu')return {SaleActionsMenu:()=>null};
+    if(name==='./SaleActionsMenu')return {SaleActionsMenu:props=>React.createElement('sale-actions',props)};
     return {};
   },
 });
@@ -32,7 +32,8 @@ test('customer selector filters branch, blocks duplicate saves and keeps the dia
     onUpdateCustomer:(...args)=>{calls.push(args);return new Promise((resolve,fail)=>{reject=fail;});},
   }));});
   try{
-    act(()=>button(view,'Alterar cliente').props.onClick());
+    assert.equal(button(view,'Alterar cliente'),undefined);
+    act(()=>view.root.findByType('sale-actions').props.onChangeCustomer());
     const select=view.root.findByProps({value:'old'});
     assert.equal(select.findAllByType('option').some(option=>option.props.value==='foreign'),false);
     act(()=>select.props.onChange({target:{value:'new'}}));
@@ -49,7 +50,7 @@ test('customer change is shown for unpaid open orders and hidden for paid orders
   for(const [status,payment_status,currentRole,expected] of [['aberta','pendente','vendedor',true],['pre_venda','pago','caixa',false],['pre_venda','pendente','logistica',false]]){
     let view;
     act(()=>{view=TestRenderer.create(React.createElement(module.exports.OpenOrdersModule,{canEditPrice:false,products:[],sales:[{...sale,status,payment_status}],customers,salespeople:[],currentRole}));});
-    try{assert.equal(Boolean(button(view,'Alterar cliente')),expected);}
+    try{assert.equal(Boolean(view.root.findByType('sale-actions').props.onChangeCustomer),expected);}
     finally{act(()=>view.unmount());}
   }
 });

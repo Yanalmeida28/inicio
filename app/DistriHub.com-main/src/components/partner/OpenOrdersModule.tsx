@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import {
-  ClipboardList, Search, X, Calendar, Filter, ArrowRight, Wallet, Lock, Pencil,
+  ClipboardList, Search, X, Calendar, Filter, ArrowRight, Wallet, Lock,
 } from 'lucide-react';
 import type { PartnerSale, PartnerCustomer, PartnerSalesperson, SalespersonRole, PartnerProduct } from '../../types';
 import { OpenOrderItemsEditor } from './OpenOrderItemsEditor';
@@ -376,16 +376,6 @@ export function OpenOrdersModule({ canEditPrice, products, onUpdateItems, onUpda
                     <td data-label="Total"><strong>{money.format(s.total)}</strong></td>
                     <td data-label="Ações" className="open-order-actions">
                       <div className="row-action-group">
-                        {canChangeCustomer && s.payment_status === 'pendente' && !s.online_payment && (
-                          <button className="rma-advance-btn" title="Alterar cliente" onClick={() => {
-                            setCustomerTarget(s); setNewCustomerId(s.customer_id ?? ''); setCustomerTerm(''); setCustomerError(null);
-                          }}>Alterar cliente</button>
-                        )}
-                        {s.status === 'pre_venda' && (
-                          <button className="rma-advance-btn" onClick={() => setEditTarget(s)} title="Editar produtos">
-                            <Pencil size={14} /> Editar
-                          </button>
-                        )}
                         {canCheckout && s.status === 'pre_venda' && (
                           <button className="module-submit-btn compact" onClick={() => requestFinalize(s)} title="Finalizar no caixa">
                             <Wallet size={14} /> Finalizar
@@ -397,6 +387,10 @@ export function OpenOrdersModule({ canEditPrice, products, onUpdateItems, onUpda
                           </button>
                         )}
                         <SaleActionsMenu
+                          onChangeCustomer={canChangeCustomer && s.payment_status === 'pendente' && !s.online_payment ? () => {
+                            setCustomerTarget(s); setNewCustomerId(s.customer_id ?? ''); setCustomerTerm(''); setCustomerError(null);
+                          } : undefined}
+                          onEditItems={s.status === 'pre_venda' ? () => setEditTarget(s) : undefined}
                           onPrintReceipt={() => handlePrint(s, 'receipt')}
                           onPrintLabel={() => handlePrint(s, 'label')}
                           onWhatsApp={() => handleShare(s, 'whatsapp')}
