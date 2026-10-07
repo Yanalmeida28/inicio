@@ -2,7 +2,7 @@ import { Component, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   Shield, BarChart3, Users, ScrollText, TrendingUp, TrendingDown,
   DollarSign, Wallet, Percent, Eye, EyeOff, Save, Check, AlertCircle,
-  ChevronDown, ChevronRight, Boxes, FileText, Settings, Package,
+  Boxes, FileText, Settings, Package,
   ShoppingCart, CreditCard, Smartphone, Receipt, Monitor, Lock,
   Database, Building2, Download, Calendar, UserCheck,
   PieChart, LineChart as LineChartIcon, Filter, MapPin,
@@ -10,7 +10,7 @@ import {
 import { money } from '../../utils';
 import { ReportsModule } from './ReportsModule';
 import { supabase } from '../../lib/supabase';
-import { computeStagnantStock } from '../../lib/stagnantStock';
+import { useStagnantStock } from '../../hooks/useStagnantStock';
 import type {
   PartnerSale, PartnerProduct, PartnerSalesperson, SalespersonRole,
   PartnerBranch, PartnerCustomer, PartnerSupplier, PartnerCategory,
@@ -200,7 +200,9 @@ function AdminModuleInner({
   }
 
   function toggleSection(section: AdminSection) {
-    setExpandedSection((prev) => (prev === section ? prev : section));
+    setExpandedSection(section);
+    const firstItem = sidebarSections.find((entry) => entry.id === section)?.items[0];
+    if (firstItem) handleItemClick(firstItem);
   }
 
   return (
@@ -214,38 +216,40 @@ function AdminModuleInner({
       </div>
 
       <div className="admin-sidebar-content-wrapper">
-        <aside className="admin-collapsible-sidebar">
+        <nav className="admin-top-navigation" aria-label="Navegação do Administrativo">
+          <div className="admin-top-sections">
           {sidebarSections.map((section) => {
             const isExpanded = expandedSection === section.id;
             const SectionIcon = section.icon;
             return (
-              <div key={section.id} className="admin-sidebar-section">
                 <button
+                  key={section.id}
+                  type="button"
                   className={`admin-sidebar-section-header ${isExpanded ? 'expanded' : ''}`}
+                  aria-pressed={isExpanded}
                   onClick={() => toggleSection(section.id)}
                 >
                   <span className="admin-sidebar-section-title">
                     <SectionIcon size={16} /> {section.label}
                   </span>
-                  {isExpanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
                 </button>
-                {isExpanded && (
-                  <div className="admin-sidebar-items">
-                    {section.items.map((item) => (
-                      <button
-                        key={item.id}
-                        className={`admin-sidebar-item ${activeItemId === item.id ? 'active' : ''}`}
-                        onClick={() => handleItemClick(item)}
-                      >
-                        <span>{item.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
             );
           })}
-        </aside>
+          </div>
+          <div className="admin-top-items" aria-label="Opções da seção selecionada">
+            {sidebarSections.find((section) => section.id === expandedSection)?.items.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className={`admin-sidebar-item ${activeItemId === item.id ? 'active' : ''}`}
+                aria-current={activeItemId === item.id ? 'page' : undefined}
+                onClick={() => handleItemClick(item)}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </nav>
 
         <div className="admin-content-area">
           {activeAdminTab === 'dashboard' && (
@@ -384,10 +388,8 @@ function ExecutiveDashboard({
   onBranchChange: (id: string) => void;
   onOpenStagnantStock?: () => void;
 }) {
-  const stagnant = useMemo(() => {
-    const scopedProducts = branchFilter ? products.filter((p) => p.branch_id === branchFilter) : products;
-    return computeStagnantStock(scopedProducts, sales, movements);
-  }, [products, sales, movements, branchFilter]);
+  const scopedProducts = useMemo(() => branchFilter ? products.filter((p) => p.branch_id === branchFilter) : products, [products, branchFilter]);
+  const stagnant = useStagnantStock(scopedProducts, sales, movements);
 
   const [period, setPeriod] = useState<TimePeriod>('30dias');
   const [customStart, setCustomStart] = useState('');

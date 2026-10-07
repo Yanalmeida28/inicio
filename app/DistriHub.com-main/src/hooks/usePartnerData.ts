@@ -1786,7 +1786,7 @@ fetchAllPages((from, to) => client
       }
 
       setData(prev => ({ ...prev, sales: prev.sales.map(item => item.id === id
-        ? { ...item, status: 'concluida', payment_method: paymentMethod, payment_status: paymentMethod === 'faturado' ? 'pendente' : 'pago' }
+        ? { ...item, status: 'concluida', completed_at: new Date().toISOString(), payment_method: paymentMethod, payment_status: paymentMethod === 'faturado' ? 'pendente' : 'pago' }
         : item) }));
       if (isSupabaseConfigured && supabase) await syncConfirmedSale(sale.branch_id);
     },

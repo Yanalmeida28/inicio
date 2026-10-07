@@ -58,8 +58,8 @@ const sameBranch = (a?: string | null, b?: string | null) => (a ?? null) === (b 
 /**
  * Estoque sem giro (somente leitura). Cada produto é avaliado apenas com vendas e
  * reposições da PRÓPRIA filial (`product.branch_id`), para que a filial B não afete a A.
- * Referência = mais recente entre última venda concluída e última reposição comercial;
- * sem nenhuma das duas, `created_at` do produto.
+ * Referência = última venda concluída. Para quem nunca vendeu, última entrada
+ * comercial ou `created_at` do produto. Reposição não apaga a falta de vendas.
  */
 export function computeStagnantStock(
   products: PartnerProduct[],
@@ -72,17 +72,31 @@ export function computeStagnantStock(
     if (!product.is_service && product.stock > 0) eligible.set(product.id, product);
   }
 
+  // A baixa vinculada à venda ocorre na conclusão, inclusive de pré-vendas.
+  const saleExits = new Map<string, Map<string, number>>();
+  for (const movement of movements) {
+    if (movement.type !== 'saida' || movement.quantity <= 0) continue;
+    const match = /^\s*sa[ií]da por venda\s+(\S+)\s*$/i.exec(movement.reason ?? '');
+    const product = eligible.get(movement.product_id);
+    const time = new Date(movement.created_at).getTime();
+    if (!match || !product || !sameBranch(movement.branch_id, product.branch_id) || !Number.isFinite(time)) continue;
+    const exits = saleExits.get(match[1]) ?? new Map<string, number>();
+    exits.set(product.id, Math.max(exits.get(product.id) ?? -Infinity, time));
+    saleExits.set(match[1], exits);
+  }
+
   const lastSale = new Map<string, number>();
   for (const sale of sales) {
     if (sale.status !== 'concluida') continue;
-    // Limitação: partner_sales não tem campo de conclusão (created_at é a criação da
-    // pré-venda; updated_at não existe no banco). Pré-venda concluída depois pode
-    // aparecer como venda mais antiga. Corrigir exigiria coluna/migration.
-    const time = new Date(sale.created_at).getTime();
-    if (Number.isNaN(time) || !Array.isArray(sale.items)) continue;
+    if (!Array.isArray(sale.items)) continue;
     for (const item of sale.items) {
       const product = eligible.get(item.product_id);
       if (!product || !sameBranch(sale.branch_id, product.branch_id)) continue;
+      // completed_at é usado no modo local; registros persistidos usam a baixa.
+      // Vendas legadas sem baixa vinculada mantêm created_at como aproximação.
+      const time = saleExits.get(sale.id)?.get(product.id)
+        ?? new Date(sale.completed_at ?? sale.created_at).getTime();
+      if (!Number.isFinite(time) || item.quantity <= 0) continue;
       if ((lastSale.get(product.id) ?? -Infinity) < time) lastSale.set(product.id, time);
     }
   }
@@ -101,9 +115,7 @@ export function computeStagnantStock(
   for (const product of eligible.values()) {
     const saleTime = lastSale.get(product.id);
     const entryTime = lastEntry.get(product.id);
-    const referenceTime = saleTime === undefined && entryTime === undefined
-      ? new Date(product.created_at).getTime()
-      : Math.max(saleTime ?? -Infinity, entryTime ?? -Infinity);
+    const referenceTime = saleTime ?? entryTime ?? new Date(product.created_at).getTime();
     if (Number.isNaN(referenceTime)) continue;
 
     const daysWithoutTurnover = Math.floor((now.getTime() - referenceTime) / DAY_MS);

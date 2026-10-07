@@ -458,7 +458,13 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
 
 /* ===== Admin Collapsible Sidebar Layout ===== */
 .admin-module-layout { display: flex; flex-direction: column; gap: 16px; }
-.admin-sidebar-content-wrapper { display: grid; grid-template-columns: 240px 1fr; gap: 16px; }
+.admin-sidebar-content-wrapper { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+.admin-top-navigation { min-width: 0; border: 1px solid #dbe4ee; border-radius: 10px; padding: 8px; background: #fff; }
+.admin-top-sections, .admin-top-items { display: flex; align-items: center; gap: 6px; min-width: 0; overflow-x: auto; padding: 2px 0 6px; }
+.admin-top-sections .admin-sidebar-section-header { flex: 0 0 auto; width: auto; white-space: nowrap; }
+.admin-top-items { margin-top: 6px; padding-top: 8px; border-top: 1px solid #dbe4ee; }
+.admin-top-items .admin-sidebar-item { flex: 0 0 auto; padding: 8px 12px; white-space: nowrap; }
+.admin-top-navigation button:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
 .admin-collapsible-sidebar { display: flex; flex-direction: column; gap: 2px; background: #0e1d2b; border: 1px solid #1d3445; border-radius: 8px; padding: 8px; position: sticky; top: 16px; max-height: calc(100vh - 120px); overflow-y: auto; }
 .admin-sidebar-section { display: flex; flex-direction: column; }
 .admin-sidebar-section-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border: 0; border-radius: 6px; background: transparent; color: #c1d1dc; font: 600 14.5px Manrope; cursor: pointer; transition: .15s; width: 100%; }
@@ -2279,7 +2285,7 @@ html, body {
   container: admin-layout / inline-size;
 }
 .partner-panel .admin-sidebar-content-wrapper {
-  grid-template-columns: 240px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   min-width: 0;
 }
 .partner-panel .admin-content-area {

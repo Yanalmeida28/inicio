@@ -28,9 +28,52 @@ test('A: venda há 45 dias, sem reposição → 45 dias', () => {
   assert.equal(items[0].level, 'atencao');
 });
 
-test('B: venda há 100 dias, reposição real há 5 dias → fora da lista', () => {
+test('B: reposição recente não apaga 100 dias sem vendas', () => {
   const p = product();
-  assert.equal(run([p], [sale(p, 100)], [entry(p, 5)]).count, 0);
+  const { items } = run([p], [sale(p, 100)], [entry(p, 5)]);
+  assert.equal(items[0].daysWithoutTurnover, 100);
+  assert.equal(items[0].lastEntryAt, ago(5));
+});
+
+test('pré-venda antiga concluída hoje usa a baixa vinculada', () => {
+  const p = product();
+  const s = sale(p, 100);
+  const exit = entry(p, 0, `Saida por venda ${s.id}`, { type: 'saida' });
+  assert.equal(run([p], [s], [exit]).count, 0);
+  const { items } = run([p], [s], [{ ...exit, created_at: ago(45) }]);
+  assert.equal(items[0].daysWithoutTurnover, 45);
+  assert.equal(items[0].lastSaleAt, ago(45));
+});
+
+test('baixa de outra venda, filial ou produto não altera a última venda', () => {
+  const p = product();
+  const q = product();
+  const s = sale(p, 100);
+  const exits = [
+    entry(p, 1, 'Saida por venda outra-venda', { type: 'saida' }),
+    entry(p, 1, `Saida por venda ${s.id}`, { type: 'saida', branch_id: B }),
+    entry(q, 1, `Saida por venda ${s.id}`, { type: 'saida' }),
+    entry(p, 1, `Saida por venda ${s.id}`, { type: 'saida', quantity: 0 }),
+  ];
+  assert.equal(run([p, q], [s], exits).items.find(i => i.product.id === p.id).daysWithoutTurnover, 100);
+});
+
+test('baixa vinculada a venda cancelada não conta como giro', () => {
+  const p = product();
+  const s = sale(p, 100, { status: 'cancelada' });
+  const exit = entry(p, 0, `Saida por venda ${s.id}`, { type: 'saida' });
+  assert.equal(run([p], [s], [exit]).items[0].daysWithoutTurnover, 400);
+});
+
+test('conclusão no modo local usa completed_at', () => {
+  const p = product();
+  assert.equal(run([p], [sale(p, 100, { completed_at: ago(0) })]).count, 0);
+});
+
+test('o mesmo estoque passa a ser sem giro ao completar 30 dias', () => {
+  const p = product({ created_at: ago(29) });
+  assert.equal(run([p]).count, 0);
+  assert.equal(computeStagnantStock([p], [], [], new Date(NOW.getTime() + 86_400_000)).count, 1);
 });
 
 test('C: estorno/devolução/ajuste recentes não reiniciam a contagem', () => {

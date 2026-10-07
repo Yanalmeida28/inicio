@@ -6,8 +6,9 @@ import {
 import type { PartnerSale, PartnerProduct, PartnerCustomer, PartnerSalesperson, SalespersonRole, StockMovement } from '../../types';
 import { money } from '../../utils';
 import {
-  computeStagnantStock, stagnantLevelLabels, type StagnantLevel,
+  stagnantLevelLabels, type StagnantLevel,
 } from '../../lib/stagnantStock';
+import { useStagnantStock } from '../../hooks/useStagnantStock';
 
 type Props = {
   sales: PartnerSale[];
@@ -376,7 +377,7 @@ function FinancialReport({ sales }: { sales: PartnerSale[] }) {
 function StagnantStockReport({ products, sales, movements }: { products: PartnerProduct[]; sales: PartnerSale[]; movements: StockMovement[] }) {
   const [level, setLevel] = useState<StagnantLevel | 'todos'>('todos');
   const [query, setQuery] = useState('');
-  const summary = useMemo(() => computeStagnantStock(products, sales, movements), [products, sales, movements]);
+  const summary = useStagnantStock(products, sales, movements);
   const term = query.trim().toLowerCase();
   const rows = summary.items.filter((item) =>
     (level === 'todos' || item.level === level)

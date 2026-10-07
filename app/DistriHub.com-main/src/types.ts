@@ -239,6 +239,8 @@ export interface SaleItem {
 }
 
 export interface PartnerSale {
+  /** Data de conclusão no modo local; no banco é obtida pela baixa vinculada. */
+  completed_at?: string;
   id: string;
   user_id: string;
   customer_id: string | null;
