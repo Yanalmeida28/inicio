@@ -144,7 +144,15 @@ export function SalesHistoryModule({ sales, rmaRequests = [], customers, salespe
                 filteredSales.map((s) => (
                   <tr key={s.id} className={s.status === 'cancelada' ? 'cancelled-row' : ''}>
                     <td><strong>{s.customer_name ?? '—'}</strong><small className="sales-history-id" title={s.id}>#{s.id.slice(0, 8)}</small></td>
-                    <td>{s.items.length} {s.items.length === 1 ? 'item' : 'itens'}<small>{saleItemDescription(s, rmaRequests)}</small></td>
+                    <td>
+                      {s.items.length} {s.items.length === 1 ? 'item' : 'itens'}
+                      {s.items.length > 0 && <details style={{ marginTop: '6px' }}>
+                        <summary style={{ cursor: 'pointer', color: '#5cb5f1' }}>Visualizar produtos</summary>
+                        <small style={{ display: 'block', whiteSpace: 'normal', overflowWrap: 'anywhere', maxWidth: '360px', maxHeight: '260px', overflowY: 'auto', marginTop: '8px' }}>
+                          {saleItemDescription(s, rmaRequests)}
+                        </small>
+                      </details>}
+                    </td>
                     <td>{money.format(s.total)}</td>
                     <td>{s.payment_method ?? '—'}</td>
                     <td>{s.imei ?? s.serial_number ?? '—'}</td>
