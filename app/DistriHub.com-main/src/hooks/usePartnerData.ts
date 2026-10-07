@@ -246,6 +246,10 @@ export function usePartnerData(identity: PartnerIdentity | null) {
   const [data, setData] = useState<PartnerDataState>(initialData);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
+  const syncInFlight = useRef(false);
 
   const [pdvCredits, setPdvCredits] = useState<CustomerCredit[]>([]);
   const [pdvSyncWarning, setPdvSyncWarning] = useState<string | null>(null);
@@ -319,7 +323,7 @@ export function usePartnerData(identity: PartnerIdentity | null) {
     setError(null);
   }, []);
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (background = false) => {
     const currentRequestId = ++requestIdRef.current;
 
     if (!identity) {
@@ -333,8 +337,10 @@ export function usePartnerData(identity: PartnerIdentity | null) {
       return;
     }
 
-    setLoading(true);
-    setError(null);
+    if (!background) {
+      setLoading(true);
+      setError(null);
+    }
 
     try {
       const currentIdentity = requireIdentity();
@@ -554,6 +560,12 @@ fetchAllPages((from, to) => client
         }
       }
 
+      // Keep the current snapshot if a background refresh is incomplete.
+      if (background) {
+        const failed = secondaryResults.find(([, result]) => result.error);
+        if (failed) throw failed[1].error;
+      }
+
       if (
         !mountedRef.current ||
         currentRequestId !== requestIdRef.current
@@ -646,6 +658,8 @@ fetchAllPages((from, to) => client
           (serviceOrderPhotosResult.data as ServiceOrderPhoto[] | null) ??
           [],
       });
+      setLastSyncedAt(new Date());
+      setSyncError(null);
     } catch (err) {
       if (
         !mountedRef.current ||
@@ -655,7 +669,8 @@ fetchAllPages((from, to) => client
       }
 
       const normalized = normalizeError(err);
-      setError(normalized.message);
+      if (background) setSyncError(normalized.message);
+      else setError(normalized.message);
     } finally {
       if (
         mountedRef.current &&
@@ -667,8 +682,56 @@ fetchAllPages((from, to) => client
   }, [clearData, identity, requireIdentity]);
 
   useEffect(() => {
+    setLastSyncedAt(null);
+    setSyncError(null);
     void loadData();
+    return () => { ++requestIdRef.current; };
   }, [loadData]);
+
+  const synchronize = useCallback(async () => {
+    if (!identity || !supabase || !isSupabaseConfigured || loading || syncInFlight.current) return;
+    if (!navigator.onLine) {
+      setSyncError('Sem internet. A sincronizacao sera retomada quando a conexao voltar.');
+      return;
+    }
+    syncInFlight.current = true;
+    setSyncing(true);
+    try { await loadData(true); }
+    finally {
+      syncInFlight.current = false;
+      if (mountedRef.current) setSyncing(false);
+    }
+  }, [identity, loading, loadData]);
+
+  useEffect(() => {
+    if (!identity || !supabase || !isSupabaseConfigured || loading) return;
+    const client = supabase;
+    let debounce: number | undefined;
+    const refresh = () => {
+      if (document.visibilityState !== 'visible' || !navigator.onLine) return;
+      window.clearTimeout(debounce);
+      debounce = window.setTimeout(() => { void synchronize(); }, 500);
+    };
+    const channel = client.channel(`partner-sync-${identity.authUserId}-${identity.companyUserId}`);
+    for (const table of ['partner_sales', 'partner_products', 'partner_invoices', 'b2b_orders']) {
+      channel.on('postgres_changes', {
+        event: '*', schema: 'public', table, filter: `user_id=eq.${identity.companyUserId}`,
+      }, refresh);
+    }
+    channel.subscribe((status) => { if (status === 'SUBSCRIBED') refresh(); });
+    const timer = window.setInterval(refresh, 30_000);
+    window.addEventListener('focus', refresh);
+    window.addEventListener('online', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      window.clearTimeout(debounce);
+      window.clearInterval(timer);
+      window.removeEventListener('focus', refresh);
+      window.removeEventListener('online', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+      void client.removeChannel(channel);
+    };
+  }, [identity, loading, synchronize]);
 
   useEffect(() => {
     const profileId = identity?.companyUserId;
@@ -3634,6 +3697,10 @@ fetchAllPages((from, to) => client
 
     load,
     loadData,
+    synchronize,
+    syncing,
+    syncError,
+    lastSyncedAt,
 
     addCustomer,
     updateCustomer,

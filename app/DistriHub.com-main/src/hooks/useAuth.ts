@@ -154,6 +154,7 @@ export function useAuth(): UseAuthReturn {
     }
 
     let cancelled = false;
+    let resolvedUserId: string | null = null;
 
     const applySession = async (session: Session | null, passwordRecovery = false) => {
       const requestId = ++identityRequestRef.current;
@@ -166,14 +167,17 @@ export function useAuth(): UseAuthReturn {
       });
 
       if (!session?.user) {
+        resolvedUserId = null;
         dispatch({ type: 'SET_PROFILE', profile: null });
         dispatch({ type: 'SET_IDENTITY', identity: null });
         dispatch({ type: 'SET_ERROR', error: null });
         return;
       }
 
-      dispatch({ type: 'SET_IDENTITY', identity: null });
-      dispatch({ type: 'SET_PROFILE', profile: null });
+      if (resolvedUserId !== session.user.id) {
+        dispatch({ type: 'SET_IDENTITY', identity: null });
+        dispatch({ type: 'SET_PROFILE', profile: null });
+      }
       dispatch({ type: 'SET_ERROR', error: null });
 
       if (signupInProgressRef.current) return;
@@ -189,6 +193,7 @@ export function useAuth(): UseAuthReturn {
 
         dispatch({ type: 'SET_IDENTITY', identity });
         dispatch({ type: 'SET_PROFILE', profile });
+        resolvedUserId = session.user.id;
         dispatch({ type: 'SET_ERROR', error: null });
       } catch (error: unknown) {
         if (cancelled || requestId !== identityRequestRef.current) return;
@@ -230,6 +235,7 @@ export function useAuth(): UseAuthReturn {
         });
 
         if (!session?.user) {
+          resolvedUserId = null;
           identityRequestRef.current += 1;
           dispatch({ type: 'SET_PROFILE', profile: null });
           dispatch({ type: 'SET_IDENTITY', identity: null });
@@ -239,7 +245,13 @@ export function useAuth(): UseAuthReturn {
 
         if (signupInProgressRef.current) return;
 
-        void applySession(session, event === 'PASSWORD_RECOVERY');
+        // Token renewal updates the session without clearing identity or unmounting the panel.
+        if (event === 'TOKEN_REFRESHED' && resolvedUserId === session.user.id) return;
+
+        // Defer database reads until the auth callback releases its session lock.
+        window.setTimeout(() => {
+          if (!cancelled) void applySession(session, event === 'PASSWORD_RECOVERY');
+        }, 0);
       },
     );
 

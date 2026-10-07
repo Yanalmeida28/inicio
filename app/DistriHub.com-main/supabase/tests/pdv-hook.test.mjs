@@ -30,7 +30,8 @@ async function harness({initialSales=[],initialInvoices=[],rpc,values=new Map()}
   const hookModule={exports:{}};
   vm.runInNewContext(compile(source),{
     exports:hookModule.exports,sessionStorage:storage,crypto:{randomUUID},console,
-    window:{addEventListener(){},removeEventListener(){}},
+    window:{addEventListener(){},removeEventListener(){},setInterval(){return 1;},clearInterval(){},setTimeout(){return 1;},clearTimeout(){}},
+    navigator:{onLine:true},
     document:{visibilityState:'visible',addEventListener(){},removeEventListener(){}},
     require(name){
       if(name==='react')return React;
@@ -46,6 +47,23 @@ async function harness({initialSales=[],initialInvoices=[],rpc,values=new Map()}
 }
 const payload=()=>({customer_id:'customer',customer_name:'Cliente',items:[{product_id:'physical',name:'Produto',quantity:1,unit_price:100}],total:100,branch_id:'branch',salesperson_id:null,customer_type:'varejo',delivery_type:'balcao',payment_method:'pix'});
 const snapshot=(overrides={})=>({credits:[{customer_id:'customer',allow_credit:true,credit_limit:1000,used:0,available:1000}],products:[],movements:[],sales:[],invoices:[],...overrides});
+
+test('background synchronization updates a sale completed on another device without loading the panel', async()=>{
+  const sales=[{id:'sale',branch_id:'branch',status:'pre_venda',items:[],total:100}];
+  const h=await harness({initialSales:sales});
+  assert.equal(h.current.sales[0].status,'pre_venda');
+  sales[0]={...sales[0],status:'concluida'};
+  let syncing;
+  await act(async()=>{
+    syncing=h.current.synchronize();
+    assert.equal(h.current.loading,false);
+    await syncing;
+  });
+  assert.equal(h.current.sales[0].status,'concluida');
+  assert.equal(h.current.syncing,false);
+  assert.equal(h.current.syncError,null);
+  assert.ok(h.current.lastSyncedAt);
+});
 
 test('editing pre-sale retains its ID and metadata while replacing items and total',async()=>{
   const original={...payload(),id:'existing-order',user_id:'owner',status:'pre_venda',origin:'pdv',payment_method:null,imei:'trace',serial_number:null};

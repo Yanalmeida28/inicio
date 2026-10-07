@@ -1888,6 +1888,19 @@ export function PartnerPanel({
             </p>
           )}
 
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '12px' }}>
+            <button className="rma-advance-btn" onClick={() => void partner.synchronize()} disabled={partner.loading || partner.syncing}>
+              {partner.syncing ? 'Sincronizando...' : 'Sincronizar agora'}
+            </button>
+            <span role="status" style={{ fontSize: '12px' }}>
+              {partner.syncError
+                ? `Falha ao sincronizar: ${partner.syncError}`
+                : partner.lastSyncedAt
+                  ? `Atualizado às ${partner.lastSyncedAt.toLocaleTimeString('pt-BR')}`
+                  : ''}
+            </span>
+          </div>
+
 
           <div className="partner-content">
             {storeSettings.internal_notice && <div role="note" className="store-internal-notice">{storeSettings.internal_notice}</div>}
