@@ -149,7 +149,7 @@ test('pre-sale double submission is blocked and recovery retains pre-sale status
   assert.equal(requests.length,2);
   assert.equal(requests[0].p_sale_id,requests[1].p_sale_id);
   assert.equal(requests[1].p_status,'pre_venda');
-  assert.equal(requests[1].p_payment_method,null);
+  assert.equal(requests[1].p_payment_method,'pix');
   assert.equal(h.values.size,0);
 });
 

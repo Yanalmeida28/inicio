@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 
 import type { User } from '@supabase/supabase-js';
+import type { PartnerSale } from '../types';
 
 import { usePartnerData } from '../hooks/usePartnerData';
 import { useDeviceHeartbeat } from '../hooks/useDeviceHeartbeat';
@@ -255,6 +256,7 @@ export function PartnerPanel({
 
   const partner = usePartnerData(identity);
   const [pdvRevision, setPdvRevision] = useState(0);
+  const [preSaleToCheckout, setPreSaleToCheckout] = useState<PartnerSale | null>(null);
   const [pdvReadError, setPdvReadError] = useState<string | null>(null);
   const [recoveringSale, setRecoveringSale] = useState(false);
   const [refreshingPdv, setRefreshingPdv] = useState(false);
@@ -1090,6 +1092,7 @@ export function PartnerPanel({
       total: number;
       customer_type: CustomerType;
       delivery_type: DeliveryType;
+      payment_method?: string | null;
       imei?: string;
       serial_number?: string;
       salesperson_id?: string | null;
@@ -1145,10 +1148,7 @@ export function PartnerPanel({
     );
 
     if (!sale) {
-      window.alert(
-        'Pré-venda não encontrada.',
-      );
-      return;
+      throw new Error('Pré-venda não encontrada. Sincronize os pedidos antes de tentar novamente.');
     }
 
     if (
@@ -1156,10 +1156,7 @@ export function PartnerPanel({
       (!lockedBranchId ||
         sale.branch_id !== lockedBranchId)
     ) {
-      window.alert(
-        'Acesso negado: você só pode finalizar pré-vendas da sua filial vinculada.',
-      );
-      return;
+      throw new Error('Acesso negado: você só pode finalizar pré-vendas da sua filial vinculada.');
     }
 
     const {
@@ -1931,6 +1928,9 @@ export function PartnerPanel({
             {(activeTab === 'pdv' || activeTab === 'historico') && !blockedTabs.includes('pdv') && (
               <div hidden={activeTab !== 'pdv'}>
               <PdvModule
+                preSaleToCheckout={preSaleToCheckout}
+                onRequestPreSale={setPreSaleToCheckout}
+                onConsumePreSale={() => setPreSaleToCheckout(null)}
                 cashContext={checkoutCash}
                 onOpenCash={() => setActiveTab('caixa')}
                 onConfirmCashOperator={!isEmployeeRestricted ? (operatorId) => {
@@ -2004,6 +2004,13 @@ export function PartnerPanel({
 
             {activeTab === 'pedidos' && (
               <OpenOrdersModule
+                onPullToPdv={(sale) => {
+                  if (sale.status !== 'pre_venda' || !sale.branch_id || blockedTabs.includes('pdv')) return;
+                  if (lockedBranchId && sale.branch_id !== lockedBranchId) return;
+                  setSelectedBranchId(sale.branch_id);
+                  setPreSaleToCheckout(sale);
+                  setActiveTab('pdv');
+                }}
                 onUpdateCustomer={async (id, customerId) => {
                   const { operatorId, operatorPin } = getOperatorContext();
                   await partner.updateOpenOrderCustomer(id, customerId, operatorId, operatorPin);

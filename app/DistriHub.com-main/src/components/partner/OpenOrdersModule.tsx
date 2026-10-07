@@ -26,7 +26,7 @@ type Props = {
   onPullToPdv?: (sale: PartnerSale) => void;
 };
 
-const cashierRoles: SalespersonRole[] = ['administrador', 'gerente', 'caixa'];
+const cashierRoles: SalespersonRole[] = ['administrador', 'gerente', 'caixa', 'vendedor'];
 
 const statusLabels: Record<string, { label: string; color: string }> = {
   aberta: { label: 'ABERTO', color: '#e6a06d' },
@@ -187,7 +187,7 @@ export function OpenOrdersModule({ canEditPrice, products, onUpdateItems, onUpda
 
   function requestFinalize(sale: PartnerSale) {
     setFinalizeTarget(sale);
-    setFinalizePayment('pix');
+    setFinalizePayment(sale.payment_method || 'pix');
     setFinalizeError(null);
   }
 
@@ -391,9 +391,9 @@ export function OpenOrdersModule({ canEditPrice, products, onUpdateItems, onUpda
                             <Wallet size={14} /> Finalizar
                           </button>
                         )}
-                        {canCheckout && onPullToPdv && (
-                          <button className="rma-advance-btn" onClick={() => onPullToPdv(s)} title="Puxar para PDV">
-                            <ArrowRight size={14} />
+                        {canCheckout && onPullToPdv && s.status === 'pre_venda' && (
+                          <button className="rma-advance-btn" onClick={() => onPullToPdv(s)} title="Resgatar para PDV">
+                            <ArrowRight size={14} /> Resgatar para PDV
                           </button>
                         )}
                         <SaleActionsMenu

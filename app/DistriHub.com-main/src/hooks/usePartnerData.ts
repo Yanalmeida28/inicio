@@ -1677,7 +1677,7 @@ fetchAllPages((from, to) => client
         const attempts = new PdvSaleAttemptStore(sessionStorage, scope);
         const previous = attempts.read();
         // Validate a NEW billed request. A retry may already have consumed its credit.
-        if (!previous && sale.payment_method === 'faturado') await validateBilledSale(sale);
+        if (!previous && sale.status !== 'pre_venda' && sale.payment_method === 'faturado') await validateBilledSale(sale);
         const candidate: PartnerSale = {
           ...sale, id: crypto.randomUUID(), user_id: currentIdentity.companyUserId,
           status: sale.status ?? 'concluida', created_at: new Date().toISOString(),
@@ -1742,7 +1742,7 @@ fetchAllPages((from, to) => client
   // part of the immutable request key, so a pending pre-sale cannot become a sale.
   const createPreSale = useCallback(
     (sale: SalePayload, operatorId?: string | null, operatorPin?: string | null) =>
-      createSale({ ...sale, status: 'pre_venda', payment_method: null, origin: 'pdv' }, operatorId, operatorPin),
+      createSale({ ...sale, status: 'pre_venda', payment_method: sale.payment_method ?? null, origin: 'pdv' }, operatorId, operatorPin),
     [createSale],
   );
 

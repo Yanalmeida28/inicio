@@ -120,6 +120,15 @@ test('online open orders can change customer without changing totals or creating
   assert.equal((await sql('SELECT count(*)::int AS n FROM partner_cash_movements')).rows[0].n,0);
 });
 
+test('pre-sale saves a planned payment without requiring open cash, charging or issuing an invoice', async () => {
+  const pre=await sale({status:'pre_venda',method:'faturado'});
+  const saved=(await sql('SELECT status,payment_method,payment_status FROM partner_sales WHERE id=$1',[pre.id])).rows[0];
+  assert.deepEqual(saved,{status:'pre_venda',payment_method:'faturado',payment_status:'pendente'});
+  assert.equal((await sql('SELECT count(*)::int AS n FROM partner_invoices')).rows[0].n,0);
+  assert.equal((await sql('SELECT count(*)::int AS n FROM partner_cash_movements')).rows[0].n,0);
+  assert.equal((await sql('SELECT stock FROM partner_products WHERE id=$1',[product])).rows[0].stock,10);
+});
+
 test('negotiated prices: owner and authenticated manager save prices without editing the catalog', async () => {
   await negotiatedSale(75.5);
   await negotiatedSale(120,{operator:manager,pin:'9876'});

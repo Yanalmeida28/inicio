@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import type { DeliveryType, PartnerProduct, PartnerCustomer, PartnerSale, PartnerSalesperson, SaleItem, SalespersonRole } from '../../types';
 import { SalePriceInput } from './SalePriceInput';
+import { PreSaleCheckout } from './PreSaleCheckout';
 import { money } from '../../utils';
 import { billedSaleError, pdvErrorMessage, pdvTotal, validSalePrice, type CustomerCredit } from '../../lib/pdv';
 
@@ -228,6 +229,9 @@ type Props = {
   sales: PartnerSale[];
   credits: CustomerCredit[];
   hasPendingSale?: boolean;
+  preSaleToCheckout?: PartnerSale | null;
+  onConsumePreSale?: () => void;
+  onRequestPreSale?: (sale: PartnerSale) => void;
   salespeople: PartnerSalesperson[];
   activeSalespersonId?: string | null;
   activeBranchName: string;
@@ -254,6 +258,7 @@ type Props = {
     total: number;
     customer_type: ClientType;
     delivery_type: DeliveryType;
+    payment_method?: string | null;
     imei?: string;
     serial_number?: string;
     salesperson_id?: string | null;
@@ -270,9 +275,16 @@ const PRODUCT_PAGE_SIZE = 30;
 export function PdvModule({
   cashContext, onOpenCash, onConfirmCashOperator,
   products, customers, sales, credits, hasPendingSale, salespeople, segment, selectedBranchId,
+  preSaleToCheckout, onConsumePreSale, onRequestPreSale,
   activeSalespersonId, activeBranchName, currentRole, canEditPrice, onCreateSale, onCreatePreSale, onFinalizePreSale, onCancelSale, onDeleteSale,
 }: Props) {
   const [subTab, setSubTab] = useState<PdvSubTab>('pdv');
+  const [checkoutPreSale, setCheckoutPreSale] = useState<PartnerSale | null>(null);
+  useEffect(() => {
+    if (!preSaleToCheckout) return;
+    setCheckoutPreSale(preSaleToCheckout);
+    setSubTab('pdv');
+  }, [preSaleToCheckout]);
   const moduleRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -337,7 +349,17 @@ export function PdvModule({
         {cashContext.status === 'error' && onOpenCash && <button type="button" className="rma-advance-btn" onClick={onOpenCash}>Conferir caixa</button>}
       </div>}
 
-      {subTab !== 'pre-venda' && (
+      {subTab === 'pdv' && checkoutPreSale && (
+        <PreSaleCheckout
+          key={checkoutPreSale.id}
+          sale={sales.find(sale => sale.id === checkoutPreSale.id) ?? checkoutPreSale}
+          selectedBranchId={selectedBranchId}
+          canCheckout={canCheckout && !hasPendingSale}
+          onFinalize={onFinalizePreSale}
+          onClose={() => { setCheckoutPreSale(null); onConsumePreSale?.(); }}
+        />
+      )}
+      {subTab !== 'pre-venda' && !checkoutPreSale && (
         <PdvCheckout
           products={products}
           customers={customers}
@@ -355,6 +377,7 @@ export function PdvModule({
 
       {subTab === 'pre-venda' && (
         <PreVendaTab
+          onPullToPdv={(sale) => { setCheckoutPreSale(sale); setSubTab('pdv'); onRequestPreSale?.(sale); }}
           products={products}
           customers={customers}
           sales={sales}
@@ -857,7 +880,8 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
 
 /* ============ Pré-Venda / Orçamentos ============ */
 
-function PreVendaTab({ products, customers, sales, salespeople, activeSalespersonId, segment, selectedBranchId, canCheckout, canEditPrice, onCreatePreSale, onFinalizePreSale, onCancelSale, onDeleteSale }: {
+function PreVendaTab({ products, customers, sales, salespeople, activeSalespersonId, segment, selectedBranchId, canCheckout, canEditPrice, onCreatePreSale, onFinalizePreSale, onCancelSale, onDeleteSale, onPullToPdv }: {
+  onPullToPdv: (sale: PartnerSale) => void;
   products: PartnerProduct[];
   customers: PartnerCustomer[];
   sales: PartnerSale[];
@@ -866,7 +890,7 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
   segment: string;
   selectedBranchId: string | null;
   canCheckout: boolean;
-  onCreatePreSale: (sale: { customer_id: string | null; customer_name: string; items: SaleItem[]; total: number; customer_type: ClientType; delivery_type: DeliveryType; imei?: string; serial_number?: string; salesperson_id?: string | null; branch_id?: string | null }) => Promise<void>;
+  onCreatePreSale: (sale: { customer_id: string | null; customer_name: string; items: SaleItem[]; total: number; customer_type: ClientType; delivery_type: DeliveryType; payment_method?: string | null; imei?: string; serial_number?: string; salesperson_id?: string | null; branch_id?: string | null }) => Promise<void>;
   canEditPrice: boolean;
   onFinalizePreSale: (id: string, paymentMethod: string) => Promise<void>;
   onCancelSale: (id: string, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
@@ -883,6 +907,7 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
   const [deliveryType, setDeliveryType] = useState<DeliveryType>('balcao');
   const [salespersonId, setSalespersonId] = useState('');
   const [saved, setSaved] = useState(false);
+  const [preSalePayment, setPreSalePayment] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [finalizeTarget, setFinalizeTarget] = useState<PartnerSale | null>(null);
@@ -981,6 +1006,7 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
     setSaveError(null);
     try {
       await onCreatePreSale({
+        payment_method: preSalePayment || null,
         customer_id: customerId || null,
         customer_name: customerName || customer?.name || fallbackName,
         items: cart,
@@ -993,6 +1019,7 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
         branch_id: selectedBranchId,
       });
       setCart([]); setCustomerId(''); setCustomerName(''); setImei(''); setSerial(''); setSalespersonId('');
+      setPreSalePayment('');
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
     } catch (error) {
@@ -1004,7 +1031,7 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
 
   function requestFinalize(sale: PartnerSale) {
     setFinalizeTarget(sale);
-    setFinalizePayment('pix');
+    setFinalizePayment(sale.payment_method || 'pix');
     setFinalizeError(null);
   }
 
@@ -1197,6 +1224,13 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
                 <strong>{money.format(total)}</strong>
               </div>
 
+              <label style={{ display: 'block', marginBottom: '12px' }}>Forma de pagamento prevista
+                <select value={preSalePayment} onChange={event => setPreSalePayment(event.target.value)} disabled={isSaving}>
+                  <option value="">A definir</option><option value="pix">PIX</option>
+                  <option value="dinheiro">Dinheiro</option><option value="cartao">Cartão</option><option value="faturado">Faturado</option>
+                </select>
+              </label>
+              <p className="otp-description">O pagamento será confirmado ao finalizar a pré-venda no caixa.</p>
               <button className="module-submit-btn pdv-checkout-btn" onClick={handleSavePreSale} disabled={isSaving}>
                 {saved ? <><Check size={18} /> Pré-Venda Salva!</> : <><ClipboardList size={18} /> {isSaving ? 'Salvando...' : 'Salvar Pré-Venda'}</>}
               </button>
@@ -1217,7 +1251,7 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
         <h4>Pré-Vendas Pendentes ({preSales.length})</h4>
         <div className="stock-table-wrap">
           <table className="rma-table">
-            <thead><tr><th>Cliente</th><th>Itens</th><th>Total</th><th>{traceabilityLabel}</th><th>Status</th><th>Data</th><th>Ações</th></tr></thead>
+            <thead><tr><th>Cliente</th><th>Itens</th><th>Total</th><th>{traceabilityLabel}</th><th>Pagamento</th><th>Data</th><th>Ações</th></tr></thead>
             <tbody>
               {preSales.length === 0 ? (
                 <tr><td colSpan={7} className="empty-row">Nenhuma pré-venda pendente.</td></tr>
@@ -1229,11 +1263,13 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
                     <td>{money.format(s.total)}</td>
                     <td>{s.imei ?? s.serial_number ?? '—'}</td>
                     <td>
-                      <span className="rma-status-badge" style={{ color: '#e6a06d', borderColor: '#e6a06d' }}>Pendente</span>
+                      <span>{s.payment_method || 'A definir'}</span>
+                      <small className="open-order-secondary">Pendente</small>
                     </td>
                     <td>{new Date(s.created_at).toLocaleDateString('pt-BR')}</td>
                     <td>
                       <div className="row-action-group">
+                        {canCheckout && <button className="rma-advance-btn" onClick={() => onPullToPdv(s)}>Resgatar para PDV</button>}
                         {canCheckout ? (
                           <button className="module-submit-btn compact" onClick={() => requestFinalize(s)} title="Finalizar Venda">
                             <Wallet size={14} /> Finalizar
