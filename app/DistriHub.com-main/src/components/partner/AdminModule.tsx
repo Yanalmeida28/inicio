@@ -1,4 +1,4 @@
-import { Component, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Component, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   Shield, BarChart3, Users, TrendingUp, TrendingDown,
   DollarSign, Wallet, Percent, AlertCircle,
@@ -29,7 +29,6 @@ function safeItems(sale: PartnerSale): SaleItem[] {
   return Array.isArray(sale.items) ? sale.items : [];
 }
 
-const DEFAULT_METRICS = { grossRevenue: 0, totalCost: 0, netRevenue: 0, profitMargin: 0, averageTicket: 0, count: 0 };
 
 class AdminErrorBoundary extends Component<
   { children: ReactNode },
@@ -200,7 +199,7 @@ function AdminModuleInner({
   renderCadastros,
   invoices = [], onReceiveInvoice,
   userId, sales, products, movements = [], salespeople, branches = [], customers = [], suppliers = [], categories = [],
-  selectedBranchId = '', onSelectBranch, onNavigate, ownerView = false,
+  selectedBranchId = '', onSelectBranch, ownerView = false,
 }: Props) {
   const [expandedSection, setExpandedSection] = useState<AdminSection>('dashboard');
   const [activeAdminTab, setActiveAdminTab] = useState<AdminTab>('dashboard');
@@ -482,7 +481,7 @@ function ExecutiveDashboard({
     return map;
   }, [products]);
 
-  function computeMetrics(salesList: PartnerSale[]) {
+  const computeMetrics = useCallback((salesList: PartnerSale[]) => {
     const grossRevenue = salesList.reduce((s, x) => s + (x.total ?? 0), 0);
     let totalCost = 0;
     for (const sale of salesList) {
@@ -494,10 +493,10 @@ function ExecutiveDashboard({
     const profitMargin = grossRevenue > 0 ? (netRevenue / grossRevenue) * 100 : 0;
     const averageTicket = salesList.length > 0 ? grossRevenue / salesList.length : 0;
     return { grossRevenue, totalCost, netRevenue, profitMargin, averageTicket, count: salesList.length };
-  }
+  }, [productCostMap]);
 
-  const current = useMemo(() => computeMetrics(currentSales), [currentSales, productCostMap]);
-  const previous = useMemo(() => computeMetrics(previousSales), [previousSales, productCostMap]);
+  const current = useMemo(() => computeMetrics(currentSales), [currentSales, computeMetrics]);
+  const previous = useMemo(() => computeMetrics(previousSales), [previousSales, computeMetrics]);
 
   const revenueGrowth = growthPct(current.grossRevenue, previous.grossRevenue);
   const costGrowth = growthPct(current.totalCost, previous.totalCost);

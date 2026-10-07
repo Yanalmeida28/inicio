@@ -29,7 +29,7 @@ export function AuthScreen({ onBack, onSignIn, onSignUp, onRequestPasswordReset,
   const [showRecovery, setShowRecovery] = useState(false);
   const [recoveryStep, setRecoveryStep] = useState<'identify' | 'otp' | 'reset'>('identify');
   const [recoveryEmail, setRecoveryEmail] = useState('');
-  const [recoveryWhatsapp, setRecoveryWhatsapp] = useState('');
+  const [, setRecoveryWhatsapp] = useState('');
   const [recoveryOtp, setRecoveryOtp] = useState(['', '', '', '']);
   const [recoveryOtpError, setRecoveryOtpError] = useState(false);
   const [recoveryOtpSent, setRecoveryOtpSent] = useState(false);

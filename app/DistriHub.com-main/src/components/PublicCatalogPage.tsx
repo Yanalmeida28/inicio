@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ExternalLink, ShoppingCart, Store, Tag, Image as ImageIcon } from 'lucide-react';
+import { ShoppingCart, Store, Image as ImageIcon } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { contrastText, normalizeColor } from '../lib/storeTheme';
-import type { PartnerBranch, PartnerProduct, PartnerProfile, StoreSettings } from '../types';
+import type { PartnerProduct } from '../types';
 
 const DEFAULT_CATALOG = {
   name: 'DistriHub',

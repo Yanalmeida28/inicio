@@ -55,7 +55,7 @@ export function RmaModule({
   const [editProductName, setEditProductName] = useState('');
   const [editProductSku, setEditProductSku] = useState('');
   const [editBatchOrOrder, setEditBatchOrOrder] = useState('');
-  const [editDefect, setEditDefect] = useState('');
+  const [, setEditDefect] = useState('');
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | RmaStatus>('all');
 

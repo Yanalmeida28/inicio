@@ -11,42 +11,151 @@ import TestRenderer, { act } from 'react-test-renderer';
 const require = createRequire(import.meta.url);
 const source = await readFile(new URL('../../src/hooks/usePartnerData.ts',import.meta.url),'utf8');
 const helperSource = await readFile(new URL('../../src/lib/pdv.ts',import.meta.url),'utf8');
+const syncSource = await readFile(new URL('../../src/lib/partnerSync.ts',import.meta.url),'utf8');
 const compile = source => ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText;
 let renderer;
 afterEach(async()=>{if(renderer) await act(async()=>renderer.unmount());renderer=null;});
-async function harness({initialSales=[],initialInvoices=[],rpc,values=new Map()}={}) {
+async function harness({initialSales=[],initialInvoices=[],rpc,values=new Map(),readResult,branchId=null,identity: suppliedIdentity}={}) {
   const storage={getItem:k=>values.get(k)??null,setItem:(k,v)=>values.set(k,v),removeItem:k=>values.delete(k)};
-  const identity={authUserId:'owner',companyUserId:'owner',salespersonId:null,branchId:null,role:'administrador'};
+  const identity=suppliedIdentity??{authUserId:'owner',companyUserId:'owner',salespersonId:null,branchId:null,role:'administrador'};
   const initial={partner_sales:initialSales,partner_invoices:initialInvoices};
-  const channel={on(){return channel;},subscribe(){return channel;}};
+  const channels=[];
+  const intervals=[];
+  const timeouts=new Map();
+  let timerId=0;
   const client={rpc,from(table){
     const q={select(){return q;},eq(){return q;},order(){return q;},limit(){return q;},range(){return q;},
       maybeSingle(){return Promise.resolve({data:null,error:null});},
-      then(resolve,reject){return Promise.resolve({data:initial[table]??[],error:null}).then(resolve,reject);}};
+      then(resolve,reject){const fallback={data:[...(initial[table]??[])],error:null};return Promise.resolve(readResult?.(table,fallback)??fallback).then(resolve,reject);}};
     return q;
-  },channel(){return channel;},removeChannel(){return Promise.resolve('ok');}};
+  },channel(name){const channel={name,handlers:[],on(event,filter,handler){channel.handlers.push({filter,handler});return channel;},subscribe(callback){channel.status=callback;return channel;}};channels.push(channel);return channel;},removeChannel(channel){channel.removed=true;return Promise.resolve('ok');}};
   const helperModule={exports:{}};
   vm.runInNewContext(compile(helperSource),{exports:helperModule.exports,require});
+  const syncModule={exports:{}};
+  vm.runInNewContext(compile(syncSource),{exports:syncModule.exports});
   const hookModule={exports:{}};
   vm.runInNewContext(compile(source),{
     exports:hookModule.exports,sessionStorage:storage,crypto:{randomUUID},console,
-    window:{addEventListener(){},removeEventListener(){},setInterval(){return 1;},clearInterval(){},setTimeout(){return 1;},clearTimeout(){}},
+    window:{addEventListener(){},removeEventListener(){},setInterval(callback){intervals.push(callback);return intervals.length;},clearInterval(){},setTimeout(callback){const id=++timerId;timeouts.set(id,callback);return id;},clearTimeout(id){timeouts.delete(id);}},
     navigator:{onLine:true},
     document:{visibilityState:'visible',addEventListener(){},removeEventListener(){}},
     require(name){
       if(name==='react')return React;
       if(name==='../lib/supabase')return {supabase:client,isSupabaseConfigured:true};
       if(name==='../lib/pdv')return helperModule.exports;
+      if(name==='../lib/partnerSync')return syncModule.exports;
       throw new Error('Unexpected import '+name);
     },
   });
   let current;
-  function Probe(){current=hookModule.exports.usePartnerData(identity);return null;}
+  function Probe(){current=hookModule.exports.usePartnerData(identity,branchId);return null;}
   await act(async()=>{renderer=TestRenderer.create(React.createElement(Probe));});
-  return {get current(){return current;},values};
+  return {get current(){return current;},values,
+    emit(table,eventType,record,old={}){for(const channel of channels.filter(channel=>!channel.removed))for(const {filter,handler} of channel.handlers)if(filter.table===table&&filter.event===eventType)handler({eventType,new:record,old});},
+    status(status){channels.findLast(channel=>channel.name.startsWith('partner-sync-')&&!channel.removed)?.status?.(status);},
+    tick(){for(const callback of intervals)callback();},
+    flushTimers(){for(const [id,callback] of [...timeouts]){timeouts.delete(id);callback();}},
+  };
 }
 const payload=()=>({customer_id:'customer',customer_name:'Cliente',items:[{product_id:'physical',name:'Produto',quantity:1,unit_price:100}],total:100,branch_id:'branch',salesperson_id:null,customer_type:'varejo',delivery_type:'balcao',payment_method:'pix'});
 const snapshot=(overrides={})=>({credits:[{customer_id:'customer',allow_credit:true,credit_limit:1000,used:0,available:1000}],products:[],movements:[],sales:[],invoices:[],...overrides});
+
+test('a delayed full refresh cannot reopen a sale after a newer PDV snapshot',async()=>{
+  const pre={...payload(),id:'pre',user_id:'owner',status:'pre_venda'};
+  let delayed=false,release,reached;
+  const waiting=new Promise(resolve=>{reached=resolve;});
+  const h=await harness({initialSales:[pre],readResult(table,fallback){
+    if(delayed&&table==='partner_suppliers')return new Promise(resolve=>{release=()=>resolve(fallback);reached();});
+  },rpc:async()=>({data:snapshot({sales:[{...pre,status:'concluida'}]}),error:null})});
+  delayed=true;
+  await act(async()=>{
+    const refresh=h.current.synchronize();await waiting;
+    await h.current.refreshPdv('branch');
+    release();await refresh;
+  });
+  assert.equal(h.current.sales[0].status,'concluida');
+});
+
+test('a failed secondary query preserves its collection while still updating sales',async()=>{
+  const pre={...payload(),id:'pre',user_id:'owner',status:'pre_venda'};
+  const rows=[pre];let fail=false;
+  const h=await harness({initialSales:rows,initialInvoices:[{id:'invoice',branch_id:'branch',amount:100}],readResult(table){
+    if(fail&&table==='partner_invoices')return {data:null,error:{message:'Invoice read failed'}};
+  }});
+  rows[0]={...pre,status:'concluida'};fail=true;
+  await act(async()=>h.current.synchronize());
+  assert.equal(h.current.sales[0].status,'concluida');
+  assert.equal(h.current.invoices[0].id,'invoice');
+  assert.equal(h.current.error,null);
+  assert.match(h.current.syncError,/preservados/);
+});
+
+test('a local checkout supersedes an older pending PDV read',async()=>{
+  const pre={...payload(),id:'pre',user_id:'owner',status:'pre_venda'};
+  let calls=0,release;
+  const h=await harness({initialSales:[pre],rpc:async(name,args)=>{
+    if(name==='execute_partner_sale_mutation')return {data:args.p_sale_id,error:null};
+    if(++calls===1)return new Promise(resolve=>{release=()=>resolve({data:snapshot({sales:[pre]}),error:null});});
+    return {data:snapshot({sales:[{...pre,status:'concluida'}]}),error:null};
+  }});
+  await act(async()=>{
+    const old=h.current.refreshPdv('branch');
+    await h.current.finalizePreSale('pre','pix');
+    release();await old;
+  });
+  assert.equal(h.current.sales[0].status,'concluida');
+});
+
+test('Realtime updates one authorized row and healthy subscriptions avoid historical polling',async()=>{
+  const pre={...payload(),id:'pre',user_id:'owner',status:'pre_venda'};let calls=0;
+  const h=await harness({initialSales:[pre],branchId:'branch',rpc:async()=>{calls++;return {data:snapshot({sales:[pre]}),error:null};}});
+  await act(async()=>{h.status('SUBSCRIBED');h.flushTimers();});
+  assert.equal(calls,1);
+  await act(async()=>{h.tick();h.flushTimers();});
+  assert.equal(calls,1);
+  act(()=>h.emit('partner_sales','UPDATE',{...pre,status:'concluida'}));
+  assert.equal(h.current.sales[0].status,'concluida');
+  act(()=>h.emit('partner_sales','UPDATE',pre));
+  assert.equal(h.current.sales[0].status,'concluida');
+  act(()=>h.emit('partner_sales','UPDATE',{...pre,user_id:'foreign',status:'cancelada'}));
+  assert.equal(h.current.sales[0].status,'concluida');
+  act(()=>h.emit('partner_sales','UPDATE',{...pre,branch_id:'other',status:'cancelada'}));
+  assert.equal(h.current.sales[0].status,'concluida');
+  await act(async()=>{h.status('CHANNEL_ERROR');h.tick();h.flushTimers();});
+  assert.equal(calls,2);
+});
+
+test('Realtime supersedes a delayed full snapshot and deletes only known scoped rows',async()=>{
+  const pre={...payload(),id:'pre',user_id:'owner',status:'pre_venda'};
+  let delayed=false,release,reached;
+  const waiting=new Promise(resolve=>{reached=resolve;});
+  const h=await harness({initialSales:[pre],branchId:'branch',readResult(table,fallback){
+    if(delayed&&table==='service_order_photos')return new Promise(resolve=>{release=()=>resolve(fallback);reached();});
+  }});
+  delayed=true;
+  await act(async()=>{
+    const refresh=h.current.synchronize();await waiting;
+    h.emit('partner_sales','UPDATE',{...pre,status:'concluida'});
+    release();await refresh;
+  });
+  assert.equal(h.current.sales[0].status,'concluida');
+  act(()=>h.emit('partner_sales','DELETE',{}, {id:'unknown'}));
+  assert.equal(h.current.sales.length,1);
+  act(()=>h.emit('partner_sales','DELETE',{}, {id:'pre'}));
+  assert.equal(h.current.sales.length,0);
+});
+
+test('employee sessions retain authorized branch reconciliation when RLS filters Realtime records',async()=>{
+  let calls=0;
+  const h=await harness({branchId:'branch',identity:{authUserId:'worker',companyUserId:'owner',salespersonId:'worker-id',branchId:'branch',role:'caixa'},rpc:async(name,args)=>{
+    assert.equal(name,'get_partner_pdv_snapshot');assert.equal(args.p_branch_id,'branch');calls++;
+    return {data:snapshot(),error:null};
+  }});
+  await act(async()=>{h.status('SUBSCRIBED');h.flushTimers();});
+  assert.equal(calls,1);
+  await act(async()=>{h.tick();h.flushTimers();});
+  assert.equal(calls,2);
+});
 
 test('background synchronization updates a sale completed on another device without loading the panel', async()=>{
   const sales=[{id:'sale',branch_id:'branch',status:'pre_venda',items:[],total:100}];

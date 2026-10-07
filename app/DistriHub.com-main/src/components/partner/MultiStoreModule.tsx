@@ -115,7 +115,7 @@ export function MultiStoreModule({
                 disabled={Boolean(deletingBranchId)}
                 actions={[
                   { label: 'Editar filial', icon: Pencil, run: () => startEdit(branch) },
-                  { label: 'Excluir filial', icon: Trash2, run: () => { void handleDelete(branch); } },
+                  { label: 'Excluir filial', icon: Trash2, run: () => { void handleDelete(branch); }, danger: true },
                 ]}
               />
             </div>

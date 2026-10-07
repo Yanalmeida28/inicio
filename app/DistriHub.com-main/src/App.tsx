@@ -1,16 +1,10 @@
-import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import { ArrowLeft, Lock, ShieldAlert, Eye, KeyRound, Mail, ShieldCheck, CheckCircle2 } from 'lucide-react';
 import type { BusinessSegment } from './types';
-import { formatWhatsAppMessage } from './utils';
-import { useProducts } from './hooks/useProducts';
 import { useAuth } from './hooks/useAuth';
 import { useSuperAdminAuth } from './hooks/useSuperAdminAuth';
 import { useCart } from './hooks/useCart';
-import { useCatalogFilters } from './hooks/useCatalogFilters';
-import { Header } from './components/Header';
-import { NavBar } from './components/NavBar';
 import { CartDrawer } from './components/CartDrawer';
-import { Footer } from './components/Footer';
 import { HubHome } from './components/HubHome';
 import { supabase, isSupabaseConfigured } from './lib/supabase';
 
@@ -34,27 +28,14 @@ function LoadingScreen({ label }: { label: string }) {
 }
 
 function App() {
-  const { products, loading } = useProducts();
   const auth = useAuth();
   const superAdminAuth = useSuperAdminAuth();
 
   const [view, setView] = useState<View>('hub');
   const [partnerInitialTab, setPartnerInitialTab] = useState<string | undefined>(undefined);
   const [superAdminUnlocked, setSuperAdminUnlocked] = useState(false);
-  const { cart, cartCount, cartTotal, cartQuantities, incrementQuantity, decrementQuantity, removeFromCart, setCart } = useCart();
-  const {
-    selectedBrand,
-    setSelectedBrand,
-    selectedCategory,
-    setSelectedCategory,
-    search,
-    setSearch,
-    filteredProducts,
-    productCountByBrand,
-    clearFilters,
-  } = useCatalogFilters(products);
+  const { cart, cartCount, cartTotal, incrementQuantity, decrementQuantity, removeFromCart } = useCart();
   const [cartOpen, setCartOpen] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
   const [businessName, setBusinessName] = useState('');
   const [city, setCity] = useState('');
   const storeWhatsapp = auth.profile?.whatsapp ?? null;
@@ -148,11 +129,6 @@ function App() {
       setView('partner');
     }
     return result;
-  }
-
-  function handleNavigateFromAdmin(tab: string) {
-    setPartnerInitialTab(tab);
-    setView('partner');
   }
 
   return (

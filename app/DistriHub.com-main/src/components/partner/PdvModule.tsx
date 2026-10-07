@@ -23,11 +23,12 @@ function CustomerSearchPicker({ id, customers, customerId, clientType, onSelect 
   const [query, setQuery] = useState('');
   const [isOpen, setIsOpen] = useState(false);
   const selectedCustomer = customers.find((customer) => customer.id === customerId) ?? null;
+  const selectedCustomerName = selectedCustomer?.name;
 
   useEffect(() => {
-    if (selectedCustomer) setQuery(selectedCustomer.name);
+    if (selectedCustomerName) setQuery(selectedCustomerName);
     else if (!isOpen) setQuery('');
-  }, [customerId, selectedCustomer?.name, isOpen]);
+  }, [selectedCustomerName, isOpen]);
 
   const filteredCustomers = useMemo(() => {
     const normalize = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
@@ -128,11 +129,12 @@ function SalespersonSearchPicker({ id, salespeople, salespersonId, onSelect }: {
   const [query, setQuery] = useState('');
   const [isOpen, setIsOpen] = useState(false);
   const selectedSalesperson = salespeople.find((salesperson) => salesperson.id === salespersonId) ?? null;
+  const selectedSalespersonName = selectedSalesperson?.name;
 
   useEffect(() => {
-    if (selectedSalesperson) setQuery(selectedSalesperson.name);
+    if (selectedSalespersonName) setQuery(selectedSalespersonName);
     else if (!isOpen) setQuery('');
-  }, [salespersonId, selectedSalesperson?.name, isOpen]);
+  }, [selectedSalespersonName, isOpen]);
 
   const filteredSalespeople = useMemo(() => {
     const normalize = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();

@@ -238,8 +238,6 @@ export function PartnerPanel({
   const [activeTab, setActiveTab] = useState<Tab>('cadastros');
   const [selectedBranchId, setSelectedBranchId] = useState<string>('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [currentRole, setCurrentRole] =
-    useState<SalespersonRole>('administrador');
 
   const [currentSalespersonId, setCurrentSalespersonId] =
     useState<string | null>(null);
@@ -254,7 +252,7 @@ export function PartnerPanel({
   const [operatorPinInput, setOperatorPinInput] = useState('');
   const [operatorPinError, setOperatorPinError] = useState('');
 
-  const partner = usePartnerData(identity);
+  const partner = usePartnerData(identity, identity?.salespersonId ? identity.branchId : selectedBranchId || null);
   const [pdvRevision, setPdvRevision] = useState(0);
   const [preSaleToCheckout, setPreSaleToCheckout] = useState<PartnerSale | null>(null);
   const [pdvReadError, setPdvReadError] = useState<string | null>(null);
@@ -361,13 +359,10 @@ export function PartnerPanel({
 
   const checkoutCash = useCheckoutCash(effectiveBranchId, isEmployeeRestricted ? null : currentSalespersonId,
     isEmployeeRestricted ? null : activeOperatorPin, activeSalesperson?.name ?? 'Proprietário / Administrador', operatorScope);
+  const refreshCash = checkoutCash.refresh;
   useEffect(() => {
-    if (activeTab === 'pdv' || activeTab === 'pedidos' || activeTab === 'caixa') void checkoutCash.refresh().catch(() => {});
-  }, [activeTab, checkoutCash.refresh]);
-
-  useEffect(() => {
-    setCurrentRole(effectiveRole);
-  }, [effectiveRole]);
+    if (activeTab === 'pdv' || activeTab === 'pedidos' || activeTab === 'caixa') void refreshCash().catch(() => {});
+  }, [activeTab, refreshCash]);
 
   useEffect(() => {
     if (
@@ -426,7 +421,7 @@ export function PartnerPanel({
     return allTabs.filter((tab) =>
       !blockedTabs.includes(tab.id),
     );
-  }, [blockedTabs, isEmployeeRestricted]);
+  }, [blockedTabs]);
 
   useEffect(() => {
     if (

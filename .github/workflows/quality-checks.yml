@@ -24,5 +24,6 @@ jobs:
       - run: npm ci
       - run: npm ci --prefix supabase/tests
       - run: npm run typecheck
+      - run: npm run lint -- --max-warnings 0
       - run: npm test
       - run: npm run build

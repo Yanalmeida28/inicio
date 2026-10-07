@@ -267,8 +267,8 @@ export function FiscalModule({ products, sales, customers, profile, currentRole,
       <div className="module-header">
         <span className="module-icon"><FileText size={20} /></span>
         <div>
-          <h3>Emissão de Nota Fiscal — NF-e / NFC-e</h3>
-          <p>Gestão fiscal completa com cálculo de impostos e emissão de documentos por filial</p>
+          <h3>Solicitações fiscais — NF-e / NFC-e</h3>
+          <p>Prepare solicitações por filial. A transmissão e autorização dependem da integração com um provedor fiscal.</p>
         </div>
       </div>
 

@@ -20,12 +20,12 @@ export function SaleActionsMenu(props: Props) {
     { label: 'Imprimir etiqueta', icon: QrCode, run: props.onPrintLabel },
     { label: 'Enviar por WhatsApp', icon: MessageCircle, run: props.onWhatsApp },
     { label: 'Enviar por e-mail', icon: Mail, run: props.onEmail },
-    ...(props.onCancel ? [{ label: 'Cancelar/apagar venda', icon: Ban, run: props.onCancel }] : []),
+    ...(props.onCancel ? [{ label: 'Cancelar/apagar venda', icon: Ban, run: props.onCancel, danger: true }] : []),
   ];
   return <ActionsMenu actions={actions} label="Ações da venda" />;
 }
 
-export function ActionsMenu({ actions, label, disabled = false }: { actions: { label: string; icon: LucideIcon; run: () => void }[]; label: string; disabled?: boolean }) {
+export function ActionsMenu({ actions, label, disabled = false }: { actions: { label: string; icon: LucideIcon; run: () => void; danger?: boolean }[]; label: string; disabled?: boolean }) {
   const [open, setOpen] = useState(false);
   const [position, setPosition] = useState({ top: 0, left: 0 });
   const trigger = useRef<HTMLButtonElement>(null);
@@ -77,7 +77,7 @@ export function ActionsMenu({ actions, label, disabled = false }: { actions: { l
           buttons[next]?.focus();
         }
       }}>
-        {actions.map(({ label, icon: Icon, run }, index) => <button key={label} type="button" role="menuitem" className={index === actions.length - 1 ? 'sale-actions-danger' : undefined} onClick={() => {
+        {actions.map(({ label, icon: Icon, run, danger }) => <button key={label} type="button" role="menuitem" className={danger ? 'sale-actions-danger' : undefined} onClick={() => {
           setOpen(false);
           trigger.current?.focus();
           run();

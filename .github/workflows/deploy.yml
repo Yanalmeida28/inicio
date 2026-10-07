@@ -36,6 +36,9 @@ jobs:
       - name: Validar TypeScript
         run: npm run typecheck
 
+      - name: Validar lint
+        run: npm run lint -- --max-warnings 0
+
       - name: Executar testes
         run: npm test
 

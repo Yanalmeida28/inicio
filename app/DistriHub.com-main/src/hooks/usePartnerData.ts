@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PostgrestError } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { mergePartnerChange, PartnerDataVersions } from '../lib/partnerSync';
 import { billedSaleError, isDefinitiveSaleRejection, PdvSaleAttemptStore, pdvErrorMessage, type CustomerCredit } from '../lib/pdv';
 import type {
   AdminCompany,
@@ -8,11 +9,7 @@ import type {
   AdminLojista,
   AuditLog,
   B2BOrder,
-  BusinessSegment,
-  Category,
-  CustomerGroup,
   DeliveryStatus,
-  DeliveryType,
   PartnerBranch,
   PartnerCategory,
   PartnerCombo,
@@ -242,8 +239,10 @@ function ensureEmployeeBranch(
   }
 }
 
-export function usePartnerData(identity: PartnerIdentity | null) {
+export function usePartnerData(identity: PartnerIdentity | null, syncBranchId: string | null = null) {
   const [data, setData] = useState<PartnerDataState>(initialData);
+  const dataSnapshotRef = useRef(data);
+  dataSnapshotRef.current = data;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
@@ -272,6 +271,7 @@ export function usePartnerData(identity: PartnerIdentity | null) {
 
   const mountedRef = useRef(true);
   const requestIdRef = useRef(0);
+  const dataRevisionRef = useRef(new PartnerDataVersions(Object.keys(initialData)));
 
   useEffect(() => {
     mountedRef.current = true;
@@ -319,12 +319,14 @@ export function usePartnerData(identity: PartnerIdentity | null) {
       return;
     }
 
+    dataRevisionRef.current.invalidate();
     setData(initialData);
     setError(null);
   }, []);
 
   const loadData = useCallback(async (background = false) => {
     const currentRequestId = ++requestIdRef.current;
+    const readRevision = dataRevisionRef.current.begin();
 
     if (!identity) {
       clearData();
@@ -560,12 +562,6 @@ fetchAllPages((from, to) => client
         }
       }
 
-      // Keep the current snapshot if a background refresh is incomplete.
-      if (background) {
-        const failed = secondaryResults.find(([, result]) => result.error);
-        if (failed) throw failed[1].error;
-      }
-
       if (
         !mountedRef.current ||
         currentRequestId !== requestIdRef.current
@@ -595,7 +591,8 @@ fetchAllPages((from, to) => client
         );
       };
 
-      setData({
+      setData((previous) => {
+        const snapshot: PartnerDataState = {
         profile:
           (profileResult.data as PartnerProfile | null) ?? null,
         branches:
@@ -657,9 +654,32 @@ fetchAllPages((from, to) => client
         serviceOrderPhotos:
           (serviceOrderPhotosResult.data as ServiceOrderPhoto[] | null) ??
           [],
+        };
+        // A PDV read, local mutation or Realtime event may have superseded this read.
+        for (const key of Object.keys(initialData) as Array<keyof PartnerDataState>) {
+          if (!dataRevisionRef.current.isCurrent(readRevision, key)) {
+            Object.assign(snapshot, { [key]: previous[key] });
+          }
+        }
+        const secondaryCollections = {
+          partner_suppliers: 'suppliers', partner_categories: 'categories', partner_stock_movements: 'movements',
+          partner_store_settings: 'settings', rma_requests_v2: 'rmas', partner_combos: 'combos',
+          partner_modifiers: 'modifiers', partner_invoices: 'invoices', b2b_orders: 'orders',
+          partner_audit_logs: 'auditLogs', service_orders: 'serviceOrders',
+          service_order_items: 'serviceOrderItems', service_order_photos: 'serviceOrderPhotos',
+        } as const;
+        for (const [table, result] of secondaryResults) {
+          if (result.error) {
+            const key = secondaryCollections[table];
+            Object.assign(snapshot, { [key]: previous[key] });
+          }
+        }
+        return snapshot;
       });
       setLastSyncedAt(new Date());
-      setSyncError(null);
+      setSyncError(secondaryResults.some(([, result]) => result.error)
+        ? 'Alguns módulos não foram atualizados. Os dados anteriores foram preservados; tente sincronizar novamente.'
+        : null);
     } catch (err) {
       if (
         !mountedRef.current ||
@@ -682,10 +702,12 @@ fetchAllPages((from, to) => client
   }, [clearData, identity, requireIdentity]);
 
   useEffect(() => {
+    const requests = requestIdRef;
+    const revisions = dataRevisionRef;
     setLastSyncedAt(null);
     setSyncError(null);
     void loadData();
-    return () => { ++requestIdRef.current; };
+    return () => { ++requests.current; revisions.current.invalidate(); };
   }, [loadData]);
 
   const synchronize = useCallback(async () => {
@@ -702,36 +724,6 @@ fetchAllPages((from, to) => client
       if (mountedRef.current) setSyncing(false);
     }
   }, [identity, loading, loadData]);
-
-  useEffect(() => {
-    if (!identity || !supabase || !isSupabaseConfigured || loading) return;
-    const client = supabase;
-    let debounce: number | undefined;
-    const refresh = () => {
-      if (document.visibilityState !== 'visible' || !navigator.onLine) return;
-      window.clearTimeout(debounce);
-      debounce = window.setTimeout(() => { void synchronize(); }, 500);
-    };
-    const channel = client.channel(`partner-sync-${identity.authUserId}-${identity.companyUserId}`);
-    for (const table of ['partner_sales', 'partner_products', 'partner_invoices', 'b2b_orders']) {
-      channel.on('postgres_changes', {
-        event: '*', schema: 'public', table, filter: `user_id=eq.${identity.companyUserId}`,
-      }, refresh);
-    }
-    channel.subscribe((status) => { if (status === 'SUBSCRIBED') refresh(); });
-    const timer = window.setInterval(refresh, 30_000);
-    window.addEventListener('focus', refresh);
-    window.addEventListener('online', refresh);
-    document.addEventListener('visibilitychange', refresh);
-    return () => {
-      window.clearTimeout(debounce);
-      window.clearInterval(timer);
-      window.removeEventListener('focus', refresh);
-      window.removeEventListener('online', refresh);
-      document.removeEventListener('visibilitychange', refresh);
-      void client.removeChannel(channel);
-    };
-  }, [identity, loading, synchronize]);
 
   useEffect(() => {
     const profileId = identity?.companyUserId;
@@ -751,6 +743,7 @@ fetchAllPages((from, to) => client
         return;
       }
       if (profile) {
+        dataRevisionRef.current.invalidate(["profile"]);
         setData((previous) => ({ ...previous, profile: profile as PartnerProfile }));
       }
     };
@@ -762,6 +755,7 @@ fetchAllPages((from, to) => client
         (payload) => {
           const updatedProfile = payload.new as PartnerProfile;
           if (updatedProfile.id === profileId) {
+            dataRevisionRef.current.invalidate(["profile"]);
             setData((previous) => ({ ...previous, profile: updatedProfile }));
           }
         },
@@ -841,6 +835,7 @@ fetchAllPages((from, to) => client
         updated_at: new Date().toISOString(),
       };
 
+      dataRevisionRef.current.invalidate(["customers"]);
       setData((prev) => ({
         ...prev,
         customers: [
@@ -883,7 +878,7 @@ fetchAllPages((from, to) => client
       const effectiveOperatorId = operatorId ?? null;
       const effectiveOperatorPin = operatorPin ?? null;
 
-      const { data: updated, error: rpcError } =
+      const {  error: rpcError } =
         await client.rpc(
           'execute_partner_customer_mutation',
           {
@@ -934,6 +929,7 @@ fetchAllPages((from, to) => client
         updated_at: new Date().toISOString(),
       };
 
+      dataRevisionRef.current.invalidate(["customers"]);
       setData((prev) => ({
         ...prev,
         customers: prev.customers.map((item) =>
@@ -988,6 +984,7 @@ fetchAllPages((from, to) => client
         throw rpcError;
       }
 
+      dataRevisionRef.current.invalidate(["customers"]);
       setData((prev) => ({
         ...prev,
         customers: prev.customers.filter(
@@ -1053,6 +1050,7 @@ fetchAllPages((from, to) => client
         updated_at: new Date().toISOString(),
       };
 
+      dataRevisionRef.current.invalidate(["products"]);
       setData((prev) => ({
         ...prev,
         products: [
@@ -1098,7 +1096,7 @@ fetchAllPages((from, to) => client
       const effectiveOperatorId = operatorId ?? null;
       const effectiveOperatorPin = operatorPin ?? null;
 
-      const { data: updated, error: rpcError } =
+      const {  error: rpcError } =
         await supabase.rpc(
           'execute_partner_product_mutation',
           {
@@ -1141,6 +1139,7 @@ fetchAllPages((from, to) => client
         updated_at: new Date().toISOString(),
       };
 
+      dataRevisionRef.current.invalidate(["products"]);
       setData((prev) => ({
         ...prev,
         products: prev.products.map((item) =>
@@ -1195,6 +1194,7 @@ fetchAllPages((from, to) => client
         throw rpcError;
       }
 
+      dataRevisionRef.current.invalidate(["products"]);
       setData((prev) => ({
         ...prev,
         products: prev.products.filter(
@@ -1254,6 +1254,7 @@ fetchAllPages((from, to) => client
         updated_at: new Date().toISOString(),
       };
 
+      dataRevisionRef.current.invalidate(["suppliers"]);
       setData((prev) => ({
         ...prev,
         suppliers: [
@@ -1276,7 +1277,7 @@ fetchAllPages((from, to) => client
       operatorId?: string | null,
       operatorPin?: string | null,
     ) => {
-      const currentIdentity = requireIdentity();
+      requireIdentity();
 
       if (!isSupabaseConfigured || !supabase) {
         throw new Error('Supabase não configurado.');
@@ -1295,7 +1296,7 @@ fetchAllPages((from, to) => client
       const effectiveOperatorPin = operatorPin ?? null;
 
       // A RPC atual aceita apenas nome, telefone e observações.
-      const { data: updated, error: rpcError } =
+      const {  error: rpcError } =
         await supabase.rpc(
           'execute_partner_supplier_mutation',
           {
@@ -1320,6 +1321,7 @@ fetchAllPages((from, to) => client
         updated_at: new Date().toISOString(),
       };
 
+      dataRevisionRef.current.invalidate(["suppliers"]);
       setData((prev) => ({
         ...prev,
         suppliers: prev.suppliers.map((item) =>
@@ -1338,7 +1340,7 @@ fetchAllPages((from, to) => client
       operatorId?: string | null,
       operatorPin?: string | null,
     ) => {
-      const currentIdentity = requireIdentity();
+      requireIdentity();
 
       if (!isSupabaseConfigured || !supabase) {
         throw new Error('Supabase não configurado.');
@@ -1369,6 +1371,7 @@ fetchAllPages((from, to) => client
         throw rpcError;
       }
 
+      dataRevisionRef.current.invalidate(["suppliers"]);
       setData((prev) => ({
         ...prev,
         suppliers: prev.suppliers.filter(
@@ -1403,6 +1406,7 @@ fetchAllPages((from, to) => client
       const createdCategory =
         created as PartnerCategory;
 
+      dataRevisionRef.current.invalidate(["categories"]);
       setData((prev) => ({
         ...prev,
         categories: [
@@ -1450,6 +1454,7 @@ fetchAllPages((from, to) => client
         throw error;
       }
 
+      dataRevisionRef.current.invalidate(["categories"]);
       setData((prev) => ({
         ...prev,
         categories: prev.categories.map((item) =>
@@ -1495,6 +1500,7 @@ fetchAllPages((from, to) => client
         throw error;
       }
 
+      dataRevisionRef.current.invalidate(["categories"]);
       setData((prev) => ({
         ...prev,
         categories: prev.categories.filter(
@@ -1530,6 +1536,7 @@ fetchAllPages((from, to) => client
 
       const createdBranch = created as PartnerBranch;
 
+      dataRevisionRef.current.invalidate(["branches"]);
       setData((prev) => ({
         ...prev,
         branches: [
@@ -1572,6 +1579,7 @@ fetchAllPages((from, to) => client
         throw error;
       }
 
+      dataRevisionRef.current.invalidate(["branches"]);
       setData((prev) => ({
         ...prev,
         branches: prev.branches.map((item) =>
@@ -1610,6 +1618,7 @@ fetchAllPages((from, to) => client
         throw error;
       }
 
+      dataRevisionRef.current.invalidate(["branches"]);
       setData((prev) => ({
         ...prev,
         branches: prev.branches.filter(
@@ -1626,6 +1635,7 @@ fetchAllPages((from, to) => client
     ensureEmployeeBranch(currentIdentity, branchId);
     const scope = currentIdentity.authUserId + ':' + currentIdentity.companyUserId;
     const request = ++pdvRequestId.current;
+    const readRevision = dataRevisionRef.current.begin(['products', 'sales', 'invoices', 'movements']);
     setPdvCredits([]);
     if (!isSupabaseConfigured || !supabase) throw new Error('Sincronização do PDV requer Supabase.');
     const { data: snapshot, error: syncError } = await supabase.rpc('get_partner_pdv_snapshot', { p_branch_id: branchId });
@@ -1639,16 +1649,100 @@ fetchAllPages((from, to) => client
       const mergeBranch = <T extends { branch_id?: string | null }>(old: T[], rows: T[]) =>
         [...rows, ...old.filter(row => row.branch_id !== branchId)];
       setData(prev => ({ ...prev,
-        products: mergeBranch(prev.products, result.products),
-        sales: mergeBranch(prev.sales, result.sales),
-        invoices: mergeBranch(prev.invoices, result.invoices),
-        movements: mergeBranch(prev.movements, result.movements),
+        products: dataRevisionRef.current.isCurrent(readRevision, 'products') ? mergeBranch(prev.products, result.products) : prev.products,
+        sales: dataRevisionRef.current.isCurrent(readRevision, 'sales') ? mergeBranch(prev.sales, result.sales) : prev.sales,
+        invoices: dataRevisionRef.current.isCurrent(readRevision, 'invoices') ? mergeBranch(prev.invoices, result.invoices) : prev.invoices,
+        movements: dataRevisionRef.current.isCurrent(readRevision, 'movements') ? mergeBranch(prev.movements, result.movements) : prev.movements,
       }));
-      setPdvCredits(result.credits);
+      if (dataRevisionRef.current.isCurrent(readRevision, 'invoices') && dataRevisionRef.current.isCurrent(readRevision, 'sales')) {
+        setPdvCredits(result.credits);
+      }
       setPdvSyncWarning(null);
     }
     return result;
   }, [requireIdentity]);
+
+  const refreshOperationalData = useCallback(async () => {
+    if (!syncBranchId || loading || syncInFlight.current || saleInFlight.current || !navigator.onLine) return;
+    const scope = identityScopeRef.current;
+    syncInFlight.current = true;
+    setSyncing(true);
+    try {
+      await refreshPdv(syncBranchId);
+      if (scope === identityScopeRef.current) {
+        setLastSyncedAt(new Date());
+        setSyncError(null);
+      }
+    } catch (failure) {
+      if (scope === identityScopeRef.current) setSyncError(pdvErrorMessage(failure));
+    } finally {
+      syncInFlight.current = false;
+      if (mountedRef.current) setSyncing(false);
+    }
+  }, [syncBranchId, loading, refreshPdv]);
+
+  const hasLoaded = lastSyncedAt !== null;
+  useEffect(() => {
+    if (!identity || !supabase || !isSupabaseConfigured || loading || !hasLoaded) return;
+    const client = supabase;
+    const companyId = identity.companyUserId;
+    const scope = identity.authUserId + ':' + companyId;
+    const branchId = identity.salespersonId ? identity.branchId : syncBranchId;
+    let active = true;
+    let subscribed = false;
+    let debounce: number | undefined;
+    const reconcile = () => {
+      if (!active || document.visibilityState !== 'visible' || !navigator.onLine) return;
+      window.clearTimeout(debounce);
+      debounce = window.setTimeout(() => { void refreshOperationalData(); }, 500);
+    };
+    const channel = client.channel(`partner-sync-${scope}-${branchId ?? 'all'}`);
+    for (const table of ['partner_sales', 'partner_products', 'partner_invoices', 'stock_movements', 'b2b_orders', 'rma_requests_v2']) {
+      const applyChange = (payload: { eventType: string; new: Record<string, unknown>; old: Record<string, unknown> }) => {
+        if (!active || identityScopeRef.current !== scope) return;
+        const key = {
+          partner_sales: 'sales', partner_products: 'products', partner_invoices: 'invoices',
+          stock_movements: 'movements', b2b_orders: 'orders', rma_requests_v2: 'rmas',
+        }[table] as 'sales' | 'products' | 'invoices' | 'movements' | 'orders' | 'rmas';
+        if (payload.eventType !== 'DELETE' && (payload.new.user_id !== companyId || (branchId && payload.new.branch_id !== branchId))) return;
+        if (payload.eventType === 'DELETE' && !dataSnapshotRef.current[key].some(row => row.id === payload.old.id && row.user_id === companyId && (!branchId || row.branch_id === branchId))) return;
+        dataRevisionRef.current.invalidate([key]);
+        setData(previous => {
+          const rows = previous[key] as Array<PartnerSale | PartnerProduct | PartnerInvoice | StockMovement | B2BOrder | RmaRequest>;
+          return { ...previous, [key]: mergePartnerChange(rows, payload.eventType, payload.new, payload.old.id, companyId, branchId, key === 'sales') };
+        });
+        setLastSyncedAt(new Date());
+        // Credit is company-wide and cannot be derived from this branch's rows.
+        // Reconcile after financial events so billed checkout is not left disabled.
+        if (table === 'partner_invoices' || table === 'partner_sales') {
+          setPdvCredits([]);
+          reconcile();
+        }
+      };
+      channel.on('postgres_changes', { event: 'INSERT', schema: 'public', table, filter: `user_id=eq.${companyId}` }, applyChange);
+      channel.on('postgres_changes', { event: 'UPDATE', schema: 'public', table, filter: `user_id=eq.${companyId}` }, applyChange);
+      channel.on('postgres_changes', { event: 'DELETE', schema: 'public', table }, applyChange);
+    }
+    channel.subscribe(status => {
+      subscribed = status === 'SUBSCRIBED';
+      if (subscribed) reconcile();
+    });
+    // Employee RLS is narrower than the authorized PDV RPC (especially invoices).
+    // Keep branch reconciliation for employees without broadening table access.
+    const timer = window.setInterval(() => { if (!subscribed || identity.salespersonId) reconcile(); }, 30_000);
+    window.addEventListener('focus', reconcile);
+    window.addEventListener('online', reconcile);
+    document.addEventListener('visibilitychange', reconcile);
+    return () => {
+      active = false;
+      window.clearTimeout(debounce);
+      window.clearInterval(timer);
+      window.removeEventListener('focus', reconcile);
+      window.removeEventListener('online', reconcile);
+      document.removeEventListener('visibilitychange', reconcile);
+      void client.removeChannel(channel);
+    };
+  }, [identity, syncBranchId, loading, hasLoaded, refreshOperationalData]);
 
   const syncConfirmedSale = useCallback(async (branchId: string) => {
     try { await refreshPdv(branchId); }
@@ -1721,6 +1815,7 @@ fetchAllPages((from, to) => client
         }
         // Success is final even if the following read fails. Never throw a checkout failure here.
         if (identityScopeRef.current === scope) {
+          dataRevisionRef.current.invalidate(["sales"]);
           setData(prev => ({ ...prev, sales: [ns, ...prev.sales.filter(item => item.id !== ns.id)] }));
         }
         try { attempts.complete(ns.id); setPendingSale(null); }
@@ -1768,6 +1863,7 @@ fetchAllPages((from, to) => client
         if (error) throw new Error(pdvErrorMessage(error));
         if (confirmedId !== id) throw new Error('Não foi possível confirmar a edição. Atualize os pedidos antes de tentar novamente.');
       }
+      dataRevisionRef.current.invalidate(["sales"]);
       setData(prev => ({ ...prev, sales: prev.sales.map(item => item.id === id ? { ...item, items, total } : item) }));
       if (isSupabaseConfigured && supabase) await syncConfirmedSale(sale.branch_id);
     } finally { saleInFlight.current = false; }
@@ -1791,6 +1887,7 @@ fetchAllPages((from, to) => client
         if (error) throw new Error(pdvErrorMessage(error));
         if (confirmed !== true) throw new Error('O servidor não confirmou a alteração do cliente.');
       }
+      dataRevisionRef.current.invalidate(["sales"]);
       setData(previous => ({ ...previous, sales: previous.sales.map(item => item.id === id ? { ...item, customer_id: customerId, customer_name: customer.name } : item) }));
       if (isSupabaseConfigured && supabase) await syncConfirmedSale(sale.branch_id);
     } finally { saleInFlight.current = false; }
@@ -1827,6 +1924,7 @@ fetchAllPages((from, to) => client
 
       const scope = currentIdentity.authUserId + ':' + currentIdentity.companyUserId;
       if (identityScopeRef.current === scope) {
+        dataRevisionRef.current.invalidate(["sales"]);
         setData((prev) => ({
           ...prev,
           sales: prev.sales.map((item) => item.id === saleId
@@ -1914,6 +2012,7 @@ fetchAllPages((from, to) => client
         }
       }
 
+      dataRevisionRef.current.invalidate(["sales"]);
       setData(prev => ({ ...prev, sales: prev.sales.map(item => item.id === id
         ? { ...item, status: 'concluida', completed_at: new Date().toISOString(), payment_method: paymentMethod, payment_status: paymentMethod === 'faturado' ? 'pendente' : 'pago' }
         : item) }));
@@ -1987,6 +2086,7 @@ fetchAllPages((from, to) => client
           throw rpcErr;
         }
 
+        dataRevisionRef.current.invalidate(["sales","invoices"]);
         setData(prev => ({ ...prev,
           sales: prev.sales.map(item => item.id === id
             ? { ...item, status: 'cancelada', payment_status: item.payment_method === 'faturado' ? 'cancelado' : item.payment_status }
@@ -1998,6 +2098,7 @@ fetchAllPages((from, to) => client
         return;
       }
 
+      dataRevisionRef.current.invalidate(["sales"]);
       setData((prev) => ({
         ...prev,
         sales: prev.sales.map(
@@ -2057,6 +2158,7 @@ fetchAllPages((from, to) => client
         }
       }
 
+      dataRevisionRef.current.invalidate(["sales","invoices"]);
       setData((prev) => ({
         ...prev,
         sales: prev.sales.filter(
@@ -2141,6 +2243,7 @@ fetchAllPages((from, to) => client
         }
       }
 
+      dataRevisionRef.current.invalidate(["products","movements"]);
       setData((prev) => ({
         ...prev,
         products: prev.products.map(
@@ -2288,6 +2391,7 @@ fetchAllPages((from, to) => client
         throw error;
       }
 
+      dataRevisionRef.current.invalidate(["settings"]);
       setData((prev) => ({
         ...prev,
         settings:
@@ -2296,7 +2400,7 @@ fetchAllPages((from, to) => client
 
       return updated as StoreSettings;
     },
-    [identity, requireIdentity],
+    [requireIdentity],
   );
 
   const updateProfile = useCallback(
@@ -2326,6 +2430,7 @@ fetchAllPages((from, to) => client
         throw error;
       }
 
+      dataRevisionRef.current.invalidate(["profile"]);
       setData((prev) => ({
         ...prev,
         profile:
@@ -2334,7 +2439,7 @@ fetchAllPages((from, to) => client
 
       return updated as PartnerProfile;
     },
-    [identity, requireIdentity],
+    [requireIdentity],
   );
 
   const createRma = useCallback(
@@ -2374,6 +2479,7 @@ fetchAllPages((from, to) => client
       const createdRma =
         created as RmaRequest;
 
+      dataRevisionRef.current.invalidate(["rmas"]);
       setData((prev) => ({
         ...prev,
         rmas: [
@@ -2384,7 +2490,7 @@ fetchAllPages((from, to) => client
 
       return createdRma;
     },
-    [identity, requireIdentity],
+    [requireIdentity],
   );
 
   const updateRmaStatus = useCallback(
@@ -2433,6 +2539,7 @@ fetchAllPages((from, to) => client
         throw error;
       }
 
+      dataRevisionRef.current.invalidate(["rmas"]);
       setData((prev) => ({
         ...prev,
         rmas: prev.rmas.map(
@@ -2487,6 +2594,7 @@ fetchAllPages((from, to) => client
         throw error;
       }
 
+      dataRevisionRef.current.invalidate(["rmas"]);
       setData((prev) => ({
         ...prev,
         rmas: prev.rmas.filter(
@@ -2527,6 +2635,7 @@ fetchAllPages((from, to) => client
       const createdCombo =
         created as PartnerCombo;
 
+      dataRevisionRef.current.invalidate(["combos"]);
       setData((prev) => ({
         ...prev,
         combos: [
@@ -2565,6 +2674,7 @@ fetchAllPages((from, to) => client
         throw error;
       }
 
+      dataRevisionRef.current.invalidate(["combos"]);
       setData((prev) => ({
         ...prev,
         combos: prev.combos.map(
@@ -2601,6 +2711,7 @@ fetchAllPages((from, to) => client
         throw error;
       }
 
+      dataRevisionRef.current.invalidate(["combos"]);
       setData((prev) => ({
         ...prev,
         combos: prev.combos.filter(
@@ -2644,6 +2755,7 @@ fetchAllPages((from, to) => client
       const createdModifier =
         created as PartnerModifier;
 
+      dataRevisionRef.current.invalidate(["modifiers"]);
       setData((prev) => ({
         ...prev,
         modifiers: [
@@ -2682,6 +2794,7 @@ fetchAllPages((from, to) => client
         throw error;
       }
 
+      dataRevisionRef.current.invalidate(["modifiers"]);
       setData((prev) => ({
         ...prev,
         modifiers: prev.modifiers.map(
@@ -2718,6 +2831,7 @@ fetchAllPages((from, to) => client
         throw error;
       }
 
+      dataRevisionRef.current.invalidate(["modifiers"]);
       setData((prev) => ({
         ...prev,
         modifiers: prev.modifiers.filter(
@@ -2804,6 +2918,7 @@ fetchAllPages((from, to) => client
         pin_configured: !!salesperson.new_pin,
       };
 
+      dataRevisionRef.current.invalidate(["salespeople"]);
       setData((prev) => ({
         ...prev,
         salespeople: [
@@ -2849,7 +2964,7 @@ fetchAllPages((from, to) => client
 
       // Mesma assinatura de produção da criação (11 parâmetros);
       // p_salesperson_id identifica o colaborador que está sendo editado.
-      const { data: updated, error } =
+      const {  error } =
         await supabase.rpc(
           'execute_partner_salesperson_mutation',
           {
@@ -2903,6 +3018,7 @@ fetchAllPages((from, to) => client
           : existing.pin_configured ?? false,
       };
 
+      dataRevisionRef.current.invalidate(["salespeople"]);
       setData((prev) => ({
         ...prev,
         salespeople:
@@ -2942,6 +3058,7 @@ fetchAllPages((from, to) => client
         throw error;
       }
 
+      dataRevisionRef.current.invalidate(["salespeople"]);
       setData((prev) => ({
         ...prev,
         salespeople:
@@ -2986,6 +3103,7 @@ fetchAllPages((from, to) => client
       const createdInvoice =
         created as PartnerInvoice;
 
+      dataRevisionRef.current.invalidate(["invoices"]);
       setData((prev) => ({
         ...prev,
         invoices: [
@@ -3043,6 +3161,7 @@ fetchAllPages((from, to) => client
         throw error;
       }
 
+      dataRevisionRef.current.invalidate(["invoices"]);
       setData((prev) => ({
         ...prev,
         invoices: prev.invoices.map(
@@ -3097,6 +3216,7 @@ fetchAllPages((from, to) => client
       const createdOrder =
         created as ServiceOrder;
 
+      dataRevisionRef.current.invalidate(["serviceOrders"]);
       setData((prev) => ({
         ...prev,
         serviceOrders: [
@@ -3154,6 +3274,7 @@ fetchAllPages((from, to) => client
         throw error;
       }
 
+      dataRevisionRef.current.invalidate(["serviceOrders"]);
       setData((prev) => ({
         ...prev,
         serviceOrders:
@@ -3241,6 +3362,7 @@ fetchAllPages((from, to) => client
       const createdItem =
         created as ServiceOrderItem;
 
+      dataRevisionRef.current.invalidate(["serviceOrderItems"]);
       setData((prev) => ({
         ...prev,
         serviceOrderItems: [
@@ -3305,6 +3427,7 @@ fetchAllPages((from, to) => client
         throw error;
       }
 
+      dataRevisionRef.current.invalidate(["serviceOrderItems"]);
       setData((prev) => ({
         ...prev,
         serviceOrderItems:
@@ -3367,6 +3490,7 @@ fetchAllPages((from, to) => client
       const createdPhoto =
         created as ServiceOrderPhoto;
 
+      dataRevisionRef.current.invalidate(["serviceOrderPhotos"]);
       setData((prev) => ({
         ...prev,
         serviceOrderPhotos: [
@@ -3431,6 +3555,7 @@ fetchAllPages((from, to) => client
         throw error;
       }
 
+      dataRevisionRef.current.invalidate(["serviceOrderPhotos"]);
       setData((prev) => ({
         ...prev,
         serviceOrderPhotos:
@@ -3484,6 +3609,7 @@ fetchAllPages((from, to) => client
       const createdOrder =
         created as B2BOrder;
 
+      dataRevisionRef.current.invalidate(["orders"]);
       setData((prev) => ({
         ...prev,
         orders: [
@@ -3541,6 +3667,7 @@ fetchAllPages((from, to) => client
         throw error;
       }
 
+      dataRevisionRef.current.invalidate(["orders"]);
       setData((prev) => ({
         ...prev,
         orders: prev.orders.map(
@@ -3562,6 +3689,10 @@ fetchAllPages((from, to) => client
       operatorId?: string | null,
       operatorPin?: string | null,
     ) => {
+      // This RPC authenticates the current session; legacy operator parameters
+      // are accepted for compatibility and are never persisted.
+      void operatorId;
+      void operatorPin;
       const currentIdentity = requireIdentity();
 
       if (!movement.branch_id) {
@@ -3623,6 +3754,7 @@ fetchAllPages((from, to) => client
                 new Date().toISOString(),
             };
 
+      dataRevisionRef.current.invalidate(["movements"]);
       setData((prev) => ({
         ...prev,
         movements: [
@@ -3687,6 +3819,7 @@ fetchAllPages((from, to) => client
           created as AuditLog;
 
         if (mountedRef.current) {
+          dataRevisionRef.current.invalidate(["auditLogs"]);
           setData((prev) => ({
             ...prev,
             auditLogs: [
@@ -3699,7 +3832,7 @@ fetchAllPages((from, to) => client
         void currentIdentity;
       }
     },
-    [requireIdentity],
+    [data.profile?.name, data.salespeople, requireIdentity],
   );
 
   const load = useCallback(

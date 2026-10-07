@@ -97,7 +97,7 @@ export interface PartnerBranch {
 }
 
 export interface PartnerCustomer {
-  status: any;
+  status?: string | null;
   id: string;
   user_id: string;
   name: string;
@@ -144,9 +144,9 @@ export interface PartnerCustomer {
 }
 
 export interface PartnerSupplier {
-  status: any;
-  zip_code: any;
-  state: any;
+  status?: string | null;
+  zip_code?: string | null;
+  state?: string | null;
   id: string;
   user_id: string;
   name: string;
@@ -162,7 +162,7 @@ export interface PartnerSupplier {
 }
 
 export interface PartnerCategory {
-  branch_id: any;
+  branch_id?: string | null;
   id: string;
   user_id: string;
   name: string;
@@ -171,11 +171,11 @@ export interface PartnerCategory {
 
 export interface PartnerProduct {
   supplier_id?: string | null;
-  brand: any;
-  active: any;
-  price: any;
-  image: any;
-  description: any;
+  brand?: string | null;
+  active?: boolean;
+  price?: number;
+  image?: string | null;
+  description?: string | null;
   id: string;
   user_id: string;
   name: string;

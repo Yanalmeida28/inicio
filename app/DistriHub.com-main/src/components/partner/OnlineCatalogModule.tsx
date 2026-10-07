@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   Globe, Share2, QrCode, ExternalLink, Clock, TicketPercent, Instagram,
-  Facebook, MessageCircle, Copy, Check, Eye, EyeOff, Power,
+  Facebook, MessageCircle, Check, Eye, EyeOff, Power,
 } from 'lucide-react';
 import type { StoreSettings } from '../../types';
 
