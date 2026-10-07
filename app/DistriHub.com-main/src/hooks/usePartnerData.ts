@@ -710,21 +710,6 @@ fetchAllPages((from, to) => client
     return () => { ++requests.current; revisions.current.invalidate(); };
   }, [loadData]);
 
-  const synchronize = useCallback(async () => {
-    if (!identity || !supabase || !isSupabaseConfigured || loading || syncInFlight.current) return;
-    if (!navigator.onLine) {
-      setSyncError('Sem internet. A sincronizacao sera retomada quando a conexao voltar.');
-      return;
-    }
-    syncInFlight.current = true;
-    setSyncing(true);
-    try { await loadData(true); }
-    finally {
-      syncInFlight.current = false;
-      if (mountedRef.current) setSyncing(false);
-    }
-  }, [identity, loading, loadData]);
-
   useEffect(() => {
     const profileId = identity?.companyUserId;
     if (!profileId || !isSupabaseConfigured || !supabase) return;
@@ -1661,6 +1646,30 @@ fetchAllPages((from, to) => client
     }
     return result;
   }, [requireIdentity]);
+
+  const synchronize = useCallback(async () => {
+    if (!identity || !supabase || !isSupabaseConfigured || loading || syncInFlight.current) return;
+    if (!navigator.onLine) {
+      setSyncError('Sem internet. A sincronização será retomada quando a conexão voltar.');
+      return;
+    }
+    const scope = identityScopeRef.current;
+    syncInFlight.current = true;
+    setSyncing(true);
+    try {
+      // Employee table RLS intentionally exposes fewer rows than the PDV RPC.
+      // Never replace an authorized branch snapshot with that smaller subset.
+      if (identity.salespersonId && syncBranchId) {
+        await refreshPdv(syncBranchId);
+        if (scope === identityScopeRef.current) { setLastSyncedAt(new Date()); setSyncError(null); }
+      } else await loadData(true);
+    } catch (failure) {
+      if (scope === identityScopeRef.current) setSyncError(pdvErrorMessage(failure));
+    } finally {
+      syncInFlight.current = false;
+      if (mountedRef.current) setSyncing(false);
+    }
+  }, [identity, syncBranchId, loading, loadData, refreshPdv]);
 
   const refreshOperationalData = useCallback(async () => {
     if (!syncBranchId || loading || syncInFlight.current || saleInFlight.current || !navigator.onLine) return;

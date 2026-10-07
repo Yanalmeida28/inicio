@@ -155,6 +155,8 @@ test('employee sessions retain authorized branch reconciliation when RLS filters
   assert.equal(calls,1);
   await act(async()=>{h.tick();h.flushTimers();});
   assert.equal(calls,2);
+  await act(async()=>h.current.synchronize());
+  assert.equal(calls,3);
 });
 
 test('background synchronization updates a sale completed on another device without loading the panel', async()=>{
