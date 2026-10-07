@@ -15,6 +15,7 @@ import { usePayables } from '../../hooks/usePayables';
 import { AccountsModule } from './AccountsModule';
 import { CustomerAccountsModule } from './CustomerAccountsModule';
 import { FinancialFlowModule } from './FinancialFlowModule';
+import type { AdminCadastrosTarget } from '../../lib/cadastrosNavigation';
 import { financialAccounts, type PayableAccount } from '../../lib/accounts';
 import type { PartnerInvoice } from '../../types';
 import type {
@@ -55,6 +56,7 @@ class AdminErrorBoundary extends Component<
 }
 
 type Props = {
+  renderCadastros?: (target: AdminCadastrosTarget) => ReactNode;
   invoices?: PartnerInvoice[];
   onReceiveInvoice?: (id: string, amount: number) => Promise<void>;
   userId?: string;
@@ -159,6 +161,7 @@ const sidebarSections: {
 ];
 
 export function AdminModule({
+  renderCadastros,
   invoices = [], onReceiveInvoice,
   userId, sales = [], products = [], movements = [], salespeople = [], branches = [], customers = [], suppliers = [], categories = [],
   selectedBranchId = '', onSelectBranch, onNavigate,
@@ -166,6 +169,7 @@ export function AdminModule({
   return (
     <AdminErrorBoundary>
       <AdminModuleInner
+        renderCadastros={renderCadastros}
         invoices={invoices}
         onReceiveInvoice={onReceiveInvoice}
         userId={userId}
@@ -186,6 +190,7 @@ export function AdminModule({
 }
 
 function AdminModuleInner({
+  renderCadastros,
   invoices = [], onReceiveInvoice,
   userId, sales, products, movements = [], salespeople, branches = [], customers = [], suppliers = [], categories = [],
   selectedBranchId = '', onSelectBranch, onNavigate,
@@ -332,6 +337,7 @@ function AdminModuleInner({
             <InlineFiscalView sales={sales} products={products} />
           )}
           {activeAdminTab === 'cadastros' && (
+            renderCadastros ? renderCadastros(activeItemId as AdminCadastrosTarget) :
             <InlineCadastrosView
               products={products}
               customers={customers}

@@ -28,6 +28,8 @@ type PartnerCustomerUpdate = Partial<
 };
 
 type Props = {
+  initialTab?: SubTab;
+  productType?: 'produto' | 'servico' | 'todos';
   products: PartnerProduct[];
   branches: PartnerBranch[];
   selectedBranchId: string | null;
@@ -90,6 +92,7 @@ function getActionPopoverPosition(event: React.MouseEvent<HTMLButtonElement>, wi
 }
 
 export function CadastrosModule({
+  initialTab = 'produtos', productType = 'todos',
   products, branches, selectedBranchId, categories, suppliers, salespeople, combos, modifiers, customers, sales,
   allSales, rmaRequests = [], segment, onAddProduct, onUpdateProduct, onDeleteProduct,
   onReplenishStock,
@@ -98,7 +101,7 @@ export function CadastrosModule({
   onAddCombo, onDeleteCombo, onAddModifier, onDeleteModifier, onAddCustomer,
   onUpdateCustomer, onLoadCustomer, onDeleteCustomer,
 }: Props) {
-  const [subTab, setSubTab] = useState<SubTab>('produtos');
+  const [subTab, setSubTab] = useState<SubTab>(initialTab);
   const filteredProducts = selectedBranchId
     ? products.filter((product) => product.branch_id === selectedBranchId)
     : [];
@@ -128,7 +131,8 @@ export function CadastrosModule({
       <div className="subtab-content">
         {subTab === 'produtos' && (
           <ProductsSubTab
-            products={filteredProducts}
+            products={filteredProducts.filter(product => productType === 'todos' || product.is_service === (productType === 'servico'))}
+            defaultIsService={productType === 'servico'}
             allProducts={products}
             branches={branches}
             selectedBranchId={selectedBranchId}
@@ -194,7 +198,8 @@ export function CadastrosModule({
   );
 }
 
-function ProductsSubTab({ products, allProducts, branches, selectedBranchId, categories, suppliers, onAddSupplier, segment, onAddProduct, onUpdateProduct, onDeleteProduct }: {
+function ProductsSubTab({ defaultIsService = false, products, allProducts, branches, selectedBranchId, categories, suppliers, onAddSupplier, segment, onAddProduct, onUpdateProduct, onDeleteProduct }: {
+  defaultIsService?: boolean;
   products: PartnerProduct[];
   allProducts: PartnerProduct[];
   branches: PartnerBranch[];
@@ -226,7 +231,7 @@ function ProductsSubTab({ products, allProducts, branches, selectedBranchId, cat
   const [minStock, setMinStock] = useState('5');
   const [category, setCategory] = useState('');
   const [supplierId, setSupplierId] = useState('');
-  const [isService, setIsService] = useState(false);
+  const [isService, setIsService] = useState(defaultIsService);
   const [ncm, setNcm] = useState('');
   const [cfop, setCfop] = useState('');
   const [cstCsosn, setCstCsosn] = useState('');
@@ -277,7 +282,7 @@ function ProductsSubTab({ products, allProducts, branches, selectedBranchId, cat
         image: undefined,
         description: undefined
       });
-      setName(''); setSku(''); setCost(''); setSale(''); setWholesale(''); setStock(''); setMinStock('5'); setCategory(''); setSupplierId(''); setIsService(false);
+      setName(''); setSku(''); setCost(''); setSale(''); setWholesale(''); setStock(''); setMinStock('5'); setCategory(''); setSupplierId(''); setIsService(defaultIsService);
       setNcm(''); setCfop(''); setCstCsosn(''); setIcmsRate(''); setPisRate(''); setCofinsRate('');
       setShowForm(false);
     } catch (error) {

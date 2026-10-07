@@ -21,6 +21,12 @@ export type DeliveryType =
   | 'entrega'
   | 'retirada';
 
+export type DeliveryStatus =
+  | 'pendente'
+  | 'em_rota'
+  | 'entregue'
+  | 'falhou';
+
 export interface Product {
   id: number;
   name: string;
@@ -254,6 +260,8 @@ export interface PartnerSale {
   branch_id: string | null;
   customer_type: CustomerType;
   delivery_type: DeliveryType;
+  delivery_status?: DeliveryStatus;
+  delivery_driver_id?: string | null;
   status:
     | 'aberta'
     | 'concluida'

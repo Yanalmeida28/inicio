@@ -1,27 +1,15 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
-  Truck, MapPin, Package, Check, Clock, X, Phone, Navigation,
+  Truck, MapPin, Package, Check, Clock, X, Navigation,
 } from 'lucide-react';
-import type { PartnerSale, PartnerSalesperson } from '../../types';
+import type { DeliveryStatus, PartnerSale, PartnerSalesperson } from '../../types';
 import { money } from '../../utils';
-
-type DeliveryStatus = 'pendente' | 'em_rota' | 'entregue' | 'falhou';
-
-type Delivery = {
-  saleId: string;
-  customerName: string;
-  address: string;
-  items: number;
-  total: number;
-  status: DeliveryStatus;
-  driverId: string | null;
-  phone: string;
-};
 
 type Props = {
   sales: PartnerSale[];
   salespeople: PartnerSalesperson[];
   selectedBranchId: string | null;
+  onUpdateDelivery: (saleId: string, status: DeliveryStatus, driverId: string | null) => Promise<void>;
 };
 
 const statusConfig: Record<DeliveryStatus, { label: string; color: string; icon: typeof Clock }> = {
@@ -31,29 +19,28 @@ const statusConfig: Record<DeliveryStatus, { label: string; color: string; icon:
   falhou: { label: 'Falhou', color: '#e3829b', icon: X },
 };
 
-export function DeliveryModule({ sales, salespeople, selectedBranchId }: Props) {
-  const drivers = salespeople.filter((s) => s.role === 'logistica' && s.active);
-  const [deliveryUpdates, setDeliveryUpdates] = useState<Record<string, Pick<Delivery, 'status' | 'driverId'>>>({});
+export function DeliveryModule({ sales, salespeople, selectedBranchId, onUpdateDelivery }: Props) {
+  const drivers = salespeople.filter((s) => s.role === 'logistica' && (s.active ?? s.is_active));
+  const [savingSaleIds, setSavingSaleIds] = useState<Set<string>>(() => new Set());
+  const savingRef = useRef(new Set<string>());
+  const [saveError, setSaveError] = useState('');
 
   const deliveries = useMemo(
     () => sales
       .filter((sale) => sale.delivery_type === 'entrega' && sale.status !== 'cancelada')
       .filter((sale) => !selectedBranchId || sale.branch_id === selectedBranchId)
-      .slice(0, 20)
       .map((sale) => {
-        const updates = deliveryUpdates[sale.id];
         return {
           saleId: sale.id,
           customerName: sale.customer_name ?? 'Cliente',
           address: '',
-          items: sale.items.length,
+          items: Array.isArray(sale.items) ? sale.items.length : 0,
           total: sale.total,
-          status: updates?.status ?? 'pendente',
-          driverId: updates?.driverId ?? null,
-          phone: '',
+          status: sale.delivery_status ?? 'pendente',
+          driverId: sale.delivery_driver_id ?? null,
         };
       }),
-    [sales, selectedBranchId, deliveryUpdates],
+    [sales, selectedBranchId],
   );
 
   const [filter, setFilter] = useState<DeliveryStatus | 'all'>('all');
@@ -66,12 +53,19 @@ export function DeliveryModule({ sales, salespeople, selectedBranchId }: Props) 
   const totalValue = useMemo(() => deliveries.reduce((sum, d) => sum + d.total, 0), [deliveries]);
   const assignedCount = useMemo(() => deliveries.filter((d) => d.driverId).length, [deliveries]);
 
-  function updateStatus(saleId: string, status: DeliveryStatus) {
-    setDeliveryUpdates((prev) => ({ ...prev, [saleId]: { status, driverId: prev[saleId]?.driverId ?? null } }));
-  }
-
-  function assignDriver(saleId: string, driverId: string) {
-    setDeliveryUpdates((prev) => ({ ...prev, [saleId]: { status: prev[saleId]?.status ?? 'pendente', driverId: driverId || null } }));
+  async function saveDelivery(saleId: string, status: DeliveryStatus, driverId: string | null) {
+    if (savingRef.current.has(saleId)) return;
+    savingRef.current.add(saleId);
+    setSavingSaleIds(new Set(savingRef.current));
+    setSaveError('');
+    try {
+      await onUpdateDelivery(saleId, status, driverId);
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : 'Não foi possível salvar a entrega.');
+    } finally {
+      savingRef.current.delete(saleId);
+      setSavingSaleIds(new Set(savingRef.current));
+    }
   }
 
   const stats = {
@@ -90,6 +84,8 @@ export function DeliveryModule({ sales, salespeople, selectedBranchId }: Props) 
           <p>Acompanhe e organize as entregas dos seus pedidos</p>
         </div>
       </div>
+
+      {saveError && <p className="otp-error-msg" role="alert">{saveError}</p>}
 
       <div className="financial-dashboard">
         <div className="fin-card">
@@ -173,7 +169,7 @@ export function DeliveryModule({ sales, salespeople, selectedBranchId }: Props) 
             ) : (
               filtered.map((d) => {
                 const cfg = statusConfig[d.status];
-                const driver = drivers.find((s) => s.id === d.driverId);
+                const isSaving = savingSaleIds.has(d.saleId);
                 return (
                   <tr key={d.saleId}>
                     <td>
@@ -185,12 +181,13 @@ export function DeliveryModule({ sales, salespeople, selectedBranchId }: Props) 
                     <td>
                       <select
                         value={d.driverId ?? ''}
-                        onChange={(e) => assignDriver(d.saleId, e.target.value)}
+                        onChange={(e) => saveDelivery(d.saleId, d.status, e.target.value || null)}
+                        disabled={isSaving}
                         className="inline-input"
                         style={{ width: 'auto', minWidth: '120px' }}
                       >
                         <option value="">Sem entregador</option>
-                        {drivers.map((s) => (
+                        {drivers.filter(s => !s.branch_id || s.branch_id === sales.find(sale => sale.id === d.saleId)?.branch_id).map((s) => (
                           <option key={s.id} value={s.id}>{s.name}</option>
                         ))}
                       </select>
@@ -206,7 +203,8 @@ export function DeliveryModule({ sales, salespeople, selectedBranchId }: Props) 
                         {d.status !== 'em_rota' && (
                           <button
                             className="rma-advance-btn"
-                            onClick={() => updateStatus(d.saleId, 'em_rota')}
+                            onClick={() => saveDelivery(d.saleId, 'em_rota', d.driverId)}
+                            disabled={isSaving}
                             title="Marcar Em Rota"
                           >
                             <Navigation size={14} />
@@ -215,7 +213,8 @@ export function DeliveryModule({ sales, salespeople, selectedBranchId }: Props) 
                         {d.status !== 'entregue' && (
                           <button
                             className="rma-advance-btn"
-                            onClick={() => updateStatus(d.saleId, 'entregue')}
+                            onClick={() => saveDelivery(d.saleId, 'entregue', d.driverId)}
+                            disabled={isSaving}
                             title="Marcar Entregue"
                           >
                             <Check size={14} />
@@ -224,7 +223,8 @@ export function DeliveryModule({ sales, salespeople, selectedBranchId }: Props) 
                         {d.status !== 'falhou' && d.status !== 'entregue' && (
                           <button
                             className="rma-advance-btn danger"
-                            onClick={() => updateStatus(d.saleId, 'falhou')}
+                            onClick={() => saveDelivery(d.saleId, 'falhou', d.driverId)}
+                            disabled={isSaving}
                             title="Marcar Falha"
                           >
                             <X size={14} />

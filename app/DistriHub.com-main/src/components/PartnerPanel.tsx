@@ -28,6 +28,7 @@ import { usePartnerData } from '../hooks/usePartnerData';
 
 import { pdvErrorMessage } from '../lib/pdv';
 import { storeTheme } from '../lib/storeTheme';
+import { cadastroDestination, type AdminCadastrosTarget } from '../lib/cadastrosNavigation';
 import { supabase } from '../lib/supabase';
 import { BranchSelector } from './partner/BranchSelector';
 import { useCheckoutCash } from '../hooks/useCheckoutCash';
@@ -1546,6 +1547,111 @@ export function PartnerPanel({
     setSidebarOpen(false);
   }
 
+  function renderCadastros(target?: AdminCadastrosTarget) {
+    return (
+              <CadastrosModule
+                key={target ?? 'principal'}
+                initialTab={cadastroDestination(target).tab}
+                productType={cadastroDestination(target).productType}
+                rmaRequests={partner.rmas}
+                products={
+                  filteredProducts
+                }
+                branches={
+                  partner.branches
+                }
+                selectedBranchId={
+                  effectiveBranchId
+                }
+                categories={
+                  partner.categories
+                }
+                suppliers={
+                  partner.suppliers
+                }
+                salespeople={
+                  filteredSalespeople
+                }
+                combos={
+                  partner.combos
+                }
+                modifiers={
+                  partner.modifiers
+                }
+                customers={
+                  filteredCustomers
+                }
+                sales={
+                  filteredSales
+                }
+                allSales={
+                  partner.sales
+                }
+                segment={segment}
+                onAddProduct={
+                  handleAddProduct
+                }
+                onUpdateProduct={
+                  handleUpdateProduct
+                }
+                onReplenishStock={
+                  handleReplenishStock
+                }
+                onDeleteProduct={
+                  handleDeleteProduct
+                }
+                onAddCategory={
+                  partner.addCategory
+                }
+                onDeleteCategory={
+                  partner.deleteCategory
+                }
+                onAddSupplier={
+                  handleAddSupplier
+                }
+                onUpdateSupplier={
+                  handleUpdateSupplier
+                }
+                onDeleteSupplier={
+                  handleDeleteSupplier
+                }
+                onAddSalesperson={
+                  handleAddSalesperson
+                }
+                onUpdateSalesperson={
+                  handleUpdateSalesperson
+                }
+                onDeleteSalesperson={
+                  handleDeleteSalesperson
+                }
+                onAddCombo={
+                  partner.addCombo
+                }
+                onDeleteCombo={
+                  partner.deleteCombo
+                }
+                onAddModifier={
+                  partner.addModifier
+                }
+                onDeleteModifier={
+                  partner.deleteModifier
+                }
+                onAddCustomer={
+                  handleAddCustomer
+                }
+                onUpdateCustomer={
+                  handleUpdateCustomer
+                }
+                onLoadCustomer={
+                  handleLoadCustomer
+                }
+                onDeleteCustomer={
+                  handleDeleteCustomer
+                }
+              />
+    );
+  }
+
   return (
     <div className={`partner-panel sidebar-layout${activeTab === 'pdv' ? ' partner-pdv-mode' : ''}`} style={storeTheme(storeSettings.primary_color, storeSettings.nav_color) as React.CSSProperties}>
       <div className="sidebar-mobile-bar">
@@ -1784,103 +1890,7 @@ export function PartnerPanel({
             {storeSettings.internal_notice && <div role="note" className="store-internal-notice">{storeSettings.internal_notice}</div>}
             <Suspense fallback={<div className="partner-loading" role="status">Carregando módulo...</div>}>
             {activeTab === 'cadastros' && (
-              <CadastrosModule
-                rmaRequests={partner.rmas}
-                products={
-                  filteredProducts
-                }
-                branches={
-                  partner.branches
-                }
-                selectedBranchId={
-                  effectiveBranchId
-                }
-                categories={
-                  partner.categories
-                }
-                suppliers={
-                  partner.suppliers
-                }
-                salespeople={
-                  filteredSalespeople
-                }
-                combos={
-                  partner.combos
-                }
-                modifiers={
-                  partner.modifiers
-                }
-                customers={
-                  filteredCustomers
-                }
-                sales={
-                  filteredSales
-                }
-                allSales={
-                  partner.sales
-                }
-                segment={segment}
-                onAddProduct={
-                  handleAddProduct
-                }
-                onUpdateProduct={
-                  handleUpdateProduct
-                }
-                onReplenishStock={
-                  handleReplenishStock
-                }
-                onDeleteProduct={
-                  handleDeleteProduct
-                }
-                onAddCategory={
-                  partner.addCategory
-                }
-                onDeleteCategory={
-                  partner.deleteCategory
-                }
-                onAddSupplier={
-                  handleAddSupplier
-                }
-                onUpdateSupplier={
-                  handleUpdateSupplier
-                }
-                onDeleteSupplier={
-                  handleDeleteSupplier
-                }
-                onAddSalesperson={
-                  handleAddSalesperson
-                }
-                onUpdateSalesperson={
-                  handleUpdateSalesperson
-                }
-                onDeleteSalesperson={
-                  handleDeleteSalesperson
-                }
-                onAddCombo={
-                  partner.addCombo
-                }
-                onDeleteCombo={
-                  partner.deleteCombo
-                }
-                onAddModifier={
-                  partner.addModifier
-                }
-                onDeleteModifier={
-                  partner.deleteModifier
-                }
-                onAddCustomer={
-                  handleAddCustomer
-                }
-                onUpdateCustomer={
-                  handleUpdateCustomer
-                }
-                onLoadCustomer={
-                  handleLoadCustomer
-                }
-                onDeleteCustomer={
-                  handleDeleteCustomer
-                }
-              />
+              renderCadastros()
             )}
 
             {(activeTab === 'pdv' || activeTab === 'pedidos' || activeTab === 'historico') &&
@@ -2093,6 +2103,7 @@ export function PartnerPanel({
 
             {activeTab === 'administrativo' && (
               <AdminModule
+                renderCadastros={renderCadastros}
                 invoices={filteredInvoices}
                 onReceiveInvoice={identity?.salespersonId ? undefined : partner.payInvoice}
                 movements={
@@ -2148,6 +2159,10 @@ export function PartnerPanel({
                   effectiveBranchId ||
                   null
                 }
+                onUpdateDelivery={(saleId, status, driverId) => {
+                  const { operatorId, operatorPin } = getOperatorContext();
+                  return partner.updateDelivery(saleId, status, driverId, operatorId, operatorPin);
+                }}
               />
             )}
 

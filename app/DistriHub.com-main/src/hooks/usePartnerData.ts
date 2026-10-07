@@ -11,6 +11,7 @@ import type {
   BusinessSegment,
   Category,
   CustomerGroup,
+  DeliveryStatus,
   DeliveryType,
   PartnerBranch,
   PartnerCategory,
@@ -1708,6 +1709,48 @@ fetchAllPages((from, to) => client
       if (isSupabaseConfigured && supabase) await syncConfirmedSale(sale.branch_id);
     } finally { saleInFlight.current = false; }
   }, [data.sales, requireIdentity, syncConfirmedSale]);
+
+  const updateDelivery = useCallback(
+    async (
+      saleId: string,
+      status: DeliveryStatus,
+      driverId: string | null,
+      operatorId?: string | null,
+      operatorPin?: string | null,
+    ) => {
+      const { identity: currentIdentity, client } = await requireAuthenticatedSession();
+      const sale = data.sales.find((item) => item.id === saleId);
+      if (!sale || sale.user_id !== currentIdentity.companyUserId) {
+        throw new Error('Venda não encontrada nesta empresa.');
+      }
+      if (sale.delivery_type !== 'entrega' || sale.status === 'cancelada') {
+        throw new Error('Esta venda não está disponível para gestão de entrega.');
+      }
+
+      const { data: confirmed, error } = await client.rpc('execute_partner_delivery_mutation', {
+        p_salesperson_id: operatorId ?? null,
+        p_pin: operatorPin ?? null,
+        p_sale_id: saleId,
+        p_status: status,
+        p_driver_id: driverId,
+      });
+      if (error) {
+        throw new Error(pdvErrorMessage(error));
+      }
+      if (confirmed !== true) throw new Error('O servidor não confirmou o salvamento da entrega.');
+
+      const scope = currentIdentity.authUserId + ':' + currentIdentity.companyUserId;
+      if (identityScopeRef.current === scope) {
+        setData((prev) => ({
+          ...prev,
+          sales: prev.sales.map((item) => item.id === saleId
+            ? { ...item, delivery_status: status, delivery_driver_id: driverId }
+            : item),
+        }));
+      }
+    },
+    [data.sales, requireAuthenticatedSession],
+  );
 
   const finalizePreSale = useCallback(
     async (
@@ -3620,6 +3663,7 @@ fetchAllPages((from, to) => client
     createSale,
     createPreSale,
     updatePreSaleItems,
+    updateDelivery,
     finalizePreSale,
     cancelSale,
     deleteSale,
