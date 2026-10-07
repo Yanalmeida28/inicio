@@ -457,6 +457,17 @@ export function PartnerPanel({
     );
   }, [partner.products, effectiveBranchId]);
 
+  const filteredMovements = useMemo(() => {
+    if (!effectiveBranchId) {
+      return partner.movements;
+    }
+
+    return partner.movements.filter(
+      (movement) =>
+        movement.branch_id === effectiveBranchId,
+    );
+  }, [partner.movements, effectiveBranchId]);
+
   const filteredSales = useMemo(() => {
     if (!effectiveBranchId) {
       return partner.sales;
@@ -2081,6 +2092,9 @@ export function PartnerPanel({
 
             {activeTab === 'administrativo' && (
               <AdminModule
+                movements={
+                  filteredMovements
+                }
                 userId={
                   identity?.companyUserId
                 }
@@ -2219,6 +2233,9 @@ export function PartnerPanel({
 
             {activeTab === 'relatorios' && (
               <ReportsModule
+                movements={
+                  filteredMovements
+                }
                 sales={
                   filteredSales
                 }

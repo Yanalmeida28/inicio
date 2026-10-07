@@ -10,10 +10,11 @@ import {
 import { money } from '../../utils';
 import { ReportsModule } from './ReportsModule';
 import { supabase } from '../../lib/supabase';
+import { computeStagnantStock } from '../../lib/stagnantStock';
 import type {
   PartnerSale, PartnerProduct, PartnerSalesperson, SalespersonRole,
   PartnerBranch, PartnerCustomer, PartnerSupplier, PartnerCategory,
-  AuditLog, PermissionOverride, SaleItem,
+  AuditLog, PermissionOverride, SaleItem, StockMovement,
 } from '../../types';
 
 function safeItems(sale: PartnerSale): SaleItem[] {
@@ -51,6 +52,7 @@ type Props = {
   userId?: string;
   sales: PartnerSale[];
   products: PartnerProduct[];
+  movements?: StockMovement[];
   salespeople: PartnerSalesperson[];
   branches?: PartnerBranch[];
   customers?: PartnerCustomer[];
@@ -149,7 +151,7 @@ const sidebarSections: {
 ];
 
 export function AdminModule({
-  userId, sales = [], products = [], salespeople = [], branches = [], customers = [], suppliers = [], categories = [],
+  userId, sales = [], products = [], movements = [], salespeople = [], branches = [], customers = [], suppliers = [], categories = [],
   selectedBranchId = '', onSelectBranch, onNavigate,
 }: Props) {
   return (
@@ -158,6 +160,7 @@ export function AdminModule({
         userId={userId}
         sales={sales}
         products={products}
+        movements={movements}
         salespeople={salespeople}
         branches={branches}
         customers={customers}
@@ -172,13 +175,14 @@ export function AdminModule({
 }
 
 function AdminModuleInner({
-  userId, sales, products, salespeople, branches = [], customers = [], suppliers = [], categories = [],
+  userId, sales, products, movements = [], salespeople, branches = [], customers = [], suppliers = [], categories = [],
   selectedBranchId = '', onSelectBranch, onNavigate,
 }: Props) {
   const [expandedSection, setExpandedSection] = useState<AdminSection>('dashboard');
   const [activeAdminTab, setActiveAdminTab] = useState<AdminTab>('dashboard');
   const [activeItemId, setActiveItemId] = useState('visao-geral');
   const [branchFilter, setBranchFilter] = useState(selectedBranchId);
+  const [reportsInitialTab, setReportsInitialTab] = useState<'vendas' | 'sem-giro'>('vendas');
 
   function handleBranchChange(id: string) {
     setBranchFilter(id);
@@ -187,6 +191,7 @@ function AdminModuleInner({
 
   function handleItemClick(item: { id: string; label: string; tab?: string; page?: AdminPage }) {
     setActiveItemId(item.id);
+    if (item.tab === 'relatorios') setReportsInitialTab('vendas');
     if (item.tab) {
       setActiveAdminTab(item.tab as AdminTab);
     } else if (item.page) {
@@ -247,15 +252,25 @@ function AdminModuleInner({
             <ExecutiveDashboard
               sales={sales}
               products={products}
+              movements={movements}
               salespeople={salespeople}
               customers={customers}
               branches={branches}
               branchFilter={branchFilter}
               onBranchChange={handleBranchChange}
+              onOpenStagnantStock={() => {
+                setExpandedSection('relatorios');
+                setActiveItemId('vendas');
+                setActiveAdminTab('relatorios');
+                setReportsInitialTab('sem-giro');
+              }}
             />
           )}
           {activeAdminTab === 'relatorios' && (
             <ReportsModule
+              key={reportsInitialTab}
+              initialTab={reportsInitialTab}
+              movements={movements}
               sales={sales}
               products={products}
               customers={customers}
@@ -357,16 +372,23 @@ function GrowthBadge({ pct }: { pct: number | null }) {
 /* ============ Executive Dashboard ============ */
 
 function ExecutiveDashboard({
-  sales, products, salespeople = [], customers, branches, branchFilter, onBranchChange,
+  sales, products, movements = [], salespeople = [], customers, branches, branchFilter, onBranchChange, onOpenStagnantStock,
 }: {
   sales: PartnerSale[];
   products: PartnerProduct[];
+  movements?: StockMovement[];
   salespeople: PartnerSalesperson[];
   customers: PartnerCustomer[];
   branches: PartnerBranch[];
   branchFilter: string;
   onBranchChange: (id: string) => void;
+  onOpenStagnantStock?: () => void;
 }) {
+  const stagnant = useMemo(() => {
+    const scopedProducts = branchFilter ? products.filter((p) => p.branch_id === branchFilter) : products;
+    return computeStagnantStock(scopedProducts, sales, movements);
+  }, [products, sales, movements, branchFilter]);
+
   const [period, setPeriod] = useState<TimePeriod>('30dias');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
@@ -644,6 +666,30 @@ function ExecutiveDashboard({
           </button>
         </div>
       </div>
+
+      {stagnant.count > 0 && onOpenStagnantStock ? (
+        <button
+          type="button"
+          className="report-card stagnant-stock-card"
+          onClick={onOpenStagnantStock}
+        >
+          <small><Package size={13} /> ESTOQUE SEM GIRO</small>
+          <strong>
+            {stagnant.count} {stagnant.count === 1 ? 'produto há mais de 30 dias' : 'produtos há mais de 30 dias'}
+          </strong>
+          <span>{stagnant.totalUnits} {stagnant.totalUnits === 1 ? 'unidade parada' : 'unidades paradas'}</span>
+          <span>{money.format(stagnant.totalValue)} em capital parado</span>
+          <span className={stagnant.criticalCount > 0 ? 'text-red' : undefined}>
+            {stagnant.criticalCount} {stagnant.criticalCount === 1 ? 'produto crítico' : 'produtos críticos'} (+90 dias)
+          </span>
+          <small>Ver produtos →</small>
+        </button>
+      ) : products.some((p) => !p.is_service && p.stock > 0) ? (
+        <div className="report-card stagnant-stock-card healthy">
+          <small><Package size={13} /> ESTOQUE SEM GIRO</small>
+          <strong>Nenhum produto parado há mais de 30 dias</strong>
+        </div>
+      ) : null}
 
       {/* Executive KPI Cards */}
       <div className="report-cards admin-kpi-grid">

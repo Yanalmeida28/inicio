@@ -2381,3 +2381,9 @@ html, body {
   .partner-panel .admin-module-layout .admin-legend-row { grid-template-columns: 8px 14px minmax(0, 1fr) auto; }
   .partner-panel .admin-module-layout .admin-legend-row strong { grid-column: 3; }
 }
+
+.stagnant-stock-card { display: flex; flex-direction: column; gap: 4px; width: 100%; text-align: left; cursor: pointer; margin-bottom: 14px; border-left: 4px solid #dd6b20; }
+.stagnant-stock-card:hover { box-shadow: 0 2px 10px rgba(0,0,0,.12); }
+.stagnant-stock-card span { font-size: 13px; }
+.stagnant-stock-card.healthy { cursor: default; border-left-color: #2f9e6b; }
+.stagnant-stock-card.healthy:hover { box-shadow: none; }

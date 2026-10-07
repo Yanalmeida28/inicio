@@ -3,17 +3,22 @@ import {
   BarChart3, TrendingUp, TrendingDown, Package, Users, Cake, MessageCircle, DollarSign,
   ShoppingCart, Wrench, UserCheck, CreditCard, Banknote, Wallet, Trophy, Crown, Medal,
 } from 'lucide-react';
-import type { PartnerSale, PartnerProduct, PartnerCustomer, PartnerSalesperson, SalespersonRole } from '../../types';
+import type { PartnerSale, PartnerProduct, PartnerCustomer, PartnerSalesperson, SalespersonRole, StockMovement } from '../../types';
 import { money } from '../../utils';
+import {
+  computeStagnantStock, stagnantLevelLabels, type StagnantLevel,
+} from '../../lib/stagnantStock';
 
 type Props = {
   sales: PartnerSale[];
   products: PartnerProduct[];
   customers: PartnerCustomer[];
   salespeople: PartnerSalesperson[];
+  initialTab?: ReportTab;
+  movements?: StockMovement[];
 };
 
-type ReportTab = 'vendas' | 'financeiro' | 'estoque' | 'crm';
+type ReportTab = 'vendas' | 'financeiro' | 'estoque' | 'sem-giro' | 'crm';
 
 const roleLabels: Record<SalespersonRole, string> = {
   administrador: 'Administrador / Proprietário',
@@ -25,14 +30,15 @@ const roleLabels: Record<SalespersonRole, string> = {
   logistica: 'Logística / Entregador',
 };
 
-export function ReportsModule({ sales, products, customers, salespeople }: Props) {
-  const [tab, setTab] = useState<ReportTab>('vendas');
+export function ReportsModule({ sales, products, customers, salespeople, movements = [], initialTab = 'vendas' }: Props) {
+  const [tab, setTab] = useState<ReportTab>(initialTab);
   const [range, setRange] = useState<'30d' | '90d' | 'all'>('30d');
 
   const tabs: { id: ReportTab; label: string; icon: typeof BarChart3 }[] = [
     { id: 'vendas', label: 'Vendas & Serviços', icon: BarChart3 },
     { id: 'financeiro', label: 'Financeiro & Métodos', icon: DollarSign },
     { id: 'estoque', label: 'Estoque', icon: Package },
+    { id: 'sem-giro', label: 'Sem giro', icon: TrendingDown },
     { id: 'crm', label: 'CRM', icon: Users },
   ];
 
@@ -64,7 +70,7 @@ export function ReportsModule({ sales, products, customers, salespeople }: Props
         ))}
       </div>
 
-      <div className="orders-filter-row" style={{ marginBottom: '18px' }}>
+      <div className="orders-filter-row" style={{ marginBottom: '18px', display: tab === 'sem-giro' ? 'none' : undefined }}>
         {(['30d', '90d', 'all'] as const).map((option) => (
           <button
             key={option}
@@ -81,6 +87,7 @@ export function ReportsModule({ sales, products, customers, salespeople }: Props
         {tab === 'vendas' && <SalesReport sales={visibleSales} products={products} salespeople={salespeople} />}
         {tab === 'financeiro' && <FinancialReport sales={visibleSales} />}
         {tab === 'estoque' && <StockReport products={products} sales={visibleSales} />}
+        {tab === 'sem-giro' && <StagnantStockReport products={products} sales={sales} movements={movements} />}
         {tab === 'crm' && <CrmReport customers={customers} sales={visibleSales} />}
       </div>
     </div>
@@ -359,6 +366,88 @@ function FinancialReport({ sales }: { sales: PartnerSale[] }) {
             <tr><td>Receita Bruta</td><td>{money.format(totalRevenue)}</td></tr>
             <tr><td>Custo dos Produtos</td><td>—</td></tr>
             <tr><td>Receita Líquida</td><td>{money.format(totalRevenue)}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function StagnantStockReport({ products, sales, movements }: { products: PartnerProduct[]; sales: PartnerSale[]; movements: StockMovement[] }) {
+  const [level, setLevel] = useState<StagnantLevel | 'todos'>('todos');
+  const [query, setQuery] = useState('');
+  const summary = useMemo(() => computeStagnantStock(products, sales, movements), [products, sales, movements]);
+  const term = query.trim().toLowerCase();
+  const rows = summary.items.filter((item) =>
+    (level === 'todos' || item.level === level)
+    && (!term || item.product.name.toLowerCase().includes(term) || (item.product.sku ?? '').toLowerCase().includes(term)));
+  const levelColor: Record<StagnantLevel, string> = { atencao: '#b7791f', alerta: '#dd6b20', critico: '#c53030' };
+  const levelName: Record<StagnantLevel, string> = { atencao: 'Atenção', alerta: 'Alerta', critico: 'Crítico' };
+
+  return (
+    <div>
+      <div className="report-cards">
+        <div className="report-card">
+          <small>Produtos sem giro</small>
+          <strong>{summary.count}</strong>
+          <small>há 30+ dias</small>
+        </div>
+        <div className="report-card">
+          <small>Unidades paradas</small>
+          <strong>{summary.totalUnits}</strong>
+        </div>
+        <div className="report-card">
+          <small>Capital parado (custo)</small>
+          <strong>{money.format(summary.totalValue)}</strong>
+        </div>
+        <div className="report-card">
+          <small>Produtos críticos</small>
+          <strong className={summary.criticalCount > 0 ? 'text-red' : undefined}>{summary.criticalCount}</strong>
+          <small>90+ dias</small>
+        </div>
+      </div>
+
+      <div className="orders-filter-row" style={{ margin: '12px 0' }}>
+        {(['todos', 'atencao', 'alerta', 'critico'] as const).map((option) => (
+          <button
+            key={option}
+            className={`rma-advance-btn ${level === option ? 'active' : ''}`}
+            onClick={() => setLevel(option)}
+          >
+            {option === 'todos' ? 'Todos' : stagnantLevelLabels[option]}
+          </button>
+        ))}
+        <input
+          type="search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Buscar por nome ou SKU"
+          aria-label="Buscar por nome ou SKU"
+          style={{ minWidth: '200px' }}
+        />
+      </div>
+
+      <div className="stock-table-wrap">
+        <table className="rma-table">
+          <thead>
+            <tr><th>Produto</th><th>SKU</th><th>Estoque</th><th>Última venda</th><th>Última reposição</th><th>Dias sem giro</th><th>Custo unit.</th><th>Capital parado</th><th>Classificação</th></tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr><td colSpan={9} className="empty-row">Nenhum produto parado nesta seleção.</td></tr>
+            ) : rows.map(({ product, lastSaleAt, lastEntryAt, daysWithoutTurnover, unitCost, tiedUpCapital, level: itemLevel }) => (
+              <tr key={product.id}>
+                <td><strong>{product.name}</strong></td>
+                <td>{product.sku || '—'}</td>
+                <td>{product.stock}</td>
+                <td>{lastSaleAt ? new Date(lastSaleAt).toLocaleDateString('pt-BR') : 'Nunca vendeu'}</td>
+                <td>{lastEntryAt ? new Date(lastEntryAt).toLocaleDateString('pt-BR') : '—'}</td>
+                <td>{daysWithoutTurnover}</td>
+                <td>{money.format(unitCost)}</td>
+                <td>{money.format(tiedUpCapital)}</td>
+                <td style={{ color: levelColor[itemLevel], fontWeight: 600 }}>{levelName[itemLevel]}</td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
