@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { Dispatch, ReactNode, SetStateAction } from 'react';
 
 type DraftContextValue = {
@@ -10,15 +10,11 @@ const DraftContext = createContext<DraftContextValue | null>(null);
 
 export function SessionDraftProvider({ scope, children }: { scope: string; children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
-  const context = useRef<DraftContextValue>({
-    scope,
-    reportError: (message) => setError(message),
-  });
-  context.current.scope = scope;
-  context.current.reportError = (message) => setError(message);
+  const reportError = useCallback((message: string) => setError(message), []);
+  const context = useMemo<DraftContextValue>(() => ({scope, reportError}), [scope, reportError]);
 
   return (
-    <DraftContext.Provider value={context.current}>
+    <DraftContext.Provider value={context}>
       {children}
       {error && (
         <div role="alert" style={{ position: 'fixed', right: 16, bottom: 16, zIndex: 2000, maxWidth: 420, padding: 12, borderRadius: 8, background: '#7f1d1d', color: '#fff' }}>
@@ -39,34 +35,51 @@ export function useSessionDraftState<T>(draftId: string, initialValue: T, scopeO
   const context = useContext(DraftContext);
   const scope = scopeOverride ?? context?.scope ?? 'unscoped';
   const storageKey = `distrihub:draft:${scope}:${draftId}`;
-  const [stored] = useState(() => {
+  function readDraft() {
     try {
       const value = window.sessionStorage.getItem(storageKey);
-      return value === null ? { value: initialValue, error: null } : { value: JSON.parse(value) as T, error: null };
+      const parsed: unknown = value === null ? initialValue : JSON.parse(value);
+      const valid = initialValue === null ? parsed === null || typeof parsed === 'object'
+        : Array.isArray(initialValue) ? Array.isArray(parsed)
+        : typeof parsed === typeof initialValue && (typeof initialValue !== 'object' || (parsed !== null && !Array.isArray(parsed)));
+      if (!valid) throw new Error('Rascunho incompatível; o formulário foi recuperado com os valores iniciais.');
+      return {storageKey, value: parsed as T, error: null};
     } catch (error) {
       return {
+        storageKey,
         value: initialValue,
         error: error instanceof Error ? error.message : 'Erro ao ler o armazenamento temporário.',
       };
     }
-  });
-  const [value, setValue] = useState<T>(stored.value);
+  }
+  const [stored, setStored] = useState(readDraft);
+  const current = stored.storageKey === storageKey ? stored : readDraft();
+  if (stored.storageKey !== storageKey) setStored(current);
+  const value = current.value;
+  const setValue = useCallback<Dispatch<SetStateAction<T>>>((update) => {
+    setStored(previous => {
+      if (previous.storageKey !== storageKey) return previous;
+      return {...previous, error: null, value: typeof update === 'function'
+        ? (update as (previous: T) => T)(previous.value) : update};
+    });
+  }, [storageKey]);
 
   useEffect(() => {
-    if (!stored.error) return;
-    if (context) context.reportError(stored.error);
-    else console.error('Não foi possível recuperar o rascunho da sessão.', stored.error);
-  }, [context, stored.error]);
+    if (!current.error) return;
+    if (context) context.reportError(current.error);
+    else console.error('Não foi possível recuperar o rascunho da sessão.', current.error);
+  }, [context, current.error]);
 
   useEffect(() => {
     try {
+      if (stored.storageKey !== storageKey) return;
       window.sessionStorage.setItem(storageKey, JSON.stringify(value));
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Erro ao gravar o armazenamento temporário.';
       if (context) context.reportError(message);
       else console.error('Não foi possível salvar o rascunho da sessão.', message);
     }
-  }, [context, storageKey, value]);
+  }, [context, storageKey, value, stored.storageKey]);
 
   return [value, setValue];
 }

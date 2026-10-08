@@ -1585,7 +1585,7 @@ export function PartnerPanel({
     return (
               <CadastrosModule
                 key={target ?? 'principal'}
-                isActive={activeTab === 'cadastros'}
+                isActive={activeTab === (target ? 'administrativo' : 'cadastros')}
                 adminTarget={target}
                 initialTab={cadastroDestination(target).tab}
                 productType={cadastroDestination(target).productType}
