@@ -626,6 +626,122 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
   return (
     <>
       <div className="pdv-layout pdv-checkout-layout">
+        <div className="pdv-right">
+          <div className="pdv-cart-header"><h4>Dados da venda</h4></div>
+          <div className="pdv-sale-scroll">
+          {branchChangedWithCart && cart.length > 0 && (
+            <div className="pdv-restricted-checkout" role="alert">
+              <LockIcon size={16} />
+              <span>A filial foi alterada e o carrinho foi mantido. Confira os produtos antes de finalizar.</span>
+              <button type="button" className="rma-advance-btn" onClick={() => setCart([])}>Esvaziar carrinho</button>
+            </div>
+          )}
+          {cartHasWrongBranch && (
+            <p className="otp-error-msg" role="alert">O carrinho contém produtos de outra filial. Remova os itens incompatíveis ou esvazie o carrinho.</p>
+          )}
+
+          {cart.length > 0 && (
+            <>
+              <div className="pdv-form">
+                <label>
+                  Tabela de preços
+                  <select aria-label="Tabela de preços da venda" value={clientType} onChange={event => handleClientTypeChange(event.target.value as ClientType)}>
+                    <option value="varejo">Varejo</option>
+                    <option value="atacado">Atacado</option>
+                  </select>
+                </label>
+                <CustomerSearchPicker
+                  key={`sale-${clientType}`}
+                  id="pdv-customer-search"
+                  customers={customers}
+                  customerId={customerId}
+                  clientType={clientType}
+                  onSelect={handleCustomerChange}
+                />
+                <details className="pdv-traceability">
+                  <summary>Mais detalhes{imei || serial ? ' · preenchidos' : ''}</summary>
+                <div className="form-row">
+                  <label>
+                    <ScanLine size={14} /> {traceabilityLabel}
+                    <input value={imei} onChange={(e) => setImei(e.target.value)} placeholder={segment === 'assistencia' ? 'IMEI / Selo' : 'Nº de Série'} />
+                  </label>
+                  <label>
+                    Nº de Série
+                    <input value={serial} onChange={(e) => setSerial(e.target.value)} placeholder="Opcional" />
+                  </label>
+                </div>
+                </details>
+                <label>
+                  Tipo de atendimento
+                  <select aria-label="Tipo de atendimento da venda" value={deliveryType} onChange={event => setDeliveryType(event.target.value as DeliveryType)}>
+                    <option value="balcao">Balcão</option>
+                    <option value="entrega">Entrega</option>
+                    <option value="retirada">Retirada</option>
+                  </select>
+                </label>
+                <div className="form-row">
+                  <label>
+                    Forma de Pagamento
+                    <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} disabled={!canCheckout}>
+                      <option value="pix">PIX</option>
+                      <option value="cartao">Cartão</option>
+                      <option value="dinheiro">Dinheiro</option>
+                      <option value="faturado">Faturado B2B</option>
+                    </select>
+                  </label>
+                  {!activeSalespersonId && (
+                    <SalespersonSearchPicker
+                      id="pdv-salesperson-search"
+                      salespeople={salespeople}
+                      salespersonId={salespersonId}
+                      onSelect={setSalespersonId}
+                    />
+                  )}
+                </div>
+              </div>
+              {paymentMethod === 'faturado' && selectedCustomer && !credit && (
+                <p role="status">Não foi possível consultar o crédito deste cliente.</p>
+              )}
+              {paymentMethod === 'faturado' && selectedCustomer && credit && (
+                <div className="b2b-credit-summary">
+                  <strong>Crédito B2B</strong>
+                  <span>Limite: {money.format(Number(credit?.credit_limit ?? 0))}</span>
+                  <span>Utilizado: {money.format(customerOpenCredit)}</span>
+                  <span>Disponível: {money.format(Math.max(0, customerCreditAvailable))}</span>
+                  <span>Esta venda: {money.format(total)}</span>
+                </div>
+              )}
+
+            </>
+          )}
+          </div>
+
+          <div className="pdv-sale-footer">
+              <div className="pdv-total-bar">
+                <span>Total {priceTable === 'atacado' ? '(Atacado)' : '(Varejo)'}</span>
+                <strong>{money.format(total)}</strong>
+              </div>
+
+              {canCheckout ? (
+                <button className="module-submit-btn pdv-checkout-btn" onClick={handleCheckout} disabled={cart.length === 0 || isCheckingOut || billedSaleBlocked || hasPendingSale || cartHasWrongBranch}>
+                  <Check size={18} /> {isCheckingOut ? 'Finalizando...' : 'Finalizar Venda'}
+                </button>
+              ) : (
+                <div className="pdv-restricted-checkout">
+                  <LockIcon size={16} />
+                  <span>Finalização de venda restrita a Caixa, Gerente ou Administrador.</span>
+                </div>
+              )}
+
+          {completed && (
+            <div className="sent-message" role="status">
+              <Check size={15} /> Venda finalizada! Pronto para uma nova venda. Cupom, etiqueta e envio no Histórico.
+            </div>
+          )}
+          {checkoutError && <p className="otp-error-msg">{checkoutError}</p>}
+          </div>
+        </div>
+
         <div className="pdv-left">
           <div className="pdv-search-bar">
             <Search size={18} />
@@ -738,141 +854,6 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
           </table>
           </div>
           </section>
-        </div>
-
-        <div className="pdv-right">
-          <div className="pdv-cart-header"><h4>Dados da venda</h4></div>
-          <div className="pdv-sale-scroll">
-          {branchChangedWithCart && cart.length > 0 && (
-            <div className="pdv-restricted-checkout" role="alert">
-              <LockIcon size={16} />
-              <span>A filial foi alterada e o carrinho foi mantido. Confira os produtos antes de finalizar.</span>
-              <button type="button" className="rma-advance-btn" onClick={() => setCart([])}>Esvaziar carrinho</button>
-            </div>
-          )}
-          {cartHasWrongBranch && (
-            <p className="otp-error-msg" role="alert">O carrinho contém produtos de outra filial. Remova os itens incompatíveis ou esvazie o carrinho.</p>
-          )}
-
-          {cart.length > 0 && (
-            <>
-              <div className="pdv-form">
-                <label>
-                  Tabela de preços
-                  <div className="pdv-client-type-toggle">
-                    <button
-                      type="button"
-                      className={`price-toggle-btn ${clientType === 'varejo' ? 'active' : ''}`}
-                      onClick={() => handleClientTypeChange('varejo')}
-                    >
-                      <Tag size={15} /> Varejo
-                    </button>
-                    <button
-                      type="button"
-                      className={`price-toggle-btn ${clientType === 'atacado' ? 'active' : ''}`}
-                      onClick={() => handleClientTypeChange('atacado')}
-                    >
-                      <Tag size={15} /> Atacado
-                    </button>
-                  </div>
-                </label>
-                <CustomerSearchPicker
-                  key={`sale-${clientType}`}
-                  id="pdv-customer-search"
-                  customers={customers}
-                  customerId={customerId}
-                  clientType={clientType}
-                  onSelect={handleCustomerChange}
-                />
-                <details className="pdv-traceability">
-                  <summary>Mais detalhes · IMEI / série{imei || serial ? ' · preenchida' : ''}</summary>
-                <div className="form-row">
-                  <label>
-                    <ScanLine size={14} /> {traceabilityLabel}
-                    <input value={imei} onChange={(e) => setImei(e.target.value)} placeholder={segment === 'assistencia' ? 'IMEI / Selo' : 'Nº de Série'} />
-                  </label>
-                  <label>
-                    Nº de Série
-                    <input value={serial} onChange={(e) => setSerial(e.target.value)} placeholder="Opcional" />
-                  </label>
-                </div>
-                </details>
-                <label>
-                  Tipo de atendimento
-                  <div className="pdv-client-type-toggle">
-                    {(['balcao', 'entrega', 'retirada'] as DeliveryType[]).map((type) => (
-                      <button
-                        key={type}
-                        type="button"
-                        className={`price-toggle-btn ${deliveryType === type ? 'active' : ''}`}
-                        onClick={() => setDeliveryType(type)}
-                      >
-                        {type === 'balcao' ? 'Balcão' : type === 'entrega' ? 'Entrega' : 'Retirada'}
-                      </button>
-                    ))}
-                  </div>
-                </label>
-                <div className="form-row">
-                  <label>
-                    Forma de Pagamento
-                    <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} disabled={!canCheckout}>
-                      <option value="pix">PIX</option>
-                      <option value="cartao">Cartão</option>
-                      <option value="dinheiro">Dinheiro</option>
-                      <option value="faturado">Faturado B2B</option>
-                    </select>
-                  </label>
-                  {!activeSalespersonId && (
-                    <SalespersonSearchPicker
-                      id="pdv-salesperson-search"
-                      salespeople={salespeople}
-                      salespersonId={salespersonId}
-                      onSelect={setSalespersonId}
-                    />
-                  )}
-                </div>
-              </div>
-              {paymentMethod === 'faturado' && selectedCustomer && !credit && (
-                <p role="status">Não foi possível consultar o crédito deste cliente.</p>
-              )}
-              {paymentMethod === 'faturado' && selectedCustomer && credit && (
-                <div className="b2b-credit-summary">
-                  <strong>Crédito B2B</strong>
-                  <span>Limite: {money.format(Number(credit?.credit_limit ?? 0))}</span>
-                  <span>Utilizado: {money.format(customerOpenCredit)}</span>
-                  <span>Disponível: {money.format(Math.max(0, customerCreditAvailable))}</span>
-                  <span>Esta venda: {money.format(total)}</span>
-                </div>
-              )}
-
-            </>
-          )}
-          </div>
-
-          <div className="pdv-sale-footer">
-              <div className="pdv-total-bar">
-                <span>Total {priceTable === 'atacado' ? '(Atacado)' : '(Varejo)'}</span>
-                <strong>{money.format(total)}</strong>
-              </div>
-
-              {canCheckout ? (
-                <button className="module-submit-btn pdv-checkout-btn" onClick={handleCheckout} disabled={cart.length === 0 || isCheckingOut || billedSaleBlocked || hasPendingSale || cartHasWrongBranch}>
-                  <Check size={18} /> {isCheckingOut ? 'Finalizando...' : 'Finalizar Venda'}
-                </button>
-              ) : (
-                <div className="pdv-restricted-checkout">
-                  <LockIcon size={16} />
-                  <span>Finalização de venda restrita a Caixa, Gerente ou Administrador.</span>
-                </div>
-              )}
-
-          {completed && (
-            <div className="sent-message" role="status">
-              <Check size={15} /> Venda finalizada! Pronto para uma nova venda. Cupom, etiqueta e envio no Histórico.
-            </div>
-          )}
-          {checkoutError && <p className="otp-error-msg">{checkoutError}</p>}
-          </div>
         </div>
       </div>
 
