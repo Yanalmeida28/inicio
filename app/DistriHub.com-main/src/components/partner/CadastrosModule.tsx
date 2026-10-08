@@ -1843,6 +1843,16 @@ function SalespeopleSubTab({
     useState('');
   const [editActive, setEditActive] =
     useState(true);
+  const [editBlockedModules, setEditBlockedModules] = useState<string[]>([]);
+  const roleRestrictedModules: Record<SalespersonRole, string[]> = {
+    administrador: [],
+    gerente: ['financeiro','white-label','configuracoes'],
+    vendedor: ['financeiro','white-label','configuracoes','entregas','fiscal'],
+    caixa: ['financeiro','white-label','configuracoes','entregas','fiscal'],
+    atendente: ['caixa','financeiro','white-label','configuracoes','entregas','fiscal','rma'],
+    tecnico: ['caixa','cadastros','pdv','financeiro','white-label','configuracoes','entregas','relatorios','fiscal'],
+    logistica: ['caixa','cadastros','pdv','financeiro','rma','white-label','configuracoes','relatorios','fiscal'],
+  };
 
   const [formError, setFormError] =
     useState<string | null>(null);
@@ -1910,6 +1920,7 @@ function SalespeopleSubTab({
     salesperson: PartnerSalesperson
   ) {
     setEditingId(salesperson.id);
+    setEditBlockedModules(salesperson.blocked_modules ?? []);
     setEditName(salesperson.name);
     setEditEmail(salesperson.email ?? '');
     setEditRate(
@@ -1967,6 +1978,7 @@ function SalespeopleSubTab({
           editBranchId || null,
         active: editActive,
         is_active: editActive,
+        blocked_modules: editBlockedModules,
       });
 
       setEditingId(null);
@@ -2352,6 +2364,16 @@ function SalespeopleSubTab({
                             ? 'Ativo'
                             : 'Inativo'}
                         </label>
+                        <details open>
+                          <summary>Acessos aos módulos</summary>
+                          <p className="otp-description">Marque os módulos liberados. Opções desabilitadas são restritas pela função; altere a função para habilitá-las.</p>
+                          {Object.entries({cadastros:'Cadastros',pdv:'PDV',caixa:'Caixa',pedidos:'Pedidos',os:'Ordens de Serviço',historico:'Histórico',suporte:'Suporte',fiscal:'Nota Fiscal',administrativo:'Administrativo',entregas:'Entregas',financeiro:'Financeiro',rma:'RMA e Devoluções',relatorios:'Relatórios', 'white-label':'Personalização',configuracoes:'Configurações'}).map(([module, label]) => (
+                            <label key={module} className="checkbox-label" style={{display:'flex',gap:6,marginTop:6}}>
+                              <input type="checkbox" aria-label={`Acesso a ${label}`} disabled={roleRestrictedModules[editRole].includes(module)} checked={!editBlockedModules.includes(module) && !roleRestrictedModules[editRole].includes(module)} onChange={event => setEditBlockedModules(previous => event.target.checked ? previous.filter(item => item !== module) : [...previous,module])} />
+                              {label}
+                            </label>
+                          ))}
+                        </details>
                       </td>
 
                       <td>

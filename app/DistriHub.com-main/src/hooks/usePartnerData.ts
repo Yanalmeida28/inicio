@@ -360,7 +360,7 @@ export function usePartnerData(identity: PartnerIdentity | null, syncBranchId: s
         client
           .from('partner_salespeople')
           .select(
-            'id, user_id, auth_user_id, name, role, commission_rate, phone, email, active, branch_id, created_at',
+            'id, user_id, auth_user_id, name, role, commission_rate, phone, email, active, branch_id, created_at, blocked_modules',
           )
           .eq('user_id', companyUserId)
           .order('name');
@@ -2975,8 +2975,9 @@ fetchAllPages((from, to) => client
       // p_salesperson_id identifica o colaborador que está sendo editado.
       const {  error } =
         await supabase.rpc(
-          'execute_partner_salesperson_mutation',
+          'update_partner_salesperson_access',
           {
+            p_blocked_modules: salesperson.blocked_modules ?? existing.blocked_modules ?? [],
             p_salesperson_id: id,
             p_name:
               salesperson.name ??

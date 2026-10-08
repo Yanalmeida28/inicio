@@ -396,7 +396,7 @@ export function PartnerPanel({
     }
   }, [initialTab, onConsumeInitialTab]);
 
-  const blockedTabs = useMemo(() => {
+  const roleBlockedTabs = useMemo(() => {
     switch (effectiveRole) {
       case 'gerente':
         return gerenteBlockedTabs;
@@ -420,6 +420,11 @@ export function PartnerPanel({
         return [];
     }
   }, [effectiveRole]);
+
+  const blockedTabs = useMemo(() => [...new Set<Tab>([
+    ...roleBlockedTabs,
+    ...(activeSalesperson?.blocked_modules ?? []).filter((module): module is Tab => allTabs.some(tab => tab.id === module)),
+  ])], [roleBlockedTabs, activeSalesperson?.blocked_modules]);
 
   const visibleTabs = useMemo(() => {
     return allTabs.filter((tab) =>
@@ -1542,6 +1547,7 @@ export function PartnerPanel({
   }
 
   function handleTabClick(tab: Tab) {
+    if (blockedTabs.includes(tab)) return;
     setActiveTab(tab);
     setSidebarOpen(false);
   }
@@ -1911,7 +1917,7 @@ export function PartnerPanel({
             <Suspense fallback={<div className="partner-loading" role="status">Carregando módulo...</div>}>
             {saas.error && <div role="alert"><p>{saas.error}</p><button className="rma-advance-btn" onClick={() => { void saas.refresh(); }}>Verificar assinatura novamente</button></div>}
             {!saas.loading && saas.subscription && !saas.subscription.can_access && <p role="status">A assinatura está sem acesso operacional. Regularize em Configurações ou entre em contato com o suporte.</p>}
-            {canUseSaasFeature(saas.subscription, activeTab) ? <>
+            {!blockedTabs.includes(activeTab) && canUseSaasFeature(saas.subscription, activeTab) ? <>
             {activeTab === 'cadastros' && (
               renderCadastros()
             )}

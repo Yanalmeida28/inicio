@@ -200,6 +200,7 @@ export interface PartnerProduct {
 }
 
 export interface PartnerSalesperson {
+  blocked_modules?: string[];
   id: string;
   user_id: string;
   auth_user_id?: string | null;

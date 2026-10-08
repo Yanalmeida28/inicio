@@ -35,3 +35,25 @@ test('estoque no Administrativo não duplica menus; valida e salva o saldo conta
   assert.equal(calls[0][1].stock, 0);
   await act(async () => renderer.unmount());
 });
+
+test('editar colaborador conserva bloqueios, permite escolher módulos e respeita a função', async () => {
+  const calls = [];
+  let renderer;
+  await act(async () => { renderer = TestRenderer.create(React.createElement(exports.CadastrosModule, {
+    adminTarget: 'vendedores', initialTab: 'vendedores', branches: [],
+    salespeople: [{id:'employee',name:'Funcionário',email:'employee@example.test',role:'vendedor',commission_rate:0,active:true,blocked_modules:['pdv']}],
+    onUpdateSalesperson: async (...args) => calls.push(args),
+  })); });
+  await act(async () => renderer.root.findByProps({title:'Editar'}).props.onClick());
+  const pdv = () => renderer.root.findByProps({'aria-label':'Acesso a PDV'});
+  assert.equal(pdv().props.checked, false);
+  assert.equal(renderer.root.findByProps({'aria-label':'Acesso a Financeiro'}).props.disabled, true);
+  await act(async () => pdv().props.onChange({target:{checked:true}}));
+  await act(async () => renderer.root.findByProps({'aria-label':'Acesso a Caixa'}).props.onChange({target:{checked:false}}));
+  const save = renderer.root.findByProps({title:'Salvar alterações'});
+  assert.ok(save);
+  await act(async () => save.props.onClick());
+  assert.equal(calls[0][0], 'employee');
+  assert.deepEqual([...calls[0][1].blocked_modules], ['caixa']);
+  await act(async () => renderer.unmount());
+});
