@@ -433,7 +433,7 @@ export function PartnerPanel({
   }, [blockedTabs, saas.subscription]);
 
   useEffect(() => {
-    if (saas.loading) return;
+    if (!identity?.companyUserId || partner.loading || saas.loading || (!saas.subscription && !saas.error)) return;
     if (
       !visibleTabs.some(
         (tab) => tab.id === activeTab,
@@ -443,7 +443,7 @@ export function PartnerPanel({
         visibleTabs[0]?.id ?? 'suporte',
       );
     }
-  }, [visibleTabs, activeTab, saas.loading]);
+  }, [visibleTabs, activeTab, identity?.companyUserId, partner.loading, saas.loading, saas.subscription, saas.error]);
 
   const lockedBranch = useMemo(() => {
     if (!lockedBranchId) {
