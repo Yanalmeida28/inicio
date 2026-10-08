@@ -20,6 +20,7 @@ import {
   UserCheck,
   Lock,
   KeyRound,
+  RefreshCw,
 } from 'lucide-react';
 
 import type { User } from '@supabase/supabase-js';
@@ -1858,6 +1859,24 @@ export function PartnerPanel({
               </button>
             ),
           )}
+          <button
+            type="button"
+            className="sidebar-nav-item"
+            onClick={() => void partner.synchronize()}
+            disabled={partner.loading || partner.syncing}
+            aria-label={partner.syncing ? 'Sincronizando' : 'Sincronizar'}
+            aria-busy={partner.syncing}
+          >
+            <RefreshCw size={20} />
+            <span className="sidebar-nav-label">{partner.syncing ? 'Sincronizando...' : 'Sincronizar'}</span>
+          </button>
+          <span role="status" className="sidebar-sync-status">
+            {partner.syncError
+              ? `Falha ao sincronizar: ${partner.syncError}`
+              : partner.lastSyncedAt
+                ? `Atualizado às ${partner.lastSyncedAt.toLocaleTimeString('pt-BR')}`
+                : ''}
+          </span>
         </nav>
 
         {partner.loading && (
@@ -1883,20 +1902,6 @@ export function PartnerPanel({
               {partner.error}
             </p>
           )}
-
-          <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '12px' }}>
-            <button className="rma-advance-btn" onClick={() => void partner.synchronize()} disabled={partner.loading || partner.syncing}>
-              {partner.syncing ? 'Sincronizando...' : 'Sincronizar agora'}
-            </button>
-            <span role="status" style={{ fontSize: '12px' }}>
-              {partner.syncError
-                ? `Falha ao sincronizar: ${partner.syncError}`
-                : partner.lastSyncedAt
-                  ? `Atualizado às ${partner.lastSyncedAt.toLocaleTimeString('pt-BR')}`
-                  : ''}
-            </span>
-          </div>
-
 
           <div className="partner-content">
             {storeSettings.internal_notice && <div role="note" className="store-internal-notice">{storeSettings.internal_notice}</div>}

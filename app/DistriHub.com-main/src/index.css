@@ -829,6 +829,9 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
 .sidebar-nav-item:hover { color: #c1d1dc; background: #112738; }
 .sidebar-nav-item.active { color: #eaf1f6; background: #14304a; }
 .sidebar-footer { padding: 14px 18px; border-top: 1px solid #1d3547; }
+.partner-panel .sidebar-sync-status { padding: 0 14px; color: var(--store-nav-text, #c1d1dc); font-size: 11px; overflow-wrap: anywhere; }
+.partner-panel .sidebar-sync-status:empty { display: none; }
+.partner-panel .sidebar-nav-item:disabled { opacity: .6; cursor: wait; }
 .sidebar-main { flex: 1; margin-left: 208px; min-width: 0; }
 .sidebar-main-inner { padding: 16px 20px 32px; width: 100%; }
 .partner-panel .sidebar-main-inner > .partner-content { max-width: none; }
