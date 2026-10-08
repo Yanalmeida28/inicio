@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import {
   ArrowLeft,
   Boxes,
@@ -239,6 +240,7 @@ export function PartnerPanel({
   onConsumeInitialTab,
 }: PartnerPanelProps) {
   const [activeTab, setActiveTab] = useState<Tab>('cadastros');
+  const [visitedTabs, setVisitedTabs] = useState<Set<Tab>>(() => new Set(['cadastros']));
   const [selectedBranchId, setSelectedBranchId] = useState<string>('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -254,6 +256,10 @@ export function PartnerPanel({
     useState<string>('owner');
   const [operatorPinInput, setOperatorPinInput] = useState('');
   const [operatorPinError, setOperatorPinError] = useState('');
+
+  useEffect(() => {
+    setVisitedTabs((current) => current.has(activeTab) ? current : new Set(current).add(activeTab));
+  }, [activeTab]);
 
   const partner = usePartnerData(identity, identity?.salespersonId ? identity.branchId : selectedBranchId || null);
   const saas = useSaasSubscription(identity?.companyUserId);
@@ -1548,12 +1554,24 @@ export function PartnerPanel({
 
   function handleTabClick(tab: Tab) {
     if (blockedTabs.includes(tab)) return;
+    setVisitedTabs((current) => current.has(tab) ? current : new Set(current).add(tab));
     setActiveTab(tab);
     setSidebarOpen(false);
   }
 
+  function renderTab(tab: Tab, content: ReactNode) {
+    if (!visitedTabs.has(tab) || blockedTabs.includes(tab) || !canUseSaasFeature(saas.subscription, tab)) return null;
+    return (
+      <div key={tab} hidden={activeTab !== tab}>
+        <Suspense fallback={<div className="partner-loading" role="status">Carregando módulo...</div>}>
+          {content}
+        </Suspense>
+      </div>
+    );
+  }
+
   function renderCadastros(target?: AdminCadastrosTarget) {
-    if (target === 'vendedores' && (activeTab !== 'administrativo' || !['administrador', 'gerente'].includes(effectiveRole))) {
+    if (target === 'vendedores' && (blockedTabs.includes('administrativo') || !['administrador', 'gerente'].includes(effectiveRole))) {
       return <p role="alert">A gestão de colaboradores está disponível somente no Administrativo para administradores e gerentes.</p>;
     }
     return (
@@ -1914,13 +1932,12 @@ export function PartnerPanel({
 
           <div className="partner-content">
             {storeSettings.internal_notice && <div role="note" className="store-internal-notice">{storeSettings.internal_notice}</div>}
-            <Suspense fallback={<div className="partner-loading" role="status">Carregando módulo...</div>}>
             {saas.error && <div role="alert"><p>{saas.error}</p><button className="rma-advance-btn" onClick={() => { void saas.refresh(); }}>Verificar assinatura novamente</button></div>}
             {!saas.loading && saas.subscription && !saas.subscription.can_access && <p role="status">A assinatura está sem acesso operacional. Regularize em Configurações ou entre em contato com o suporte.</p>}
-            {!blockedTabs.includes(activeTab) && canUseSaasFeature(saas.subscription, activeTab) ? <>
-            {activeTab === 'cadastros' && (
-              renderCadastros()
+            {!saas.loading && !visibleTabs.some((tab) => tab.id === activeTab) && (
+              <p role="status">Este módulo não está disponível na assinatura atual.</p>
             )}
+            {renderTab('cadastros', renderCadastros())}
 
             {(activeTab === 'pdv' || activeTab === 'pedidos' || activeTab === 'historico') &&
               (pdvReadError || partner.pdvSyncWarning || partner.pendingSale) && (
@@ -1941,9 +1958,9 @@ export function PartnerPanel({
                 </>}
               </div>
             )}
-            {(activeTab === 'pdv' || activeTab === 'historico') && !blockedTabs.includes('pdv') && (
+            {visitedTabs.has('pdv') && !blockedTabs.includes('pdv') && canUseSaasFeature(saas.subscription, 'pdv') && (
               <div hidden={activeTab !== 'pdv'}>
-              <PdvModule
+              {renderTab('pdv', <PdvModule
                 preSaleToCheckout={preSaleToCheckout}
                 onRequestPreSale={setPreSaleToCheckout}
                 onConsumePreSale={() => setPreSaleToCheckout(null)}
@@ -2002,11 +2019,13 @@ export function PartnerPanel({
                 onDeleteSale={
                   handleDeleteSale
                 }
-              />
+              />)}
               </div>
             )}
 
-            {activeTab === 'caixa' && (
+            {visitedTabs.has('caixa') && (
+              <div hidden={activeTab !== 'caixa'}>
+              {renderTab('caixa',
               <CashRegisterModule
                 branchId={effectiveBranchId}
                 sales={partner.sales}
@@ -2015,10 +2034,13 @@ export function PartnerPanel({
                 operatorId={getOperatorContext().operatorId}
                 operatorPin={getOperatorContext().operatorPin}
                 salespeople={filteredSalespeople}
-              />
+              />)}
+              </div>
             )}
 
-            {activeTab === 'pedidos' && (
+            {visitedTabs.has('pedidos') && (
+              <div hidden={activeTab !== 'pedidos'}>
+              {renderTab('pedidos',
               <OpenOrdersModule
                 onPullToPdv={(sale) => {
                   if (sale.status !== 'pre_venda' || !sale.branch_id || blockedTabs.includes('pdv')) return;
@@ -2059,10 +2081,13 @@ export function PartnerPanel({
                 onDeleteSale={
                   handleDeleteSale
                 }
-              />
+              />)}
+              </div>
             )}
 
-            {activeTab === 'os' && (
+            {visitedTabs.has('os') && (
+              <div hidden={activeTab !== 'os'}>
+              {renderTab('os',
               <ServiceOrdersModule
                 userId={
                   identity?.companyUserId
@@ -2094,10 +2119,13 @@ export function PartnerPanel({
                     },
                   )
                 }
-              />
+              />)}
+              </div>
             )}
 
-            {activeTab === 'historico' && (
+            {visitedTabs.has('historico') && (
+              <div hidden={activeTab !== 'historico'}>
+              {renderTab('historico',
               <OrderHistoryModule
                 salesHistory={!blockedTabs.includes('pdv') ? <SalesHistoryModule
                   rmaRequests={partner.rmas}
@@ -2112,16 +2140,22 @@ export function PartnerPanel({
                 orders={
                   filteredOrders
                 }
-              />
+              />)}
+              </div>
             )}
 
-            {activeTab === 'suporte' && (
+            {visitedTabs.has('suporte') && (
+              <div hidden={activeTab !== 'suporte'}>
+              {renderTab('suporte',
               <SupportChatModule
                 user={user}
-              />
+              />)}
+              </div>
             )}
 
-            {activeTab === 'fiscal' && (
+            {visitedTabs.has('fiscal') && (
+              <div hidden={activeTab !== 'fiscal'}>
+              {renderTab('fiscal',
               <FiscalModule
                 products={
                   filteredProducts
@@ -2141,10 +2175,13 @@ export function PartnerPanel({
                 selectedBranchId={
                   effectiveBranchId
                 }
-              />
+              />)}
+              </div>
             )}
 
-            {activeTab === 'administrativo' && (
+            {visitedTabs.has('administrativo') && (
+              <div hidden={activeTab !== 'administrativo'}>
+              {renderTab('administrativo',
               <AdminModule
                 renderSettings={() => <SettingsModule user={user} profile={partner.profile} onProfileUpdate={partner.updateProfile} />}
                 renderCadastros={renderCadastros}
@@ -2193,10 +2230,13 @@ export function PartnerPanel({
                   !identity.salespersonId &&
                   identity.authUserId === identity.companyUserId
                 )}
-              />
+              />)}
+              </div>
             )}
 
-            {activeTab === 'entregas' && (
+            {visitedTabs.has('entregas') && (
+              <div hidden={activeTab !== 'entregas'}>
+              {renderTab('entregas',
               <DeliveryModule
                 sales={
                   filteredSales
@@ -2212,10 +2252,13 @@ export function PartnerPanel({
                   const { operatorId, operatorPin } = getOperatorContext();
                   return partner.updateDelivery(saleId, status, driverId, operatorId, operatorPin);
                 }}
-              />
+              />)}
+              </div>
             )}
 
-            {activeTab === 'financeiro' && (
+            {visitedTabs.has('financeiro') && (
+              <div hidden={activeTab !== 'financeiro'}>
+              {renderTab('financeiro',
               <FinancialModule
                 invoices={
                   filteredInvoices
@@ -2261,10 +2304,13 @@ export function PartnerPanel({
                 onPayInvoice={
                   partner.payInvoice
                 }
-              />
+              />)}
+              </div>
             )}
 
-            {activeTab === 'rma' && (
+            {visitedTabs.has('rma') && (
+              <div hidden={activeTab !== 'rma'}>
+              {renderTab('rma',
               <RmaModule
                 rmaRequests={
                   filteredRmaRequests
@@ -2295,10 +2341,13 @@ export function PartnerPanel({
                 onDelete={
                   partner.deleteRma
                 }
-              />
+              />)}
+              </div>
             )}
 
-            {activeTab === 'relatorios' && (
+            {visitedTabs.has('relatorios') && (
+              <div hidden={activeTab !== 'relatorios'}>
+              {renderTab('relatorios',
               <ReportsModule
                 movements={
                   filteredMovements
@@ -2315,10 +2364,13 @@ export function PartnerPanel({
                 salespeople={
                   filteredSalespeople
                 }
-              />
+              />)}
+              </div>
             )}
 
-            {activeTab === 'white-label' && (
+            {visitedTabs.has('white-label') && (
+              <div hidden={activeTab !== 'white-label'}>
+              {renderTab('white-label',
               <WhiteLabelModule
                 settings={
                   storeSettings
@@ -2326,10 +2378,13 @@ export function PartnerPanel({
                 onUpdate={
                   partner.updateStoreSettings
                 }
-              />
+              />)}
+              </div>
             )}
 
-            {activeTab === 'configuracoes' && (
+            {visitedTabs.has('configuracoes') && (
+              <div hidden={activeTab !== 'configuracoes'}>
+              {renderTab('configuracoes',
               <SettingsModule
                 onSubscriptionChanged={() => { void saas.refresh(); }}
                 branchManagement={!isEmployeeRestricted ? <MultiStoreModule
@@ -2346,10 +2401,9 @@ export function PartnerPanel({
                 onProfileUpdate={
                   partner.updateProfile
                 }
-              />
+              />)}
+              </div>
             )}
-            </> : <p role="status">{saas.loading ? 'Verificando acesso ao plano...' : 'Este módulo não está disponível na assinatura atual.'}</p>}
-            </Suspense>
           </div>
         </div>
       </div>
