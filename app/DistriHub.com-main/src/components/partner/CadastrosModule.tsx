@@ -2,7 +2,7 @@ import React, { useState, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Boxes, FileText, Package, Plus, Tag, Trash2, Upload, Users, Wrench,
-  Building2, UserCheck, Layers, QrCode, X, History,
+  Building2, Layers, QrCode, X, History,
   IdCard, MapPin, Wallet, Phone, Save, Camera, UserCircle, MoreVertical, Pencil,
   Check, TrendingUp, AlertTriangle, Activity,
 } from 'lucide-react';
@@ -79,7 +79,6 @@ const subTabs: { id: SubTab; label: string; icon: typeof Package }[] = [
   { id: 'modificadores', label: 'Modificadores', icon: Layers },
   { id: 'clientes', label: 'Clientes', icon: Users },
   { id: 'fornecedores', label: 'Fornecedores', icon: Building2 },
-  { id: 'vendedores', label: 'Colaboradores', icon: UserCheck },
   { id: 'reposicao', label: 'Reposição de Estoque', icon: Activity },
   { id: 'importar', label: 'Importar / Exportar', icon: Upload },
 ];
@@ -114,7 +113,7 @@ export function CadastrosModule({
         <span className="module-icon"><Boxes size={20} /></span>
         <div>
           <h3>{adminTarget ? ({ produtos: 'Produtos', servicos: 'Serviços', combos: 'Combos de Produtos', importar: 'Importar / Exportar', fornecedores: 'Fornecedores', estoque: 'Ajuste de Estoque', vendedores: 'Colaboradores', clientes: 'Clientes' } as Record<string, string>)[adminTarget] : 'Cadastros Essenciais & Entrada Automática'}</h3>
-          <p>{adminTarget ? 'Cadastre e gerencie os registros da opção selecionada no Administrativo.' : 'Produtos, serviços, categorias, clientes, fornecedores e equipe'}</p>
+          <p>{adminTarget ? 'Cadastre e gerencie os registros da opção selecionada no Administrativo.' : 'Produtos, serviços, categorias, clientes e fornecedores'}</p>
         </div>
       </div>
 
@@ -174,7 +173,7 @@ export function CadastrosModule({
         {subTab === 'fornecedores' && (
           <SuppliersSubTab suppliers={suppliers} onAdd={onAddSupplier} onUpdate={onUpdateSupplier} onDelete={onDeleteSupplier} />
         )}
-        {subTab === 'vendedores' && (
+        {subTab === 'vendedores' && adminTarget === 'vendedores' && (
           <SalespeopleSubTab
             salespeople={salespeople}
             branches={branches}

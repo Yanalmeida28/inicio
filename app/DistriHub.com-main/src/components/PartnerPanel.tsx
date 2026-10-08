@@ -1547,6 +1547,9 @@ export function PartnerPanel({
   }
 
   function renderCadastros(target?: AdminCadastrosTarget) {
+    if (target === 'vendedores' && (activeTab !== 'administrativo' || !['administrador', 'gerente'].includes(effectiveRole))) {
+      return <p role="alert">A gestão de colaboradores está disponível somente no Administrativo para administradores e gerentes.</p>;
+    }
     return (
               <CadastrosModule
                 key={target ?? 'principal'}
