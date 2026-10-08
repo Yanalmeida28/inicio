@@ -1,4 +1,5 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { SessionDraftProvider, useSessionDraftScope, useSessionDraftState } from '../../hooks/useSessionDraft';
 import { createPortal } from 'react-dom';
 import {
   Boxes, FileText, Package, Plus, Tag, Trash2, Upload, Users, Wrench,
@@ -30,6 +31,7 @@ type PartnerCustomerUpdate = Partial<
 type Props = {
   adminTarget?: string;
   initialTab?: SubTab;
+  isActive?: boolean;
   productType?: 'produto' | 'servico' | 'todos';
   products: PartnerProduct[];
   branches: PartnerBranch[];
@@ -94,6 +96,7 @@ function getActionPopoverPosition(event: React.MouseEvent<HTMLButtonElement>, wi
 export function CadastrosModule({
   adminTarget,
   initialTab = 'produtos', productType = 'todos',
+  isActive = true,
   products, branches, selectedBranchId, categories, suppliers, salespeople, combos, modifiers, customers, sales,
   allSales, rmaRequests = [], segment, onAddProduct, onUpdateProduct, onDeleteProduct,
   onReplenishStock,
@@ -102,12 +105,21 @@ export function CadastrosModule({
   onAddCombo, onDeleteCombo, onAddModifier, onDeleteModifier, onAddCustomer,
   onUpdateCustomer, onLoadCustomer, onDeleteCustomer,
 }: Props) {
-  const [subTab, setSubTab] = useState<SubTab>(initialTab);
+  const parentDraftScope = useSessionDraftScope();
+  const [subTab, setSubTab] = useSessionDraftState<SubTab>(`cadastros:${adminTarget ?? 'principal'}:active-subtab`, initialTab);
+  const [visitedSubTabs, setVisitedSubTabs] = useState<Set<SubTab>>(() => new Set([initialTab]));
+  useEffect(() => {
+    setVisitedSubTabs((current) => current.has(subTab) ? current : new Set(current).add(subTab));
+  }, [subTab, setVisitedSubTabs]);
   const filteredProducts = selectedBranchId
     ? products.filter((product) => product.branch_id === selectedBranchId)
     : [];
 
   return (
+    <SessionDraftProvider
+      key={`${parentDraftScope}:cadastros:${adminTarget ?? 'principal'}`}
+      scope={`${parentDraftScope}:cadastros:${adminTarget ?? 'principal'}`}
+    >
     <div className="panel-module cadastros-scope">
       <div className="module-header">
         <span className="module-icon"><Boxes size={20} /></span>
@@ -122,7 +134,10 @@ export function CadastrosModule({
           <button
             key={id}
             className={`subtab ${subTab === id ? 'active' : ''}`}
-            onClick={() => setSubTab(id)}
+            onClick={() => {
+              setVisitedSubTabs((current) => current.has(id) ? current : new Set(current).add(id));
+              setSubTab(id);
+            }}
           >
             <Icon size={15} /> {label}
           </button>
@@ -131,9 +146,11 @@ export function CadastrosModule({
 
       <div className="subtab-content">
         {adminTarget === 'estoque' && <StockAdjustmentSubTab products={filteredProducts.filter(p => !p.is_service)} branchId={selectedBranchId} onUpdate={onUpdateProduct} />}
-        {subTab === 'produtos' && adminTarget !== 'estoque' && (
+        {adminTarget !== 'estoque' && (adminTarget ? subTab === 'produtos' : visitedSubTabs.has('produtos')) && (
+          <div hidden={subTab !== 'produtos'}>
           <ProductsSubTab
             products={filteredProducts.filter(product => productType === 'todos' || product.is_service === (productType === 'servico'))}
+            isActive={isActive && subTab === 'produtos'}
             defaultIsService={productType === 'servico'}
             allProducts={products}
             branches={branches}
@@ -146,20 +163,29 @@ export function CadastrosModule({
             onUpdateProduct={onUpdateProduct}
             onDeleteProduct={onDeleteProduct}
           />
+          </div>
         )}
-        {subTab === 'categorias' && (
+        {(adminTarget ? subTab === 'categorias' : visitedSubTabs.has('categorias')) && (
+          <div hidden={subTab !== 'categorias'}>
           <CategoriesSubTab categories={categories} products={filteredProducts} onAdd={onAddCategory} onDelete={onDeleteCategory} />
+          </div>
         )}
-        {subTab === 'xml' && <XmlSubTab selectedBranchId={selectedBranchId} onAddProduct={onAddProduct} />}
-        {subTab === 'combos' && (
+        {(adminTarget ? subTab === 'xml' : visitedSubTabs.has('xml')) && <div hidden={subTab !== 'xml'}><XmlSubTab selectedBranchId={selectedBranchId} onAddProduct={onAddProduct} /></div>}
+        {(adminTarget ? subTab === 'combos' : visitedSubTabs.has('combos')) && (
+          <div hidden={subTab !== 'combos'}>
           <CombosSubTab combos={combos} products={filteredProducts} onAdd={onAddCombo} onDelete={onDeleteCombo} />
+          </div>
         )}
-        {subTab === 'modificadores' && (
+        {(adminTarget ? subTab === 'modificadores' : visitedSubTabs.has('modificadores')) && (
+          <div hidden={subTab !== 'modificadores'}>
           <ModifiersSubTab modifiers={modifiers} products={filteredProducts} onAdd={onAddModifier} onDelete={onDeleteModifier} />
+          </div>
         )}
-        {subTab === 'clientes' && (
+        {(adminTarget ? subTab === 'clientes' : visitedSubTabs.has('clientes')) && (
+          <div hidden={subTab !== 'clientes'}>
           <CustomersSubTab
             customers={customers}
+            isActive={isActive && subTab === 'clientes'}
             sales={allSales}
             rmaRequests={rmaRequests}
             salespeople={salespeople}
@@ -169,9 +195,12 @@ export function CadastrosModule({
             onUpdate={onUpdateCustomer}
             onDelete={onDeleteCustomer}
           />
+          </div>
         )}
-        {subTab === 'fornecedores' && (
+        {(adminTarget ? subTab === 'fornecedores' : visitedSubTabs.has('fornecedores')) && (
+          <div hidden={subTab !== 'fornecedores'}>
           <SuppliersSubTab suppliers={suppliers} onAdd={onAddSupplier} onUpdate={onUpdateSupplier} onDelete={onDeleteSupplier} />
+          </div>
         )}
         {subTab === 'vendedores' && adminTarget === 'vendedores' && (
           <SalespeopleSubTab
@@ -182,10 +211,13 @@ export function CadastrosModule({
             onDelete={onDeleteSalesperson}
           />
         )}
-        {subTab === 'reposicao' && (
+        {(adminTarget ? subTab === 'reposicao' : visitedSubTabs.has('reposicao')) && (
+          <div hidden={subTab !== 'reposicao'}>
           <ReplenishmentSubTab products={products} sales={sales} selectedBranchId={selectedBranchId} onReplenishStock={onReplenishStock} />
+          </div>
         )}
-        {subTab === 'importar' && (
+        {(adminTarget ? subTab === 'importar' : visitedSubTabs.has('importar')) && (
+          <div hidden={subTab !== 'importar'}>
           <ImportExportModule
             products={products}
             customers={customers}
@@ -194,17 +226,19 @@ export function CadastrosModule({
             onUpdateProduct={onUpdateProduct}
             onAddCustomer={onAddCustomer}
           />
+          </div>
         )}
       </div>
     </div>
+    </SessionDraftProvider>
   );
 }
 
 function StockAdjustmentSubTab({ products, branchId, onUpdate }: {
   products: PartnerProduct[]; branchId: string | null; onUpdate: Props['onUpdateProduct'];
 }) {
-  const [query, setQuery] = useState('');
-  const [editing, setEditing] = useState<{ id: string; stock: string } | null>(null);
+  const [query, setQuery] = useSessionDraftState('stock-adjustment:query', '');
+  const [editing, setEditing] = useSessionDraftState<{ id: string; stock: string } | null>('stock-adjustment:editing', null);
   const [saving, setSaving] = useState(false);
   const lock = useRef(false);
   const [error, setError] = useState('');
@@ -237,8 +271,9 @@ function StockAdjustmentSubTab({ products, branchId, onUpdate }: {
   </div>;
 }
 
-function ProductsSubTab({ defaultIsService = false, products, allProducts, branches, selectedBranchId, categories, suppliers, onAddSupplier, segment, onAddProduct, onUpdateProduct, onDeleteProduct }: {
+function ProductsSubTab({ defaultIsService = false, isActive = true, products, allProducts, branches, selectedBranchId, categories, suppliers, onAddSupplier, segment, onAddProduct, onUpdateProduct, onDeleteProduct }: {
   defaultIsService?: boolean;
+  isActive?: boolean;
   products: PartnerProduct[];
   allProducts: PartnerProduct[];
   branches: PartnerBranch[];
@@ -252,7 +287,7 @@ function ProductsSubTab({ defaultIsService = false, products, allProducts, branc
   onDeleteProduct: (id: string) => Promise<void>;
 }) {
   const [supplierSaving, setSupplierSaving] = useState(false);
-  const [showForm, setShowForm] = useState(false);
+  const [showForm, setShowForm] = useSessionDraftState('products:show-form', false);
   const [productSearch, setProductSearch] = useState('');
   const matchingProducts = useMemo(() => {
     const normalize = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
@@ -261,27 +296,32 @@ function ProductsSubTab({ defaultIsService = false, products, allProducts, branc
       normalize(product.name).includes(term) || normalize(product.sku ?? '').includes(term),
     );
   }, [products, productSearch]);
-  const [name, setName] = useState('');
-  const [sku, setSku] = useState('');
-  const [cost, setCost] = useState('');
-  const [sale, setSale] = useState('');
-  const [wholesale, setWholesale] = useState('');
-  const [stock, setStock] = useState('');
-  const [minStock, setMinStock] = useState('5');
-  const [category, setCategory] = useState('');
-  const [supplierId, setSupplierId] = useState('');
-  const [isService, setIsService] = useState(defaultIsService);
-  const [ncm, setNcm] = useState('');
-  const [cfop, setCfop] = useState('');
-  const [cstCsosn, setCstCsosn] = useState('');
-  const [icmsRate, setIcmsRate] = useState('');
-  const [pisRate, setPisRate] = useState('');
-  const [cofinsRate, setCofinsRate] = useState('');
+  const [name, setName] = useSessionDraftState('products:name', '');
+  const [sku, setSku] = useSessionDraftState('products:sku', '');
+  const [cost, setCost] = useSessionDraftState('products:cost', '');
+  const [sale, setSale] = useSessionDraftState('products:sale', '');
+  const [wholesale, setWholesale] = useSessionDraftState('products:wholesale', '');
+  const [stock, setStock] = useSessionDraftState('products:stock', '');
+  const [minStock, setMinStock] = useSessionDraftState('products:min-stock', '5');
+  const [category, setCategory] = useSessionDraftState('products:category', '');
+  const [supplierId, setSupplierId] = useSessionDraftState('products:supplier', '');
+  const [isService, setIsService] = useSessionDraftState('products:is-service', defaultIsService);
+  const [ncm, setNcm] = useSessionDraftState('products:ncm', '');
+  const [cfop, setCfop] = useSessionDraftState('products:cfop', '');
+  const [cstCsosn, setCstCsosn] = useSessionDraftState('products:cst-csosn', '');
+  const [icmsRate, setIcmsRate] = useSessionDraftState('products:icms-rate', '');
+  const [pisRate, setPisRate] = useSessionDraftState('products:pis-rate', '');
+  const [cofinsRate, setCofinsRate] = useSessionDraftState('products:cofins-rate', '');
   const [labelProductId, setLabelProductId] = useState<string | null>(null);
   const [availabilityProductId, setAvailabilityProductId] = useState<string | null>(null);
   const [editProduct, setEditProduct] = useState<PartnerProduct | null>(null);
   const [openActionId, setOpenActionId] = useState<string | null>(null);
   const [productActionPosition, setProductActionPosition] = useState<React.CSSProperties | null>(null);
+  useEffect(() => {
+    if (isActive) return;
+    setOpenActionId(null);
+    setProductActionPosition(null);
+  }, [isActive]);
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
@@ -797,8 +837,8 @@ function CategoriesSubTab({ categories, products, onAdd, onDelete }: {
   onAdd: (name: string) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
 }) {
-  const [name, setName] = useState('');
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
+  const [name, setName] = useSessionDraftState('categories:name', '');
+  const [selectedCategoryId, setSelectedCategoryId] = useSessionDraftState<string | null>('categories:selected-id', null);
   const selectedCategory = categories.find((category) => category.id === selectedCategoryId) ?? null;
   const categoryProducts = selectedCategory
     ? products.filter((product) => product.category === selectedCategory.name)
@@ -1019,10 +1059,10 @@ function CombosSubTab({ combos, products, onAdd, onDelete }: {
   onAdd: (c: Omit<PartnerCombo, 'id' | 'user_id' | 'created_at'>) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
 }) {
-  const [showForm, setShowForm] = useState(false);
-  const [name, setName] = useState('');
-  const [price, setPrice] = useState('');
-  const [selected, setSelected] = useState<string[]>([]);
+  const [showForm, setShowForm] = useSessionDraftState('combos:show-form', false);
+  const [name, setName] = useSessionDraftState('combos:name', '');
+  const [price, setPrice] = useSessionDraftState('combos:price', '');
+  const [selected, setSelected] = useSessionDraftState<string[]>('combos:selected-products', []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -1099,9 +1139,9 @@ function ModifiersSubTab({ modifiers, products, onAdd, onDelete }: {
   onAdd: (m: Omit<PartnerModifier, 'id' | 'user_id' | 'created_at'>) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
 }) {
-  const [name, setName] = useState('');
-  const [adj, setAdj] = useState('');
-  const [productId, setProductId] = useState('');
+  const [name, setName] = useSessionDraftState('modifiers:name', '');
+  const [adj, setAdj] = useSessionDraftState('modifiers:price-adjustment', '');
+  const [productId, setProductId] = useSessionDraftState('modifiers:product-id', '');
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -1155,7 +1195,8 @@ function ModifiersSubTab({ modifiers, products, onAdd, onDelete }: {
   );
 }
 
-function CustomersSubTab({ customers, sales, rmaRequests, salespeople, selectedBranchId, onAdd, onUpdate, onDelete, onLoadCustomer }: {
+function CustomersSubTab({ isActive = true, customers, sales, rmaRequests, salespeople, selectedBranchId, onAdd, onUpdate, onDelete, onLoadCustomer }: {
+  isActive?: boolean;
   rmaRequests: RmaRequest[];
   customers: PartnerCustomer[];
   sales: PartnerSale[];
@@ -1166,25 +1207,30 @@ function CustomersSubTab({ customers, sales, rmaRequests, salespeople, selectedB
   onUpdate: (id: string, updates: Partial<PartnerCustomer>) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
 }) {
-  const [showForm, setShowForm] = useState(false);
-  const [editingCustomerId, setEditingCustomerId] = useState<string | null>(null);
-  const [name, setName] = useState('');
-  const [document, setDocument] = useState('');
-  const [personType, setPersonType] = useState<PersonType | ''>('PF');
-  const [phone, setPhone] = useState('');
-  const [email, setEmail] = useState('');
-  const [birthday, setBirthday] = useState('');
-  const [address, setAddress] = useState('');
-  const [neighborhood, setNeighborhood] = useState('');
-  const [city, setCity] = useState('');
-  const [device, setDevice] = useState('');
-  const [notes, setNotes] = useState('');
-  const [customerType, setCustomerType] = useState<'varejo' | 'atacado'>('varejo');
-  const [customerSearch, setCustomerSearch] = useState('');
+  const [showForm, setShowForm] = useSessionDraftState('customers:show-form', false);
+  const [editingCustomerId, setEditingCustomerId] = useSessionDraftState<string | null>('customers:editing-id', null);
+  const [name, setName] = useSessionDraftState('customers:name', '');
+  const [document, setDocument] = useSessionDraftState('customers:document', '');
+  const [personType, setPersonType] = useSessionDraftState<PersonType | ''>('customers:person-type', 'PF');
+  const [phone, setPhone] = useSessionDraftState('customers:phone', '');
+  const [email, setEmail] = useSessionDraftState('customers:email', '');
+  const [birthday, setBirthday] = useSessionDraftState('customers:birthday', '');
+  const [address, setAddress] = useSessionDraftState('customers:address', '');
+  const [neighborhood, setNeighborhood] = useSessionDraftState('customers:neighborhood', '');
+  const [city, setCity] = useSessionDraftState('customers:city', '');
+  const [device, setDevice] = useSessionDraftState('customers:device', '');
+  const [notes, setNotes] = useSessionDraftState('customers:notes', '');
+  const [customerType, setCustomerType] = useSessionDraftState<'varejo' | 'atacado'>('customers:type', 'varejo');
+  const [customerSearch, setCustomerSearch] = useSessionDraftState('customers:search', '');
   const [historyCustomerId, setHistoryCustomerId] = useState<string | null>(null);
   const [profileCustomerId, setProfileCustomerId] = useState<string | null>(null);
   const [openCustomerActionId, setOpenCustomerActionId] = useState<string | null>(null);
   const [customerActionPosition, setCustomerActionPosition] = useState<React.CSSProperties | null>(null);
+  useEffect(() => {
+    if (isActive) return;
+    setOpenCustomerActionId(null);
+    setCustomerActionPosition(null);
+  }, [isActive]);
 
   function resetForm() {
     setName(''); setDocument(''); setPersonType('PF'); setPhone(''); setEmail(''); setBirthday(''); setAddress('');
@@ -1701,10 +1747,10 @@ function SuppliersSubTab({ suppliers, onAdd, onUpdate, onDelete }: {
   onUpdate: (id: string, updates: Partial<PartnerSupplier>) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
 }) {
-  const [name, setName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [notes, setNotes] = useState('');
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [name, setName] = useSessionDraftState('suppliers:name', '');
+  const [phone, setPhone] = useSessionDraftState('suppliers:phone', '');
+  const [notes, setNotes] = useSessionDraftState('suppliers:notes', '');
+  const [editingId, setEditingId] = useSessionDraftState<string | null>('suppliers:editing-id', null);
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -1825,27 +1871,22 @@ function SalespeopleSubTab({
   ) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
 }) {
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [rate, setRate] = useState('');
+  const [name, setName] = useSessionDraftState('salespeople:name', '');
+  const [email, setEmail] = useSessionDraftState('salespeople:email', '');
+  const [rate, setRate] = useSessionDraftState('salespeople:rate', '');
   const [pin, setPin] = useState('');
-  const [role, setRole] =
-    useState<SalespersonRole>('vendedor');
-  const [branchId, setBranchId] = useState('');
+  const [role, setRole] = useSessionDraftState<SalespersonRole>('salespeople:role', 'vendedor');
+  const [branchId, setBranchId] = useSessionDraftState('salespeople:branch-id', '');
 
-  const [editingId, setEditingId] =
-    useState<string | null>(null);
-  const [editName, setEditName] = useState('');
-  const [editEmail, setEditEmail] = useState('');
-  const [editRate, setEditRate] = useState('');
+  const [editingId, setEditingId] = useSessionDraftState<string | null>('salespeople:editing-id', null);
+  const [editName, setEditName] = useSessionDraftState('salespeople:edit-name', '');
+  const [editEmail, setEditEmail] = useSessionDraftState('salespeople:edit-email', '');
+  const [editRate, setEditRate] = useSessionDraftState('salespeople:edit-rate', '');
   const [editPin, setEditPin] = useState('');
-  const [editRole, setEditRole] =
-    useState<SalespersonRole>('vendedor');
-  const [editBranchId, setEditBranchId] =
-    useState('');
-  const [editActive, setEditActive] =
-    useState(true);
-  const [editBlockedModules, setEditBlockedModules] = useState<string[]>([]);
+  const [editRole, setEditRole] = useSessionDraftState<SalespersonRole>('salespeople:edit-role', 'vendedor');
+  const [editBranchId, setEditBranchId] = useSessionDraftState('salespeople:edit-branch-id', '');
+  const [editActive, setEditActive] = useSessionDraftState('salespeople:edit-active', true);
+  const [editBlockedModules, setEditBlockedModules] = useSessionDraftState<string[]>('salespeople:edit-blocked-modules', []);
   const roleRestrictedModules: Record<SalespersonRole, string[]> = {
     administrador: [],
     gerente: ['financeiro','white-label','configuracoes'],
@@ -2541,10 +2582,10 @@ function ReplenishmentSubTab({ products, sales, selectedBranchId, onReplenishSto
   selectedBranchId: string | null;
   onReplenishStock: (productId: string, branchId: string, quantity: number, unitCost?: number | null, reason?: string) => Promise<{ newStock: number }>;
 }) {
-  const [selectedProduct, setSelectedProduct] = useState<PartnerProduct | null>(null);
-  const [quantity, setQuantity] = useState('');
-  const [unitCost, setUnitCost] = useState('');
-  const [reason, setReason] = useState('');
+  const [selectedProduct, setSelectedProduct] = useSessionDraftState<PartnerProduct | null>('replenishment:product', null);
+  const [quantity, setQuantity] = useSessionDraftState('replenishment:quantity', '');
+  const [unitCost, setUnitCost] = useSessionDraftState('replenishment:unit-cost', '');
+  const [reason, setReason] = useSessionDraftState('replenishment:reason', '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);

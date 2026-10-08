@@ -8,6 +8,7 @@ import { SalePriceInput } from './SalePriceInput';
 import { PreSaleCheckout } from './PreSaleCheckout';
 import { money } from '../../utils';
 import { billedSaleError, pdvErrorMessage, pdvTotal, validSalePrice, type CustomerCredit } from '../../lib/pdv';
+import { SessionDraftProvider, useSessionDraftScope, useSessionDraftState } from '../../hooks/useSessionDraft';
 
 type PriceTable = 'varejo' | 'atacado';
 type ClientType = 'varejo' | 'atacado';
@@ -279,13 +280,20 @@ export function PdvModule({
   preSaleToCheckout, onConsumePreSale, onRequestPreSale,
   activeSalespersonId, activeBranchName, currentRole, canEditPrice, onCreateSale, onCreatePreSale, onFinalizePreSale, onCancelSale, onDeleteSale,
 }: Props) {
-  const [subTab, setSubTab] = useState<PdvSubTab>('pdv');
+  const parentDraftScope = useSessionDraftScope();
+  const contextKey = `${selectedBranchId ?? 'all'}:${activeSalespersonId ?? 'owner'}`;
+  const [subTab, setSubTab] = useSessionDraftState<PdvSubTab>(`pdv:active-subtab:${contextKey}`, 'pdv');
+  const [visitedSubTabs, setVisitedSubTabs] = useState<Set<PdvSubTab>>(() => new Set(['pdv', subTab]));
   const [checkoutPreSale, setCheckoutPreSale] = useState<PartnerSale | null>(null);
   useEffect(() => {
     if (!preSaleToCheckout) return;
     setCheckoutPreSale(preSaleToCheckout);
+    setVisitedSubTabs((current) => current.has('pdv') ? current : new Set(current).add('pdv'));
     setSubTab('pdv');
-  }, [preSaleToCheckout]);
+  }, [preSaleToCheckout, setSubTab]);
+  useEffect(() => {
+    setVisitedSubTabs((current) => current.has(subTab) ? current : new Set(current).add(subTab));
+  }, [subTab]);
   const moduleRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -313,6 +321,10 @@ export function PdvModule({
   const preSales = sales.filter((s) => s.status === 'pre_venda');
 
   return (
+    <SessionDraftProvider
+      key={`${parentDraftScope}:pdv:${contextKey}`}
+      scope={`${parentDraftScope}:pdv:${contextKey}`}
+    >
     <div ref={moduleRef} className={`panel-module pdv-workspace${subTab === 'pdv' ? ' pdv-workspace-checkout' : ''}`}>
       <div className="module-header">
         <span className="module-icon"><ShoppingCart size={20} /></span>
@@ -358,7 +370,8 @@ export function PdvModule({
           onClose={() => { setCheckoutPreSale(null); onConsumePreSale?.(); }}
         />
       )}
-      {subTab !== 'pre-venda' && !checkoutPreSale && (
+      {visitedSubTabs.has('pdv') && (
+        <div hidden={subTab !== 'pdv' || Boolean(checkoutPreSale)}>
         <PdvCheckout
           products={products}
           customers={customers}
@@ -372,9 +385,11 @@ export function PdvModule({
           canEditPrice={canEditPrice}
           onCreateSale={onCreateSale}
         />
+        </div>
       )}
 
-      {subTab === 'pre-venda' && (
+      {visitedSubTabs.has('pre-venda') && (
+        <div hidden={subTab !== 'pre-venda'}>
         <PreVendaTab
           onPullToPdv={(sale) => { setCheckoutPreSale(sale); setSubTab('pdv'); onRequestPreSale?.(sale); }}
           products={products}
@@ -391,8 +406,10 @@ export function PdvModule({
           onCancelSale={onCancelSale}
           onDeleteSale={onDeleteSale}
         />
+        </div>
       )}
     </div>
+    </SessionDraftProvider>
   );
 }
 
@@ -411,13 +428,13 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
   canCheckout: boolean;
   onCreateSale: (sale: { customer_id: string | null; customer_name: string; items: SaleItem[]; total: number; customer_type: ClientType; delivery_type: DeliveryType; imei?: string; serial_number?: string; payment_method?: string; salesperson_id?: string | null; branch_id?: string | null }) => Promise<void>;
 }) {
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useSessionDraftState('checkout:product-search', '');
   const [visibleProductCount, setVisibleProductCount] = useState(PRODUCT_PAGE_SIZE);
   const searchInputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     setVisibleProductCount(PRODUCT_PAGE_SIZE);
   }, [search, selectedBranchId]);
-  const [cart, setCart] = useState<{ product_id: string; name: string; quantity: number; unit_price: number }[]>([]);
+  const [cart, setCart] = useSessionDraftState<{ product_id: string; name: string; quantity: number; unit_price: number }[]>('checkout:cart', []);
   const previousBranchId = useRef(selectedBranchId);
   const [branchChangedWithCart, setBranchChangedWithCart] = useState(false);
   useEffect(() => {
@@ -431,17 +448,17 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
     const product = products.find((candidate) => candidate.id === item.product_id);
     return !product || (product.branch_id != null && product.branch_id !== selectedBranchId);
   }));
-  const [customerId, setCustomerId] = useState('');
-  const [customerName, setCustomerName] = useState('');
-  const [clientType, setClientType] = useState<ClientType>('varejo');
-  const [paymentMethod, setPaymentMethod] = useState('pix');
-  const [deliveryType, setDeliveryType] = useState<DeliveryType>('balcao');
-  const [salespersonId, setSalespersonId] = useState('');
+  const [customerId, setCustomerId] = useSessionDraftState('checkout:customer-id', '');
+  const [customerName, setCustomerName] = useSessionDraftState('checkout:customer-name', '');
+  const [clientType, setClientType] = useSessionDraftState<ClientType>('checkout:client-type', 'varejo');
+  const [paymentMethod, setPaymentMethod] = useSessionDraftState('checkout:payment-method', 'pix');
+  const [deliveryType, setDeliveryType] = useSessionDraftState<DeliveryType>('checkout:delivery-type', 'balcao');
+  const [salespersonId, setSalespersonId] = useSessionDraftState('checkout:salesperson-id', '');
   const [completed, setCompleted] = useState(false);
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const checkoutInFlight = useRef(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
-  const [priceTable, setPriceTable] = useState<PriceTable>('varejo');
+  const [priceTable, setPriceTable] = useSessionDraftState<PriceTable>('checkout:price-table', 'varejo');
   const [selectionNotice, setSelectionNotice] = useState<string | null>(null);
   const [lastAddedId, setLastAddedId] = useState<string | null>(null);
   const lastClickRef = useRef<{ id: string; time: number }>({ id: '', time: 0 });
@@ -855,16 +872,16 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
   onCancelSale: (id: string, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
   onDeleteSale: (id: string, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
 }) {
-  const [search, setSearch] = useState('');
-  const [cart, setCart] = useState<{ product_id: string; name: string; quantity: number; unit_price: number }[]>([]);
-  const [customerId, setCustomerId] = useState('');
-  const [customerName, setCustomerName] = useState('');
-  const [clientType, setClientType] = useState<ClientType>('varejo');
-  const [priceTable, setPriceTable] = useState<PriceTable>('varejo');
-  const [deliveryType, setDeliveryType] = useState<DeliveryType>('balcao');
-  const [salespersonId, setSalespersonId] = useState('');
+  const [search, setSearch] = useSessionDraftState('presale:product-search', '');
+  const [cart, setCart] = useSessionDraftState<{ product_id: string; name: string; quantity: number; unit_price: number }[]>('presale:cart', []);
+  const [customerId, setCustomerId] = useSessionDraftState('presale:customer-id', '');
+  const [customerName, setCustomerName] = useSessionDraftState('presale:customer-name', '');
+  const [clientType, setClientType] = useSessionDraftState<ClientType>('presale:client-type', 'varejo');
+  const [priceTable, setPriceTable] = useSessionDraftState<PriceTable>('presale:price-table', 'varejo');
+  const [deliveryType, setDeliveryType] = useSessionDraftState<DeliveryType>('presale:delivery-type', 'balcao');
+  const [salespersonId, setSalespersonId] = useSessionDraftState('presale:salesperson-id', '');
   const [saved, setSaved] = useState(false);
-  const [preSalePayment, setPreSalePayment] = useState('');
+  const [preSalePayment, setPreSalePayment] = useSessionDraftState('presale:payment-method', '');
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [finalizeTarget, setFinalizeTarget] = useState<PartnerSale | null>(null);

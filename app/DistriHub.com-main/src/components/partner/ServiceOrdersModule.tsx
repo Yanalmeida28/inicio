@@ -19,6 +19,7 @@ import type {
 } from '../../types';
 
 import { supabase } from '../../lib/supabase';
+import { useSessionDraftState } from '../../hooks/useSessionDraft';
 
 type Props = {
   userId?: string;
@@ -85,25 +86,25 @@ export function ServiceOrdersModule({
   warrantyTerms,
 }: Props) {
   const [orders, setOrders] = useState<ServiceOrder[]>([]);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useSessionDraftState('service-order:open', false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
 
-  const [customerId, setCustomerId] = useState('');
-  const [equipmentType, setEquipmentType] = useState('');
-  const [identification, setIdentification] = useState('');
-  const [serial, setSerial] = useState('');
-  const [accessories, setAccessories] = useState('');
-  const [condition, setCondition] = useState('');
-  const [damage, setDamage] = useState('');
-  const [notes, setNotes] = useState('');
-  const [labor, setLabor] = useState('');
-  const [preRepairChecklist, setPreRepairChecklist] = useState({ screen: false, touch: false, camera: false });
-  const [customerAcknowledged, setCustomerAcknowledged] = useState(false);
+  const [customerId, setCustomerId] = useSessionDraftState('service-order:customer-id', '');
+  const [equipmentType, setEquipmentType] = useSessionDraftState('service-order:equipment-type', '');
+  const [identification, setIdentification] = useSessionDraftState('service-order:identification', '');
+  const [serial, setSerial] = useSessionDraftState('service-order:serial', '');
+  const [accessories, setAccessories] = useSessionDraftState('service-order:accessories', '');
+  const [condition, setCondition] = useSessionDraftState('service-order:condition', '');
+  const [damage, setDamage] = useSessionDraftState('service-order:damage', '');
+  const [notes, setNotes] = useSessionDraftState('service-order:notes', '');
+  const [labor, setLabor] = useSessionDraftState('service-order:labor', '');
+  const [preRepairChecklist, setPreRepairChecklist] = useSessionDraftState('service-order:checklist', { screen: false, touch: false, camera: false });
+  const [customerAcknowledged, setCustomerAcknowledged] = useSessionDraftState('service-order:customer-acknowledged', false);
 
-  const [productSearch, setProductSearch] = useState('');
-  const [items, setItems] = useState<DraftItem[]>([]);
+  const [productSearch, setProductSearch] = useSessionDraftState('service-order:product-search', '');
+  const [items, setItems] = useSessionDraftState<DraftItem[]>('service-order:items', []);
   const [entryPhotos, setEntryPhotos] = useState<Photo[]>([]);
   const [exitPhotos, setExitPhotos] = useState<Photo[]>([]);
   const [photoError, setPhotoError] = useState<string | null>(null);
@@ -609,6 +610,9 @@ export function ServiceOrdersModule({
               <small>
                 Filial: {branch?.name ?? 'Não selecionada'}
               </small>
+              <p role="note" style={{ margin: '8px 0 0', color: '#64748b', fontSize: 12 }}>
+                O rascunho é salvo nesta sessão para este usuário e filial. Fotos precisam ser selecionadas novamente após atualizar a página.
+              </p>
             </div>
 
             <button

@@ -11,6 +11,11 @@ import ts from '../../node_modules/typescript/lib/typescript.js';
 const require = createRequire(import.meta.url);
 const compile = source => ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2020 } }).outputText;
 const helpers = {};
+const sessionDraftMocks = {
+  SessionDraftProvider: ({ children }) => children,
+  useSessionDraftScope: () => 'test',
+  useSessionDraftState: (_draftId, initialValue) => React.useState(initialValue),
+};
 vm.runInNewContext(compile(await readFile(new URL('../../src/lib/pdv.ts', import.meta.url), 'utf8')), { exports: helpers, Error });
 const source = compile(await readFile(new URL('../../src/components/partner/PdvModule.tsx', import.meta.url), 'utf8')) + '\nexports.Checkout = PdvCheckout;';
 function loadCheckout(react) {
@@ -21,6 +26,7 @@ vm.runInNewContext(source, {
   require(name) {
     if (name === 'react') return react;
     if (name === '../../lib/pdv') return helpers;
+    if (name === '../../hooks/useSessionDraft') return sessionDraftMocks;
     if (name === '../../utils') return { money: new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }) };
     if (name === './PreSaleCheckout') return {};
     if (name === './SalePriceInput') return { SalePriceInput: props => React.createElement('input', { value: props.value, readOnly: true }) };

@@ -8,9 +8,22 @@ import TestRenderer, { act } from 'react-test-renderer';
 import ts from '../../node_modules/typescript/lib/typescript.js';
 const require = createRequire(import.meta.url);
 const exports = {};
+const sessionDraftMocks = {
+  SessionDraftProvider: ({ children }) => children,
+  useSessionDraftScope: () => 'test',
+  useSessionDraftState: (_draftId, initialValue) => React.useState(initialValue),
+};
 vm.runInNewContext(ts.transpileModule(await readFile(new URL('../../src/components/partner/CadastrosModule.tsx', import.meta.url), 'utf8'), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2020 },
-}).outputText, { exports, Error, require: name => name === '../../utils' || name === '../../lib/saleReturns' || name === './ImportExportModule' ? {} : require(name) });
+}).outputText, {
+  exports,
+  Error,
+  require: name => name === '../../hooks/useSessionDraft'
+    ? sessionDraftMocks
+    : name === '../../utils' || name === '../../lib/saleReturns' || name === './ImportExportModule'
+      ? {}
+      : require(name),
+});
 
 test('estoque no Administrativo não duplica menus; valida e salva o saldo contado, incluindo zero', async () => {
   const calls = [];

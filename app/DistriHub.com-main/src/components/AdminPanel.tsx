@@ -26,6 +26,8 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
   const [lojistas, setLojistas] = useState<AdminCompany[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [savingCompanyIds, setSavingCompanyIds] = useState<Set<string>>(() => new Set());
+  const [statusFeedback, setStatusFeedback] = useState<Record<string, { type: 'success' | 'error'; message: string }>>({});
   const superAdminAuth = useSuperAdminAuth();
 
   useEffect(() => {
@@ -62,12 +64,32 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
   }, [companiesVersion]);
 
   async function updateLojista(id: string, updates: Partial<AdminCompany>) {
-    setLojistas((prev) => prev.map((l) => l.id === id ? { ...l, ...updates, client_status: updates.status ?? l.client_status } : l));
-    if (isSupabaseConfigured && supabase) {
-      await supabase.rpc('update_super_admin_client_auth', {
+    setSavingCompanyIds((current) => new Set(current).add(id));
+    setStatusFeedback((current) => {
+      const next = { ...current };
+      delete next[id];
+      return next;
+    });
+    try {
+      if (!isSupabaseConfigured || !supabase) {
+        throw new Error('Supabase não configurado. A alteração não foi salva.');
+      }
+      const { error: updateError } = await supabase.rpc('update_super_admin_client_auth', {
         client_id: id,
         new_status: updates.status ?? null,
         new_credit_limit: updates.credit_limit ?? null,
+      });
+      if (updateError) throw updateError;
+      setLojistas((prev) => prev.map((l) => l.id === id ? { ...l, ...updates, client_status: updates.status ?? l.client_status } : l));
+      setStatusFeedback((current) => ({ ...current, [id]: { type: 'success', message: 'Status salvo.' } }));
+    } catch (updateError) {
+      const message = updateError instanceof Error ? updateError.message : 'Não foi possível salvar o status da empresa.';
+      setStatusFeedback((current) => ({ ...current, [id]: { type: 'error', message } }));
+    } finally {
+      setSavingCompanyIds((current) => {
+        const next = new Set(current);
+        next.delete(id);
+        return next;
       });
     }
   }
@@ -143,11 +165,23 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
                           </td>
                           <td>{cliente.orders_count} · {money.format(cliente.orders_total)}</td>
                           <td>
-                            <select className="inline-select" value={cliente.client_status} onChange={(e) => updateLojista(cliente.id, { status: e.target.value as AdminLojista['status'] })}>
+                            <select
+                              className="inline-select"
+                              aria-label={`Status comercial de ${cliente.business_name}`}
+                              value={cliente.client_status}
+                              disabled={savingCompanyIds.has(cliente.id)}
+                              onChange={(e) => { void updateLojista(cliente.id, { status: e.target.value as AdminLojista['status'] }); }}
+                            >
                               <option value="pendente">Pendente</option>
                               <option value="aprovado">Aprovado</option>
                               <option value="reprovado">Bloqueado</option>
                             </select>
+                            {savingCompanyIds.has(cliente.id) && <small role="status">Salvando…</small>}
+                            {statusFeedback[cliente.id] && (
+                              <small role={statusFeedback[cliente.id].type === 'error' ? 'alert' : 'status'}>
+                                {statusFeedback[cliente.id].message}
+                              </small>
+                            )}
                           </td>
                           <td><button className="rma-advance-btn" disabled={!cliente.user_id} onClick={() => {
                             setAccessCompanyId(cliente.user_id); setTab('assinaturas');

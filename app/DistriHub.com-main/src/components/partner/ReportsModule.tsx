@@ -43,6 +43,26 @@ function displayBirthday(birthday: string | null | undefined): string {
   return Number.isNaN(date.getTime()) ? '—' : date.toLocaleDateString('pt-BR');
 }
 
+type CsvValue = string | number;
+
+function downloadReportCsv(filename: string, rows: CsvValue[][]) {
+  const cell = (value: CsvValue) => {
+    let text = String(value);
+    if (typeof value === 'string' && /^[\t\r ]*[=+\-@]/.test(text)) text = `'${text}`;
+    return `"${text.replace(/"/g, '""')}"`;
+  };
+  const content = `\uFEFF${rows.map((row) => row.map(cell).join(';')).join('\r\n')}`;
+  const blob = new Blob([content], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `${filename}-${localDateInput(new Date())}.csv`;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 const roleLabels: Record<SalespersonRole, string> = {
   administrador: 'Administrador / Proprietário',
   gerente: 'Gerente',
@@ -128,7 +148,7 @@ export function ReportsModule({ sales, products, customers, salespeople, movemen
             <label>Até <input aria-label="Data final do relatório" type="date" value={endDate} onChange={(event) => { setEndDate(event.target.value); setRangeError(null); }} min={startDate} /></label>
           </>
         )}
-        {tab !== 'sem-giro' && (
+        {tab === 'vendas' && (
           <button type="button" className="module-action-btn" onClick={exportCsv}>
             <Download size={15} /> Exportar vendas CSV
           </button>
@@ -363,9 +383,28 @@ function FinancialReport({ sales, allSales, products }: { sales: PartnerSale[]; 
   const totalRevenue = sales.reduce((s, x) => s + x.total, 0);
   const costOfGoodsSold = getCostOfGoodsSold(sales, products);
   const grossProfit = totalRevenue - costOfGoodsSold;
+  const financialRows: CsvValue[][] = [
+    ['Indicador', 'Valor', 'Percentual'],
+    ['Receita do mês atual', thisTotal.toFixed(2), ''],
+    ['Receita do mês anterior', lastTotal.toFixed(2), ''],
+    ['Variação mensal', `${growth.toFixed(1)}%`, ''],
+    ...monthlyData.map((month) => [`Receita mensal - ${month.label}`, month.total.toFixed(2), '']),
+    ...paymentTypes.map(({ key, label }) => {
+      const amount = byPayment[key] ?? 0;
+      return [`Pagamento - ${label}`, amount.toFixed(2), totalRevenue > 0 ? `${((amount / totalRevenue) * 100).toFixed(1)}%` : '0.0%'];
+    }),
+    ['Receita bruta do período selecionado', totalRevenue.toFixed(2), ''],
+    ['Custo dos produtos vendidos (CMV)', costOfGoodsSold.toFixed(2), ''],
+    ['Lucro bruto estimado', grossProfit.toFixed(2), ''],
+  ];
 
   return (
     <div>
+      <div className="orders-filter-row" style={{ justifyContent: 'flex-end', marginBottom: '12px' }}>
+        <button type="button" className="module-action-btn" onClick={() => downloadReportCsv('relatorio-financeiro', financialRows)}>
+          <Download size={15} /> Exportar relatório financeiro CSV
+        </button>
+      </div>
       <div className="report-cards">
         <div className="report-card">
           <small>Mês Atual</small>
@@ -443,9 +482,28 @@ function StagnantStockReport({ products, sales, movements }: { products: Partner
     && (!term || item.product.name.toLowerCase().includes(term) || (item.product.sku ?? '').toLowerCase().includes(term)));
   const levelColor: Record<StagnantLevel, string> = { atencao: '#b7791f', alerta: '#dd6b20', critico: '#c53030' };
   const levelName: Record<StagnantLevel, string> = { atencao: 'Atenção', alerta: 'Alerta', critico: 'Crítico' };
+  const stagnantRows: CsvValue[][] = [
+    ['Produto', 'SKU', 'Estoque', 'Última venda', 'Última reposição', 'Dias sem giro', 'Custo unitário', 'Capital parado', 'Classificação'],
+    ...rows.map(({ product, lastSaleAt, lastEntryAt, daysWithoutTurnover, unitCost, tiedUpCapital, level: itemLevel }) => [
+      product.name,
+      product.sku ?? '',
+      product.stock,
+      lastSaleAt ? new Date(lastSaleAt).toLocaleDateString('pt-BR') : 'Nunca vendeu',
+      lastEntryAt ? new Date(lastEntryAt).toLocaleDateString('pt-BR') : '—',
+      daysWithoutTurnover,
+      unitCost.toFixed(2),
+      tiedUpCapital.toFixed(2),
+      levelName[itemLevel],
+    ]),
+  ];
 
   return (
     <div>
+      <div className="orders-filter-row" style={{ justifyContent: 'flex-end', marginBottom: '12px' }}>
+        <button type="button" className="module-action-btn" onClick={() => downloadReportCsv('relatorio-estoque-sem-giro', stagnantRows)}>
+          <Download size={15} /> Exportar produtos sem giro CSV
+        </button>
+      </div>
       <div className="report-cards">
         <div className="report-card">
           <small>Produtos sem giro</small>
@@ -519,6 +577,17 @@ function StockReport({ products, sales }: { products: PartnerProduct[]; sales: P
   const physicalProducts = useMemo(() => products.filter((product) => !product.is_service), [products]);
   const totalInvested = physicalProducts.reduce((s, p) => s + p.cost_price * p.stock, 0);
   const physicalProductIds = useMemo(() => new Set(physicalProducts.map((product) => product.id)), [physicalProducts]);
+  const soldQuantity = useMemo(() => {
+    const quantities = new Map<string, number>();
+    for (const sale of sales) {
+      for (const item of Array.isArray(sale.items) ? sale.items : []) {
+        if (physicalProductIds.has(item.product_id)) {
+          quantities.set(item.product_id, (quantities.get(item.product_id) ?? 0) + item.quantity);
+        }
+      }
+    }
+    return quantities;
+  }, [sales, physicalProductIds]);
   const soldProductIds = new Set(sales.flatMap((sale) =>
     (Array.isArray(sale.items) ? sale.items : [])
       .filter((item) => physicalProductIds.has(item.product_id))
@@ -543,9 +612,28 @@ function StockReport({ products, sales }: { products: PartnerProduct[]; sales: P
       .sort((a, b) => b.margin - a.margin)
       .slice(0, 5);
   }, [physicalProducts]);
+  const stockRows: CsvValue[][] = [
+    ['Produto', 'SKU', 'Estoque atual', 'Estoque mínimo', 'Custo unitário', 'Valor investido', 'Preço de venda', 'Margem sobre venda (%)', 'Unidades vendidas no período'],
+    ...physicalProducts.map((product) => [
+      product.name,
+      product.sku ?? '',
+      product.stock,
+      product.min_stock,
+      Number(product.cost_price).toFixed(2),
+      (Number(product.cost_price) * product.stock).toFixed(2),
+      Number(product.sale_price).toFixed(2),
+      product.sale_price > 0 ? (((product.sale_price - product.cost_price) / product.sale_price) * 100).toFixed(1) : '0.0',
+      soldQuantity.get(product.id) ?? 0,
+    ]),
+  ];
 
   return (
     <div>
+      <div className="orders-filter-row" style={{ justifyContent: 'flex-end', marginBottom: '12px' }}>
+        <button type="button" className="module-action-btn" onClick={() => downloadReportCsv('relatorio-estoque', stockRows)}>
+          <Download size={15} /> Exportar estoque CSV
+        </button>
+      </div>
       <div className="report-cards">
         <div className="report-card">
           <small>Valor Total Investido</small>
@@ -614,6 +702,14 @@ function CrmReport({ customers, sales }: { customers: PartnerCustomer[]; sales: 
   }, [sales]);
 
   const birthdays = customers.filter((customer) => birthdayMonth(customer.birthday) === currentMonth);
+  const crmRows: CsvValue[][] = [
+    ['Categoria', 'Cliente', 'Total de compras', 'WhatsApp', 'Aniversário'],
+    ...topCustomers.map(([customerId, total], index) => {
+      const customer = customers.find((item) => item.id === customerId);
+      return [`Top ${index + 1} clientes`, customer?.name ?? '—', total.toFixed(2), customer?.phone ?? '—', displayBirthday(customer?.birthday)];
+    }),
+    ...birthdays.map((customer) => ['Aniversariantes do mês', customer.name, '', customer.phone ?? '—', displayBirthday(customer.birthday)]),
+  ];
 
   function sendBirthdayWhatsApp(phone: string | null | undefined, name: string) {
     if (!phone) return;
@@ -627,6 +723,11 @@ function CrmReport({ customers, sales }: { customers: PartnerCustomer[]; sales: 
 
   return (
     <div>
+      <div className="orders-filter-row" style={{ justifyContent: 'flex-end', marginBottom: '12px' }}>
+        <button type="button" className="module-action-btn" onClick={() => downloadReportCsv('relatorio-crm', crmRows)}>
+          <Download size={15} /> Exportar CRM CSV
+        </button>
+      </div>
       <h4 className="report-section-title"><Trophy size={16} /> Top 5 Clientes</h4>
       <div className="ranking-list">
         {topCustomers.length === 0 ? (

@@ -38,6 +38,7 @@ import { cadastroDestination, type AdminCadastrosTarget } from '../lib/cadastros
 import { supabase } from '../lib/supabase';
 import { BranchSelector } from './partner/BranchSelector';
 import { useCheckoutCash } from '../hooks/useCheckoutCash';
+import { SessionDraftProvider, useSessionDraftState } from '../hooks/useSessionDraft';
 import { OperatorSelectionStore } from '../lib/checkoutCash';
 
 const CadastrosModule = lazy(() => import('./partner/CadastrosModule').then((module) => ({ default: module.CadastrosModule })));
@@ -239,8 +240,15 @@ export function PartnerPanel({
   initialTab,
   onConsumeInitialTab,
 }: PartnerPanelProps) {
-  const [activeTab, setActiveTab] = useState<Tab>('cadastros');
+  const [activeTab, setActiveTab] = useSessionDraftState<Tab>(
+    'partner:active-tab',
+    'cadastros',
+    `user:${user?.id ?? identity?.authUserId ?? 'pending'}`,
+  );
   const [visitedTabs, setVisitedTabs] = useState<Set<Tab>>(() => new Set(['cadastros']));
+  useEffect(() => {
+    setVisitedTabs((current) => current.has(activeTab) ? current : new Set(current).add(activeTab));
+  }, [activeTab, setVisitedTabs]);
   const [selectedBranchId, setSelectedBranchId] = useState<string>('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -400,7 +408,7 @@ export function PartnerPanel({
 
       onConsumeInitialTab?.();
     }
-  }, [initialTab, onConsumeInitialTab]);
+  }, [initialTab, onConsumeInitialTab, setActiveTab]);
 
   const roleBlockedTabs = useMemo(() => {
     switch (effectiveRole) {
@@ -449,7 +457,7 @@ export function PartnerPanel({
         visibleTabs[0]?.id ?? 'suporte',
       );
     }
-  }, [visibleTabs, activeTab, identity?.companyUserId, partner.loading, saas.loading, saas.subscription, saas.error]);
+  }, [visibleTabs, activeTab, identity?.companyUserId, partner.loading, saas.loading, saas.subscription, saas.error, setActiveTab]);
 
   const lockedBranch = useMemo(() => {
     if (!lockedBranchId) {
@@ -1577,6 +1585,7 @@ export function PartnerPanel({
     return (
               <CadastrosModule
                 key={target ?? 'principal'}
+                isActive={activeTab === 'cadastros'}
                 adminTarget={target}
                 initialTab={cadastroDestination(target).tab}
                 productType={cadastroDestination(target).productType}
@@ -1930,6 +1939,10 @@ export function PartnerPanel({
             </p>
           )}
 
+          <SessionDraftProvider
+            key={`${identity?.authUserId ?? user?.id ?? 'pending'}:${identity?.companyUserId ?? 'pending'}:${currentSalespersonId ?? 'owner'}:${effectiveBranchId || 'all'}`}
+            scope={`${identity?.authUserId ?? user?.id ?? 'pending'}:${identity?.companyUserId ?? 'pending'}:${currentSalespersonId ?? 'owner'}:${effectiveBranchId || 'all'}`}
+          >
           <div className="partner-content">
             {storeSettings.internal_notice && <div role="note" className="store-internal-notice">{storeSettings.internal_notice}</div>}
             {saas.error && <div role="alert"><p>{saas.error}</p><button className="rma-advance-btn" onClick={() => { void saas.refresh(); }}>Verificar assinatura novamente</button></div>}
@@ -1973,7 +1986,7 @@ export function PartnerPanel({
                   setShowOperatorModal(true);
                 } : undefined}
                 canEditPrice={effectiveRole === 'gerente' || (!isEmployeeRestricted && effectiveRole === 'administrador')}
-                key={pdvRevision}
+                key={`${pdvRevision}:${effectiveBranchId}:${activeSalesperson?.id ?? 'owner'}`}
                 hasPendingSale={Boolean(partner.pendingSale)}
                 products={
                   filteredProducts
@@ -2405,6 +2418,7 @@ export function PartnerPanel({
               </div>
             )}
           </div>
+          </SessionDraftProvider>
         </div>
       </div>
 
