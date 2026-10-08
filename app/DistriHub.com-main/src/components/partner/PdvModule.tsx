@@ -647,7 +647,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
 
           </div>
 
-        <div className="pdv-right">
+        <div className="pdv-right" role="region" aria-label="Opções da venda">
           <div className="pdv-cart-header"><h4>Dados da venda</h4></div>
           <div className="pdv-sale-scroll">
           {branchChangedWithCart && cart.length > 0 && (
@@ -661,7 +661,6 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
             <p className="otp-error-msg" role="alert">O carrinho contém produtos de outra filial. Remova os itens incompatíveis ou esvazie o carrinho.</p>
           )}
 
-          {cart.length > 0 && (
             <>
               <div className="pdv-form">
                 <label>
@@ -734,7 +733,6 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
               )}
 
             </>
-          )}
           </div>
 
           <div className="pdv-sale-footer">

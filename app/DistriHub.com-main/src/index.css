@@ -368,7 +368,7 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
 .pdv-checkout-layout .pdv-form label { font-size: 11px; }
 .partner-panel .pdv-checkout-layout .pdv-form input,
 .partner-panel .pdv-checkout-layout .pdv-form select { height: 36px; padding: 6px 8px; font-size: 12px; }
-.pdv-checkout-layout .pdv-search-hint { display: none; }
+.partner-panel .pdv-checkout-layout .pdv-search-hint { display: none; }
 .pdv-checkout-layout .pdv-traceability { position: relative; flex: 0 0 85px; min-width: 0; }
 .pdv-checkout-layout .pdv-traceability summary { padding: 9px 0; font-size: 11px; white-space: nowrap; }
 .pdv-checkout-layout .pdv-traceability[open] > .form-row {
