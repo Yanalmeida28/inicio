@@ -1346,6 +1346,8 @@ function CustomersSubTab({ customers, sales, rmaRequests, salespeople, selectedB
         <ExportButtons target="clientes" products={[]} customers={customers} />
       </div>
       <input
+        type="search"
+        autoComplete="off"
         value={customerSearch}
         onChange={(e) => setCustomerSearch(e.target.value)}
         placeholder="Buscar por nome, CPF/CNPJ, telefone ou e-mail"

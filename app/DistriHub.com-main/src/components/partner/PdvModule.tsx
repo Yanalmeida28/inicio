@@ -208,7 +208,6 @@ function SalespersonSearchPicker({ id, salespeople, salespersonId, onSelect }: {
                 onClick={() => selectSalesperson(salesperson)}
               >
                 <span>{salesperson.name}</span>
-                {salesperson.email && <small>{salesperson.email}</small>}
               </button>
             )) : (
               <div className="pdv-search-no-results">Nenhum colaborador encontrado.</div>
