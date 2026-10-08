@@ -22,7 +22,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
 a { color: inherit; text-decoration: none; }
 button { border: 0; cursor: pointer; }
 .app-shell { overflow: hidden; background: #07111d; }
-.page-container { width: min(1180px, calc(100% - 64px)); margin: 0 auto; }
+.page-container { width: calc(100% - 40px); margin: 0 auto; }
 .top-strip { background: #0a1724; border-bottom: 1px solid #152739; color: #8ea2b5; font-size: 12px; letter-spacing: .01em; }
 .top-strip-inner { height: 35px; display: flex; align-items: center; justify-content: space-between; }
 .top-strip-inner span { display: inline-flex; align-items: center; gap: 8px; }
@@ -340,11 +340,11 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
 .pdv-checkout-layout .pdv-cart-table { width: 100%; min-width: 550px; }
 .pdv-checkout-layout .pdv-cart-table td:first-child { min-width: 160px; overflow-wrap: anywhere; white-space: normal; }
 .pdv-checkout-layout .pdv-cart-table th { position: sticky; top: 0; background: var(--dh-surface); }
-.pdv-checkout-layout .pdv-item-controls button { min-width: 30px; height: 30px; }
+.pdv-checkout-layout .pdv-item-controls button { min-width: 38px; height: 38px; font-size: 16px; }
 .pdv-checkout-layout .pdv-form .form-row { display: flex; flex-direction: column; }
 .pdv-checkout-layout .pdv-client-type-toggle { flex-wrap: wrap; }
 /* Search and products first, then cart, with sale options below the cart. */
-.partner-panel .pdv-checkout-layout { display: flex; flex-direction: column; }
+.partner-panel .pdv-layout.pdv-checkout-layout { display: flex; flex-direction: column; }
 .partner-panel .pdv-checkout-layout .pdv-left > .pdv-search-bar {
   position: sticky; top: 0; z-index: 9; background: var(--dh-surface);
 }
@@ -361,16 +361,16 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
 .partner-panel .pdv-checkout-layout .pdv-form {
   display: flex; flex-direction: row; flex-wrap: nowrap; align-items: flex-end; gap: 8px;
 }
-.pdv-checkout-layout .pdv-form > label { flex: 1 1 100px; min-width: 85px; }
+.pdv-checkout-layout .pdv-form > label { flex: 1 1 110px; min-width: 100px; }
 .pdv-checkout-layout .pdv-form > .form-row { display: contents; }
-.pdv-checkout-layout .pdv-form > .form-row > label { flex: 1 1 100px; min-width: 85px; }
-.pdv-checkout-layout .pdv-form .pdv-search-picker { flex: 1.5 1 140px; min-width: 110px; }
-.pdv-checkout-layout .pdv-form label { font-size: 11px; }
+.pdv-checkout-layout .pdv-form > .form-row > label { flex: 1 1 110px; min-width: 100px; }
+.pdv-checkout-layout .pdv-form .pdv-search-picker { flex: 1.5 1 155px; min-width: 130px; }
+.partner-panel .pdv-checkout-layout .pdv-form label { font-size: 14px; }
 .partner-panel .pdv-checkout-layout .pdv-form input,
-.partner-panel .pdv-checkout-layout .pdv-form select { height: 36px; padding: 6px 8px; font-size: 12px; }
+.partner-panel .pdv-checkout-layout .pdv-form select { height: 44px; padding: 10px; font-size: 14px; }
 .partner-panel .pdv-checkout-layout .pdv-search-hint { display: none; }
-.pdv-checkout-layout .pdv-traceability { position: relative; flex: 0 0 85px; min-width: 0; }
-.pdv-checkout-layout .pdv-traceability summary { padding: 9px 0; font-size: 11px; white-space: nowrap; }
+.pdv-checkout-layout .pdv-traceability { position: relative; flex: 0 0 105px; min-width: 0; }
+.pdv-checkout-layout .pdv-traceability summary { padding: 12px 0; font-size: 13px; white-space: nowrap; }
 .pdv-checkout-layout .pdv-traceability[open] > .form-row {
   position: absolute; top: 100%; right: 0; z-index: 10; width: 280px;
   display: flex; flex-direction: column; gap: 8px; padding: 12px;
@@ -379,20 +379,23 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
 }
 .partner-panel .pdv-checkout-layout .pdv-sale-footer {
   position: static; display: flex; flex-direction: row; flex-wrap: wrap;
-  flex: 0 0 225px; align-items: flex-end; gap: 8px; padding: 0; margin: 0;
+  flex: 0 0 280px; align-items: flex-end; gap: 8px; padding: 0; margin: 0;
 }
 .partner-panel .pdv-checkout-layout .pdv-total-bar {
-  flex: 1 1 95px; flex-direction: column; align-items: flex-start !important;
-  padding: 4px 8px !important; margin: 0 !important; gap: 2px;
+  flex: 1 1 115px; flex-direction: column; align-items: flex-start !important;
+  padding: 6px 10px !important; margin: 0 !important; gap: 2px;
 }
-.partner-panel .pdv-checkout-layout .pdv-total-bar span { font-size: 10px !important; }
-.partner-panel .pdv-checkout-layout .pdv-total-bar strong { font-size: 18px !important; }
-.partner-panel .pdv-checkout-layout .pdv-checkout-btn { flex: 1 1 120px; width: auto; min-height: 36px; padding: 8px; font-size: 12px; }
+.partner-panel .pdv-checkout-layout .pdv-total-bar span { font-size: 12px !important; }
+.partner-panel .pdv-checkout-layout .pdv-total-bar strong { font-size: 24px !important; }
+.partner-panel .pdv-checkout-layout .pdv-checkout-btn { flex: 1 1 150px; width: auto; min-height: 44px; padding: 10px; font-size: 14px; }
+.partner-panel .pdv-checkout-layout .pdv-search-bar { height: 48px; }
+.partner-panel .pdv-checkout-layout .pdv-search-bar input { font-size: 16px; }
+.partner-panel .pdv-checkout-layout .pdv-cart-table { font-size: 15px; }
 .pdv-checkout-layout .pdv-sale-footer > .otp-error-msg,
 .pdv-checkout-layout .pdv-sale-footer > .sent-message { flex-basis: 100%; }
 @media (max-width: 1000px) {
   .partner-panel .pdv-checkout-layout .pdv-right { position: static; overflow-x: auto; }
-  .partner-panel .pdv-checkout-layout .pdv-sale-scroll { flex: 1 0 595px; }
+  .partner-panel .pdv-checkout-layout .pdv-sale-scroll { flex: 1 0 700px; }
 }
 .pdv-layout { display: grid; grid-template-columns: 1fr 380px; gap: 18px; }
 .pdv-left { display: flex; flex-direction: column; gap: 14px; }
@@ -794,7 +797,7 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
 
 /* ===== Partner Panel — Sidebar Layout ===== */
 .partner-panel.sidebar-layout { display: flex; min-height: 100vh; background: #091724; }
-.partner-sidebar { width: 240px; flex-shrink: 0; background: #0b1927; border-right: 1px solid #1d3547; display: flex; flex-direction: column; position: fixed; top: 0; left: 0; bottom: 0; z-index: 40; overflow-y: auto; }
+.partner-sidebar { width: 208px; flex-shrink: 0; background: #0b1927; border-right: 1px solid #1d3547; display: flex; flex-direction: column; position: fixed; top: 0; left: 0; bottom: 0; z-index: 40; overflow-y: auto; }
 .sidebar-header { padding: 20px 18px 16px; border-bottom: 1px solid #1d3547; }
 .sidebar-brand { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
 .sidebar-brand-mark { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 8px; background: linear-gradient(135deg, #1a3a52, #0e2738); color: #5cb5f1; flex-shrink: 0; }
@@ -805,7 +808,7 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
 .sidebar-nav-item:hover { color: #c1d1dc; background: #112738; }
 .sidebar-nav-item.active { color: #eaf1f6; background: #14304a; }
 .sidebar-footer { padding: 14px 18px; border-top: 1px solid #1d3547; }
-.sidebar-main { flex: 1; margin-left: 240px; min-width: 0; }
+.sidebar-main { flex: 1; margin-left: 208px; min-width: 0; }
 .sidebar-main-inner { padding: 16px 20px 32px; width: 100%; }
 .partner-panel .sidebar-main-inner > .partner-content { max-width: none; }
 .sidebar-mobile-bar { display: none; }

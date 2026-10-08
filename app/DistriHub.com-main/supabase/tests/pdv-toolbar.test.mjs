@@ -69,14 +69,16 @@ if (process.env.PDV_BROWSER_FIXTURE === '1') {
   const browserReact = require('../../node_modules/react');
   const markup = renderToStaticMarkup(browserReact.createElement(loadCheckout(browserReact).Checkout, props));
   await writeFile(new URL('preview.html', directory), `<!doctype html><meta charset="utf-8"><style>${css}</style>
-    <div class="partner-panel" style="width:1000px;margin:20px;background:white;--dh-surface:white;--dh-border:#ccc;--dh-blue:#2563eb;--dh-blue-soft:#eff6ff;--dh-accent-text:#172033">
-      <div class="pdv-workspace pdv-workspace-checkout">${markup}</div></div>
+    <div class="partner-panel sidebar-layout partner-pdv-mode" style="width:100%;background:white;--dh-surface:white;--dh-border:#ccc;--dh-blue:#2563eb;--dh-blue-soft:#eff6ff;--dh-accent-text:#172033">
+      <aside class="partner-sidebar"><div class="sidebar-header">DistriHub</div></aside>
+      <div class="sidebar-main"><div class="sidebar-main-inner"><div class="partner-content"><div class="pdv-workspace pdv-workspace-checkout">${markup}</div></div></div></div></div>
     <pre id="audit"></pre><script>
       const fields=[...document.querySelectorAll('.pdv-form input,.pdv-form select')].filter(el=>!el.closest('details'));
       const rects=fields.map(el=>el.getBoundingClientRect());
       const search=document.querySelector('.pdv-search-bar').getBoundingClientRect();
       const bar=document.querySelector('[aria-label="Opções da venda"]').getBoundingClientRect();
       const cart=document.querySelector('[aria-label="Carrinho"]').getBoundingClientRect();
-      document.querySelector('#audit').textContent=JSON.stringify({visible:rects.every(r=>r.width>0&&r.height>0),fieldCount:fields.length,belowSearch:bar.top>=search.bottom,belowCart:bar.top>=cart.bottom,sameRow:Math.max(...rects.map(r=>r.bottom))-Math.min(...rects.map(r=>r.bottom))<5});
+      const total=document.querySelector('.pdv-total-bar').getBoundingClientRect();
+      document.querySelector('#audit').textContent=JSON.stringify({visible:rects.every(r=>r.width>0&&r.height>0),fieldCount:fields.length,belowSearch:bar.top>=search.bottom,belowCart:bar.top>=cart.bottom,sameRow:Math.max(...rects.map(r=>r.bottom))-Math.min(...rects.map(r=>r.bottom))<5,inputFontPx:parseFloat(getComputedStyle(fields[0]).fontSize),inputHeight:rects[0].height,controlsFit:rects.every(r=>r.left>=bar.left&&r.right<=total.left),workspaceWidth:search.width});
     </script>`);
 }
