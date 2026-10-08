@@ -626,6 +626,27 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
   return (
     <>
       <div className="pdv-layout pdv-checkout-layout">
+        <div className="pdv-left">
+          <div className="pdv-search-bar">
+            <Search size={18} />
+           <input
+  type="search"
+  ref={searchInputRef}
+  name="new-product-search"
+  autoComplete="new-password"
+  autoCorrect="off"
+  autoCapitalize="none"
+  spellCheck={false}
+  data-lpignore="true"
+  data-1p-ignore="true"
+  value={search}
+  onChange={(e) => setSearch(e.target.value)}
+  placeholder="Buscar produto por nome ou SKU..."
+  aria-label="Buscar produto por nome ou SKU"
+/>
+
+          </div>
+
         <div className="pdv-right">
           <div className="pdv-cart-header"><h4>Dados da venda</h4></div>
           <div className="pdv-sale-scroll">
@@ -741,27 +762,6 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
           {checkoutError && <p className="otp-error-msg">{checkoutError}</p>}
           </div>
         </div>
-
-        <div className="pdv-left">
-          <div className="pdv-search-bar">
-            <Search size={18} />
-           <input
-  type="search"
-  ref={searchInputRef}
-  name="new-product-search"
-  autoComplete="new-password"
-  autoCorrect="off"
-  autoCapitalize="none"
-  spellCheck={false}
-  data-lpignore="true"
-  data-1p-ignore="true"
-  value={search}
-  onChange={(e) => setSearch(e.target.value)}
-  placeholder="Buscar produto por nome ou SKU..."
-  aria-label="Buscar produto por nome ou SKU"
-/>
-
-          </div>
 
           {selectionNotice && (
             <p className="pdv-selection-notice" role="alert">{selectionNotice}</p>
