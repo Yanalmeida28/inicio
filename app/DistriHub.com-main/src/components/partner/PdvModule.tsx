@@ -647,6 +647,97 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
 
           </div>
 
+          {selectionNotice && (
+            <p className="pdv-selection-notice" role="alert">{selectionNotice}</p>
+          )}
+
+          {search.trim() && (
+          <div className="pdv-product-search-results" aria-label="Resultados da pesquisa">
+          <div className="pdv-product-grid">
+            {filtered.length === 0 ? (
+              <p className="empty-row">
+                {`Nenhum produto encontrado para "${search.trim()}".`}
+              </p>
+            ) : (
+              filtered.slice(0, visibleProductCount).map((p) => {
+                const outOfStock = !p.is_service && p.stock <= 0;
+                const inCartQty = cart.find((i) => i.product_id === p.id)?.quantity ?? 0;
+                const justAdded = lastAddedId === p.id;
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    className={`pdv-product-card${justAdded ? ' added' : ''}`}
+                    onClick={() => addToCart(p)}
+                    disabled={outOfStock}
+                  >
+                    <strong>{p.name}</strong>
+                    {p.sku && <small>SKU: {p.sku}</small>}
+                    <span>{money.format(getPriceForProduct(p, priceTable))}</span>
+                    {!p.is_service && (
+                      <small className={`pdv-stock${outOfStock ? ' out' : ''}`}>
+                        {outOfStock ? 'Sem estoque' : `${p.stock} un. em estoque`}
+                      </small>
+                    )}
+                    {justAdded && (
+                      <em className="pdv-added-tag"><Check size={12} /> Adicionado ao carrinho</em>
+                    )}
+                    {!justAdded && inCartQty > 0 && (
+                      <em className="pdv-in-cart-tag">{inCartQty} no carrinho</em>
+                    )}
+                  </button>
+                );
+              })
+            )}
+          </div>
+          {filtered.length > visibleProductCount && (
+            <button
+              type="button"
+              className="module-action-btn"
+              onClick={() => setVisibleProductCount((count) => count + PRODUCT_PAGE_SIZE)}
+            >
+              Carregar mais ({Math.min(visibleProductCount, filtered.length)} de {filtered.length})
+            </button>
+          )}
+          </div>
+          )}
+          <section className="pdv-cart-main" aria-label="Carrinho">
+          <div className="pdv-cart-header">
+            <h4>Carrinho · {cart.reduce((count, item) => count + item.quantity, 0)} itens</h4>
+            {cart.length > 0 && (
+              <button className="rma-advance-btn danger" onClick={() => setCart([])}>
+                <X size={14} /> Limpar
+              </button>
+            )}
+          </div>
+
+          <div className={`pdv-cart-table-wrap${cart.length >= 10 ? ' pdv-cart-table-scrollable' : ''}`}>
+          <table className="rma-table pdv-cart-table">
+            <thead><tr><th>Produto</th><th>Quantidade</th><th>Preço</th><th>Subtotal</th><th>Remover</th></tr></thead>
+            <tbody>
+            {cart.length === 0 ? (
+              <tr><td colSpan={5} className="empty-row">Carrinho vazio. Pesquise um produto acima para começar.</td></tr>
+            ) : (
+              cart.map((item) => (
+                <tr key={item.product_id}>
+                  <td>
+                    <strong>{item.name}</strong>
+                  </td>
+                  <td><div className="pdv-item-controls">
+                    <button aria-label={`Diminuir quantidade de ${item.name}`} onClick={() => changeQty(item.product_id, -1)}>−</button>
+                    <b>{item.quantity}</b>
+                    <button aria-label={`Aumentar quantidade de ${item.name}`} onClick={() => changeQty(item.product_id, 1)}>+</button>
+                  </div></td>
+                  <td>{canEditPrice ? <SalePriceInput value={item.unit_price} name={item.name} disabled={isCheckingOut || hasPendingSale} onChange={value => setCart(previous => previous.map(row => row.product_id === item.product_id ? { ...row, unit_price: value } : row))} /> : money.format(item.unit_price)}</td>
+                  <td>{money.format(item.unit_price * item.quantity)}</td>
+                  <td><button className="pdv-remove" aria-label={`Remover ${item.name}`} onClick={() => removeFromCart(item.product_id)}><Trash2 size={16} /></button></td>
+                </tr>
+              ))
+            )}
+            </tbody>
+          </table>
+          </div>
+          </section>
         <div className="pdv-right" role="region" aria-label="Opções da venda">
           <div className="pdv-cart-header"><h4>Dados da venda</h4></div>
           <div className="pdv-sale-scroll">
@@ -760,98 +851,6 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
           {checkoutError && <p className="otp-error-msg">{checkoutError}</p>}
           </div>
         </div>
-
-          {selectionNotice && (
-            <p className="pdv-selection-notice" role="alert">{selectionNotice}</p>
-          )}
-
-          {search.trim() && (
-          <div className="pdv-product-search-results" aria-label="Resultados da pesquisa">
-          <div className="pdv-product-grid">
-            {filtered.length === 0 ? (
-              <p className="empty-row">
-                {`Nenhum produto encontrado para "${search.trim()}".`}
-              </p>
-            ) : (
-              filtered.slice(0, visibleProductCount).map((p) => {
-                const outOfStock = !p.is_service && p.stock <= 0;
-                const inCartQty = cart.find((i) => i.product_id === p.id)?.quantity ?? 0;
-                const justAdded = lastAddedId === p.id;
-                return (
-                  <button
-                    key={p.id}
-                    type="button"
-                    className={`pdv-product-card${justAdded ? ' added' : ''}`}
-                    onClick={() => addToCart(p)}
-                    disabled={outOfStock}
-                  >
-                    <strong>{p.name}</strong>
-                    {p.sku && <small>SKU: {p.sku}</small>}
-                    <span>{money.format(getPriceForProduct(p, priceTable))}</span>
-                    {!p.is_service && (
-                      <small className={`pdv-stock${outOfStock ? ' out' : ''}`}>
-                        {outOfStock ? 'Sem estoque' : `${p.stock} un. em estoque`}
-                      </small>
-                    )}
-                    {justAdded && (
-                      <em className="pdv-added-tag"><Check size={12} /> Adicionado ao carrinho</em>
-                    )}
-                    {!justAdded && inCartQty > 0 && (
-                      <em className="pdv-in-cart-tag">{inCartQty} no carrinho</em>
-                    )}
-                  </button>
-                );
-              })
-            )}
-          </div>
-          {filtered.length > visibleProductCount && (
-            <button
-              type="button"
-              className="module-action-btn"
-              onClick={() => setVisibleProductCount((count) => count + PRODUCT_PAGE_SIZE)}
-            >
-              Carregar mais ({Math.min(visibleProductCount, filtered.length)} de {filtered.length})
-            </button>
-          )}
-          </div>
-          )}
-          <section className="pdv-cart-main" aria-label="Carrinho">
-          <div className="pdv-cart-header">
-            <h4>Carrinho · {cart.reduce((count, item) => count + item.quantity, 0)} itens</h4>
-            {cart.length > 0 && (
-              <button className="rma-advance-btn danger" onClick={() => setCart([])}>
-                <X size={14} /> Limpar
-              </button>
-            )}
-          </div>
-
-          <div className={`pdv-cart-table-wrap${cart.length >= 10 ? ' pdv-cart-table-scrollable' : ''}`}>
-          <table className="rma-table pdv-cart-table">
-            <thead><tr><th>Produto</th><th>Quantidade</th><th>Preço</th><th>Subtotal</th><th>Remover</th></tr></thead>
-            <tbody>
-            {cart.length === 0 ? (
-              <tr><td colSpan={5} className="empty-row">Carrinho vazio. Pesquise um produto acima para começar.</td></tr>
-            ) : (
-              cart.map((item) => (
-                <tr key={item.product_id}>
-                  <td>
-                    <strong>{item.name}</strong>
-                  </td>
-                  <td><div className="pdv-item-controls">
-                    <button aria-label={`Diminuir quantidade de ${item.name}`} onClick={() => changeQty(item.product_id, -1)}>−</button>
-                    <b>{item.quantity}</b>
-                    <button aria-label={`Aumentar quantidade de ${item.name}`} onClick={() => changeQty(item.product_id, 1)}>+</button>
-                  </div></td>
-                  <td>{canEditPrice ? <SalePriceInput value={item.unit_price} name={item.name} disabled={isCheckingOut || hasPendingSale} onChange={value => setCart(previous => previous.map(row => row.product_id === item.product_id ? { ...row, unit_price: value } : row))} /> : money.format(item.unit_price)}</td>
-                  <td>{money.format(item.unit_price * item.quantity)}</td>
-                  <td><button className="pdv-remove" aria-label={`Remover ${item.name}`} onClick={() => removeFromCart(item.product_id)}><Trash2 size={16} /></button></td>
-                </tr>
-              ))
-            )}
-            </tbody>
-          </table>
-          </div>
-          </section>
         </div>
       </div>
 

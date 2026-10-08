@@ -343,7 +343,7 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
 .pdv-checkout-layout .pdv-item-controls button { min-width: 30px; height: 30px; }
 .pdv-checkout-layout .pdv-form .form-row { display: flex; flex-direction: column; }
 .pdv-checkout-layout .pdv-client-type-toggle { flex-wrap: wrap; }
-/* Search first, sale options below it, then product results and cart. */
+/* Search and products first, then cart, with sale options below the cart. */
 .partner-panel .pdv-checkout-layout { display: flex; flex-direction: column; }
 .partner-panel .pdv-checkout-layout .pdv-left > .pdv-search-bar {
   position: sticky; top: 0; z-index: 9; background: var(--dh-surface);
@@ -352,7 +352,7 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
   position: static; max-height: 240px; width: 100%; box-shadow: none;
 }
 .partner-panel .pdv-checkout-layout .pdv-right {
-  position: sticky; top: 54px; z-index: 8; flex: 0 0 auto;
+  position: sticky; top: auto; bottom: 0; z-index: 8; flex: 0 0 auto;
   display: flex; flex-direction: row; align-items: flex-end; flex-wrap: nowrap;
   gap: 8px; padding: 10px; background: var(--dh-surface);
 }

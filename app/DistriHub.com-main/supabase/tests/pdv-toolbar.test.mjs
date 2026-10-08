@@ -44,12 +44,13 @@ function assertVisibleControls() {
   assert.ok(controls().findByProps({ 'aria-label': 'Tipo de atendimento da venda' }));
   assert.ok(controls().findByProps({ id: 'pdv-salesperson-search' }));
 }
-test('as opções aparecem abaixo da pesquisa mesmo antes de adicionar um produto', async () => {
+test('carrinho aparece acima das opções, mantendo a pesquisa no topo', async () => {
   await act(async () => { renderer = TestRenderer.create(React.createElement(module.exports.Checkout, props)); });
   assertVisibleControls();
   const left = renderer.root.findByProps({ className: 'pdv-left' });
   assert.equal(left.children[0].props.className, 'pdv-search-bar');
-  assert.equal(left.children[1].props['aria-label'], 'Opções da venda');
+  assert.equal(left.children[1].props['aria-label'], 'Carrinho');
+  assert.equal(left.children[2].props['aria-label'], 'Opções da venda');
 });
 test('selecionar e remover o último produto mantém as opções da venda visíveis', async () => {
   await act(async () => { renderer = TestRenderer.create(React.createElement(module.exports.Checkout, props)); });
@@ -75,6 +76,7 @@ if (process.env.PDV_BROWSER_FIXTURE === '1') {
       const rects=fields.map(el=>el.getBoundingClientRect());
       const search=document.querySelector('.pdv-search-bar').getBoundingClientRect();
       const bar=document.querySelector('[aria-label="Opções da venda"]').getBoundingClientRect();
-      document.querySelector('#audit').textContent=JSON.stringify({visible:rects.every(r=>r.width>0&&r.height>0),fieldCount:fields.length,belowSearch:bar.top>=search.bottom,sameRow:Math.max(...rects.map(r=>r.bottom))-Math.min(...rects.map(r=>r.bottom))<5});
+      const cart=document.querySelector('[aria-label="Carrinho"]').getBoundingClientRect();
+      document.querySelector('#audit').textContent=JSON.stringify({visible:rects.every(r=>r.width>0&&r.height>0),fieldCount:fields.length,belowSearch:bar.top>=search.bottom,belowCart:bar.top>=cart.bottom,sameRow:Math.max(...rects.map(r=>r.bottom))-Math.min(...rects.map(r=>r.bottom))<5});
     </script>`);
 }
