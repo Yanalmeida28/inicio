@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Search, Trash2, ShoppingCart, Check,
-  ScanLine, X, Tag, Ban, Lock, ClipboardList, Wallet, Lock as LockIcon,
+  X, Tag, Ban, Lock, ClipboardList, Wallet, Lock as LockIcon,
 } from 'lucide-react';
 import type { DeliveryType, PartnerProduct, PartnerCustomer, PartnerSale, PartnerSalesperson, SaleItem, SalespersonRole } from '../../types';
 import { SalePriceInput } from './SalePriceInput';
@@ -400,7 +400,7 @@ export function PdvModule({
 
 /* ============ PDV Checkout ============ */
 
-function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople, activeSalespersonId, segment, selectedBranchId, canCheckout, canEditPrice, onCreateSale }: {
+function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople, activeSalespersonId, selectedBranchId, canCheckout, canEditPrice, onCreateSale }: {
   products: PartnerProduct[];
   customers: PartnerCustomer[];
   credits: CustomerCredit[];
@@ -436,8 +436,6 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
   const [customerId, setCustomerId] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [clientType, setClientType] = useState<ClientType>('varejo');
-  const [imei, setImei] = useState('');
-  const [serial, setSerial] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('pix');
   const [deliveryType, setDeliveryType] = useState<DeliveryType>('balcao');
   const [salespersonId, setSalespersonId] = useState('');
@@ -457,7 +455,6 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
     if (noticeTimeoutRef.current !== null) window.clearTimeout(noticeTimeoutRef.current);
   }, []);
 
-  const traceabilityLabel = segment === 'assistencia' ? 'IMEI / Selo' : 'Nº de Série';
 
   function getPriceForProduct(p: PartnerProduct, table: PriceTable): number {
     if (table === 'atacado' && p.wholesale_price && p.wholesale_price > 0) return p.wholesale_price;
@@ -598,13 +595,11 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
         total,
         customer_type: clientType,
         delivery_type: deliveryType,
-        imei: imei || undefined,
-        serial_number: serial || undefined,
         payment_method: paymentMethod,
         salesperson_id: salespersonId || null,
         branch_id: selectedBranchId,
       });
-      setCart([]); setCustomerId(''); setCustomerName(''); setImei(''); setSerial(''); setSalespersonId('');
+      setCart([]); setCustomerId(''); setCustomerName(''); setSalespersonId('');
       setCompleted(true);
       setClientType('varejo');
       setPriceTable('varejo');
@@ -769,19 +764,6 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
                   clientType={clientType}
                   onSelect={handleCustomerChange}
                 />
-                <details className="pdv-traceability">
-                  <summary>Mais detalhes{imei || serial ? ' · preenchidos' : ''}</summary>
-                <div className="form-row">
-                  <label>
-                    <ScanLine size={14} /> {traceabilityLabel}
-                    <input value={imei} onChange={(e) => setImei(e.target.value)} placeholder={segment === 'assistencia' ? 'IMEI / Selo' : 'Nº de Série'} />
-                  </label>
-                  <label>
-                    Nº de Série
-                    <input value={serial} onChange={(e) => setSerial(e.target.value)} placeholder="Opcional" />
-                  </label>
-                </div>
-                </details>
                 <label>
                   Tipo de atendimento
                   <select aria-label="Tipo de atendimento da venda" value={deliveryType} onChange={event => setDeliveryType(event.target.value as DeliveryType)}>
@@ -880,8 +862,6 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
   const [customerId, setCustomerId] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [clientType, setClientType] = useState<ClientType>('varejo');
-  const [imei, setImei] = useState('');
-  const [serial, setSerial] = useState('');
   const [priceTable, setPriceTable] = useState<PriceTable>('varejo');
   const [deliveryType, setDeliveryType] = useState<DeliveryType>('balcao');
   const [salespersonId, setSalespersonId] = useState('');
@@ -992,12 +972,10 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
         total,
         customer_type: clientType,
         delivery_type: deliveryType,
-        imei: imei || undefined,
-        serial_number: serial || undefined,
         salesperson_id: salespersonId || null,
         branch_id: selectedBranchId,
       });
-      setCart([]); setCustomerId(''); setCustomerName(''); setImei(''); setSerial(''); setSalespersonId('');
+      setCart([]); setCustomerId(''); setCustomerName(''); setSalespersonId('');
       setPreSalePayment('');
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
@@ -1163,16 +1141,6 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
                   clientType={clientType}
                   onSelect={handleCustomerChange}
                 />
-                <div className="form-row">
-                  <label>
-                    <ScanLine size={14} /> {traceabilityLabel}
-                    <input value={imei} onChange={(e) => setImei(e.target.value)} placeholder={segment === 'assistencia' ? 'IMEI / Selo' : 'Nº de Série'} />
-                  </label>
-                  <label>
-                    Nº de Série
-                    <input value={serial} onChange={(e) => setSerial(e.target.value)} placeholder="Opcional" />
-                  </label>
-                </div>
                 {!activeSalespersonId && (
                   <SalespersonSearchPicker
                     id="presale-salesperson-search"
