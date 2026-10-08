@@ -2362,6 +2362,12 @@ html, body {
 .pdv-cash-context { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 12px; border: 1px solid var(--dh-border, #1d3445); border-radius: 8px; background: var(--dh-surface, #0e1d2b); font-size: 13px; }
 .pdv-cash-context span { flex: 1 1 240px; min-width: 0; overflow-wrap: anywhere; }
 .pdv-cash-context button { flex-shrink: 0; }
+.partner-panel .pdv-subtabs { align-items: center; flex-wrap: wrap; overflow: visible; }
+.partner-panel .pdv-subtabs > .pdv-cash-context {
+  margin-left: auto; padding: 4px 0; border: 0; background: transparent;
+  font-size: 12px; flex: 0 1 auto; min-width: 0;
+}
+.partner-panel .pdv-subtabs > .pdv-cash-context span { flex: 0 1 auto; }
 .partner-panel .admin-module-layout {
   min-width: 0;
   container: admin-layout / inline-size;

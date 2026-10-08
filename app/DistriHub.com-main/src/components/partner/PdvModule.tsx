@@ -338,8 +338,6 @@ export function PdvModule({
           {preSales.length > 0 && <span className="pdv-subtab-badge">{preSales.length}</span>}
         </button>
 
-      </div>
-
       {cashContext && <div className="pdv-cash-context" role="status">
         <span>{cashContext.message}</span>
         {cashContext.status === 'authorize' && onConfirmCashOperator && <button type="button" className="rma-advance-btn" onClick={() => onConfirmCashOperator()}>Confirmar operador</button>}
@@ -349,6 +347,7 @@ export function PdvModule({
         </>}
         {cashContext.status === 'error' && onOpenCash && <button type="button" className="rma-advance-btn" onClick={onOpenCash}>Conferir caixa</button>}
       </div>}
+      </div>
 
       {subTab === 'pdv' && checkoutPreSale && (
         <PreSaleCheckout
