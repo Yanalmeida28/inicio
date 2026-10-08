@@ -14,7 +14,6 @@ import type {
 } from '../../types';
 import { formatCnpj, formatCpf, isValidCnpj, isValidCpf, money, normalizeDocument } from '../../utils';
 import { ImportExportModule, ExportButtons } from './ImportExportModule';
-import { pdvErrorMessage } from '../../lib/pdv';
 import { saleReturnLabel, saleItemDescription } from '../../lib/saleReturns';
 
 // Alias local: payload de atualização de cliente usado pelo perfil de cliente.
@@ -2606,7 +2605,9 @@ function ReplenishmentSubTab({ products, sales, selectedBranchId, onReplenishSto
       setQuantity(''); setUnitCost(''); setReason('');
     } catch (saveError) {
       console.error('Falha ao salvar reposição de estoque.', saveError);
-      setError(pdvErrorMessage(saveError));
+      setError(saveError && typeof saveError === 'object' && 'message' in saveError
+        ? String(saveError.message)
+        : 'Não foi possível salvar a reposição.');
     } finally {
       setSaving(false);
     }
