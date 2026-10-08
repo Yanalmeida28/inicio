@@ -290,6 +290,9 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
   .pdv-workspace-checkout > .module-header,
   .pdv-workspace-checkout > .pdv-subtabs { flex-shrink: 0; }
   .pdv-workspace-checkout > .pdv-subtabs { margin-bottom: 0; }
+  .pdv-workspace-checkout > .pdv-checkout-slot:not([hidden]) {
+    display: flex; flex-direction: column; flex: 1 1 0; min-height: 0;
+  }
   .partner-panel .pdv-checkout-layout {
     display: flex; flex: 1; min-height: 0; flex-direction: column; gap: 12px;
     overflow-y: auto; overscroll-behavior: contain;

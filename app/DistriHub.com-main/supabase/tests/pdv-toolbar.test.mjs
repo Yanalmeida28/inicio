@@ -26,7 +26,7 @@ vm.runInNewContext(source, {
   require(name) {
     if (name === 'react') return react;
     if (name === '../../lib/pdv') return helpers;
-    if (name === '../../hooks/useSessionDraft') return sessionDraftMocks;
+    if (name === '../../hooks/useSessionDraft') return { ...sessionDraftMocks, useSessionDraftState: (_draftId, initialValue) => react.useState(initialValue) };
     if (name === '../../utils') return { money: new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }) };
     if (name === './PreSaleCheckout') return {};
     if (name === './SalePriceInput') return { SalePriceInput: props => React.createElement('input', { value: props.value, readOnly: true }) };
@@ -79,7 +79,7 @@ if (process.env.PDV_BROWSER_FIXTURE === '1') {
   await writeFile(new URL('preview.html', directory), `<!doctype html><meta charset="utf-8"><style>${css}</style>
     <div class="partner-panel sidebar-layout partner-pdv-mode" style="width:100%;background:white;--dh-surface:white;--dh-border:#ccc;--dh-blue:#2563eb;--dh-blue-soft:#eff6ff;--dh-accent-text:#172033">
       <aside class="partner-sidebar"><div class="sidebar-header">DistriHub</div></aside>
-      <div class="sidebar-main"><div class="sidebar-main-inner"><div class="partner-content"><div class="panel-module pdv-workspace pdv-workspace-checkout">${markup}</div></div></div></div></div>
+      <div class="sidebar-main"><div class="sidebar-main-inner"><div class="partner-content"><div class="panel-module pdv-workspace pdv-workspace-checkout"><div class="pdv-checkout-slot">${markup}</div></div></div></div></div></div>
     <pre id="audit"></pre><script>
       const workspace=document.querySelector('.pdv-workspace');
       workspace.style.setProperty('--pdv-height',(innerHeight-workspace.getBoundingClientRect().top)+'px');

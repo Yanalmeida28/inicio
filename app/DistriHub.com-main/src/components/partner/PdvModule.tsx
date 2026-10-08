@@ -371,7 +371,7 @@ export function PdvModule({
         />
       )}
       {visitedSubTabs.has('pdv') && (
-        <div hidden={subTab !== 'pdv' || Boolean(checkoutPreSale)}>
+        <div className="pdv-checkout-slot" hidden={subTab !== 'pdv' || Boolean(checkoutPreSale)}>
         <PdvCheckout
           products={products}
           customers={customers}
