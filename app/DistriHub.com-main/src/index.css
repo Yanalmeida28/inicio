@@ -347,8 +347,20 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
 .partner-panel .pdv-layout.pdv-checkout-layout { display: flex; flex-direction: column; overflow: visible; }
 @media (min-width: 1001px) {
   .partner-panel .pdv-layout.pdv-checkout-layout > .pdv-left {
-    flex: 1 1 0; min-height: 0; overflow-y: auto; padding-right: 2px;
+    flex: 1 1 0; min-height: 0; overflow: hidden; padding-right: 2px;
     overscroll-behavior: contain;
+  }
+  .partner-panel .pdv-checkout-layout .pdv-cart-main {
+    flex: 1 1 0; min-height: 0; padding: 10px; gap: 6px;
+  }
+  .partner-panel .pdv-checkout-layout .pdv-cart-table-wrap,
+  .partner-panel .pdv-checkout-layout .pdv-cart-table-wrap.pdv-cart-table-scrollable {
+    flex: 1 1 0; min-height: 0; max-height: none; overflow: auto;
+  }
+  .partner-panel .pdv-checkout-layout .pdv-cart-table th,
+  .partner-panel .pdv-checkout-layout .pdv-cart-table td { padding-top: 7px; padding-bottom: 7px; }
+  .partner-panel .pdv-workspace-checkout > .pdv-cash-context {
+    flex: 0 0 auto; margin: 0; padding: 6px 10px; gap: 8px; font-size: 12px;
   }
 }
 .partner-panel .pdv-checkout-layout .pdv-left > .pdv-search-bar {
