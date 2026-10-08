@@ -26,6 +26,8 @@ import type { User } from '@supabase/supabase-js';
 import type { PartnerSale } from '../types';
 
 import { usePartnerData } from '../hooks/usePartnerData';
+import { useSaasSubscription } from '../hooks/useSaasSubscription';
+import { canUseSaasFeature } from '../lib/saas';
 import { useDeviceHeartbeat } from '../hooks/useDeviceHeartbeat';
 
 import { pdvErrorMessage } from '../lib/pdv';
@@ -253,6 +255,7 @@ export function PartnerPanel({
   const [operatorPinError, setOperatorPinError] = useState('');
 
   const partner = usePartnerData(identity, identity?.salespersonId ? identity.branchId : selectedBranchId || null);
+  const saas = useSaasSubscription(identity?.companyUserId);
   const [pdvRevision, setPdvRevision] = useState(0);
   const [preSaleToCheckout, setPreSaleToCheckout] = useState<PartnerSale | null>(null);
   const [pdvReadError, setPdvReadError] = useState<string | null>(null);
@@ -419,21 +422,22 @@ export function PartnerPanel({
 
   const visibleTabs = useMemo(() => {
     return allTabs.filter((tab) =>
-      !blockedTabs.includes(tab.id),
+      !blockedTabs.includes(tab.id) && canUseSaasFeature(saas.subscription, tab.id),
     );
-  }, [blockedTabs]);
+  }, [blockedTabs, saas.subscription]);
 
   useEffect(() => {
+    if (saas.loading) return;
     if (
       !visibleTabs.some(
         (tab) => tab.id === activeTab,
       )
     ) {
       setActiveTab(
-        visibleTabs[0]?.id ?? 'pdv',
+        visibleTabs[0]?.id ?? 'suporte',
       );
     }
-  }, [visibleTabs, activeTab]);
+  }, [visibleTabs, activeTab, saas.loading]);
 
   const lockedBranch = useMemo(() => {
     if (!lockedBranchId) {
@@ -1897,6 +1901,9 @@ export function PartnerPanel({
           <div className="partner-content">
             {storeSettings.internal_notice && <div role="note" className="store-internal-notice">{storeSettings.internal_notice}</div>}
             <Suspense fallback={<div className="partner-loading" role="status">Carregando módulo...</div>}>
+            {saas.error && <div role="alert"><p>{saas.error}</p><button className="rma-advance-btn" onClick={() => { void saas.refresh(); }}>Verificar assinatura novamente</button></div>}
+            {!saas.loading && saas.subscription && !saas.subscription.can_access && <p role="status">A assinatura está sem acesso operacional. Regularize em Configurações ou entre em contato com o suporte.</p>}
+            {canUseSaasFeature(saas.subscription, activeTab) ? <>
             {activeTab === 'cadastros' && (
               renderCadastros()
             )}
@@ -2310,6 +2317,7 @@ export function PartnerPanel({
 
             {activeTab === 'configuracoes' && (
               <SettingsModule
+                onSubscriptionChanged={() => { void saas.refresh(); }}
                 branchManagement={!isEmployeeRestricted ? <MultiStoreModule
                   branches={partner.branches}
                   selectedBranchId={effectiveBranchId || null}
@@ -2326,6 +2334,7 @@ export function PartnerPanel({
                 }
               />
             )}
+            </> : <p role="status">{saas.loading ? 'Verificando acesso ao plano...' : 'Este módulo não está disponível na assinatura atual.'}</p>}
             </Suspense>
           </div>
         </div>

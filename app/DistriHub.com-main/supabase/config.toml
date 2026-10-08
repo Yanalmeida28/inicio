@@ -1,0 +1,13 @@
+project_id = "distrihub"
+
+[functions.saas-checkout]
+# The handler authenticates the user's access token with auth.getUser().
+verify_jwt = false
+
+[functions.saas-webhook]
+# Mercado Pago authenticates each request with HMAC, not a Supabase JWT.
+verify_jwt = false
+
+[functions.saas-provider-jobs]
+# Scheduled server requests require x-saas-job-secret.
+verify_jwt = false

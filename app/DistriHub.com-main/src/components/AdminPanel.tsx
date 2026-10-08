@@ -5,29 +5,25 @@ import {
 } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { useSuperAdminAuth } from '../hooks/useSuperAdminAuth';
-import type { AdminCompany, AdminLojista, PartnerInvoice } from '../types';
+import type { AdminCompany, AdminLojista } from '../types';
 import { money } from '../utils';
-import { AdminFinancialModule } from './AdminFinancialModule';
+import { AdminSaasModule } from './AdminSaasModule';
 import { AdminSupportModule } from './AdminSupportModule';
 import { AdminPlanRequestsModule } from './AdminPlanRequestsModule';
-import type { AdminFinancialMonth } from '../types';
+
 
 type AdminPanelProps = {
   onBack: () => void;
 };
 
-type AdminTab = 'lojistas' | 'financeiro' | 'faturas' | 'planos' | 'seguranca' | 'suporte';
+type AdminTab = 'lojistas' | 'financeiro' | 'faturas' | 'planos' | 'seguranca' | 'suporte' | 'assinaturas';
 
-function invoiceStatusStyle(status: PartnerInvoice['status']) {
-  const color = status === 'paga' ? '#5bbc87' : '#e6a06d';
-  return { color, borderColor: color };
-}
 
 export function AdminPanel({ onBack }: AdminPanelProps) {
-  const [tab, setTab] = useState<AdminTab>('lojistas');
+  const [tab, setTab] = useState<AdminTab>('assinaturas');
+  const [accessCompanyId, setAccessCompanyId] = useState<string | null>(null);
+  const [companiesVersion, setCompaniesVersion] = useState(0);
   const [lojistas, setLojistas] = useState<AdminCompany[]>([]);
-  const [financialData, setFinancialData] = useState<AdminFinancialMonth[]>([]);
-  const [invoices, setInvoices] = useState<PartnerInvoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const superAdminAuth = useSuperAdminAuth();
@@ -51,17 +47,10 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
           throw new Error('Operador não autorizado para o painel master.');
         }
 
-        const [loj, financial, inv] = await Promise.all([
-          supabase.rpc('get_super_admin_company_overview_auth'),
-          supabase.rpc('get_super_admin_financial_overview_auth'),
-          supabase.from('partner_invoices').select('*').order('created_at', { ascending: false }),
-        ]);
-        const failed = [loj, financial, inv].find((result) => result.error);
-        if (failed?.error) throw failed.error;
+        const loj = await supabase.rpc('get_super_admin_company_overview_auth');
+        if (loj.error) throw loj.error;
         if (cancelled) return;
         setLojistas((loj.data as AdminCompany[]) ?? []);
-        setFinancialData((financial.data as AdminFinancialMonth[]) ?? []);
-        setInvoices((inv.data as PartnerInvoice[]) ?? []);
       } catch (loadError) {
         if (!cancelled) setError(loadError instanceof Error ? loadError.message : 'Não foi possível carregar o painel master.');
       } finally {
@@ -70,7 +59,7 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
     }
     void loadAdminData();
     return () => { cancelled = true; };
-  }, []);
+  }, [companiesVersion]);
 
   async function updateLojista(id: string, updates: Partial<AdminCompany>) {
     setLojistas((prev) => prev.map((l) => l.id === id ? { ...l, ...updates, client_status: updates.status ?? l.client_status } : l));
@@ -87,6 +76,7 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
     { id: 'lojistas', label: 'Gestão de Clientes', icon: Users },
     { id: 'financeiro', label: 'Financeiro SaaS', icon: BarChart3 },
     { id: 'faturas', label: 'Faturas SaaS', icon: Receipt },
+    { id: 'assinaturas', label: 'Acesso ao aplicativo', icon: ShieldCheck },
     { id: 'planos', label: 'Solicitações de Plano', icon: ClipboardList },
     { id: 'suporte', label: 'Suporte', icon: Headphones },
     { id: 'seguranca', label: 'Segurança', icon: ShieldCheck },
@@ -100,8 +90,8 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
             <ArrowLeft size={18} /> Voltar ao início
           </button>
           <div className="partner-title">
-            <h2>Painel Super Admin — Distribuidora</h2>
-            <p>Gestão da plataforma, clientes, assinaturas e recebimentos</p>
+            <h2>Painel Super Admin</h2>
+            <p>Controle de acesso, empresas, assinaturas e cobranças</p>
           </div>
           {loading && <span className="partner-loading">Carregando...</span>}
           {error && <span className="admin-load-error" role="alert">{error}</span>}
@@ -111,7 +101,7 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
       <div className="page-container partner-body">
         <div className="partner-tabs">
           {tabs.map(({ id, label, icon: Icon }) => (
-            <button key={id} className={`partner-tab ${tab === id ? 'active' : ''}`} onClick={() => setTab(id)}>
+            <button key={id} className={`partner-tab ${tab === id ? 'active' : ''}`} onClick={() => { setAccessCompanyId(null); setTab(id); }}>
               <Icon size={17} /> {label}
             </button>
           ))}
@@ -126,7 +116,7 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
                 <span className="module-icon"><Users size={20} /></span>
                 <div>
                   <h3>Clientes da Plataforma</h3>
-                  <p>Controle os clientes cadastrados pelo acesso Entrar</p>
+                  <p>Gerencie o cadastro comercial e abra os controles de acesso de cada empresa.</p>
                 </div>
               </div>
               <div className="admin-client-summary">
@@ -135,11 +125,11 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
               <div className="stock-table-wrap">
                 <table className="rma-table">
                   <thead>
-                    <tr><th>Empresa</th><th>Login</th><th>Contato</th><th>Documento</th><th>Segmento</th><th>Assinatura</th><th>Compras</th><th>Status</th></tr>
+                    <tr><th>Empresa</th><th>Login</th><th>Contato</th><th>Documento</th><th>Segmento</th><th>Assinatura</th><th>Compras</th><th>Cadastro comercial</th><th>Acesso ao aplicativo</th></tr>
                   </thead>
                   <tbody>
                     {lojistas.length === 0 ? (
-                      <tr><td colSpan={8} className="empty-row">Nenhuma empresa cadastrada.</td></tr>
+                      <tr><td colSpan={9} className="empty-row">Nenhuma empresa cadastrada.</td></tr>
                     ) : (
                       lojistas.map((cliente) => (
                         <tr key={cliente.id}>
@@ -159,6 +149,9 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
                               <option value="reprovado">Bloqueado</option>
                             </select>
                           </td>
+                          <td><button className="rma-advance-btn" disabled={!cliente.user_id} onClick={() => {
+                            setAccessCompanyId(cliente.user_id); setTab('assinaturas');
+                          }}>Controlar acesso</button></td>
                         </tr>
                       ))
                     )}
@@ -168,42 +161,9 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
             </div>
           )}
 
-          {tab === 'financeiro' && (
-            <AdminFinancialModule data={financialData} />
-          )}
-
-          {tab === 'faturas' && (
-            <div className="panel-module">
-              <div className="module-header">
-                <span className="module-icon"><Receipt size={20} /></span>
-                <div>
-                  <h3>Extrato de Faturas Recorrentes (SaaS)</h3>
-                  <p>Faturas do plano de assinatura dos lojistas</p>
-                </div>
-              </div>
-              <div className="stock-table-wrap">
-                <table className="rma-table">
-                  <thead><tr><th>Valor</th><th>Status</th><th>Vencimento</th><th>Pago em</th></tr></thead>
-                  <tbody>
-                    {invoices.length === 0 ? (
-                      <tr><td colSpan={4} className="empty-row">Nenhuma fatura.</td></tr>
-                    ) : (
-                      invoices.map((inv) => (
-                        <tr key={inv.id}>
-                          <td><strong>{money.format(inv.amount)}</strong></td>
-                          <td>
-                            <span className="rma-status-badge" style={invoiceStatusStyle(inv.status)}>{inv.status}</span>
-                          </td>
-                          <td>{inv.due_date ? new Date(inv.due_date).toLocaleDateString('pt-BR') : '—'}</td>
-                          <td>{inv.paid_at ? new Date(inv.paid_at).toLocaleDateString('pt-BR') : '—'}</td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
+          {tab === 'financeiro' && <AdminSaasModule view="financial" />}
+          {tab === 'faturas' && <AdminSaasModule view="invoices" />}
+          {tab === 'assinaturas' && <AdminSaasModule view="subscriptions" initialCompanyId={accessCompanyId} onChanged={() => setCompaniesVersion(version => version + 1)} />}
 
           {tab === 'suporte' && <AdminSupportModule companies={lojistas} />}
 

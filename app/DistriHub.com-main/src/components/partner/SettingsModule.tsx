@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import {
-  Settings, User, Mail, Phone, FileText, Lock, CreditCard, Calendar,
+  Settings, User, Mail, Phone, FileText, Lock, CreditCard,
   Check, X, Crown, Zap, Building2, Receipt, ArrowUpCircle, ArrowDownCircle,
   Shield, Eye, EyeOff,
 } from 'lucide-react';
@@ -8,12 +8,15 @@ import type { User as SupabaseUser } from '@supabase/supabase-js';
 import type { PartnerProfile } from '../../types';
 import { supabase } from '../../lib/supabase';
 import { money } from '../../utils';
+import { SaasBillingModule } from './SaasBillingModule';
+import { useSaasSubscription } from '../../hooks/useSaasSubscription';
 
 type Props = {
   user: SupabaseUser | null;
   profile: PartnerProfile | null;
   onProfileUpdate: (profile: Partial<PartnerProfile>) => Promise<unknown>;
   branchManagement?: ReactNode;
+  onSubscriptionChanged?: () => void;
 };
 
 type Plan = {
@@ -56,14 +59,9 @@ const planLabels: Record<string, string> = {
   enterprise: 'Enterprise',
 };
 
-const statusLabels: Record<string, { label: string; color: string }> = {
-  ativa: { label: 'Ativa', color: '#5bbc87' },
-  trial: { label: 'Trial', color: '#5cb5f1' },
-  cancelada: { label: 'Cancelada', color: '#e6706d' },
-  suspensa: { label: 'Suspensa', color: '#e6a06d' },
-};
 
-export function SettingsModule({ user, profile, onProfileUpdate, branchManagement }: Props) {
+export function SettingsModule({ user, profile, onProfileUpdate, branchManagement, onSubscriptionChanged }: Props) {
+  const saas = useSaasSubscription(profile?.id);
   const [accountName, setAccountName] = useState(profile?.account_name ?? '');
   const [email, setEmail] = useState(user?.email ?? '');
   const [whatsapp, setWhatsapp] = useState(profile?.whatsapp ?? '');
@@ -77,10 +75,8 @@ export function SettingsModule({ user, profile, onProfileUpdate, branchManagemen
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showPlanModal, setShowPlanModal] = useState<Plan | null>(null);
 
-  const currentPlan = profile?.subscription_plan ?? 'basico';
-  const subStatus = profile?.subscription_status ?? 'trial';
-  const nextBilling = profile?.next_billing_date;
-  const paymentMethod = profile?.payment_method;
+  const currentPlan = saas.subscription?.effective_plan ?? profile?.subscription_plan ?? 'basico';
+  const fullExemption = saas.subscription?.billing_mode === 'exempt' && saas.subscription.full_access;
 
   async function handleSave() {
     setError(null);
@@ -213,39 +209,15 @@ export function SettingsModule({ user, profile, onProfileUpdate, branchManagemen
 
       <div className="module-card subscription-card">
         {planRequestMessage && <p role={planRequestError ? 'alert' : 'status'}>{planRequestMessage}</p>}
-        <div className="subscription-header">
-          <div className="subscription-status-badge" style={{ color: statusLabels[subStatus]?.color, background: `${statusLabels[subStatus]?.color}1f`, borderColor: `${statusLabels[subStatus]?.color}55` }}>
-            <span className="subscription-status-dot" style={{ background: statusLabels[subStatus]?.color }} />
-            {statusLabels[subStatus]?.label ?? subStatus}
-          </div>
-          <div className="subscription-plan-name">
-            Plano {planLabels[currentPlan] ?? currentPlan}
-          </div>
-        </div>
-
-        <div className="subscription-details-grid">
-          <div className="subscription-detail-item">
-            <Calendar size={16} />
-            <div>
-              <small>Próxima Cobrança</small>
-              <strong>{nextBilling ? new Date(nextBilling).toLocaleDateString('pt-BR') : '—'}</strong>
-            </div>
-          </div>
-          <div className="subscription-detail-item">
-            <CreditCard size={16} />
-            <div>
-              <small>Método de Pagamento</small>
-              <strong>{paymentMethod === 'cartao' ? 'Cartão de Crédito' : paymentMethod === 'pix' ? 'PIX (Auto-renovar)' : 'Não configurado'}</strong>
-            </div>
-          </div>
-        </div>
-
+        {fullExemption && <p>Sua empresa está isenta de cobrança e possui acesso completo aos recursos.</p>}
         <div className="subscription-actions">
-          <button className="rma-advance-btn" onClick={() => setShowPlanModal(plans.find((p) => p.id !== currentPlan) ?? plans[1])}>
+          <button className="rma-advance-btn" disabled={fullExemption || saas.loading} onClick={() => setShowPlanModal(plans.find((p) => p.id !== currentPlan) ?? plans[1])}>
             {currentPlan === 'enterprise' ? <><ArrowDownCircle size={14} /> Downgrade Plano</> : <><ArrowUpCircle size={14} /> Upgrade Plano</>}
           </button>
         </div>
       </div>
+
+      {profile?.id && <SaasBillingModule companyId={profile.id} onChanged={() => { void saas.refresh(); onSubscriptionChanged?.(); }} />}
 
       {/* Plan Cards */}
       <div className="plan-cards-grid">
@@ -267,7 +239,7 @@ export function SettingsModule({ user, profile, onProfileUpdate, branchManagemen
                   <li key={i}><Check size={13} /> {f}</li>
                 ))}
               </ul>
-              {!isCurrent && (
+              {!isCurrent && !fullExemption && (
                 <button
                   className={`plan-select-btn ${plan.highlighted ? 'primary' : ''}`}
                   onClick={() => setShowPlanModal(plan)}
