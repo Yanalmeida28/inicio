@@ -293,9 +293,8 @@ export function PdvModule({
     const element = moduleRef.current;
     if (!element) return;
     const updateHeight = () => {
-      const checkout = element.querySelector('.pdv-checkout-layout') ?? element;
-      const top = checkout.getBoundingClientRect().top + window.scrollY;
-      element.style.setProperty('--pdv-height', `${Math.max(420, window.innerHeight - (top + 20))}px`);
+      const top = element.getBoundingClientRect().top;
+      element.style.setProperty('--pdv-height', `${Math.max(420, window.innerHeight - top)}px`);
     };
     updateHeight();
     const observer = new ResizeObserver(updateHeight);
@@ -738,6 +737,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
           </table>
           </div>
           </section>
+        </div>
         <div className="pdv-right" role="region" aria-label="Opções da venda">
           <div className="pdv-cart-header"><h4>Dados da venda</h4></div>
           <div className="pdv-sale-scroll">
@@ -850,7 +850,6 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
           )}
           {checkoutError && <p className="otp-error-msg">{checkoutError}</p>}
           </div>
-        </div>
         </div>
       </div>
 

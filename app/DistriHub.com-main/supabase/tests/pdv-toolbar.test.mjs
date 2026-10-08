@@ -50,7 +50,9 @@ test('carrinho aparece acima das opções, mantendo a pesquisa no topo', async (
   const left = renderer.root.findByProps({ className: 'pdv-left' });
   assert.equal(left.children[0].props.className, 'pdv-search-bar');
   assert.equal(left.children[1].props['aria-label'], 'Carrinho');
-  assert.equal(left.children[2].props['aria-label'], 'Opções da venda');
+  const layout = renderer.root.findByProps({ className: 'pdv-layout pdv-checkout-layout' });
+  assert.equal(layout.children[0], left);
+  assert.equal(layout.children[1].props['aria-label'], 'Opções da venda');
 });
 test('selecionar e remover o último produto mantém as opções da venda visíveis', async () => {
   await act(async () => { renderer = TestRenderer.create(React.createElement(module.exports.Checkout, props)); });
@@ -71,14 +73,24 @@ if (process.env.PDV_BROWSER_FIXTURE === '1') {
   await writeFile(new URL('preview.html', directory), `<!doctype html><meta charset="utf-8"><style>${css}</style>
     <div class="partner-panel sidebar-layout partner-pdv-mode" style="width:100%;background:white;--dh-surface:white;--dh-border:#ccc;--dh-blue:#2563eb;--dh-blue-soft:#eff6ff;--dh-accent-text:#172033">
       <aside class="partner-sidebar"><div class="sidebar-header">DistriHub</div></aside>
-      <div class="sidebar-main"><div class="sidebar-main-inner"><div class="partner-content"><div class="pdv-workspace pdv-workspace-checkout">${markup}</div></div></div></div></div>
+      <div class="sidebar-main"><div class="sidebar-main-inner"><div class="partner-content"><div class="panel-module pdv-workspace pdv-workspace-checkout">${markup}</div></div></div></div></div>
     <pre id="audit"></pre><script>
+      const workspace=document.querySelector('.pdv-workspace');
+      workspace.style.setProperty('--pdv-height',(innerHeight-workspace.getBoundingClientRect().top)+'px');
+      if(location.search.includes('filled=1')) {
+        document.querySelector('.pdv-cart-table tbody').innerHTML=Array.from({length:18},(_,i)=>'<tr><td>Produto '+(i+1)+'</td><td>1</td><td>R$ 100,00</td><td>R$ 100,00</td><td>Remover</td></tr>').join('');
+        document.querySelector('.pdv-cart-table-wrap').classList.add('pdv-cart-table-scrollable');
+        document.querySelector('.pdv-cart-table-wrap').scrollTop=10000;
+        document.querySelector('.pdv-left').scrollTop=10000;
+      }
       const fields=[...document.querySelectorAll('.pdv-form input,.pdv-form select')].filter(el=>!el.closest('details'));
       const rects=fields.map(el=>el.getBoundingClientRect());
       const search=document.querySelector('.pdv-search-bar').getBoundingClientRect();
       const bar=document.querySelector('[aria-label="Opções da venda"]').getBoundingClientRect();
       const cart=document.querySelector('[aria-label="Carrinho"]').getBoundingClientRect();
+      const content=document.querySelector('.pdv-left').getBoundingClientRect();
+      const lastItem=document.querySelector('.pdv-cart-table tbody tr:last-child').getBoundingClientRect();
       const total=document.querySelector('.pdv-total-bar').getBoundingClientRect();
-      document.querySelector('#audit').textContent=JSON.stringify({visible:rects.every(r=>r.width>0&&r.height>0),fieldCount:fields.length,belowSearch:bar.top>=search.bottom,belowCart:bar.top>=cart.bottom,sameRow:Math.max(...rects.map(r=>r.bottom))-Math.min(...rects.map(r=>r.bottom))<5,inputFontPx:parseFloat(getComputedStyle(fields[0]).fontSize),inputHeight:rects[0].height,controlsFit:rects.every(r=>r.left>=bar.left&&r.right<=total.left),workspaceWidth:search.width});
+      document.querySelector('#audit').textContent=JSON.stringify({visible:rects.every(r=>r.width>0&&r.height>0),fieldCount:fields.length,belowSearch:bar.top>=search.bottom,belowCart:bar.top>=Math.min(cart.bottom,content.bottom),sameRow:Math.max(...rects.map(r=>r.bottom))-Math.min(...rects.map(r=>r.bottom))<5,inputFontPx:parseFloat(getComputedStyle(fields[0]).fontSize),inputHeight:rects[0].height,controlsFit:rects.every(r=>r.left>=bar.left&&r.right<=total.left),workspaceWidth:search.width,dockedAtBottom:Math.abs(bar.bottom-innerHeight)<3,noCartOverlap:content.bottom<=bar.top,lastItemVisible:lastItem.bottom<=content.bottom+1&&lastItem.top>=content.top});
     </script>`);
 }

@@ -344,7 +344,13 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
 .pdv-checkout-layout .pdv-form .form-row { display: flex; flex-direction: column; }
 .pdv-checkout-layout .pdv-client-type-toggle { flex-wrap: wrap; }
 /* Search and products first, then cart, with sale options below the cart. */
-.partner-panel .pdv-layout.pdv-checkout-layout { display: flex; flex-direction: column; }
+.partner-panel .pdv-layout.pdv-checkout-layout { display: flex; flex-direction: column; overflow: visible; }
+@media (min-width: 1001px) {
+  .partner-panel .pdv-layout.pdv-checkout-layout > .pdv-left {
+    flex: 1 1 0; min-height: 0; overflow-y: auto; padding-right: 2px;
+    overscroll-behavior: contain;
+  }
+}
 .partner-panel .pdv-checkout-layout .pdv-left > .pdv-search-bar {
   position: sticky; top: 0; z-index: 9; background: var(--dh-surface);
 }
@@ -352,7 +358,7 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
   position: static; max-height: 240px; width: 100%; box-shadow: none;
 }
 .partner-panel .pdv-checkout-layout .pdv-right {
-  position: sticky; top: auto; bottom: 0; z-index: 8; flex: 0 0 auto;
+  position: relative; z-index: 8; flex: 0 0 auto;
   display: flex; flex-direction: row; align-items: flex-end; flex-wrap: nowrap;
   gap: 8px; padding: 10px; background: var(--dh-surface);
 }
@@ -372,7 +378,7 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
 .pdv-checkout-layout .pdv-traceability { position: relative; flex: 0 0 105px; min-width: 0; }
 .pdv-checkout-layout .pdv-traceability summary { padding: 12px 0; font-size: 13px; white-space: nowrap; }
 .pdv-checkout-layout .pdv-traceability[open] > .form-row {
-  position: absolute; top: 100%; right: 0; z-index: 10; width: 280px;
+  position: absolute; top: auto; bottom: calc(100% + 6px); right: 0; z-index: 10; width: 280px;
   display: flex; flex-direction: column; gap: 8px; padding: 12px;
   border: 1px solid var(--dh-border); border-radius: var(--dh-radius); background: var(--dh-surface);
   box-shadow: 0 8px 24px rgba(15, 23, 42, .16);
@@ -393,6 +399,9 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
 .partner-panel .pdv-checkout-layout .pdv-cart-table { font-size: 15px; }
 .pdv-checkout-layout .pdv-sale-footer > .otp-error-msg,
 .pdv-checkout-layout .pdv-sale-footer > .sent-message { flex-basis: 100%; }
+.partner-panel .pdv-checkout-layout .pdv-right .pdv-search-results {
+  top: auto; bottom: calc(100% + 6px); max-height: min(320px, 45vh);
+}
 @media (max-width: 1000px) {
   .partner-panel .pdv-checkout-layout .pdv-right { position: static; overflow-x: auto; }
   .partner-panel .pdv-checkout-layout .pdv-sale-scroll { flex: 1 0 700px; }
