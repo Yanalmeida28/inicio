@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ShoppingCart, Store, Image as ImageIcon } from 'lucide-react';
+import { ShoppingCart, Store, MessageCircle, Image as ImageIcon } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { contrastText, normalizeColor } from '../lib/storeTheme';
 import type { PartnerProduct } from '../types';
+import { catalogPreferences, catalogWhatsappUrl } from '../lib/personalization';
 
 const DEFAULT_CATALOG = {
   name: 'DistriHub',
@@ -15,8 +16,7 @@ type PublicCatalogPageProps = {
 };
 
 type PublicStoreSettings = {
-  id: string;
-  user_id: string;
+  catalog_preferences?: unknown;
   catalog_slug: string | null;
   catalog_enabled: boolean;
   logo_url: string | null;
@@ -27,143 +27,52 @@ type PublicStoreSettings = {
 };
 
 type PublicPartnerProfile = {
-  id: string;
   business_name: string;
   account_name: string | null;
 };
 
 type PublicPartnerBranch = {
   id: string;
-  user_id: string;
   name: string;
   address: string | null;
 };
+
+type PublicCatalogProduct = Pick<PartnerProduct, 'id' | 'branch_id' | 'name' | 'sale_price' | 'image_url' | 'stock' | 'category' | 'sku' | 'is_service'>;
 
 export function PublicCatalogPage({ slug, branchSlug }: PublicCatalogPageProps) {
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<PublicPartnerProfile | null>(null);
   const [settings, setSettings] = useState<PublicStoreSettings | null>(null);
   const [branch, setBranch] = useState<PublicPartnerBranch | null>(null);
-  const [products, setProducts] = useState<PartnerProduct[]>([]);
+  const [products, setProducts] = useState<PublicCatalogProduct[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    let active = true;
     async function loadCatalog() {
+      setLoading(true); setError(null); setBranch(null);
       if (!isSupabaseConfigured || !supabase || !slug) {
-        setError('Catálogo indisponível no momento.');
-        setLoading(false);
-        return;
+        setError('Catálogo indisponível no momento.'); setLoading(false); return;
       }
-
       try {
-        const { data: profileData, error: profileError } = await supabase
-          .from('public_catalog_partner_profiles')
-          .select('id, business_name, account_name')
-          .eq('business_name', slug)
-          .maybeSingle();
-
-        const normalizedSlug = slug.trim().toLowerCase();
-
-        let resolvedUserId: string | null = null;
-        let resolvedSettings: PublicStoreSettings | null = null;
-
-        if (!profileError && profileData) {
-          resolvedUserId = profileData.id;
-        } else {
-          const { data: settingsData, error: settingsError } = await supabase
-            .from('public_catalog_store_settings')
-            .select('id, user_id, catalog_slug, catalog_enabled, logo_url, banner_url, primary_color, nav_color, business_hours')
-            .ilike('catalog_slug', normalizedSlug)
-            .maybeSingle();
-
-          if (!settingsError && settingsData) {
-            resolvedUserId = settingsData.user_id;
-            resolvedSettings = settingsData as PublicStoreSettings;
-          }
-        }
-
-        if (!resolvedUserId) {
-          setError('Loja não encontrada.');
-          setLoading(false);
-          return;
-        }
-
-        const { data: settingsData, error: settingsError } = await supabase
-          .from('public_catalog_store_settings')
-          .select('id, user_id, catalog_slug, catalog_enabled, logo_url, banner_url, primary_color, nav_color, business_hours')
-          .eq('user_id', resolvedUserId)
-          .maybeSingle();
-
-        if (!settingsError && settingsData) {
-          resolvedSettings = settingsData as PublicStoreSettings;
-        }
-
-        if (!resolvedSettings?.catalog_enabled) {
-          setError('Este catálogo está indisponível no momento.');
-          setLoading(false);
-          return;
-        }
-
-        if (!settingsError && settingsData) {
-          const { data: profileRecord, error: profileLookupError } = await supabase
-            .from('public_catalog_partner_profiles')
-            .select('id, business_name, account_name')
-            .eq('id', resolvedUserId)
-            .maybeSingle();
-
-          if (!profileLookupError && profileRecord) {
-            setProfile(profileRecord as PublicPartnerProfile);
-          }
-        }
-
-        if (branchSlug) {
-          const { data: branchData } = await supabase
-            .from('public_catalog_partner_branches')
-            .select('id, user_id, name, address')
-            .eq('user_id', resolvedUserId)
-            .ilike('name', branchSlug)
-            .maybeSingle();
-
-          if (branchData) {
-            setBranch(branchData as PublicPartnerBranch);
-          }
-        }
-
-        let query = supabase
-          .from('public_catalog_products')
-          .select('id, user_id, branch_id, name, sale_price, wholesale_price, image_url, stock, min_stock, category, sku, is_service, created_at, updated_at')
-          .eq('user_id', resolvedUserId)
-          .eq('is_service', false)
-          .gt('stock', 0);
-
-        if (branchSlug && branch) {
-          query = query.eq('branch_id', branch.id);
-        } else if (branchSlug) {
-          query = query.eq('branch_id', '00000000-0000-0000-0000-000000000000');
-        }
-
-        const { data: productData, error: productError } = await query.order('created_at', { ascending: false });
-
-        if (productError) {
-          setError(productError.message);
-          setLoading(false);
-          return;
-        }
-
-        setSettings(resolvedSettings ?? null);
-        setProducts((productData ?? []) as PartnerProduct[]);
-      } catch (loadError) {
-        setError(loadError instanceof Error ? loadError.message : 'Erro ao carregar catálogo.');
-      } finally {
-        setLoading(false);
-      }
+        const { data, error: catalogError } = await supabase.rpc('read_public_store_catalog', { p_slug: slug, p_branch_slug: branchSlug ?? null });
+        if (catalogError) throw new Error(catalogError.message);
+        if (!active) return;
+        if (!data) { setError('Este catálogo está indisponível no momento.'); return; }
+        const catalog = data as { settings: PublicStoreSettings; profile: PublicPartnerProfile | null; branch: PublicPartnerBranch | null; products: PublicCatalogProduct[] };
+        setSettings(catalog.settings); setProfile(catalog.profile); setBranch(catalog.branch); setProducts(catalog.products);
+      } catch (cause) {
+        if (active) setError(cause instanceof Error ? cause.message : 'Erro ao carregar catálogo.');
+      } finally { if (active) setLoading(false); }
     }
-
-    loadCatalog();
-  }, [branch, branchSlug, slug]);
+    void loadCatalog();
+    return () => { active = false; };
+  }, [branchSlug, slug]);
 
   const primaryBrandName = profile?.business_name ?? profile?.account_name ?? 'Loja';
   const logoUrl = settings?.logo_url ?? null;
+  const preferences = catalogPreferences(settings?.catalog_preferences);
+  const whatsappUrl = preferences.show_whatsapp ? catalogWhatsappUrl(preferences.whatsapp_phone) : null;
   const summary = useMemo(() => ({
     title: primaryBrandName,
     address: branch?.address ?? DEFAULT_CATALOG.description,
@@ -200,7 +109,7 @@ export function PublicCatalogPage({ slug, branchSlug }: PublicCatalogPageProps) 
       <main style={{ maxWidth: 1200, margin: '0 auto', padding: '28px 20px 48px' }}>
         {settings?.banner_url && (
           <div style={{ marginBottom: 24, borderRadius: 16, overflow: 'hidden', boxShadow: '0 8px 24px rgba(15,23,42,0.08)' }}>
-            <img src={settings.banner_url} alt="Banner da loja" style={{ width: '100%', height: 220, objectFit: 'cover', display: 'block' }} />
+            <img src={settings.banner_url} alt="Banner da loja" style={{ width: '100%', height: preferences.banner_height, objectFit: 'cover', display: 'block' }} />
           </div>
         )}
 
@@ -215,7 +124,8 @@ export function PublicCatalogPage({ slug, branchSlug }: PublicCatalogPageProps) 
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 20 }}>
+        {preferences.welcome_message && <p style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', padding: '16px 20px', background: '#fff', borderRadius: 12 }}>{preferences.welcome_message}</p>}
+        <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, ${preferences.card_size === 'compact' ? 220 : 280}px), 1fr))`, gap: preferences.card_size === 'compact' ? 12 : 20 }}>
           {products.map((product) => (
             <article key={product.id} style={{ background: '#fff', borderRadius: 16, overflow: 'hidden', boxShadow: '0 8px 24px rgba(15,23,42,0.06)' }}>
               <div style={{ position: 'relative', background: '#eef2ff', minHeight: 180 }}>
@@ -231,14 +141,14 @@ export function PublicCatalogPage({ slug, branchSlug }: PublicCatalogPageProps) 
               <div style={{ padding: 18 }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
                   <strong style={{ fontSize: 18 }}>{product.name}</strong>
-                  <span style={{ fontSize: 12, color: '#64748b' }}>SKU {product.sku ?? 'N/A'}</span>
+                  {preferences.show_sku && <span style={{ fontSize: 12, color: '#64748b' }}>SKU {product.sku ?? 'N/A'}</span>}
                 </div>
                 <p style={{ color: '#475569', minHeight: 48, margin: '8px 0 14px' }}>{product.category ?? 'Produto da loja'}</p>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
                   <strong style={{ color: '#0f172a', fontSize: 22 }}>R$ {Number(product.sale_price ?? 0).toFixed(2).replace('.', ',')}</strong>
-                  <span style={{ color: product.stock > 0 ? '#0f766e' : '#b91c1c', fontSize: 12, fontWeight: 700 }}>
+                  {preferences.show_stock && <span style={{ color: product.stock > 0 ? '#0f766e' : '#b91c1c', fontSize: 12, fontWeight: 700 }}>
                     {product.stock > 0 ? `${product.stock} em estoque` : 'Indisponível'}
-                  </span>
+                  </span>}
                 </div>
                 <button style={{ width: '100%', border: 'none', background: normalizeColor(settings?.primary_color), color: contrastText(normalizeColor(settings?.primary_color)), borderRadius: 10, padding: '12px 14px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
                   <ShoppingCart size={16} /> Adicionar ao pedido
@@ -248,6 +158,7 @@ export function PublicCatalogPage({ slug, branchSlug }: PublicCatalogPageProps) 
           ))}
         </div>
       </main>
+      {whatsappUrl && <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" style={{ position: 'fixed', right: 20, bottom: 20, display: 'flex', gap: 8, alignItems: 'center', background: '#15803d', color: '#fff', padding: '12px 18px', borderRadius: 24, boxShadow: '0 4px 16px #0003' }}><MessageCircle size={20} /> Falar com a loja</a>}
     </div>
   );
 }

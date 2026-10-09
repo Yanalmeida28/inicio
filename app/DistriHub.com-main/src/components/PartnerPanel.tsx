@@ -33,6 +33,7 @@ import { canUseSaasFeature } from '../lib/saas';
 import { useDeviceHeartbeat } from '../hooks/useDeviceHeartbeat';
 
 import { pdvErrorMessage } from '../lib/pdv';
+import { panelStyle } from '../lib/personalization';
 import { storeTheme } from '../lib/storeTheme';
 import { cadastroDestination, type AdminCadastrosTarget } from '../lib/cadastrosNavigation';
 import { supabase } from '../lib/supabase';
@@ -1689,7 +1690,7 @@ export function PartnerPanel({
   }
 
   return (
-    <div className={`partner-panel sidebar-layout${activeTab === 'pdv' ? ' partner-pdv-mode' : ''}`} style={storeTheme(storeSettings.primary_color, storeSettings.nav_color) as React.CSSProperties}>
+    <div className={`partner-panel sidebar-layout${activeTab === 'pdv' ? ' partner-pdv-mode' : ''}`} data-personalized-panel={storeSettings.personalization?.panel ? 'true' : undefined} style={{ ...storeTheme(storeSettings.primary_color, storeSettings.nav_color), ...(storeSettings.personalization?.panel ? panelStyle(storeSettings.personalization.panel) : {}) } as React.CSSProperties}>
       <div className="sidebar-mobile-bar">
         <button
           className="sidebar-toggle"

@@ -1,6 +1,7 @@
 import type { PartnerCustomer, PartnerSale, StoreSettings } from '../types';
 import { money } from '../utils';
 import { saleChargeTotal } from './pdv';
+import { receiptPreferences } from './personalization';
 
 export type PrintableSale = Pick<PartnerSale, 'customer_name' | 'items' | 'total' | 'freight_fee' | 'imei' | 'serial_number' | 'payment_method' | 'created_at' | 'branch_id' | 'customer_id' | 'salesperson_id'> & { id?: string; status?: PartnerSale['status'] };
 
@@ -11,6 +12,9 @@ export function printSale(sale: PrintableSale, format: 'receipt' | 'label', deta
   if (!popup) throw new Error('Permita pop-ups neste navegador para imprimir o cupom ou a etiqueta.');
 
   const isQuote = sale.status === 'pre_venda' || sale.status === 'aberta';
+  const receipt = receiptPreferences(details.settings?.personalization?.receipt);
+  const fontSize = format === 'receipt' ? receipt.font_size : 12;
+  const contentWidth = format === 'receipt' && receipt.paper_width === '58' ? 50 : 72;
   const doc = popup.document;
   doc.title = format === 'receipt' ? (isQuote ? 'Orçamento — cupom não fiscal' : 'Cupom não fiscal') : 'Etiqueta da venda';
   doc.documentElement.lang = 'pt-BR';
@@ -18,9 +22,9 @@ export function printSale(sale: PrintableSale, format: 'receipt' | 'label', deta
   style.textContent = `
     @page { size: auto; margin: 4mm; }
     * { box-sizing: border-box; }
-    body { margin: 0; background: white; color: black; font: 12px Arial, sans-serif; }
-    main { width: 72mm; max-width: 100%; margin: auto; }
-    h1 { font-size: 16px; text-align: center; }
+    body { margin: 0; background: white; color: black; font: ${fontSize}px Arial, sans-serif; }
+    main { width: ${contentWidth}mm; max-width: 100%; margin: auto; }
+    h1 { font-size: ${fontSize + 4}px; text-align: center; }
     p { margin: 7px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
     article { padding: 3mm 0; border-bottom: 1px dashed black; break-inside: avoid; }
     hr { border: 0; border-top: 1px dashed black; margin: 3mm 0 0; }
@@ -54,6 +58,7 @@ export function printSale(sale: PrintableSale, format: 'receipt' | 'label', deta
       main.append(logo);
     }
     if (details.companyName) line(main, details.companyName, true);
+    if (receipt.header_text) line(main, receipt.header_text);
     if (details.settings?.show_cnpj_on_receipt) {
       if (details.companyDocument) line(main, `CNPJ/CPF: ${details.companyDocument}`);
       if (details.companyAddress) line(main, `Endereço da loja: ${details.companyAddress}`);
@@ -65,10 +70,13 @@ export function printSale(sale: PrintableSale, format: 'receipt' | 'label', deta
     const phones = [...new Set([customer?.phone, customer?.phone_commercial_1, customer?.phone_commercial_2].map((value) => value?.trim()).filter(Boolean))].join(' / ');
     const address = [customer?.address, customer?.address_number, customer?.complement, customer?.neighborhood].map((value) => value?.trim()).filter(Boolean).join(', ');
     const city = [customer?.city, customer?.state].map((value) => value?.trim()).filter(Boolean).join(' / ');
-    line(main, `Telefone: ${phones || 'Não informado'}`, false, true);
-    line(main, `Endereço: ${address || 'Não informado'}`, false, true);
-    line(main, `Cidade: ${city || 'Não informada'}`, false, true);
-    if (customer?.zip_code) line(main, `CEP: ${customer.zip_code}`, false, true);
+    if (receipt.show_document && customer?.document) line(main, `CPF/CNPJ do cliente: ${customer.document}`, false, true);
+    if (receipt.show_phone) line(main, `Telefone: ${phones || 'Não informado'}`, false, true);
+    if (receipt.show_address) {
+      line(main, `Endereço: ${address || 'Não informado'}`, false, true);
+      line(main, `Cidade: ${city || 'Não informada'}`, false, true);
+      if (customer?.zip_code) line(main, `CEP: ${customer.zip_code}`, false, true);
+    }
     if (sale.id) line(main, `Data: ${date}`);
     line(main, 'Produtos/Serviços', false, true);
     main.append(doc.createElement('hr'));
@@ -84,25 +92,26 @@ export function printSale(sale: PrintableSale, format: 'receipt' | 'label', deta
       line(main, `Frete terceirizado: ${money.format(sale.freight_fee)}`);
     }
     const totalSummary = doc.createElement('div');
-    totalSummary.style.cssText = 'display:flex;align-items:baseline;justify-content:space-between;gap:8px;padding:4px 0';
+    totalSummary.style.cssText = 'display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px;padding:4px 0';
     const totalLabel = doc.createElement('strong');
     totalLabel.textContent = `TOTAL: ${money.format(saleChargeTotal(sale))}`;
-    totalLabel.style.cssText = 'min-width:0;font-size:16px';
+    totalLabel.style.cssText = `min-width:0;font-size:${fontSize + 4}px`;
     const quantityLabel = doc.createElement('span');
     quantityLabel.textContent = `Qtd. produtos: ${totalQuantity}`;
-    quantityLabel.style.cssText = 'flex:0 0 auto;font-size:11px;white-space:nowrap';
+    quantityLabel.style.cssText = `flex:0 0 auto;font-size:${Math.max(10, fontSize - 1)}px;white-space:nowrap`;
     totalSummary.append(totalLabel, quantityLabel);
     main.append(totalSummary);
     const payments: Record<string, string> = { pix: 'PIX', cartao: 'Cartão', dinheiro: 'Dinheiro', faturado: 'Faturado B2B' };
     const paymentSummary = doc.createElement('div');
-    paymentSummary.style.cssText = 'display:flex;justify-content:space-between;gap:8px;padding:2px 0;font-size:11px';
+    paymentSummary.style.cssText = `display:flex;justify-content:space-between;gap:8px;padding:2px 0;font-size:${Math.max(10, fontSize - 1)}px`;
     const paymentLabel = doc.createElement('span');
     paymentLabel.textContent = `Pagamento: ${payments[sale.payment_method ?? ''] ?? sale.payment_method ?? 'Não informado'}`;
     paymentLabel.style.cssText = 'flex:1;min-width:0;overflow-wrap:anywhere';
     const salespersonLabel = doc.createElement('span');
     salespersonLabel.textContent = `Colaborador: ${details.salespersonName || 'Não informado'}`;
     salespersonLabel.style.cssText = 'flex:1;min-width:0;text-align:right;overflow-wrap:anywhere';
-    paymentSummary.append(paymentLabel, salespersonLabel);
+    paymentSummary.append(paymentLabel);
+    if (receipt.show_salesperson) paymentSummary.append(salespersonLabel);
     main.append(paymentSummary);
     if (details.settings?.receipt_footer_text) line(main, details.settings.receipt_footer_text);
   } else {

@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 import ts from '../../node_modules/typescript/lib/typescript.js';
 import { pdvHelpers } from './fixtures/pdv_helpers.mjs';
+import { personalizationHelpers } from './fixtures/personalization_helpers.mjs';
 
 const sale = { id:'sale', customer_name:'Cliente', customer_id:'customer', branch_id:'branch', salesperson_id:null,
   items:[{product_id:'product',name:'Peça',quantity:1,unit_price:100}], total:100, freight_fee:15,
@@ -15,6 +16,7 @@ async function load(name, window) {
     compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020},
   }).outputText,{exports,window,require(name){
     if(name==='./pdv')return pdvHelpers;
+    if(name==='./personalization')return personalizationHelpers;
     if(name==='../utils')return {money:currency};
     throw Error(name);
   }});
@@ -51,4 +53,32 @@ test('revenue CSV separates freight from merchandise revenue',async()=>{
   const csv=metrics.buildSalesCsv([sale]);
   assert.ok(csv.includes('Frete terceirizado'));
   assert.ok(csv.includes('"100.00";"15.00";"115.00"'));
+});
+
+test('receipt preferences apply to actual printing without removing freight or total',async()=>{
+  function element(tag){return {tag,children:[],style:{},append(...nodes){this.children.push(...nodes);},textContent:''};}
+  const document={head:element('head'),body:element('body'),documentElement:{},createElement:element,images:[]};
+  const print=await load('salePrint',{open:()=>({document,requestAnimationFrame(){},focus(){},print(){}})});
+  print.printSale(sale,'receipt',{settings:{personalization:{receipt:{paper_width:'58',font_size:14,header_text:'Obrigado!',show_phone:false,show_address:false,show_document:true,show_salesperson:false}}},customer:{document:'12345678900',phone:'11999999999',address:'Rua exemplo'},salespersonName:'Vendedor exemplo'});
+  const texts=node=>[node.textContent,...node.children.flatMap(texts)];
+  const output=texts(document.body).join('\n');
+  assert.ok(document.head.children[0].textContent.includes('width: 50mm'));
+  assert.ok(document.head.children[0].textContent.includes('font: 14px'));
+  assert.ok(output.includes('Obrigado!'));
+  assert.ok(output.includes('CPF/CNPJ do cliente: 12345678900'));
+  assert.ok(!output.includes('Telefone:'));
+  assert.ok(!output.includes('Endereço:'));
+  assert.ok(!output.includes('Colaborador:'));
+  assert.ok(output.includes(`TOTAL: ${currency.format(115)}`));
+  assert.ok(output.includes('Frete terceirizado:'));
+});
+
+test('malformed preferences and phone input fall back to safe choices',()=>{
+  const receipt=personalizationHelpers.receiptPreferences({paper_width:'0; color:red',font_size:'999px',show_phone:'false'});
+  assert.equal(receipt.paper_width,'80');
+  assert.equal(receipt.font_size,12);
+  assert.equal(receipt.show_phone,true);
+  assert.equal(personalizationHelpers.panelStyle({corners:'invalid'})['--dh-radius'],'12px');
+  assert.equal(personalizationHelpers.catalogWhatsappUrl('javascript:alert(1)'),null);
+  assert.equal(personalizationHelpers.catalogWhatsappUrl('(11) 99999-9999'),'https://wa.me/5511999999999');
 });

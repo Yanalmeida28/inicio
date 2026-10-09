@@ -15,6 +15,50 @@
 
 :root { font-family: 'DM Sans', sans-serif; font-size: 16px; color: #e8eef5; background: #07111d; font-synthesis: none; text-rendering: optimizeLegibility; }
 * { box-sizing: border-box; }
+.personalization-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+.personalization-tabs button { padding: 10px 16px; border: 1px solid var(--dh-border); border-radius: 8px; color: var(--dh-text); background: var(--dh-surface); }
+.personalization-tabs button.active { background: var(--dh-blue); color: var(--dh-on-primary); border-color: var(--dh-blue); }
+.personalization-presets { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
+.personalization-presets button { display: flex; align-items: center; gap: 7px; padding: 12px; border: 1px solid var(--dh-border); border-radius: 10px; background: var(--dh-surface); color: var(--dh-text); }
+.personalization-presets button[aria-pressed="true"] { border-color: var(--dh-blue); box-shadow: 0 0 0 1px var(--dh-blue); }
+.personalization-presets button span { width: 20px; height: 20px; border-radius: 5px; flex: 0 0 20px; }
+.personalization-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: 14px; margin: 16px 0; }
+.personalization-fields label, .personalization-text-field { display: flex; flex-direction: column; gap: 7px; color: var(--dh-text-secondary); font-size: 14px; }
+.personalization-fields select, .personalization-fields input, .personalization-text-field input { min-width: 0; width: 100%; padding: 10px 12px; border: 1px solid var(--dh-border); background: var(--dh-surface); color: var(--dh-text); border-radius: 8px; font: inherit; }
+.personalization-receipt-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 360px); gap: 20px; }
+.personalization-receipt-stage { padding: 18px; background: #edf1f5; border-radius: 12px; overflow: auto; }
+.personalization-receipt-stage > span { display: block; margin-bottom: 12px; color: #64748b; text-align: center; font-size: 12px; }
+.personalization-receipt-preview { margin: auto; max-width: 100%; padding: 12px; background: white; color: black; font-family: Arial, sans-serif; box-shadow: 0 4px 12px #0001; overflow-wrap: anywhere; }
+.personalization-receipt-preview p { margin: 7px 0; white-space: pre-wrap; }
+.personalization-receipt-preview h4 { text-align: center; margin: 12px 0; font-size: 1.25em; }
+.personalization-receipt-preview img { display: block; max-width: 100%; max-height: 70px; margin: auto; }
+.personalization-receipt-preview hr { border: 0; border-top: 1px dashed black; }
+.personalization-panel-preview { font-size: var(--personalized-font-size); padding: 20px; background: #f4f7fb; color: #172033; border: 1px solid #dce4ef; border-radius: var(--dh-radius); }
+.personalization-preview-card { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin: 12px 0; padding: var(--personalized-card-padding); border-radius: var(--dh-radius); background: white; }
+.personalization-preview-row { display: flex; justify-content: space-between; flex-wrap: wrap; padding: var(--personalized-cell-padding); border-bottom: 1px solid #dce4ef; }
+.personalization-panel-preview button { margin-top: 14px; padding: 10px 16px; background: var(--dh-blue); color: var(--dh-on-primary); border-radius: var(--dh-radius-sm); font: inherit; opacity: 1; }
+.personalization-catalog-preview { margin-top: 18px; background: #f3f4f6; border-radius: 12px; overflow: hidden; padding-bottom: 18px; color: #172033; }
+.personalization-catalog-header { background: var(--store-nav); color: var(--store-nav-text); padding: 18px; font-weight: 700; }
+.personalization-catalog-preview > img { display: block; width: 100%; object-fit: cover; }
+.personalization-catalog-preview > p { margin: 16px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.personalization-catalog-card { display: flex; flex-direction: column; gap: 10px; background: white; border-radius: 12px; padding: 18px; margin: 16px; }
+.personalization-whatsapp-preview { display: inline-block; margin: 0 16px; border-radius: 24px; padding: 10px 16px; background: #15803d; color: white; }
+.personalization-savebar { position: sticky; bottom: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; background: var(--dh-surface); border-top: 1px solid var(--dh-border); padding: 14px 0 6px; z-index: 2; }
+.personalization-savebar > span { margin-right: auto; font-size: 13px; color: var(--dh-text-secondary); }
+.personalization-savebar .module-save-btn { margin: 0; }
+.partner-panel[data-personalized-panel="true"] .rma-table { font-size: var(--personalized-font-size); }
+.partner-panel[data-personalized-panel="true"] .pdv-checkout-layout .pdv-cart-table { font-size: var(--personalized-font-size); }
+.partner-panel[data-personalized-panel="true"] .pdv-checkout-layout .pdv-cart-table th,
+.partner-panel[data-personalized-panel="true"] .pdv-checkout-layout .pdv-cart-table td { padding: var(--personalized-cell-padding); }
+.partner-panel[data-personalized-panel="true"] .rma-table th, .partner-panel[data-personalized-panel="true"] .rma-table td { padding: var(--personalized-cell-padding); }
+.partner-panel[data-personalized-panel="true"] .module-card { padding: var(--personalized-card-padding); border-radius: var(--dh-radius); }
+.partner-panel[data-personalized-panel="true"] .rma-form input, .partner-panel[data-personalized-panel="true"] .rma-form select,
+.partner-panel[data-personalized-panel="true"] .rma-form label, .partner-panel[data-personalized-panel="true"] .pdv-form input,
+.partner-panel[data-personalized-panel="true"] .pdv-form select, .partner-panel[data-personalized-panel="true"] .pdv-form label { font-size: var(--personalized-font-size); }
+.partner-panel[data-personalized-panel="true"] .pdv-checkout-layout .pdv-form input,
+.partner-panel[data-personalized-panel="true"] .pdv-checkout-layout .pdv-form select,
+.partner-panel[data-personalized-panel="true"] .pdv-checkout-layout .pdv-form label { font-size: var(--personalized-font-size); }
+@media (max-width: 800px) { .personalization-receipt-grid { grid-template-columns: minmax(0, 1fr); } .personalization-savebar > span { width: 100%; } }
 html { scroll-behavior: smooth; }
 body { margin: 0; min-width: 320px; background: #07111d; font-size: 15px; }
 button, input { font: inherit; }

@@ -299,7 +299,40 @@ export interface StockMovement {
   created_at: string;
 }
 
+export interface ReceiptPreferences {
+  paper_width: '58' | '80';
+  font_size: 10 | 12 | 14 | 16;
+  header_text: string;
+  show_phone: boolean;
+  show_address: boolean;
+  show_document: boolean;
+  show_salesperson: boolean;
+}
+
+export interface PanelPreferences {
+  text_size: 'normal' | 'large' | 'extra-large';
+  density: 'comfortable' | 'compact';
+  corners: 'standard' | 'rounded' | 'square';
+}
+
+export interface CatalogPreferences {
+  welcome_message: string;
+  card_size: 'normal' | 'compact';
+  banner_height: 160 | 220 | 300;
+  show_stock: boolean;
+  show_sku: boolean;
+  whatsapp_phone: string;
+  show_whatsapp: boolean;
+}
+
+export interface StorePersonalization {
+  receipt?: Partial<ReceiptPreferences>;
+  panel?: Partial<PanelPreferences>;
+  catalog?: Partial<CatalogPreferences>;
+}
+
 export interface StoreSettings {
+  personalization?: StorePersonalization;
   id: string;
   user_id: string;
   logo_url: string | null;
