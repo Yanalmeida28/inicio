@@ -2430,16 +2430,16 @@ export function PartnerPanel({
           }
         >
           <div
-            className="modal-content"
+            className="modal-content operator-selection-modal"
             onClick={(event) =>
               event.stopPropagation()
             }
-            style={{
-              maxWidth: '440px',
-            }}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="operator-selection-title"
           >
             <div className="modal-header">
-              <h3>
+              <h3 id="operator-selection-title">
                 Seleção de Operador /
                 Funcionário
               </h3>
@@ -2461,6 +2461,7 @@ export function PartnerPanel({
                 Sistema
 
                 <select
+                  aria-label="Operador do sistema"
                   value={
                     selectedOperatorId
                   }
@@ -2520,6 +2521,14 @@ export function PartnerPanel({
                     },
                   )}
                 </select>
+                <small className="operator-selection-detail">
+                  {selectedOperatorId === 'owner' || !selectedOperatorId
+                    ? 'Proprietário / Administrador Geral — Acesso a todas as filiais'
+                    : partner.salespeople.filter(person => person.id === selectedOperatorId).map(person => {
+                        const branch = partner.branches.find(item => item.id === person.branch_id);
+                        return `${person.name} — ${person.role.toUpperCase()} — ${branch ? `Filial: ${branch.name}` : 'Acesso a todas as filiais'}`;
+                      })}
+                </small>
               </label>
 
               {selectedOperatorId &&

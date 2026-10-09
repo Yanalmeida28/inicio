@@ -1610,6 +1610,7 @@ function CustomerProfileModal({ customer, sales, rmaRequests, salespeople, onUpd
     branch_id: customer.branch_id ?? null,
   }));
   const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [creditLimitInput, setCreditLimitInput] = useState(() => String(customer.credit_limit ?? 0));
   const [removePhoto, setRemovePhoto] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1641,7 +1642,7 @@ function CustomerProfileModal({ customer, sales, rmaRequests, salespeople, onUpd
 
   async function handleSave(event: React.FormEvent) {
     event.preventDefault();
-    const creditLimit = Number(form.credit_limit ?? 0);
+    const creditLimit = Number(creditLimitInput || 0);
     if (!form.name?.trim()) { setError('Nome ou razão social é obrigatório.'); return; }
     if (!Number.isFinite(creditLimit) || creditLimit < 0) { setError('O limite de crédito não pode ser negativo.'); return; }
     setIsSaving(true); setError(null); setSuccess(false);
@@ -1721,7 +1722,7 @@ function CustomerProfileModal({ customer, sales, rmaRequests, salespeople, onUpd
               <label><span className="social-label">Vendedor Responsável</span><select value={form.salesperson_id ?? ''} onChange={(event) => setField('salesperson_id', event.target.value || null)}><option value="">Nenhum</option>{salespeople.filter((person) => !person.branch_id || person.branch_id === form.branch_id).map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}</select></label>
               <label><span className="social-label">Tabela de Preços</span><select value={form.price_table ?? 'varejo'} onChange={(event) => setField('price_table', event.target.value)}><option value="varejo">Varejo</option><option value="atacado">Atacado</option><option value="premium">Premium</option></select></label>
             </div>
-            <div className="form-row"><label><span className="social-label">Limite de Crédito (R$)</span><input type="number" min="0" step="0.01" value={String(form.credit_limit ?? 0)} onChange={(event) => setField('credit_limit', Number(event.target.value))} /></label><label><span className="social-label">Venda em Crediário</span><select value={form.allow_credit ? 'sim' : 'nao'} onChange={(event) => setField('allow_credit', event.target.value === 'sim')}><option value="nao">Não Permitido</option><option value="sim">Permitido</option></select></label></div>
+            <div className="form-row"><label><span className="social-label">Limite de Crédito (R$)</span><input type="number" min="0" step="0.01" aria-label="Limite de crédito (R$)" value={creditLimitInput} onChange={(event) => { setCreditLimitInput(event.target.value); setSuccess(false); }} /></label><label><span className="social-label">Venda Faturada / Crediário</span><select aria-label="Permitir venda faturada" value={form.allow_credit ? 'sim' : 'nao'} onChange={(event) => setField('allow_credit', event.target.value === 'sim')}><option value="nao">Não Permitido</option><option value="sim">Permitido</option></select></label></div>
             <div className="customer-compliance-grid">
               <label className="checkbox-label"><input type="checkbox" checked={Boolean(form.convenio)} onChange={(event) => setField('convenio', event.target.checked)} /> Ativar Vendas em Convênio</label>
               <label className="checkbox-label"><input type="checkbox" checked={Boolean(form.simples_nacional)} onChange={(event) => setField('simples_nacional', event.target.checked)} /> Simples Nacional</label>

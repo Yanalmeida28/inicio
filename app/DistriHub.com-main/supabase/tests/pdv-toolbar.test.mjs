@@ -17,11 +17,11 @@ const sessionDraftMocks = {
   useSessionDraftState: (_draftId, initialValue) => React.useState(initialValue),
 };
 vm.runInNewContext(compile(await readFile(new URL('../../src/lib/pdv.ts', import.meta.url), 'utf8')), { exports: helpers, Error });
-const source = compile(await readFile(new URL('../../src/components/partner/PdvModule.tsx', import.meta.url), 'utf8')) + '\nexports.Checkout = PdvCheckout;';
+const source = compile(await readFile(new URL('../../src/components/partner/PdvModule.tsx', import.meta.url), 'utf8')) + '\nexports.Checkout = PdvCheckout; exports.Presale = PreVendaTab;';
 function loadCheckout(react) {
 const module = { exports: {} };
 vm.runInNewContext(source, {
-  exports: module.exports, Date, Error,
+  exports: module.exports, Date, Error, setTimeout: () => 1,
   window: { setTimeout: () => 1, clearTimeout() {} },
   require(name) {
     if (name === 'react') return react;
@@ -80,6 +80,30 @@ test('checkout collects freight separately and resets it after the confirmed sal
   assert.equal(submitted.total,100);
   assert.equal(submitted.freight_fee,15.25);
   assert.equal(renderer.root.findByProps({'aria-label':'Frete terceirizado'}).props.value,0);
+});
+
+test('freight zero can be cleared and an empty field is submitted as zero', async () => {
+  let submitted;
+  await act(async () => { renderer = TestRenderer.create(React.createElement(module.exports.Checkout, {...props,onCreateSale:async sale=>{submitted=sale;}})); });
+  await act(async()=>renderer.root.findByProps({'aria-label':'Frete terceirizado'}).props.onChange({target:{value:''}}));
+  assert.equal(renderer.root.findByProps({'aria-label':'Frete terceirizado'}).props.value,'');
+  await act(async () => renderer.root.findByProps({ 'aria-label': 'Buscar produto por nome ou SKU' }).props.onChange({ target: { value: 'Produto' } }));
+  await act(async () => renderer.root.findByProps({ className: 'pdv-product-card' }).props.onClick());
+  await act(async()=>renderer.root.findByProps({className:'module-submit-btn pdv-checkout-btn'}).props.onClick());
+  assert.equal(submitted.freight_fee,0);
+  assert.equal(submitted.total,100);
+});
+
+test('pre-sale freight zero can be cleared before entering another amount',async()=>{
+  let submitted;
+  await act(async()=>{renderer=TestRenderer.create(React.createElement(module.exports.Presale,{...props,sales:[],onCreatePreSale:async sale=>{submitted=sale;}}));});
+  await act(async()=>renderer.root.findByProps({className:'pdv-product-card'}).props.onClick());
+  await act(async()=>renderer.root.findByProps({'aria-label':'Frete terceirizado'}).props.onChange({target:{value:''}}));
+  assert.equal(renderer.root.findByProps({'aria-label':'Frete terceirizado'}).props.value,'');
+  await act(async()=>renderer.root.findByProps({'aria-label':'Frete terceirizado'}).props.onChange({target:{value:'12.50'}}));
+  await act(async()=>renderer.root.findByProps({className:'module-submit-btn pdv-checkout-btn'}).props.onClick());
+  assert.equal(submitted.freight_fee,12.5);
+  assert.equal(submitted.total,100);
 });
 
 // Optional isolated browser fixture, with synthetic data and no account credentials.

@@ -871,7 +871,7 @@ fetchAllPages((from, to) => client
             p_pin: effectiveOperatorPin,
             p_customer_id: id,
             p_branch_id:
-              customer.branch_id ?? existing.branch_id ?? null,
+              customer.branch_id ?? existing.branch_id ?? syncBranchId ?? currentIdentity.branchId ?? null,
             p_name: customer.name ?? existing.name,
             p_document:
               customer.document ?? existing.document ?? null,
@@ -924,7 +924,7 @@ fetchAllPages((from, to) => client
 
       return updatedCustomer;
     },
-    [data.customers, requireAuthenticatedSession],
+    [data.customers, requireAuthenticatedSession, syncBranchId],
   );
 
   const deleteCustomer = useCallback(

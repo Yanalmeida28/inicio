@@ -455,7 +455,8 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
   const [clientType, setClientType] = useSessionDraftState<ClientType>('checkout:client-type', 'varejo');
   const [paymentMethod, setPaymentMethod] = useSessionDraftState('checkout:payment-method', 'pix');
   const [deliveryType, setDeliveryType] = useSessionDraftState<DeliveryType>('checkout:delivery-type', 'balcao');
-  const [freightFee, setFreightFee] = useSessionDraftState('checkout:freight-fee', 0);
+  const [freightFee, setFreightFee] = useSessionDraftState<number | string>('checkout:freight-fee', 0);
+  const freightAmount = freightFee === '' ? 0 : Number(freightFee);
   const [salespersonId, setSalespersonId] = useSessionDraftState('checkout:salesperson-id', '');
   const [completed, setCompleted] = useState(false);
   const [isCheckingOut, setIsCheckingOut] = useState(false);
@@ -520,7 +521,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
   }, [products, search, selectedBranchId]);
 
   const total = pdvTotal(cart);
-  const chargeTotal = saleChargeTotal({ total, freight_fee: freightFee });
+  const chargeTotal = saleChargeTotal({ total, freight_fee: freightAmount });
   const selectedCustomer = customers.find((customer) => customer.id === customerId) ?? null;
   const credit = credits.find(item => item.customer_id === customerId);
   const customerOpenCredit = Number(credit?.used ?? 0);
@@ -589,7 +590,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
 
   async function handleCheckout() {
     if (cart.length === 0 || checkoutInFlight.current || hasPendingSale) return;
-    if (!validSalePrice(freightFee) || cart.some(item => !validSalePrice(item.unit_price))) {
+    if (!validSalePrice(freightAmount) || cart.some(item => !validSalePrice(item.unit_price))) {
       setCheckoutError('Informe preços e frete válidos com até duas casas decimais.');
       return;
     }
@@ -612,7 +613,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
         customer_name: customerName || customer?.name || fallbackName,
         items: cart,
         total,
-        freight_fee: freightFee,
+        freight_fee: freightAmount,
         customer_type: clientType,
         delivery_type: deliveryType,
         payment_method: paymentMethod,
@@ -793,7 +794,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
                   </select>
                 </label>
                 <label title="Frete terceirizado recebido para repasse ao entregador; não compõe o faturamento.">Frete (R$)
-                  <input type="number" min="0" max="99999999.99" step="0.01" inputMode="decimal" aria-label="Frete terceirizado" aria-invalid={!validSalePrice(freightFee)} value={Number.isFinite(freightFee) ? freightFee : ''} onChange={event => setFreightFee(event.target.value === '' ? 0 : Number(event.target.value))} />
+                  <input type="number" min="0" max="99999999.99" step="0.01" inputMode="decimal" aria-label="Frete terceirizado" aria-invalid={!validSalePrice(freightAmount)} value={freightFee} onChange={event => setFreightFee(event.target.value)} />
                 </label>
                 <div className="form-row">
                   <label>
@@ -887,7 +888,8 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
   const [clientType, setClientType] = useSessionDraftState<ClientType>('presale:client-type', 'varejo');
   const [priceTable, setPriceTable] = useSessionDraftState<PriceTable>('presale:price-table', 'varejo');
   const [deliveryType, setDeliveryType] = useSessionDraftState<DeliveryType>('presale:delivery-type', 'balcao');
-  const [freightFee, setFreightFee] = useSessionDraftState('presale:freight-fee', 0);
+  const [freightFee, setFreightFee] = useSessionDraftState<number | string>('presale:freight-fee', 0);
+  const freightAmount = freightFee === '' ? 0 : Number(freightFee);
   const [salespersonId, setSalespersonId] = useSessionDraftState('presale:salesperson-id', '');
   const [saved, setSaved] = useState(false);
   const [preSalePayment, setPreSalePayment] = useSessionDraftState('presale:payment-method', '');
@@ -949,7 +951,7 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
   }, [products, search, selectedBranchId]);
 
   const total = pdvTotal(cart);
-  const chargeTotal = saleChargeTotal({ total, freight_fee: freightFee });
+  const chargeTotal = saleChargeTotal({ total, freight_fee: freightAmount });
 
   function addToCart(product: PartnerProduct) {
     const price = getPriceForProduct(product, priceTable);
@@ -976,7 +978,7 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
 
   async function handleSavePreSale() {
     if (cart.length === 0) return;
-    if (!validSalePrice(freightFee) || cart.some(item => !validSalePrice(item.unit_price))) {
+    if (!validSalePrice(freightAmount) || cart.some(item => !validSalePrice(item.unit_price))) {
       setSaveError('Informe preços e frete válidos com até duas casas decimais.');
       return;
     }
@@ -995,7 +997,7 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
         customer_name: customerName || customer?.name || fallbackName,
         items: cart,
         total,
-        freight_fee: freightFee,
+        freight_fee: freightAmount,
         customer_type: clientType,
         delivery_type: deliveryType,
         salesperson_id: salespersonId || null,
@@ -1198,7 +1200,7 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
               </div>
 
               <label>Frete terceirizado (R$)
-                  <input type="number" min="0" max="99999999.99" step="0.01" inputMode="decimal" aria-label="Frete terceirizado" aria-invalid={!validSalePrice(freightFee)} value={Number.isFinite(freightFee) ? freightFee : ''} onChange={event => setFreightFee(event.target.value === '' ? 0 : Number(event.target.value))} />
+                  <input type="number" min="0" max="99999999.99" step="0.01" inputMode="decimal" aria-label="Frete terceirizado" aria-invalid={!validSalePrice(freightAmount)} value={freightFee} onChange={event => setFreightFee(event.target.value)} />
                   <small>Recebido para repasse ao entregador. Não compõe o faturamento.</small>
                 </label>
               <label style={{ display: 'block', marginBottom: '12px' }}>Forma de pagamento prevista

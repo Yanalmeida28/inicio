@@ -15,15 +15,15 @@ const syncSource = await readFile(new URL('../../src/lib/partnerSync.ts',import.
 const compile = source => ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText;
 let renderer;
 afterEach(async()=>{if(renderer) await act(async()=>renderer.unmount());renderer=null;});
-async function harness({initialSales=[],initialInvoices=[],rpc,values=new Map(),readResult,branchId=null,identity: suppliedIdentity}={}) {
+async function harness({initialSales=[],initialInvoices=[],initialCustomers=[],rpc,values=new Map(),readResult,branchId=null,identity: suppliedIdentity}={}) {
   const storage={getItem:k=>values.get(k)??null,setItem:(k,v)=>values.set(k,v),removeItem:k=>values.delete(k)};
   const identity=suppliedIdentity??{authUserId:'owner',companyUserId:'owner',salespersonId:null,branchId:null,role:'administrador'};
-  const initial={partner_sales:initialSales,partner_invoices:initialInvoices};
+  const initial={partner_sales:initialSales,partner_invoices:initialInvoices,partner_customers:initialCustomers};
   const channels=[];
   const intervals=[];
   const timeouts=new Map();
   let timerId=0;
-  const client={rpc,from(table){
+  const client={rpc,auth:{getSession:async()=>({data:{session:{user:{id:identity.authUserId}}},error:null})},from(table){
     const q={select(){return q;},eq(){return q;},order(){return q;},limit(){return q;},range(){return q;},
       maybeSingle(){return Promise.resolve({data:null,error:null});},
       then(resolve,reject){const fallback={data:[...(initial[table]??[])],error:null};return Promise.resolve(readResult?.(table,fallback)??fallback).then(resolve,reject);}};
@@ -59,6 +59,23 @@ async function harness({initialSales=[],initialInvoices=[],rpc,values=new Map(),
 }
 const payload=()=>({customer_id:'customer',customer_name:'Cliente',items:[{product_id:'physical',name:'Produto',quantity:1,unit_price:100}],total:100,branch_id:'branch',salesperson_id:null,customer_type:'varejo',delivery_type:'balcao',payment_method:'pix'});
 const snapshot=(overrides={})=>({credits:[{customer_id:'customer',allow_credit:true,credit_limit:1000,used:0,available:1000}],products:[],movements:[],sales:[],invoices:[],...overrides});
+
+test('shared customer credit updates use the selected branch context without changing the shared customer',async()=>{
+  let request;
+  const h=await harness({branchId:'branch',initialCustomers:[{id:'customer',user_id:'owner',name:'Cliente',branch_id:null,credit_limit:0,allow_credit:false}],rpc:async(name,args)=>{request={name,...args};return {data:'customer',error:null};}});
+  await act(async()=>{await h.current.updateCustomer('customer',{credit_limit:500,allow_credit:true});});
+  assert.equal(request.p_branch_id,'branch');
+  assert.equal(request.p_credit_limit,500);
+  assert.equal(request.p_allow_credit,true);
+  assert.equal(h.current.customers.find(c=>c.id==='customer').branch_id,null);
+});
+
+test('customer credit updates retain the customer branch when another branch is selected',async()=>{
+  let request;
+  const h=await harness({branchId:'selected-branch',initialCustomers:[{id:'customer',user_id:'owner',name:'Cliente',branch_id:'customer-branch',credit_limit:0,allow_credit:false}],rpc:async(name,args)=>{request=args;return {data:'customer',error:null};}});
+  await act(async()=>{await h.current.updateCustomer('customer',{credit_limit:200});});
+  assert.equal(request.p_branch_id,'customer-branch');
+});
 
 test('a delayed full refresh cannot reopen a sale after a newer PDV snapshot',async()=>{
   const pre={...payload(),id:'pre',user_id:'owner',status:'pre_venda'};

@@ -896,6 +896,14 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
 .modal-header h3 { font: 700 17.5px Manrope; color: #eaf1f6; margin: 0; }
 .modal-header button { width: 28px; height: 28px; display: grid; place-items: center; color: #889eaf; background: #132839; border-radius: 5px; }
 .modal-header button:hover { color: #fff; background: #1d3c54; }
+.operator-selection-modal { width: min(580px, calc(100% - 32px)); }
+.operator-selection-modal .modal-header { gap: 12px; }
+.operator-selection-modal .modal-header h3 { min-width: 0; overflow-wrap: anywhere; }
+.operator-selection-modal .modal-header button { flex: 0 0 28px; }
+.operator-selection-modal .rma-form,
+.operator-selection-modal .rma-form label { min-width: 0; }
+.operator-selection-modal .rma-form select { width: 100%; min-width: 0; max-width: 100%; }
+.operator-selection-detail { display: block; max-width: 100%; overflow-wrap: anywhere; line-height: 1.5; }
 
 /* ===== Thermal Label Modal ===== */
 .thermal-label-modal { width: min(380px, calc(100% - 32px)); }
