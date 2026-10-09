@@ -69,6 +69,7 @@ export function printSale(sale: PrintableSale, format: 'receipt' | 'label', deta
     line(main, `Cidade: ${city || 'Não informada'}`, false, true);
     if (customer?.zip_code) line(main, `CEP: ${customer.zip_code}`, false, true);
     if (sale.id) line(main, `Data: ${date}`);
+    line(main, 'Produtos/Serviços', false, true);
     main.append(doc.createElement('hr'));
     for (const item of sale.items) {
       const row = doc.createElement('article');
