@@ -1,3 +1,4 @@
+import { splitPaymentComponent } from './fixtures/split_payment_component.mjs';
 import assert from 'node:assert/strict';
 import { pdvHelpers } from './fixtures/pdv_helpers.mjs';
 import { test } from 'node:test';
@@ -10,7 +11,8 @@ import ts from '../../node_modules/typescript/lib/typescript.js';
 const module={exports:{}};
 vm.runInNewContext(ts.transpileModule(await readFile(new URL('../../src/components/partner/PreSaleCheckout.tsx',import.meta.url),'utf8'),{
   compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,target:ts.ScriptTarget.ES2020},
-}).outputText,{exports:module.exports,require(name){
+}).outputText,{exports:module.exports,require(name) {
+    if(name==='./SplitPaymentFields') return splitPaymentComponent;
   if(name==='react')return React;
   if(name==='react/jsx-runtime')return jsx;
   if(name==='../../utils')return {money:{format:String}};
@@ -29,7 +31,7 @@ test('rescued pre-sale uses its saved method and finalizes the same ID once with
     assert.equal(view.root.findByType('select').props.value,'dinheiro');
     act(()=>view.root.findByType('select').props.onChange({target:{value:'pix'}}));
     act(()=>{button(view,'Finalizar pré-venda').props.onClick();button(view,'Finalizar pré-venda').props.onClick();});
-    assert.deepEqual(calls,[['original-pre-sale','pix']]);
+    assert.deepEqual(JSON.parse(JSON.stringify(calls)),[['original-pre-sale','pix',[]]]);
     assert.equal(button(view,'Voltar ao PDV').props.disabled,true);
     await act(async()=>resolve());
     assert.equal(closed,1);

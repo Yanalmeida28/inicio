@@ -21,6 +21,7 @@ vm.runInNewContext(ts.transpileModule(source, { compilerOptions: {
 } }).outputText, {
   exports: module.exports,
   require(name) {
+    if (name === '../../lib/pdv') return pdvHelpers;
     if (name === 'react') return React;
     if (name === 'react/jsx-runtime') return jsx;
     if (name === 'lucide-react') return new Proxy({}, { get: () => () => null });

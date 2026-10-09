@@ -49,8 +49,88 @@ before(async () => {
   await db.exec('ALTER TABLE partner_customers ADD COLUMN name text');
   await db.exec(await read('../migrations/20261007211956_change_open_order_customer.sql'));
   await db.exec(await read('../migrations/20261009184720_add_third_party_freight.sql'));
+  // Subscription authorization is isolated from these cash tests; branch/PIN/role guards remain real.
+  await db.exec(`CREATE SCHEMA partner_subscription_private;
+    CREATE FUNCTION partner_subscription_private.require_operator_module(text,uuid) RETURNS void LANGUAGE sql AS $$ SELECT $$;
+    CREATE FUNCTION partner_subscription_private.require_actor(text) RETURNS void LANGUAGE sql AS $$ SELECT $$;`);
+  await db.exec(JSON.parse(await read('./fixtures/split_payment_baseline.json')));
+  await db.exec(await read('../migrations/20261009211459_add_split_sale_payments.sql'));
 });
 after(() => db.close());
+
+async function splitSale(extra = {}) {
+  const r = {id:randomUUID(),method:'misto',status:'concluida',fee:15,
+    parts:[{method:'dinheiro',amount:50},{method:'pix',amount:65}],...extra};
+  await sql('SELECT execute_partner_sale_mutation(NULL,NULL,$1,NULL,$2,$3::jsonb,100,NULL,NULL,$4,$5,$6,$7,$8,$9,NULL,$10,$11::jsonb)',
+    [r.id,'Cliente',JSON.stringify([{product_id:product,name:'Produto',quantity:1,unit_price:100}]),r.method,branch,r.status,'pdv','varejo','entrega',r.fee,JSON.stringify(r.parts)]);
+  return r;
+}
+
+test('split payment charges cash and PIX once, includes freight and cancels each part with stock restored once',async()=>{
+  const session=await mutate('abrir',20);
+  const r=await splitSale();
+  await splitSale({...r,parts:[...r.parts].reverse()});
+  assert.equal((await sql('SELECT stock FROM partner_products WHERE id=$1',[product])).rows[0].stock,9);
+  const saved=(await sql('SELECT total,freight_fee,payment_splits FROM partner_sales WHERE id=$1',[r.id])).rows[0];
+  assert.equal(Number(saved.total),100); assert.equal(Number(saved.freight_fee),15);
+  assert.deepEqual(saved.payment_splits,r.parts);
+  assert.deepEqual((await sql('SELECT partner_cash_private.totals($1) AS totals',[session])).rows[0].totals,{dinheiro:50,pix:65,cartao:0,faturado:0});
+  await assert.rejects(splitSale({...r,parts:[{method:'dinheiro',amount:40},{method:'pix',amount:75}]}),/dados diferentes/);
+  await splitSale({...r,status:'cancelada',parts:[]});
+  assert.equal((await sql('SELECT stock FROM partner_products WHERE id=$1',[product])).rows[0].stock,10);
+  assert.equal((await sql("SELECT count(*)::int AS n FROM partner_cash_movements WHERE sale_id=$1 AND kind='estorno'",[r.id])).rows[0].n,2);
+  assert.deepEqual((await sql('SELECT partner_cash_private.totals($1) AS totals',[session])).rows[0].totals,{dinheiro:0,pix:0,cartao:0,faturado:0});
+});
+
+test('invalid split payments reject atomically, without stock, sale, invoice or cash writes',async()=>{
+  await mutate('abrir',0);
+  for(const parts of [[],[{method:'dinheiro',amount:115}],
+    [{method:'dinheiro',amount:50},{method:'pix',amount:64.99}],
+    [{method:'pix',amount:50},{method:'pix',amount:65}],
+    [{method:'faturado',amount:50},{method:'dinheiro',amount:65}],
+    [{method:'dinheiro',amount:-1},{method:'pix',amount:116}],
+    [{method:'dinheiro',amount:50.001},{method:'pix',amount:64.999}],
+    [{method:'dinheiro',amount:'50'},{method:'pix',amount:65}]]) await assert.rejects(splitSale({parts}));
+  assert.equal((await sql('SELECT stock FROM partner_products WHERE id=$1',[product])).rows[0].stock,10);
+  assert.equal((await sql('SELECT count(*)::int AS n FROM partner_sales')).rows[0].n,0);
+  assert.equal((await sql('SELECT count(*)::int AS n FROM partner_cash_movements')).rows[0].n,0);
+  assert.equal((await sql('SELECT count(*)::int AS n FROM partner_invoices')).rows[0].n,0);
+});
+
+test('pre-sale finalizes with split payments, closure counts only cash and closed retries preserve snapshots',async()=>{
+  const r=await splitSale({status:'pre_venda',method:'pix',parts:[]});
+  const session=await mutate('abrir',20);
+  const paid={...r,status:'concluida',method:'misto',parts:[{method:'dinheiro',amount:50},{method:'pix',amount:45},{method:'cartao',amount:20}]};
+  await splitSale(paid);
+  await mutate('fechar',70,{session});
+  await splitSale(paid);
+  const closing=(await sql('SELECT expected_amount,closing_totals FROM partner_cash_sessions WHERE id=$1',[session])).rows[0];
+  assert.equal(Number(closing.expected_amount),70);
+  assert.deepEqual(closing.closing_totals,{dinheiro:50,pix:45,cartao:20,faturado:0});
+  await assert.rejects(splitSale({...paid,status:'cancelada'}),/fechado/);
+  assert.equal((await sql('SELECT stock FROM partner_products WHERE id=$1',[product])).rows[0].stock,9);
+  assert.equal((await sql("SELECT count(*)::int AS n FROM partner_cash_movements WHERE kind='venda'")).rows[0].n,3);
+});
+
+test('split refund requires a method, caps each part separately and keeps closed cash immutable',async()=>{
+  const original=await mutate('abrir',0);
+  const sale=await splitSale();
+  await mutate('fechar',50,{session:original});
+  const current=await mutate('abrir',50);
+  const refund=(method,amount,id=randomUUID())=>sql('SELECT record_partner_cash_refund($1,NULL,NULL,$2,$3,$4,$5,NULL,NULL,$6,$7)',[branch,current,sale.id,amount,'Devolução',id,method]);
+  await assert.rejects(refund(null,10),/Selecione a forma/);
+  await assert.rejects(refund('dinheiro',51),/excede o saldo/);
+  await assert.rejects(refund('cartao',10),/eleg/);
+  const request=randomUUID();
+  await refund('dinheiro',30,request); await refund('dinheiro',30,request);
+  await assert.rejects(refund('pix',30,request),/dados diferentes/);
+  await assert.rejects(refund('dinheiro',21),/excede o saldo/);
+  await refund('pix',65);
+  await refund('dinheiro',20);
+  await assert.rejects(refund('pix',0.01),/excede o saldo/);
+  assert.deepEqual((await sql('SELECT partner_cash_private.totals($1) AS totals',[current])).rows[0].totals,{dinheiro:-50,pix:-65,cartao:0,faturado:0});
+  assert.deepEqual((await sql('SELECT closing_totals FROM partner_cash_sessions WHERE id=$1',[original])).rows[0].closing_totals,{dinheiro:50,pix:65,cartao:0,faturado:0});
+});
 
 async function freightSale(extra = {}) {
   const r = { id: randomUUID(), fee: 15, method: 'dinheiro', status: 'concluida', customer: null, ...extra };

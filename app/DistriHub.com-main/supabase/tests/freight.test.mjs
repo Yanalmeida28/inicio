@@ -10,6 +10,31 @@ const sale = { id:'sale', customer_name:'Cliente', customer_id:'customer', branc
   items:[{product_id:'product',name:'Peça',quantity:1,unit_price:100}], total:100, freight_fee:15,
   payment_method:'pix', status:'concluida', created_at:new Date().toISOString() };
 const currency = new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'});
+test('split payment revenue excludes freight and retry cannot change the allocated payments',()=>{
+  const mixed={...sale,payment_method:'misto',payment_splits:[{method:'dinheiro',amount:50},{method:'pix',amount:65}]};
+  assert.equal(pdvHelpers.splitPaymentError(115,mixed.payment_splits),null);
+  const revenue=pdvHelpers.saleRevenuePayments(mixed);
+  assert.equal(revenue.reduce((sum,payment)=>sum+Math.round(payment.amount*100),0),10000);
+  assert.equal(revenue[0].amount,43.48); assert.equal(revenue[1].amount,56.52);
+  const values=new Map();
+  const store=new pdvHelpers.PdvSaleAttemptStore({getItem:k=>values.get(k)??null,setItem:(k,v)=>values.set(k,v),removeItem:k=>values.delete(k)},'split');
+  store.begin(mixed);
+  assert.deepEqual(JSON.parse(JSON.stringify(store.read().payment_splits)),mixed.payment_splits);
+  assert.throws(()=>store.begin({...mixed,payment_splits:[{method:'dinheiro',amount:40},{method:'pix',amount:75}]}),/resultado pendente/);
+});
+
+test('split payment receipt and sharing state the exact cash and PIX amounts',async()=>{
+  const mixed={...sale,payment_method:'misto',payment_splits:[{method:'dinheiro',amount:50},{method:'pix',amount:65}]};
+  function element(tag){return {tag,children:[],style:{},append(...nodes){this.children.push(...nodes);},textContent:''};}
+  const document={head:element('head'),body:element('body'),documentElement:{},createElement:element,images:[]};
+  const print=await load('salePrint',{open:()=>({document,requestAnimationFrame(){},focus(){},print(){}})});
+  print.printSale(mixed,'receipt');
+  function texts(node){return [node.textContent,...node.children.flatMap(texts)];}
+  const expected=`Pagamento: Dinheiro: ${currency.format(50)} + PIX: ${currency.format(65)}`;
+  assert.ok(texts(document.body).includes(expected));
+  const share=await load('saleShare');
+  assert.ok(decodeURIComponent(share.saleShareUrl(mixed,'whatsapp',{name:'Cliente',phone:'11999999999'})).includes(expected));
+});
 async function load(name, window) {
   const exports = {};
   vm.runInNewContext(ts.transpileModule(await readFile(new URL(`../../src/lib/${name}.ts`,import.meta.url),'utf8'),{

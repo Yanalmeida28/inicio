@@ -1,9 +1,9 @@
 import type { PartnerCustomer, PartnerSale, StoreSettings } from '../types';
 import { money } from '../utils';
-import { saleChargeTotal } from './pdv';
+import { saleChargeTotal, salePaymentDescription } from './pdv';
 import { receiptPreferences } from './personalization';
 
-export type PrintableSale = Pick<PartnerSale, 'customer_name' | 'items' | 'total' | 'freight_fee' | 'imei' | 'serial_number' | 'payment_method' | 'created_at' | 'branch_id' | 'customer_id' | 'salesperson_id'> & { id?: string; status?: PartnerSale['status'] };
+export type PrintableSale = Pick<PartnerSale, 'customer_name' | 'items' | 'total' | 'freight_fee' | 'imei' | 'serial_number' | 'payment_method' | 'payment_splits' | 'created_at' | 'branch_id' | 'customer_id' | 'salesperson_id'> & { id?: string; status?: PartnerSale['status'] };
 
 export type ReceiptDetails = { customer?: PartnerCustomer; salespersonName?: string; settings?: StoreSettings; companyName?: string; companyDocument?: string | null; companyAddress?: string | null };
 
@@ -101,11 +101,11 @@ export function printSale(sale: PrintableSale, format: 'receipt' | 'label', deta
     quantityLabel.style.cssText = `flex:0 0 auto;font-size:${Math.max(10, fontSize - 1)}px;white-space:nowrap`;
     totalSummary.append(totalLabel, quantityLabel);
     main.append(totalSummary);
-    const payments: Record<string, string> = { pix: 'PIX', cartao: 'Cartão', dinheiro: 'Dinheiro', faturado: 'Faturado B2B' };
+
     const paymentSummary = doc.createElement('div');
     paymentSummary.style.cssText = `display:flex;justify-content:space-between;gap:8px;padding:2px 0;font-size:${Math.max(10, fontSize - 1)}px`;
     const paymentLabel = doc.createElement('span');
-    paymentLabel.textContent = `Pagamento: ${payments[sale.payment_method ?? ''] ?? sale.payment_method ?? 'Não informado'}`;
+    paymentLabel.textContent = `Pagamento: ${salePaymentDescription(sale)}`;
     paymentLabel.style.cssText = 'flex:1;min-width:0;overflow-wrap:anywhere';
     const salespersonLabel = doc.createElement('span');
     salespersonLabel.textContent = `Colaborador: ${details.salespersonName || 'Não informado'}`;

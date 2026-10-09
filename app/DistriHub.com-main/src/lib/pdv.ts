@@ -1,4 +1,4 @@
-import type { PartnerSale } from '../types';
+import type { PartnerSale, SalePayment } from '../types';
 
 export function validSalePrice(value: number): boolean {
   return Number.isFinite(value) && value >= 0 && value <= 99999999.99 && Math.abs(value * 100 - Math.round(value * 100)) < 0.000001;
@@ -6,6 +6,51 @@ export function validSalePrice(value: number): boolean {
 
 export function saleChargeTotal(sale: { total: number; freight_fee?: number }): number {
   return (Math.round(sale.total * 100) + Math.round((sale.freight_fee ?? 0) * 100)) / 100;
+}
+
+export type SplitPaymentDraft = Record<SalePayment['method'], string>;
+export const emptySplitPaymentDraft: SplitPaymentDraft = { dinheiro: '', pix: '', cartao: '' };
+export const salePaymentLabels: Record<string, string> = { dinheiro: 'Dinheiro', pix: 'PIX', cartao: 'Cartão', faturado: 'Faturado B2B', misto: 'Pagamento dividido' };
+
+export function splitPaymentDraft(payments: SalePayment[] = []): SplitPaymentDraft {
+  const draft = { ...emptySplitPaymentDraft };
+  for (const payment of payments) if (payment.method in draft) draft[payment.method] = String(payment.amount);
+  return draft;
+}
+
+export function draftPayments(draft: SplitPaymentDraft): SalePayment[] {
+  return (['cartao', 'dinheiro', 'pix'] as const).map(method => ({ method, amount: Number(draft[method] || 0) })).filter(payment => payment.amount !== 0);
+}
+
+export function splitPaymentError(total: number, payments: SalePayment[]): string | null {
+  if (payments.some(payment => !['dinheiro', 'pix', 'cartao'].includes(payment.method) || !validSalePrice(payment.amount) || payment.amount <= 0)) return 'Informe valores de pagamento válidos com até duas casas decimais.';
+  if (payments.length < 2 || payments.length > 3 || new Set(payments.map(payment => payment.method)).size !== payments.length) return 'Informe pelo menos duas formas de pagamento diferentes.';
+  if (payments.reduce((sum, payment) => sum + Math.round(payment.amount * 100), 0) !== Math.round(total * 100)) return 'A soma dos pagamentos deve ser igual ao total da venda, incluindo o frete.';
+  return null;
+}
+
+export function salePaymentParts(sale: Pick<PartnerSale, 'total' | 'freight_fee' | 'payment_method' | 'payment_splits'>): { method: string; amount: number }[] {
+  return sale.payment_method === 'misto' && Array.isArray(sale.payment_splits) && sale.payment_splits.length
+    ? sale.payment_splits : [{ method: sale.payment_method || 'outros', amount: saleChargeTotal(sale) }];
+}
+
+export function salePaymentDescription(sale: Pick<PartnerSale, 'total' | 'freight_fee' | 'payment_method' | 'payment_splits'>): string {
+  if (sale.payment_method !== 'misto') return salePaymentLabels[sale.payment_method ?? ''] ?? sale.payment_method ?? 'Não informado';
+  const currency = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+  return salePaymentParts(sale).map(payment => `${salePaymentLabels[payment.method] ?? payment.method}: ${currency.format(payment.amount)}`).join(' + ');
+}
+
+// Allocate merchandise revenue in cents; freight stays out of revenue by payment method.
+export function saleRevenuePayments(sale: Pick<PartnerSale, 'total' | 'freight_fee' | 'payment_method' | 'payment_splits'>): { method: string; amount: number }[] {
+  const payments = salePaymentParts(sale);
+  const totalCents = Math.round(sale.total * 100);
+  const chargeCents = Math.round(saleChargeTotal(sale) * 100);
+  let allocated = 0;
+  return payments.map((payment, index) => {
+    const cents = index === payments.length - 1 ? totalCents - allocated : chargeCents > 0 ? Math.round(totalCents * Math.round(payment.amount * 100) / chargeCents) : 0;
+    allocated += cents;
+    return { method: payment.method, amount: cents / 100 };
+  });
 }
 
 // Catalog prices are stored in cents. Avoid binary floating point drift in the declared total.
@@ -44,6 +89,7 @@ export function isDefinitiveSaleRejection(code: string): boolean {
 export function saleRequestKey(sale: Partial<PartnerSale>): string {
   return JSON.stringify([
     sale.customer_id ?? null, sale.customer_name, sale.items, sale.total, sale.freight_fee ?? 0,
+    [...(sale.payment_splits ?? [])].map(({ method, amount }) => ({ method, amount })).sort((a, b) => a.method < b.method ? -1 : a.method > b.method ? 1 : 0),
     sale.imei ?? null, sale.serial_number ?? null, sale.payment_method ?? null,
     sale.branch_id, sale.salesperson_id ?? null, sale.customer_type ?? 'varejo',
     sale.delivery_type ?? 'balcao', sale.origin ?? 'pdv', sale.status ?? 'concluida',
@@ -76,6 +122,7 @@ export class PdvSaleAttemptStore {
       id: sale.id, user_id: sale.user_id, customer_id: sale.customer_id, customer_name: sale.customer_name,
       items: sale.items.map(({ product_id, name, quantity, unit_price }) => ({ product_id, name, quantity, unit_price })),
       total: sale.total, freight_fee: sale.freight_fee ?? 0, imei: sale.imei, serial_number: sale.serial_number, payment_method: sale.payment_method,
+      payment_splits: sale.payment_splits?.map(({ method, amount }) => ({ method, amount })) ?? [],
       salesperson_id: sale.salesperson_id, branch_id: sale.branch_id, customer_type: sale.customer_type,
       delivery_type: sale.delivery_type, status: sale.status, origin: sale.origin, online_payment: sale.online_payment,
       payment_status: sale.payment_status, created_at: sale.created_at,

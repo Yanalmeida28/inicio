@@ -1,3 +1,4 @@
+import { salePaymentDescription } from './pdv';
 import type { PartnerProduct, PartnerSale } from '../types';
 
 export type SalesRange = '30d' | '90d' | 'all' | 'custom';
@@ -116,7 +117,7 @@ export function buildSalesCsv(sales: PartnerSale[]): string {
       sale.created_at,
       sale.customer_name ?? '',
       sale.status,
-      sale.payment_method ?? 'Outros',
+      salePaymentDescription(sale),
       Number(sale.total).toFixed(2),
       Number(sale.freight_fee ?? 0).toFixed(2),
       ((Math.round(Number(sale.total) * 100) + Math.round(Number(sale.freight_fee ?? 0) * 100)) / 100).toFixed(2),

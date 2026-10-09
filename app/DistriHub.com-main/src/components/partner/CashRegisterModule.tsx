@@ -27,6 +27,7 @@ export function CashRegisterModule({ branchId, branchName, scopeKey, sales, oper
   const [counted, setCounted] = useState('');
   const [notes, setNotes] = useState('');
   const [refundSaleId, setRefundSaleId] = useState('');
+  const [refundMethod, setRefundMethod] = useState('');
   const [refundAmount, setRefundAmount] = useState('');
   const [refundReason, setRefundReason] = useState('');
   const [supervisorId, setSupervisorId] = useState('');
@@ -77,23 +78,18 @@ export function CashRegisterModule({ branchId, branchName, scopeKey, sales, oper
   const expected = selected ? Math.round((Number(selected.opening_amount) + (totals.dinheiro ?? 0)) * 100) / 100 : 0;
   const managers = salespeople.filter(p => p.is_active && ['administrador', 'gerente'].includes(p.role));
   const originalSaleMovements = movements.filter(movement => movement.kind === 'venda');
-  const refundableSales = sales.filter((sale) => {
-    if (sale.branch_id !== branchId || sale.status !== 'concluida') return false;
-    const original = originalSaleMovements.find(movement => movement.sale_id === sale.id);
-    if (!original || !['dinheiro', 'pix', 'cartao'].includes(original.payment_method)) return false;
-    const originalSession = sessions.find(session => session.id === original.session_id);
-    if (!originalSession?.closed_at) return false;
-    const refunded = movements.filter(movement => movement.sale_id === sale.id && movement.kind === 'devolucao')
-      .reduce((sum, movement) => sum + Number(movement.amount), 0);
-    return refunded < Number(original.amount);
-  });
+  const eligiblePayments = (saleId: string) => originalSaleMovements.filter(original =>
+    original.sale_id === saleId && ['dinheiro', 'pix', 'cartao'].includes(original.payment_method) &&
+    sessions.some(session => session.id === original.session_id && session.closed_at));
+  const paymentRemaining = (original: CashMovement) => Math.round((Number(original.amount) - movements
+    .filter(movement => movement.sale_id === original.sale_id && movement.payment_method === original.payment_method && ['devolucao', 'estorno'].includes(movement.kind))
+    .reduce((sum, movement) => sum + Number(movement.amount), 0)) * 100) / 100;
+  const refundableSales = sales.filter(sale => sale.branch_id === branchId && sale.status === 'concluida' &&
+    eligiblePayments(sale.id).some(original => paymentRemaining(original) > 0));
   const selectedRefundSale = refundableSales.find(sale => sale.id === refundSaleId);
-  const refundOriginal = selectedRefundSale && originalSaleMovements.find(movement => movement.sale_id === selectedRefundSale.id);
-  const refundRemaining = refundOriginal
-    ? Number(refundOriginal.amount) - movements.filter(movement =>
-      movement.sale_id === selectedRefundSale?.id && movement.kind === 'devolucao')
-      .reduce((sum, movement) => sum + Number(movement.amount), 0)
-    : 0;
+  const refundPayments = selectedRefundSale ? eligiblePayments(selectedRefundSale.id).filter(original => paymentRemaining(original) > 0) : [];
+  const refundOriginal = refundPayments.find(original => original.payment_method === refundMethod) ?? refundPayments[0];
+  const refundRemaining = refundOriginal ? paymentRemaining(refundOriginal) : 0;
 
   async function mutate(action: 'abrir' | 'movimentar' | 'fechar' | 'devolver', recovery = false) {
     if (!supabase || inFlight.current) return;
@@ -106,6 +102,7 @@ export function CashRegisterModule({ branchId, branchName, scopeKey, sales, oper
       const request: CashRequest | null = recovery ? previous : {
         id: crypto.randomUUID(), action, sessionId: action === 'abrir' ? null : current?.id ?? null,
         saleId: action === 'devolver' ? refundSaleId : null,
+        paymentMethod: action === 'devolver' ? refundOriginal?.payment_method ?? null : null,
         amount: cashAmount(action === 'abrir' ? opening : action === 'fechar' ? counted : action === 'devolver' ? refundAmount : amount),
         kind: action === 'devolver' ? 'dinheiro' : kind,
         reason: action === 'fechar' ? notes.trim() : action === 'devolver' ? refundReason.trim() : reason.trim(),
@@ -130,6 +127,7 @@ export function CashRegisterModule({ branchId, branchName, scopeKey, sales, oper
           p_pin: operatorPin,
           p_session_id: request.sessionId,
           p_sale_id: request.saleId,
+          p_refund_method: request.paymentMethod ?? null,
           p_amount: request.amount,
           p_reason: request.reason,
           p_supervisor_id: supervisorId || null,
@@ -152,7 +150,7 @@ export function CashRegisterModule({ branchId, branchName, scopeKey, sales, oper
       setPending(null);
       setNotice(request.action === 'abrir' ? 'Caixa aberto.' : request.action === 'fechar' ? 'Caixa fechado. O relatório está no histórico.' : request.action === 'devolver' ? 'Devolução financeira registrada nesta sessão.' : 'Movimentação registrada.');
       setAmount(''); setReason(''); setCounted(''); setNotes(''); setSupervisorPin(''); setSelectedId('');
-      if (request.action === 'devolver') { setRefundSaleId(''); setRefundAmount(''); setRefundReason(''); }
+      if (request.action === 'devolver') { setRefundSaleId(''); setRefundMethod(''); setRefundAmount(''); setRefundReason(''); }
       try { await refresh(); } catch (e) { setError('Operação confirmada, mas a atualização falhou. Clique em Atualizar. ' + pdvErrorMessage(e)); }
     } catch (e) { setError(pdvErrorMessage(e)); }
     finally { inFlight.current = false; setBusy(false); }
@@ -200,16 +198,17 @@ export function CashRegisterModule({ branchId, branchName, scopeKey, sales, oper
           <h4>Registrar devolução financeira</h4>
           <p>A devolução fica vinculada à venda original e à sessão aberta. O caixa já fechado permanece imutável. Vendas faturadas e devoluções de estoque precisam do fluxo correspondente.</p>
           <div className="cash-fields">
-            <label>Venda<select value={refundSaleId} onChange={e => { setRefundSaleId(e.target.value); setRefundAmount(''); }} required disabled={busy}>
+            <label>Venda<select value={refundSaleId} onChange={e => { setRefundSaleId(e.target.value); setRefundMethod(''); setRefundAmount(''); }} required disabled={busy}>
               <option value="">Selecione uma venda elegível</option>
               {refundableSales.map(sale => {
-                const original = originalSaleMovements.find(movement => movement.sale_id === sale.id);
-                const refunded = movements.filter(movement => movement.sale_id === sale.id && movement.kind === 'devolucao')
-                  .reduce((sum, movement) => sum + Number(movement.amount), 0);
-                return <option key={sale.id} value={sale.id}>#{sale.id.slice(0, 8).toUpperCase()} · {money.format(Number(original?.amount ?? 0) - refunded)} restantes</option>;
+                const remaining = eligiblePayments(sale.id).reduce((sum, original) => sum + paymentRemaining(original), 0);
+                return <option key={sale.id} value={sale.id}>#{sale.id.slice(0, 8).toUpperCase()} · {money.format(remaining)} restantes</option>;
               })}
             </select></label>
             {selectedRefundSale && refundOriginal && <>
+              <label>Forma da devolução<select value={refundOriginal.payment_method} onChange={e => { setRefundMethod(e.target.value); setRefundAmount(''); }} disabled={busy}>
+                {refundPayments.map(original => <option key={original.payment_method} value={original.payment_method}>{cashPaymentLabels[original.payment_method] ?? original.payment_method} · {money.format(paymentRemaining(original))} disponíveis</option>)}
+              </select></label>
               <label>Valor da devolução (máx. {money.format(refundRemaining)})<input inputMode="decimal" value={refundAmount} onChange={e => setRefundAmount(e.target.value)} required disabled={busy} /></label>
               <label>Motivo<input value={refundReason} onChange={e => setRefundReason(e.target.value)} maxLength={500} required disabled={busy} /></label>
               <p>Forma de saída: {cashPaymentLabels[refundOriginal.payment_method] ?? refundOriginal.payment_method} (mesma forma da venda).</p>

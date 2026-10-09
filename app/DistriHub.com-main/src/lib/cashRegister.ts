@@ -19,6 +19,7 @@ export interface CashRequest {
   action: 'abrir' | 'movimentar' | 'fechar' | 'devolver';
   sessionId: string | null;
   saleId?: string | null;
+  paymentMethod?: string | null;
   amount: number;
   kind: 'sangria' | 'suprimento' | 'dinheiro' | 'pix' | 'cartao' | 'faturado';
   reason: string;

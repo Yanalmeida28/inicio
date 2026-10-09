@@ -245,7 +245,10 @@ export interface SaleItem {
   unit_price: number;
 }
 
+export interface SalePayment { method: 'dinheiro' | 'pix' | 'cartao'; amount: number; }
+
 export interface PartnerSale {
+  payment_splits?: SalePayment[];
   /** Frete recebido para repasse a terceiros; não compõe total/faturamento. */
   freight_fee?: number;
   /** Data de conclusão no modo local; no banco é obtida pela baixa vinculada. */

@@ -1,3 +1,4 @@
+import { splitPaymentComponent } from './fixtures/split_payment_component.mjs';
 import assert from 'node:assert/strict';
 import { test, afterEach } from 'node:test';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
@@ -24,6 +25,7 @@ vm.runInNewContext(source, {
   exports: module.exports, Date, Error, setTimeout: () => 1,
   window: { setTimeout: () => 1, clearTimeout() {} },
   require(name) {
+    if(name==='./SplitPaymentFields') return splitPaymentComponent;
     if (name === 'react') return react;
     if (name === '../../lib/pdv') return helpers;
     if (name === '../../hooks/useSessionDraft') return { ...sessionDraftMocks, useSessionDraftState: (_draftId, initialValue) => react.useState(initialValue) };
@@ -44,6 +46,26 @@ const props = {
 let renderer;
 afterEach(async () => { if (renderer) await act(async () => renderer.unmount()); renderer = null; });
 const controls = () => renderer.root.findByProps({ 'aria-label': 'Opções da venda' });
+test('split checkout rejects a missing balance, completes remaining PIX and submits each part including freight',async()=>{
+  let submitted;
+  await act(async()=>{renderer=TestRenderer.create(React.createElement(module.exports.Checkout,{...props,onCreateSale:async sale=>{submitted=sale;}}));});
+  await act(async()=>renderer.root.findByProps({'aria-label':'Buscar produto por nome ou SKU'}).props.onChange({target:{value:'Produto'}}));
+  await act(async()=>renderer.root.findByProps({className:'pdv-product-card'}).props.onClick());
+  await act(async()=>renderer.root.findByProps({'aria-label':'Frete terceirizado'}).props.onChange({target:{value:'15'}}));
+  const paymentSelect=()=>renderer.root.findAllByType('select').find(node=>node.findAllByType('option').some(option=>option.props.value==='misto'));
+  await act(async()=>paymentSelect().props.onChange({target:{value:'misto'}}));
+  assert.equal(renderer.root.findByProps({'aria-label':'Valor em Dinheiro'}).props.value,'');
+  await act(async()=>renderer.root.findByProps({'aria-label':'Valor em Dinheiro'}).props.onChange({target:{value:'50'}}));
+  await act(async()=>renderer.root.findByProps({className:'module-submit-btn pdv-checkout-btn'}).props.onClick());
+  assert.equal(submitted,undefined);
+  assert.match(renderer.root.findByProps({role:'alert'}).children.join(''),/duas formas/);
+  await act(async()=>renderer.root.findAllByType('button').find(node=>node.children.includes('Completar restante no PIX')).props.onClick());
+  assert.equal(renderer.root.findByProps({'aria-label':'Valor em PIX'}).props.value,'65.00');
+  await act(async()=>renderer.root.findByProps({className:'module-submit-btn pdv-checkout-btn'}).props.onClick());
+  assert.equal(submitted.payment_method,'misto');
+  assert.deepEqual(JSON.parse(JSON.stringify(submitted.payment_splits)),[{method:'dinheiro',amount:50},{method:'pix',amount:65}]);
+  assert.equal(submitted.total,100); assert.equal(submitted.freight_fee,15);
+});
 function assertVisibleControls() {
   assert.ok(controls().findByProps({ 'aria-label': 'Tabela de preços da venda' }));
   assert.ok(controls().findByProps({ id: 'pdv-customer-search' }));

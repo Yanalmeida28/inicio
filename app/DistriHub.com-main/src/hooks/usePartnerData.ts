@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PostgrestError } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { mergePartnerChange, PartnerDataVersions } from '../lib/partnerSync';
-import { billedSaleError, saleChargeTotal, validSalePrice, isDefinitiveSaleRejection, PdvSaleAttemptStore, pdvErrorMessage, type CustomerCredit } from '../lib/pdv';
+import { splitPaymentError, billedSaleError, saleChargeTotal, validSalePrice, isDefinitiveSaleRejection, PdvSaleAttemptStore, pdvErrorMessage, type CustomerCredit } from '../lib/pdv';
 import type {
   AdminCompany,
   AdminFinancialMonth,
@@ -21,6 +21,7 @@ import type {
   PartnerProfile,
   PartnerSalesperson,
   PartnerSale,
+  SalePayment,
   PartnerSupplier,
   PermissionOverride,
   RmaPayload,
@@ -1776,6 +1777,10 @@ fetchAllPages((from, to) => client
         const currentIdentity = requireIdentity();
         if (!sale.branch_id) throw new Error('Venda sem filial selecionada.');
         if (!validSalePrice(sale.freight_fee ?? 0)) throw new Error('Informe um frete válido.');
+        if (sale.payment_method === 'misto') {
+          const message = splitPaymentError(saleChargeTotal(sale), sale.payment_splits ?? []);
+          if (message) throw new Error(message);
+        }
         ensureEmployeeBranch(currentIdentity, sale.branch_id);
         const scope = currentIdentity.authUserId + ':' + currentIdentity.companyUserId;
         const attempts = new PdvSaleAttemptStore(sessionStorage, scope);
@@ -1786,7 +1791,7 @@ fetchAllPages((from, to) => client
           ...sale, id: crypto.randomUUID(), user_id: currentIdentity.companyUserId,
           status: sale.status ?? 'concluida', created_at: new Date().toISOString(),
           imei: sale.imei ?? null, serial_number: sale.serial_number ?? null,
-          payment_method: sale.payment_method ?? null, branch_id: sale.branch_id,
+          payment_method: sale.payment_method ?? null, payment_splits: sale.payment_method === 'misto' ? sale.payment_splits ?? [] : [], branch_id: sale.branch_id,
           salesperson_id: previous && 'id' in sale && sale.id === previous.id
             ? previous.salesperson_id
             : currentIdentity.salespersonId ?? sale.salesperson_id ?? operatorId ?? null,
@@ -1802,6 +1807,7 @@ fetchAllPages((from, to) => client
               p_commercial_salesperson_id: ns.salesperson_id,
               p_sale_id: ns.id, p_customer_id: ns.customer_id, p_customer_name: ns.customer_name,
               p_items: ns.items, p_total: ns.total, p_freight_fee: ns.freight_fee ?? 0, p_imei: ns.imei, p_serial_number: ns.serial_number,
+              p_payment_splits: ns.payment_splits ?? [],
               p_payment_method: ns.payment_method, p_branch_id: ns.branch_id, p_status: ns.status,
               p_origin: ns.origin, p_customer_type: ns.customer_type, p_delivery_type: ns.delivery_type,
             });
@@ -1952,6 +1958,7 @@ fetchAllPages((from, to) => client
       paymentMethod: string,
       operatorId?: string | null,
       operatorPin?: string | null,
+      paymentSplits?: SalePayment[],
     ) => {
       const currentIdentity = requireIdentity();
 
@@ -1977,6 +1984,11 @@ fetchAllPages((from, to) => client
       const effectiveOperatorPin = operatorPin ?? null;
 
       if (sale.status !== 'pre_venda') throw new Error('Esta pré-venda já foi finalizada ou cancelada.');
+      const parts = paymentMethod === 'misto' ? paymentSplits ?? [] : [];
+      if (paymentMethod === 'misto') {
+        const message = splitPaymentError(saleChargeTotal(sale), parts);
+        if (message) throw new Error(message);
+      }
       if (paymentMethod === 'faturado') {
         // Refresh first: another checkout may already have finalized this same sale.
         const snapshot = await refreshPdv(sale.branch_id);
@@ -2006,6 +2018,7 @@ fetchAllPages((from, to) => client
               p_imei: sale.imei ?? null,
               p_serial_number:
                 sale.serial_number ?? null,
+              p_payment_splits: parts,
               p_payment_method: paymentMethod,
               p_branch_id: sale.branch_id,
               p_status: 'concluida',
@@ -2025,7 +2038,7 @@ fetchAllPages((from, to) => client
 
       dataRevisionRef.current.invalidate(["sales"]);
       setData(prev => ({ ...prev, sales: prev.sales.map(item => item.id === id
-        ? { ...item, status: 'concluida', completed_at: new Date().toISOString(), payment_method: paymentMethod, payment_status: paymentMethod === 'faturado' ? 'pendente' : 'pago' }
+        ? { ...item, status: 'concluida', completed_at: new Date().toISOString(), payment_method: paymentMethod, payment_splits: parts, payment_status: paymentMethod === 'faturado' ? 'pendente' : 'pago' }
         : item) }));
       if (isSupabaseConfigured && supabase) await syncConfirmedSale(sale.branch_id);
     },

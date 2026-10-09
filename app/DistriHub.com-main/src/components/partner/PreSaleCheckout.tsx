@@ -1,18 +1,20 @@
+import { SplitPaymentFields } from './SplitPaymentFields';
 import { useRef, useState } from 'react';
-import type { PartnerSale } from '../../types';
+import type { PartnerSale, SalePayment } from '../../types';
 import { money } from '../../utils';
-import { pdvErrorMessage, saleChargeTotal } from '../../lib/pdv';
+import { draftPayments, splitPaymentDraft, splitPaymentError, pdvErrorMessage, saleChargeTotal } from '../../lib/pdv';
 
 type Props = {
   sale: PartnerSale;
   selectedBranchId: string | null;
   canCheckout: boolean;
-  onFinalize: (id: string, paymentMethod: string) => Promise<void>;
+  onFinalize: (id: string, paymentMethod: string, paymentSplits?: SalePayment[]) => Promise<void>;
   onClose: () => void;
 };
 
 export function PreSaleCheckout({ sale, selectedBranchId, canCheckout, onFinalize, onClose }: Props) {
   const [paymentMethod, setPaymentMethod] = useState(sale.payment_method || 'pix');
+  const [paymentDraft, setPaymentDraft] = useState(() => splitPaymentDraft(sale.payment_splits));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inFlight = useRef(false);
@@ -20,10 +22,13 @@ export function PreSaleCheckout({ sale, selectedBranchId, canCheckout, onFinaliz
 
   async function finalize() {
     if (!available || !canCheckout || inFlight.current) return;
+    const parts = paymentMethod === 'misto' ? draftPayments(paymentDraft) : [];
+    const validation = paymentMethod === 'misto' ? splitPaymentError(saleChargeTotal(sale), parts) : null;
+    if (validation) { setError(validation); return; }
     inFlight.current = true;
     setSaving(true);
     setError(null);
-    try { await onFinalize(sale.id, paymentMethod); onClose(); }
+    try { await onFinalize(sale.id, paymentMethod, parts); onClose(); }
     catch (failure) { setError(pdvErrorMessage(failure)); }
     finally { inFlight.current = false; setSaving(false); }
   }
@@ -41,8 +46,10 @@ export function PreSaleCheckout({ sale, selectedBranchId, canCheckout, onFinaliz
       <select value={paymentMethod} disabled={saving || !available} onChange={event => setPaymentMethod(event.target.value)}>
         <option value="pix">PIX</option><option value="dinheiro">Dinheiro</option>
         <option value="cartao">Cartão</option><option value="faturado">Faturado</option>
+        <option value="misto">Dividido (dinheiro / PIX / cartão)</option>
       </select>
     </label>
+    {paymentMethod === 'misto' && <SplitPaymentFields total={saleChargeTotal(sale)} value={paymentDraft} onChange={setPaymentDraft} disabled={saving || !available} />}
     <div className="pdv-total-bar"><span>Total da pré-venda</span><strong>{money.format(saleChargeTotal(sale))}</strong></div>
     {!available && <p role="alert">Esta pré-venda já foi finalizada ou não pertence à filial selecionada.</p>}
     {error && <p className="otp-error-msg" role="alert">{error}</p>}

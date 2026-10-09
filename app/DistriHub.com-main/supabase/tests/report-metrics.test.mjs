@@ -1,3 +1,5 @@
+import { pdvHelpers } from './fixtures/pdv_helpers.mjs';
+import vm from 'node:vm';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
@@ -5,9 +7,10 @@ import ts from 'typescript';
 
 const source = await readFile(new URL('../../src/lib/reportMetrics.ts', import.meta.url), 'utf8');
 const compiled = ts.transpileModule(source, {
-  compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
 }).outputText;
-const metrics = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}`);
+const metrics = {};
+vm.runInNewContext(compiled, {exports:metrics, Date, require(name){if(name==='./pdv')return pdvHelpers;throw Error(name);}});
 
 function sale(overrides = {}) {
   return {
@@ -54,7 +57,7 @@ test('mixed product and service orders split item revenue without duplicating to
     ],
   });
 
-  assert.deepEqual(metrics.getItemRevenueByType([mixed], products), {
+  assert.deepEqual(JSON.parse(JSON.stringify(metrics.getItemRevenueByType([mixed], products))), {
     productRevenue: 100,
     serviceRevenue: 75,
     productSalesCount: 1,
@@ -84,5 +87,5 @@ test('birthday month parsing does not shift ISO dates across time zones', () => 
 test('CSV escapes formula-like text and quotes safely', () => {
   const csv = metrics.buildSalesCsv([sale({ customer_name: '=HYPERLINK("x")' })]);
   assert.match(csv, /"'=HYPERLINK\(""x""\)"/);
-  assert.match(csv, /;"pix";"100\.00"/);
+  assert.match(csv, /;"PIX";"100\.00"/);
 });

@@ -1,3 +1,4 @@
+import { saleRevenuePayments, salePaymentDescription } from '../../lib/pdv';
 import { Component, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   Shield, BarChart3, Users, TrendingUp, TrendingDown,
@@ -564,8 +565,9 @@ function ExecutiveDashboard({
   const paymentDistribution = useMemo(() => {
     const map: Record<string, number> = {};
     for (const sale of currentSales) {
-      const method = sale.payment_method ?? 'Não informado';
-      map[method] = (map[method] ?? 0) + (sale.total ?? 0);
+      for (const payment of saleRevenuePayments(sale)) {
+        map[payment.method] = (map[payment.method] ?? 0) + payment.amount;
+      }
     }
     const total = Object.values(map).reduce((s, v) => s + v, 0) || 1;
     return Object.entries(map)
@@ -633,7 +635,7 @@ function ExecutiveDashboard({
         (s.total ?? 0).toFixed(2),
         cost.toFixed(2),
         (s.total - cost).toFixed(2),
-        s.payment_method ?? '—',
+        salePaymentDescription(s),
         sp?.name ?? '—',
       ].join(';');
     });
@@ -1184,7 +1186,7 @@ function AuditTrail({ sales, salespeople }: { sales: PartnerSale[]; salespeople:
           action: 'Venda Finalizada',
           entity_type: 'venda',
           entity_id: sale.id,
-          details: `Pedido #${sale.id.slice(0, 8).toUpperCase()} concluído — Cliente: ${sale.customer_name ?? '—'} — Total: ${money.format(sale.total)} — Pagamento: ${sale.payment_method ?? '—'}`,
+          details: `Pedido #${sale.id.slice(0, 8).toUpperCase()} concluído — Cliente: ${sale.customer_name ?? '—'} — Total: ${money.format(sale.total)} — Pagamento: ${salePaymentDescription(sale)}`,
           created_at: sale.created_at,
         });
       }

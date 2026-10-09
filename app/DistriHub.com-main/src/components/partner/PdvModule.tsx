@@ -1,13 +1,14 @@
+import { SplitPaymentFields } from './SplitPaymentFields';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Search, Trash2, ShoppingCart, Check,
   X, Tag, Ban, Lock, ClipboardList, Wallet, Lock as LockIcon,
 } from 'lucide-react';
-import type { DeliveryType, PartnerProduct, PartnerCustomer, PartnerSale, PartnerSalesperson, SaleItem, SalespersonRole } from '../../types';
+import type { DeliveryType, PartnerProduct, PartnerCustomer, PartnerSale, SalePayment, PartnerSalesperson, SaleItem, SalespersonRole } from '../../types';
 import { SalePriceInput } from './SalePriceInput';
 import { PreSaleCheckout } from './PreSaleCheckout';
 import { money } from '../../utils';
-import { billedSaleError, pdvErrorMessage, pdvTotal, saleChargeTotal, validSalePrice, type CustomerCredit } from '../../lib/pdv';
+import { draftPayments, emptySplitPaymentDraft, splitPaymentDraft, splitPaymentError, billedSaleError, pdvErrorMessage, pdvTotal, saleChargeTotal, validSalePrice, type CustomerCredit } from '../../lib/pdv';
 import { SessionDraftProvider, useSessionDraftScope, useSessionDraftState } from '../../hooks/useSessionDraft';
 
 type PriceTable = 'varejo' | 'atacado';
@@ -250,7 +251,7 @@ type Props = {
     delivery_type: DeliveryType;
     imei?: string;
     serial_number?: string;
-    payment_method?: string;
+    payment_method?: string; payment_splits?: SalePayment[];
     salesperson_id?: string | null;
     branch_id?: string | null;
   }) => Promise<void>;
@@ -268,7 +269,7 @@ type Props = {
     salesperson_id?: string | null;
     branch_id?: string | null;
   }) => Promise<void>;
-  onFinalizePreSale: (id: string, paymentMethod: string) => Promise<void>;
+  onFinalizePreSale: (id: string, paymentMethod: string, paymentSplits?: SalePayment[]) => Promise<void>;
   onCancelSale: (id: string, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
   onDeleteSale: (id: string, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
 };
@@ -428,7 +429,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
   segment: string;
   selectedBranchId: string | null;
   canCheckout: boolean;
-  onCreateSale: (sale: { customer_id: string | null; customer_name: string; items: SaleItem[]; total: number; freight_fee?: number; customer_type: ClientType; delivery_type: DeliveryType; imei?: string; serial_number?: string; payment_method?: string; salesperson_id?: string | null; branch_id?: string | null }) => Promise<void>;
+  onCreateSale: (sale: { customer_id: string | null; customer_name: string; items: SaleItem[]; total: number; freight_fee?: number; customer_type: ClientType; delivery_type: DeliveryType; imei?: string; serial_number?: string; payment_method?: string; payment_splits?: SalePayment[]; salesperson_id?: string | null; branch_id?: string | null }) => Promise<void>;
 }) {
   const [search, setSearch] = useSessionDraftState('checkout:product-search', '');
   const [visibleProductCount, setVisibleProductCount] = useState(PRODUCT_PAGE_SIZE);
@@ -454,6 +455,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
   const [customerName, setCustomerName] = useSessionDraftState('checkout:customer-name', '');
   const [clientType, setClientType] = useSessionDraftState<ClientType>('checkout:client-type', 'varejo');
   const [paymentMethod, setPaymentMethod] = useSessionDraftState('checkout:payment-method', 'pix');
+  const [paymentDraft, setPaymentDraft] = useSessionDraftState('checkout:split-payments', { ...emptySplitPaymentDraft });
   const [deliveryType, setDeliveryType] = useSessionDraftState<DeliveryType>('checkout:delivery-type', 'balcao');
   const [freightFee, setFreightFee] = useSessionDraftState<number | string>('checkout:freight-fee', 0);
   const freightAmount = freightFee === '' ? 0 : Number(freightFee);
@@ -603,6 +605,9 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
       const message = billedSaleError(credit, customerId || null, chargeTotal);
       if (message) { setCheckoutError(message); return; }
     }
+    const parts = paymentMethod === 'misto' ? draftPayments(paymentDraft) : [];
+    const validation = paymentMethod === 'misto' ? splitPaymentError(chargeTotal, parts) : null;
+    if (validation) { setCheckoutError(validation); return; }
     const fallbackName = clientType === 'atacado' ? 'Cliente Atacado' : 'Cliente Varejo';
     checkoutInFlight.current = true;
     setIsCheckingOut(true);
@@ -617,6 +622,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
         customer_type: clientType,
         delivery_type: deliveryType,
         payment_method: paymentMethod,
+        payment_splits: parts,
         salesperson_id: salespersonId || null,
         branch_id: selectedBranchId,
       });
@@ -625,6 +631,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
       setClientType('varejo');
       setPriceTable('varejo');
       setPaymentMethod('pix');
+      setPaymentDraft({ ...emptySplitPaymentDraft });
       setDeliveryType('balcao');
       setSearch('');
       setVisibleProductCount(PRODUCT_PAGE_SIZE);
@@ -804,6 +811,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
                       <option value="cartao">Cartão</option>
                       <option value="dinheiro">Dinheiro</option>
                       <option value="faturado">Faturado B2B</option>
+                      <option value="misto">Dividido (dinheiro / PIX / cartão)</option>
                     </select>
                   </label>
                   {!activeSalespersonId && (
@@ -816,6 +824,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
                   )}
                 </div>
               </div>
+              {paymentMethod === 'misto' && <SplitPaymentFields total={chargeTotal} value={paymentDraft} onChange={setPaymentDraft} disabled={isCheckingOut || !canCheckout} />}
               {paymentMethod === 'faturado' && selectedCustomer && !credit && (
                 <p role="status">Não foi possível consultar o crédito deste cliente.</p>
               )}
@@ -854,7 +863,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
               <Check size={15} /> Venda finalizada! Pronto para uma nova venda. Cupom, etiqueta e envio no Histórico.
             </div>
           )}
-          {checkoutError && <p className="otp-error-msg">{checkoutError}</p>}
+          {checkoutError && <p className="otp-error-msg" role="alert">{checkoutError}</p>}
           </div>
         </div>
       </div>
@@ -877,7 +886,7 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
   canCheckout: boolean;
   onCreatePreSale: (sale: { customer_id: string | null; customer_name: string; items: SaleItem[]; total: number; freight_fee?: number; customer_type: ClientType; delivery_type: DeliveryType; payment_method?: string | null; imei?: string; serial_number?: string; salesperson_id?: string | null; branch_id?: string | null }) => Promise<void>;
   canEditPrice: boolean;
-  onFinalizePreSale: (id: string, paymentMethod: string) => Promise<void>;
+  onFinalizePreSale: (id: string, paymentMethod: string, paymentSplits?: SalePayment[]) => Promise<void>;
   onCancelSale: (id: string, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
   onDeleteSale: (id: string, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
 }) {
@@ -897,6 +906,7 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
   const [saveError, setSaveError] = useState<string | null>(null);
   const [finalizeTarget, setFinalizeTarget] = useState<PartnerSale | null>(null);
   const [finalizePayment, setFinalizePayment] = useState('pix');
+  const [finalizeDraft, setFinalizeDraft] = useState({ ...emptySplitPaymentDraft });
   const [isFinalizing, setIsFinalizing] = useState(false);
   const [finalizeError, setFinalizeError] = useState<string | null>(null);
   const finalizeInFlight = useRef(false);
@@ -1017,17 +1027,21 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
   function requestFinalize(sale: PartnerSale) {
     setFinalizeTarget(sale);
     setFinalizePayment(sale.payment_method || 'pix');
+    setFinalizeDraft(splitPaymentDraft(sale.payment_splits));
     setFinalizeError(null);
   }
 
   async function confirmFinalize() {
     if (!finalizeTarget || !onFinalizePreSale || finalizeInFlight.current) return;
+    const parts = finalizePayment === 'misto' ? draftPayments(finalizeDraft) : [];
+    const validation = finalizePayment === 'misto' ? splitPaymentError(saleChargeTotal(finalizeTarget), parts) : null;
+    if (validation) { setFinalizeError(validation); return; }
     finalizeInFlight.current = true;
     setIsFinalizing(true);
     setFinalizeError(null);
     try {
       // The shared hook checks a fresh authorized credit balance before calling the sale RPC.
-      await onFinalizePreSale(finalizeTarget.id, finalizePayment);
+      await onFinalizePreSale(finalizeTarget.id, finalizePayment, parts);
       setFinalizeTarget(null);
     } catch (error) {
       setFinalizeError(pdvErrorMessage(error));
@@ -1293,8 +1307,10 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
                 <option value="cartao">Cartão</option>
                 <option value="dinheiro">Dinheiro</option>
                 <option value="faturado">Faturado</option>
+                <option value="misto">Dividido (dinheiro / PIX / cartão)</option>
               </select>
             </label>
+            {finalizePayment === 'misto' && <SplitPaymentFields total={saleChargeTotal(finalizeTarget)} value={finalizeDraft} onChange={setFinalizeDraft} disabled={isFinalizing} />}
             {finalizeError && <p className="otp-error-msg" role="alert">{finalizeError}</p>}
             <div className="otp-actions">
               <button className="rma-advance-btn" disabled={isFinalizing} onClick={() => setFinalizeTarget(null)}>Cancelar</button>

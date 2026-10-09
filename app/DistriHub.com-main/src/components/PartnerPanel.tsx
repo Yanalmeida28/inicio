@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 
 import type { User } from '@supabase/supabase-js';
-import type { PartnerSale } from '../types';
+import type { PartnerSale, SalePayment } from '../types';
 
 import { usePartnerData } from '../hooks/usePartnerData';
 import { useSaasSubscription } from '../hooks/useSaasSubscription';
@@ -1058,7 +1058,7 @@ export function PartnerPanel({
       delivery_type: DeliveryType;
       imei?: string;
       serial_number?: string;
-      payment_method?: string;
+      payment_method?: string; payment_splits?: SalePayment[];
       salesperson_id?: string | null;
       branch_id?: string | null;
     },
@@ -1162,6 +1162,7 @@ export function PartnerPanel({
   async function handleFinalizePreSale(
     id: string,
     paymentMethod: string,
+    paymentSplits?: SalePayment[],
   ) {
     const sale = partner.sales.find(
       (item) => item.id === id,
@@ -1190,6 +1191,7 @@ export function PartnerPanel({
       paymentMethod,
       operatorId,
       operatorPin,
+      paymentSplits,
     );
   }
 

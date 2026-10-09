@@ -1,3 +1,4 @@
+import { saleRevenuePayments } from '../../lib/pdv';
 import { useMemo, useState } from 'react';
 import {
   BarChart3, TrendingUp, TrendingDown, Package, Users, Cake, MessageCircle, DollarSign,
@@ -369,9 +370,11 @@ function FinancialReport({ sales, allSales, products }: { sales: PartnerSale[]; 
   const byPayment = useMemo(() => {
     const map: Record<string, number> = {};
     for (const sale of sales) {
-      const method = (sale.payment_method ?? '').toLowerCase();
-      const m = ['cartao', 'credito', 'debito'].includes(method) ? 'cartao' : method || 'outros';
-      map[m] = (map[m] ?? 0) + sale.total;
+      for (const payment of saleRevenuePayments(sale)) {
+        const method = payment.method.toLowerCase();
+        const m = ['cartao', 'credito', 'debito'].includes(method) ? 'cartao' : method || 'outros';
+        map[m] = (map[m] ?? 0) + payment.amount;
+      }
     }
     return map;
   }, [sales]);

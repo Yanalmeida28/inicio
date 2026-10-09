@@ -1,3 +1,4 @@
+import { splitPaymentComponent } from './fixtures/split_payment_component.mjs';
 import assert from 'node:assert/strict';
 import { pdvHelpers } from './fixtures/pdv_helpers.mjs';
 import { test } from 'node:test';
@@ -12,7 +13,8 @@ vm.runInNewContext(ts.transpileModule(await readFile(new URL('../../src/componen
   compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,target:ts.ScriptTarget.ES2020},
 }).outputText,{
   exports:module.exports,
-  require(name){
+  require(name) {
+    if(name==='./SplitPaymentFields') return splitPaymentComponent;
     if(name==='react')return React;
     if(name==='react/jsx-runtime')return jsx;
     if(name==='lucide-react')return new Proxy({},{get:()=>()=>null});

@@ -1,6 +1,6 @@
 import type { PartnerCustomer } from '../types';
 import type { PrintableSale } from './salePrint';
-import { saleChargeTotal } from './pdv';
+import { saleChargeTotal, salePaymentDescription } from './pdv';
 
 export function whatsappPhone(value: string): string | null {
   const raw = value.trim();
@@ -18,7 +18,7 @@ export function whatsappPhone(value: string): string | null {
 export function saleShareUrl(sale: PrintableSale, channel: 'whatsapp' | 'email', customer?: PartnerCustomer, salespersonName?: string): string {
   if (!customer) throw new Error('Esta venda não possui um cliente cadastrado vinculado. Cadastre e selecione o cliente para compartilhar seus próximos cupons.');
   const currency = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
-  const payments: Record<string, string> = { pix: 'PIX', cartao: 'Cartão', dinheiro: 'Dinheiro', faturado: 'Faturado B2B' };
+
   const isQuote = sale.status === 'pre_venda' || sale.status === 'aberta';
   const message = [
     isQuote ? 'ORÇAMENTO — CUPOM NÃO FISCAL' : 'CUPOM NÃO FISCAL',
@@ -32,7 +32,7 @@ export function saleShareUrl(sale: PrintableSale, channel: 'whatsapp' | 'email',
     '',
     ...(sale.freight_fee ? [`Subtotal produtos/serviços: ${currency.format(sale.total)}`, `Frete terceirizado: ${currency.format(sale.freight_fee)}`] : []),
     `Total: ${currency.format(saleChargeTotal(sale))}`,
-    `Pagamento: ${payments[sale.payment_method ?? ''] ?? sale.payment_method ?? 'Não informado'}`,
+    `Pagamento: ${salePaymentDescription(sale)}`,
     ...(sale.imei ? [`IMEI / Selo: ${sale.imei}`] : []),
     ...(sale.serial_number ? [`Nº de série: ${sale.serial_number}`] : []),
   ].join('\n');

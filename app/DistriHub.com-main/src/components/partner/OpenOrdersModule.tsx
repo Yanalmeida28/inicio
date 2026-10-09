@@ -1,11 +1,12 @@
+import { SplitPaymentFields } from './SplitPaymentFields';
 import { useMemo, useRef, useState } from 'react';
 import {
   ClipboardList, Search, X, Calendar, Filter, ArrowRight, Wallet, Lock,
 } from 'lucide-react';
-import type { PartnerSale, PartnerCustomer, PartnerSalesperson, SalespersonRole, PartnerProduct } from '../../types';
+import type { PartnerSale, SalePayment, PartnerCustomer, PartnerSalesperson, SalespersonRole, PartnerProduct } from '../../types';
 import { OpenOrderItemsEditor } from './OpenOrderItemsEditor';
 import { money } from '../../utils';
-import { pdvErrorMessage, saleChargeTotal } from '../../lib/pdv';
+import { draftPayments, emptySplitPaymentDraft, splitPaymentDraft, splitPaymentError, pdvErrorMessage, saleChargeTotal } from '../../lib/pdv';
 import { SaleActionsMenu } from './SaleActionsMenu';
 import { printSale, type ReceiptDetails } from '../../lib/salePrint';
 import { saleShareUrl } from '../../lib/saleShare';
@@ -20,7 +21,7 @@ type Props = {
   salespeople: PartnerSalesperson[];
   currentRole: SalespersonRole;
   receiptDetails?: ReceiptDetails;
-  onFinalizePreSale?: (id: string, paymentMethod: string) => Promise<void>;
+  onFinalizePreSale?: (id: string, paymentMethod: string, paymentSplits?: SalePayment[]) => Promise<void>;
   onCancelSale: (id: string, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
   onDeleteSale: (id: string, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
   onPullToPdv?: (sale: PartnerSale) => void;
@@ -84,6 +85,7 @@ export function OpenOrdersModule({ canEditPrice, products, onUpdateItems, onUpda
   } | null>(null);
   const [finalizeTarget, setFinalizeTarget] = useState<PartnerSale | null>(null);
   const [finalizePayment, setFinalizePayment] = useState('pix');
+  const [finalizeDraft, setFinalizeDraft] = useState({ ...emptySplitPaymentDraft });
   const [isFinalizing, setIsFinalizing] = useState(false);
   const [finalizeError, setFinalizeError] = useState<string | null>(null);
   const finalizeInFlight = useRef(false);
@@ -188,17 +190,21 @@ export function OpenOrdersModule({ canEditPrice, products, onUpdateItems, onUpda
   function requestFinalize(sale: PartnerSale) {
     setFinalizeTarget(sale);
     setFinalizePayment(sale.payment_method || 'pix');
+    setFinalizeDraft(splitPaymentDraft(sale.payment_splits));
     setFinalizeError(null);
   }
 
   async function confirmFinalize() {
     if (!finalizeTarget || !onFinalizePreSale || finalizeInFlight.current) return;
+    const parts = finalizePayment === 'misto' ? draftPayments(finalizeDraft) : [];
+    const validation = finalizePayment === 'misto' ? splitPaymentError(saleChargeTotal(finalizeTarget), parts) : null;
+    if (validation) { setFinalizeError(validation); return; }
     finalizeInFlight.current = true;
     setIsFinalizing(true);
     setFinalizeError(null);
     try {
       // The shared hook checks a fresh authorized credit balance before calling the sale RPC.
-      await onFinalizePreSale(finalizeTarget.id, finalizePayment);
+      await onFinalizePreSale(finalizeTarget.id, finalizePayment, parts);
       setFinalizeTarget(null);
     } catch (error) {
       setFinalizeError(pdvErrorMessage(error));
@@ -445,8 +451,10 @@ export function OpenOrdersModule({ canEditPrice, products, onUpdateItems, onUpda
                 <option value="cartao">Cartão</option>
                 <option value="dinheiro">Dinheiro</option>
                 <option value="faturado">Faturado</option>
+                <option value="misto">Dividido (dinheiro / PIX / cartão)</option>
               </select>
             </label>
+            {finalizePayment === 'misto' && <SplitPaymentFields total={saleChargeTotal(finalizeTarget)} value={finalizeDraft} onChange={setFinalizeDraft} disabled={isFinalizing} />}
             {finalizeError && <p className="otp-error-msg" role="alert">{finalizeError}</p>}
             <div className="otp-actions">
               <button className="rma-advance-btn" disabled={isFinalizing} onClick={() => setFinalizeTarget(null)}>Cancelar</button>

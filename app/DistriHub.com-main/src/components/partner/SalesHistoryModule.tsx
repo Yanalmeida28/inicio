@@ -1,3 +1,4 @@
+import { salePaymentDescription } from '../../lib/pdv';
 import { useMemo, useState } from 'react';
 import { Ban, Lock, Trash2, X } from 'lucide-react';
 import type { PartnerSale, PartnerCustomer, PartnerSalesperson, RmaRequest } from '../../types';
@@ -155,7 +156,7 @@ export function SalesHistoryModule({ sales, rmaRequests = [], customers, salespe
                       </details>}
                     </td>
                     <td>{money.format(saleChargeTotal(s))}{s.freight_fee ? <small>Frete: {money.format(s.freight_fee)}</small> : null}</td>
-                    <td>{s.payment_method ?? '—'}</td>
+                    <td>{salePaymentDescription(s)}</td>
                     <td>{s.imei ?? s.serial_number ?? '—'}</td>
                     <td>
                       {s.status === 'cancelada' ? (
