@@ -4,6 +4,7 @@ import type { PartnerSale, PartnerCustomer, PartnerSalesperson, RmaRequest } fro
 import { saleReturnLabel, saleItemDescription } from '../../lib/saleReturns';
 import { SaleActionsMenu } from './SaleActionsMenu';
 import { money } from '../../utils';
+import { saleChargeTotal } from '../../lib/pdv';
 import { printSale, type PrintableSale, type ReceiptDetails } from '../../lib/salePrint';
 import { saleShareUrl } from '../../lib/saleShare';
 
@@ -153,7 +154,7 @@ export function SalesHistoryModule({ sales, rmaRequests = [], customers, salespe
                         </small>
                       </details>}
                     </td>
-                    <td>{money.format(s.total)}</td>
+                    <td>{money.format(saleChargeTotal(s))}{s.freight_fee ? <small>Frete: {money.format(s.freight_fee)}</small> : null}</td>
                     <td>{s.payment_method ?? '—'}</td>
                     <td>{s.imei ?? s.serial_number ?? '—'}</td>
                     <td>

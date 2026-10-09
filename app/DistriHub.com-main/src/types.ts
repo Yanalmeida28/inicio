@@ -246,6 +246,8 @@ export interface SaleItem {
 }
 
 export interface PartnerSale {
+  /** Frete recebido para repasse a terceiros; não compõe total/faturamento. */
+  freight_fee?: number;
   /** Data de conclusão no modo local; no banco é obtida pela baixa vinculada. */
   completed_at?: string;
   id: string;

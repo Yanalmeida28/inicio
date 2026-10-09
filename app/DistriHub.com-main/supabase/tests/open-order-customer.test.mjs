@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { pdvHelpers } from './fixtures/pdv_helpers.mjs';
 import { test } from 'node:test';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
@@ -16,7 +17,7 @@ vm.runInNewContext(ts.transpileModule(await readFile(new URL('../../src/componen
     if(name==='react/jsx-runtime')return jsx;
     if(name==='lucide-react')return new Proxy({},{get:()=>()=>null});
     if(name==='../../utils')return {money:{format:String}};
-    if(name==='../../lib/pdv')return {pdvErrorMessage:error=>error.message};
+    if(name==='../../lib/pdv')return pdvHelpers;
     if(name==='./SaleActionsMenu')return {SaleActionsMenu:props=>React.createElement('sale-actions',props)};
     return {};
   },

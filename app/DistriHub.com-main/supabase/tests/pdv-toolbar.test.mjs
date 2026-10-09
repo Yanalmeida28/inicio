@@ -69,6 +69,19 @@ test('selecionar e remover o último produto mantém as opções da venda visív
   assertVisibleControls();
 });
 
+test('checkout collects freight separately and resets it after the confirmed sale', async () => {
+  let submitted;
+  await act(async () => { renderer = TestRenderer.create(React.createElement(module.exports.Checkout, {...props,onCreateSale:async sale=>{submitted=sale;}})); });
+  await act(async () => renderer.root.findByProps({ 'aria-label': 'Buscar produto por nome ou SKU' }).props.onChange({ target: { value: 'Produto' } }));
+  await act(async () => renderer.root.findByProps({ className: 'pdv-product-card' }).props.onClick());
+  await act(async () => renderer.root.findByProps({ 'aria-label': 'Frete terceirizado' }).props.onChange({ target: { value:'15.25' } }));
+  assert.equal(renderer.root.findByProps({className:'pdv-total-bar'}).findByType('strong').children.join(''),new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(115.25));
+  await act(async()=>renderer.root.findByProps({className:'module-submit-btn pdv-checkout-btn'}).props.onClick());
+  assert.equal(submitted.total,100);
+  assert.equal(submitted.freight_fee,15.25);
+  assert.equal(renderer.root.findByProps({'aria-label':'Frete terceirizado'}).props.value,0);
+});
+
 // Optional isolated browser fixture, with synthetic data and no account credentials.
 if (process.env.PDV_BROWSER_FIXTURE === '1') {
   const directory = new URL('../../.tmp/pdv-toolbar/', import.meta.url);

@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import type { PartnerSale } from '../../types';
 import { money } from '../../utils';
-import { pdvErrorMessage } from '../../lib/pdv';
+import { pdvErrorMessage, saleChargeTotal } from '../../lib/pdv';
 
 type Props = {
   sale: PartnerSale;
@@ -43,7 +43,7 @@ export function PreSaleCheckout({ sale, selectedBranchId, canCheckout, onFinaliz
         <option value="cartao">Cartão</option><option value="faturado">Faturado</option>
       </select>
     </label>
-    <div className="pdv-total-bar"><span>Total da pré-venda</span><strong>{money.format(sale.total)}</strong></div>
+    <div className="pdv-total-bar"><span>Total da pré-venda</span><strong>{money.format(saleChargeTotal(sale))}</strong></div>
     {!available && <p role="alert">Esta pré-venda já foi finalizada ou não pertence à filial selecionada.</p>}
     {error && <p className="otp-error-msg" role="alert">{error}</p>}
     <div className="otp-actions">

@@ -5,7 +5,7 @@ import {
 import type { PartnerSale, PartnerCustomer, PartnerSalesperson, SalespersonRole, PartnerProduct } from '../../types';
 import { OpenOrderItemsEditor } from './OpenOrderItemsEditor';
 import { money } from '../../utils';
-import { pdvErrorMessage } from '../../lib/pdv';
+import { pdvErrorMessage, saleChargeTotal } from '../../lib/pdv';
 import { SaleActionsMenu } from './SaleActionsMenu';
 import { printSale, type ReceiptDetails } from '../../lib/salePrint';
 import { saleShareUrl } from '../../lib/saleShare';
@@ -182,7 +182,7 @@ export function OpenOrdersModule({ canEditPrice, products, onUpdateItems, onUpda
     setAppliedFilters(null);
   }
 
-  const totalAmount = displayedOrders.reduce((sum, s) => sum + s.total, 0);
+  const totalAmount = displayedOrders.reduce((sum, s) => sum + saleChargeTotal(s), 0);
   const pendingCount = displayedOrders.filter((s) => s.payment_status === 'pendente' || s.status === 'pre_venda').length;
 
   function requestFinalize(sale: PartnerSale) {
@@ -373,7 +373,7 @@ export function OpenOrdersModule({ canEditPrice, products, onUpdateItems, onUpda
                       <span className="rma-status-badge" style={{ color: pst.color, borderColor: pst.color }}>{pst.label}</span>
                       {s.online_payment && <small className="open-order-secondary">Pagamento online</small>}
                     </td>
-                    <td data-label="Total"><strong>{money.format(s.total)}</strong></td>
+                    <td data-label="Total"><strong>{money.format(saleChargeTotal(s))}</strong>{s.freight_fee ? <small>Frete: {money.format(s.freight_fee)}</small> : null}</td>
                     <td data-label="Ações" className="open-order-actions">
                       <div className="row-action-group">
                         {canCheckout && s.status === 'pre_venda' && (
@@ -432,7 +432,7 @@ export function OpenOrdersModule({ canEditPrice, products, onUpdateItems, onUpda
               <button onClick={() => setFinalizeTarget(null)}><X size={18} /></button>
             </div>
             <p className="otp-description">
-              <strong>{finalizeTarget.customer_name ?? 'Cliente'}</strong> — {finalizeTarget.items.length} {finalizeTarget.items.length === 1 ? 'item' : 'itens'} — {money.format(finalizeTarget.total)}
+              <strong>{finalizeTarget.customer_name ?? 'Cliente'}</strong> — {finalizeTarget.items.length} {finalizeTarget.items.length === 1 ? 'item' : 'itens'} — {money.format(saleChargeTotal(finalizeTarget))}
             </p>
             <label style={{ display: 'block', marginBottom: '12px' }}>
               <strong>Forma de Pagamento</strong>

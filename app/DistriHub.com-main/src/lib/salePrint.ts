@@ -1,7 +1,8 @@
 import type { PartnerCustomer, PartnerSale, StoreSettings } from '../types';
 import { money } from '../utils';
+import { saleChargeTotal } from './pdv';
 
-export type PrintableSale = Pick<PartnerSale, 'customer_name' | 'items' | 'total' | 'imei' | 'serial_number' | 'payment_method' | 'created_at' | 'branch_id' | 'customer_id' | 'salesperson_id'> & { id?: string; status?: PartnerSale['status'] };
+export type PrintableSale = Pick<PartnerSale, 'customer_name' | 'items' | 'total' | 'freight_fee' | 'imei' | 'serial_number' | 'payment_method' | 'created_at' | 'branch_id' | 'customer_id' | 'salesperson_id'> & { id?: string; status?: PartnerSale['status'] };
 
 export type ReceiptDetails = { customer?: PartnerCustomer; salespersonName?: string; settings?: StoreSettings; companyName?: string; companyDocument?: string | null; companyAddress?: string | null };
 
@@ -78,10 +79,14 @@ export function printSale(sale: PrintableSale, format: 'receipt' | 'label', deta
       main.append(row);
     }
     const totalQuantity = sale.items.reduce((total, item) => total + item.quantity, 0);
+    if (sale.freight_fee) {
+      line(main, `Subtotal produtos/serviços: ${money.format(sale.total)}`);
+      line(main, `Frete terceirizado: ${money.format(sale.freight_fee)}`);
+    }
     const totalSummary = doc.createElement('div');
     totalSummary.style.cssText = 'display:flex;align-items:baseline;justify-content:space-between;gap:8px;padding:4px 0';
     const totalLabel = doc.createElement('strong');
-    totalLabel.textContent = `TOTAL: ${money.format(sale.total)}`;
+    totalLabel.textContent = `TOTAL: ${money.format(saleChargeTotal(sale))}`;
     totalLabel.style.cssText = 'min-width:0;font-size:16px';
     const quantityLabel = doc.createElement('span');
     quantityLabel.textContent = `Qtd. produtos: ${totalQuantity}`;

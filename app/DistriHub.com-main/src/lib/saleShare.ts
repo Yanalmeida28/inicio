@@ -1,5 +1,6 @@
 import type { PartnerCustomer } from '../types';
 import type { PrintableSale } from './salePrint';
+import { saleChargeTotal } from './pdv';
 
 export function whatsappPhone(value: string): string | null {
   const raw = value.trim();
@@ -29,7 +30,8 @@ export function saleShareUrl(sale: PrintableSale, channel: 'whatsapp' | 'email',
     '',
     ...sale.items.map((item) => `${item.quantity} × ${item.name} — ${currency.format(item.unit_price)} cada — ${currency.format(item.quantity * item.unit_price)}`),
     '',
-    `Total: ${currency.format(sale.total)}`,
+    ...(sale.freight_fee ? [`Subtotal produtos/serviços: ${currency.format(sale.total)}`, `Frete terceirizado: ${currency.format(sale.freight_fee)}`] : []),
+    `Total: ${currency.format(saleChargeTotal(sale))}`,
     `Pagamento: ${payments[sale.payment_method ?? ''] ?? sale.payment_method ?? 'Não informado'}`,
     ...(sale.imei ? [`IMEI / Selo: ${sale.imei}`] : []),
     ...(sale.serial_number ? [`Nº de série: ${sale.serial_number}`] : []),

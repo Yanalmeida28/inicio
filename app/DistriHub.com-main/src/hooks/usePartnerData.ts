@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PostgrestError } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { mergePartnerChange, PartnerDataVersions } from '../lib/partnerSync';
-import { billedSaleError, isDefinitiveSaleRejection, PdvSaleAttemptStore, pdvErrorMessage, type CustomerCredit } from '../lib/pdv';
+import { billedSaleError, saleChargeTotal, validSalePrice, isDefinitiveSaleRejection, PdvSaleAttemptStore, pdvErrorMessage, type CustomerCredit } from '../lib/pdv';
 import type {
   AdminCompany,
   AdminFinancialMonth,
@@ -1761,10 +1761,10 @@ fetchAllPages((from, to) => client
     }
   }, [refreshPdv]);
 
-  const validateBilledSale = useCallback(async (sale: Pick<PartnerSale, 'customer_id' | 'branch_id' | 'total'>) => {
+  const validateBilledSale = useCallback(async (sale: Pick<PartnerSale, 'customer_id' | 'branch_id' | 'total' | 'freight_fee'>) => {
     if (!sale.customer_id) throw new Error(billedSaleError(undefined, null, sale.total)!);
     const snapshot = await refreshPdv(sale.branch_id!);
-    const message = billedSaleError(snapshot.credits.find(c => c.customer_id === sale.customer_id), sale.customer_id, sale.total);
+    const message = billedSaleError(snapshot.credits.find(c => c.customer_id === sale.customer_id), sale.customer_id, saleChargeTotal(sale));
     if (message) throw new Error(message);
   }, [refreshPdv]);
 
@@ -1775,6 +1775,7 @@ fetchAllPages((from, to) => client
       try {
         const currentIdentity = requireIdentity();
         if (!sale.branch_id) throw new Error('Venda sem filial selecionada.');
+        if (!validSalePrice(sale.freight_fee ?? 0)) throw new Error('Informe um frete válido.');
         ensureEmployeeBranch(currentIdentity, sale.branch_id);
         const scope = currentIdentity.authUserId + ':' + currentIdentity.companyUserId;
         const attempts = new PdvSaleAttemptStore(sessionStorage, scope);
@@ -1800,7 +1801,7 @@ fetchAllPages((from, to) => client
               p_salesperson_id: operatorId ?? null, p_pin: operatorPin ?? null,
               p_commercial_salesperson_id: ns.salesperson_id,
               p_sale_id: ns.id, p_customer_id: ns.customer_id, p_customer_name: ns.customer_name,
-              p_items: ns.items, p_total: ns.total, p_imei: ns.imei, p_serial_number: ns.serial_number,
+              p_items: ns.items, p_total: ns.total, p_freight_fee: ns.freight_fee ?? 0, p_imei: ns.imei, p_serial_number: ns.serial_number,
               p_payment_method: ns.payment_method, p_branch_id: ns.branch_id, p_status: ns.status,
               p_origin: ns.origin, p_customer_type: ns.customer_type, p_delivery_type: ns.delivery_type,
             });
@@ -1865,7 +1866,7 @@ fetchAllPages((from, to) => client
           p_salesperson_id: operatorId ?? null, p_pin: operatorPin ?? null,
           p_commercial_salesperson_id: sale.salesperson_id, p_sale_id: sale.id,
           p_customer_id: sale.customer_id, p_customer_name: sale.customer_name,
-          p_items: items, p_total: total, p_imei: sale.imei, p_serial_number: sale.serial_number,
+          p_items: items, p_total: total, p_freight_fee: sale.freight_fee ?? 0, p_imei: sale.imei, p_serial_number: sale.serial_number,
           p_payment_method: sale.payment_method, p_branch_id: sale.branch_id, p_status: 'pre_venda',
           p_origin: sale.origin, p_customer_type: sale.customer_type, p_delivery_type: sale.delivery_type,
         });
@@ -1981,7 +1982,7 @@ fetchAllPages((from, to) => client
         const snapshot = await refreshPdv(sale.branch_id);
         const persisted = snapshot.sales.find(item => item.id === id);
         if (persisted?.status === 'concluida' && persisted.payment_method === paymentMethod) return;
-        const message = billedSaleError(snapshot.credits.find(c => c.customer_id === sale.customer_id), sale.customer_id, sale.total);
+        const message = billedSaleError(snapshot.credits.find(c => c.customer_id === sale.customer_id), sale.customer_id, saleChargeTotal(sale));
         if (message) throw new Error(message);
       }
 
@@ -2001,6 +2002,7 @@ fetchAllPages((from, to) => client
                 sale.customer_name ?? '',
               p_items: sale.items ?? [],
               p_total: sale.total ?? 0,
+              p_freight_fee: sale.freight_fee ?? 0,
               p_imei: sale.imei ?? null,
               p_serial_number:
                 sale.serial_number ?? null,
@@ -2074,6 +2076,7 @@ fetchAllPages((from, to) => client
                 sale.customer_name ?? '',
               p_items: sale.items ?? [],
               p_total: sale.total ?? 0,
+              p_freight_fee: sale.freight_fee ?? 0,
               p_imei: sale.imei ?? null,
               p_serial_number:
                 sale.serial_number ?? null,

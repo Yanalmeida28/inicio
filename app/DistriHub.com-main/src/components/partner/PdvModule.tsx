@@ -7,7 +7,7 @@ import type { DeliveryType, PartnerProduct, PartnerCustomer, PartnerSale, Partne
 import { SalePriceInput } from './SalePriceInput';
 import { PreSaleCheckout } from './PreSaleCheckout';
 import { money } from '../../utils';
-import { billedSaleError, pdvErrorMessage, pdvTotal, validSalePrice, type CustomerCredit } from '../../lib/pdv';
+import { billedSaleError, pdvErrorMessage, pdvTotal, saleChargeTotal, validSalePrice, type CustomerCredit } from '../../lib/pdv';
 import { SessionDraftProvider, useSessionDraftScope, useSessionDraftState } from '../../hooks/useSessionDraft';
 
 type PriceTable = 'varejo' | 'atacado';
@@ -245,6 +245,7 @@ type Props = {
     customer_name: string;
     items: { product_id: string; name: string; quantity: number; unit_price: number }[];
     total: number;
+    freight_fee?: number;
     customer_type: ClientType;
     delivery_type: DeliveryType;
     imei?: string;
@@ -258,6 +259,7 @@ type Props = {
     customer_name: string;
     items: { product_id: string; name: string; quantity: number; unit_price: number }[];
     total: number;
+    freight_fee?: number;
     customer_type: ClientType;
     delivery_type: DeliveryType;
     payment_method?: string | null;
@@ -426,7 +428,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
   segment: string;
   selectedBranchId: string | null;
   canCheckout: boolean;
-  onCreateSale: (sale: { customer_id: string | null; customer_name: string; items: SaleItem[]; total: number; customer_type: ClientType; delivery_type: DeliveryType; imei?: string; serial_number?: string; payment_method?: string; salesperson_id?: string | null; branch_id?: string | null }) => Promise<void>;
+  onCreateSale: (sale: { customer_id: string | null; customer_name: string; items: SaleItem[]; total: number; freight_fee?: number; customer_type: ClientType; delivery_type: DeliveryType; imei?: string; serial_number?: string; payment_method?: string; salesperson_id?: string | null; branch_id?: string | null }) => Promise<void>;
 }) {
   const [search, setSearch] = useSessionDraftState('checkout:product-search', '');
   const [visibleProductCount, setVisibleProductCount] = useState(PRODUCT_PAGE_SIZE);
@@ -453,6 +455,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
   const [clientType, setClientType] = useSessionDraftState<ClientType>('checkout:client-type', 'varejo');
   const [paymentMethod, setPaymentMethod] = useSessionDraftState('checkout:payment-method', 'pix');
   const [deliveryType, setDeliveryType] = useSessionDraftState<DeliveryType>('checkout:delivery-type', 'balcao');
+  const [freightFee, setFreightFee] = useSessionDraftState('checkout:freight-fee', 0);
   const [salespersonId, setSalespersonId] = useSessionDraftState('checkout:salesperson-id', '');
   const [completed, setCompleted] = useState(false);
   const [isCheckingOut, setIsCheckingOut] = useState(false);
@@ -517,11 +520,12 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
   }, [products, search, selectedBranchId]);
 
   const total = pdvTotal(cart);
+  const chargeTotal = saleChargeTotal({ total, freight_fee: freightFee });
   const selectedCustomer = customers.find((customer) => customer.id === customerId) ?? null;
   const credit = credits.find(item => item.customer_id === customerId);
   const customerOpenCredit = Number(credit?.used ?? 0);
   const customerCreditAvailable = Number(credit?.available ?? 0);
-  const billedSaleBlocked = paymentMethod === 'faturado' && Boolean(billedSaleError(credit, customerId || null, total));
+  const billedSaleBlocked = paymentMethod === 'faturado' && Boolean(billedSaleError(credit, customerId || null, chargeTotal));
 
   function showSelectionNotice(message: string) {
     setSelectionNotice(message);
@@ -585,8 +589,8 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
 
   async function handleCheckout() {
     if (cart.length === 0 || checkoutInFlight.current || hasPendingSale) return;
-    if (cart.some(item => !validSalePrice(item.unit_price))) {
-      setCheckoutError('Informe preços válidos com até duas casas decimais.');
+    if (!validSalePrice(freightFee) || cart.some(item => !validSalePrice(item.unit_price))) {
+      setCheckoutError('Informe preços e frete válidos com até duas casas decimais.');
       return;
     }
     if (!selectedBranchId) {
@@ -595,7 +599,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
     }
     const customer = customers.find((c) => c.id === customerId);
     if (paymentMethod === 'faturado') {
-      const message = billedSaleError(credit, customerId || null, total);
+      const message = billedSaleError(credit, customerId || null, chargeTotal);
       if (message) { setCheckoutError(message); return; }
     }
     const fallbackName = clientType === 'atacado' ? 'Cliente Atacado' : 'Cliente Varejo';
@@ -608,13 +612,14 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
         customer_name: customerName || customer?.name || fallbackName,
         items: cart,
         total,
+        freight_fee: freightFee,
         customer_type: clientType,
         delivery_type: deliveryType,
         payment_method: paymentMethod,
         salesperson_id: salespersonId || null,
         branch_id: selectedBranchId,
       });
-      setCart([]); setCustomerId(''); setCustomerName(''); setSalespersonId('');
+      setCart([]); setFreightFee(0); setCustomerId(''); setCustomerName(''); setSalespersonId('');
       setCompleted(true);
       setClientType('varejo');
       setPriceTable('varejo');
@@ -787,6 +792,9 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
                     <option value="retirada">Retirada</option>
                   </select>
                 </label>
+                <label title="Frete terceirizado recebido para repasse ao entregador; não compõe o faturamento.">Frete (R$)
+                  <input type="number" min="0" max="99999999.99" step="0.01" inputMode="decimal" aria-label="Frete terceirizado" aria-invalid={!validSalePrice(freightFee)} value={Number.isFinite(freightFee) ? freightFee : ''} onChange={event => setFreightFee(event.target.value === '' ? 0 : Number(event.target.value))} />
+                </label>
                 <div className="form-row">
                   <label>
                     Forma de Pagamento
@@ -816,7 +824,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
                   <span>Limite: {money.format(Number(credit?.credit_limit ?? 0))}</span>
                   <span>Utilizado: {money.format(customerOpenCredit)}</span>
                   <span>Disponível: {money.format(Math.max(0, customerCreditAvailable))}</span>
-                  <span>Esta venda: {money.format(total)}</span>
+                  <span>Esta venda: {money.format(chargeTotal)}</span>
                 </div>
               )}
 
@@ -826,7 +834,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
           <div className="pdv-sale-footer">
               <div className="pdv-total-bar">
                 <span>Total {priceTable === 'atacado' ? '(Atacado)' : '(Varejo)'}</span>
-                <strong>{money.format(total)}</strong>
+                <strong>{money.format(chargeTotal)}</strong>
               </div>
 
               {canCheckout ? (
@@ -866,7 +874,7 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
   segment: string;
   selectedBranchId: string | null;
   canCheckout: boolean;
-  onCreatePreSale: (sale: { customer_id: string | null; customer_name: string; items: SaleItem[]; total: number; customer_type: ClientType; delivery_type: DeliveryType; payment_method?: string | null; imei?: string; serial_number?: string; salesperson_id?: string | null; branch_id?: string | null }) => Promise<void>;
+  onCreatePreSale: (sale: { customer_id: string | null; customer_name: string; items: SaleItem[]; total: number; freight_fee?: number; customer_type: ClientType; delivery_type: DeliveryType; payment_method?: string | null; imei?: string; serial_number?: string; salesperson_id?: string | null; branch_id?: string | null }) => Promise<void>;
   canEditPrice: boolean;
   onFinalizePreSale: (id: string, paymentMethod: string) => Promise<void>;
   onCancelSale: (id: string, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
@@ -879,6 +887,7 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
   const [clientType, setClientType] = useSessionDraftState<ClientType>('presale:client-type', 'varejo');
   const [priceTable, setPriceTable] = useSessionDraftState<PriceTable>('presale:price-table', 'varejo');
   const [deliveryType, setDeliveryType] = useSessionDraftState<DeliveryType>('presale:delivery-type', 'balcao');
+  const [freightFee, setFreightFee] = useSessionDraftState('presale:freight-fee', 0);
   const [salespersonId, setSalespersonId] = useSessionDraftState('presale:salesperson-id', '');
   const [saved, setSaved] = useState(false);
   const [preSalePayment, setPreSalePayment] = useSessionDraftState('presale:payment-method', '');
@@ -940,6 +949,7 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
   }, [products, search, selectedBranchId]);
 
   const total = pdvTotal(cart);
+  const chargeTotal = saleChargeTotal({ total, freight_fee: freightFee });
 
   function addToCart(product: PartnerProduct) {
     const price = getPriceForProduct(product, priceTable);
@@ -966,8 +976,8 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
 
   async function handleSavePreSale() {
     if (cart.length === 0) return;
-    if (cart.some(item => !validSalePrice(item.unit_price))) {
-      setSaveError('Informe preços válidos com até duas casas decimais.');
+    if (!validSalePrice(freightFee) || cart.some(item => !validSalePrice(item.unit_price))) {
+      setSaveError('Informe preços e frete válidos com até duas casas decimais.');
       return;
     }
     if (!selectedBranchId) {
@@ -985,12 +995,13 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
         customer_name: customerName || customer?.name || fallbackName,
         items: cart,
         total,
+        freight_fee: freightFee,
         customer_type: clientType,
         delivery_type: deliveryType,
         salesperson_id: salespersonId || null,
         branch_id: selectedBranchId,
       });
-      setCart([]); setCustomerId(''); setCustomerName(''); setSalespersonId('');
+      setCart([]); setFreightFee(0); setCustomerId(''); setCustomerName(''); setSalespersonId('');
       setPreSalePayment('');
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
@@ -1183,9 +1194,13 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
 
               <div className="pdv-total-bar">
                 <span>Total {priceTable === 'atacado' ? '(Atacado)' : '(Varejo)'}</span>
-                <strong>{money.format(total)}</strong>
+                <strong>{money.format(chargeTotal)}</strong>
               </div>
 
+              <label>Frete terceirizado (R$)
+                  <input type="number" min="0" max="99999999.99" step="0.01" inputMode="decimal" aria-label="Frete terceirizado" aria-invalid={!validSalePrice(freightFee)} value={Number.isFinite(freightFee) ? freightFee : ''} onChange={event => setFreightFee(event.target.value === '' ? 0 : Number(event.target.value))} />
+                  <small>Recebido para repasse ao entregador. Não compõe o faturamento.</small>
+                </label>
               <label style={{ display: 'block', marginBottom: '12px' }}>Forma de pagamento prevista
                 <select value={preSalePayment} onChange={event => setPreSalePayment(event.target.value)} disabled={isSaving}>
                   <option value="">A definir</option><option value="pix">PIX</option>
@@ -1222,7 +1237,7 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
                   <tr key={s.id}>
                     <td><strong>{s.customer_name ?? '—'}</strong></td>
                     <td>{s.items.length} {s.items.length === 1 ? 'item' : 'itens'}</td>
-                    <td>{money.format(s.total)}</td>
+                    <td>{money.format(saleChargeTotal(s))}</td>
                     <td>{s.imei ?? s.serial_number ?? '—'}</td>
                     <td>
                       <span>{s.payment_method || 'A definir'}</span>
@@ -1263,7 +1278,7 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
               <button onClick={() => setFinalizeTarget(null)}><X size={18} /></button>
             </div>
             <p className="otp-description">
-              <strong>{finalizeTarget.customer_name ?? 'Cliente'}</strong> — {finalizeTarget.items.length} {finalizeTarget.items.length === 1 ? 'item' : 'itens'} — {money.format(finalizeTarget.total)}
+              <strong>{finalizeTarget.customer_name ?? 'Cliente'}</strong> — {finalizeTarget.items.length} {finalizeTarget.items.length === 1 ? 'item' : 'itens'} — {money.format(saleChargeTotal(finalizeTarget))}
             </p>
             <label style={{ display: 'block', marginBottom: '12px' }}>
               <strong>Forma de Pagamento</strong>

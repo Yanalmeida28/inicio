@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { pdvHelpers } from './fixtures/pdv_helpers.mjs';
 import { test } from 'node:test';
 import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
@@ -10,7 +11,7 @@ const require = createRequire(import.meta.url);
 const exports = {};
 vm.runInNewContext(ts.transpileModule(await readFile(new URL('../../src/components/partner/DeliveryModule.tsx', import.meta.url), 'utf8'), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2020 },
-}).outputText, { exports, Error, require: name => name === '../../utils' ? { money: new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }) } : require(name) });
+}).outputText, { exports, Error, require: name => name === '../../lib/pdv' ? pdvHelpers : name === '../../utils' ? { money: new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }) } : require(name) });
 const sales = ['one', 'two'].map(id => ({ id, customer_name: id, items: [], total: 100, delivery_type: 'entrega', status: 'concluida', branch_id: 'branch' }));
 
 test('cliques repetidos não duplicam gravação; entregas diferentes mantêm bloqueios independentes', async () => {

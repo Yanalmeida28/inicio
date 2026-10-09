@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { pdvHelpers } from './fixtures/pdv_helpers.mjs';
 import { test } from 'node:test';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
@@ -25,6 +26,7 @@ vm.runInNewContext(ts.transpileModule(source, { compilerOptions: {
     if (name === 'lucide-react') return new Proxy({}, { get: () => () => null });
     if (name === './SaleActionsMenu') return { SaleActionsMenu: Actions };
     if (name === '../../lib/saleReturns') return returnHelpers.exports;
+    if (name === '../../lib/pdv') return pdvHelpers;
     if (name === '../../utils') return { money: { format: value => String(value) } };
     if (name === '../../lib/salePrint') return { printSale: (...args) => printed.push(args) };
     return {};

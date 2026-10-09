@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { pdvHelpers } from './fixtures/pdv_helpers.mjs';
 import { test } from 'node:test';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
@@ -13,7 +14,7 @@ vm.runInNewContext(ts.transpileModule(await readFile(new URL('../../src/componen
   if(name==='react')return React;
   if(name==='react/jsx-runtime')return jsx;
   if(name==='../../utils')return {money:{format:String}};
-  if(name==='../../lib/pdv')return {pdvErrorMessage:error=>error.message};
+  if(name==='../../lib/pdv')return pdvHelpers;
   return {};
 }});
 const sale={id:'original-pre-sale',status:'pre_venda',branch_id:'branch',customer_name:'Cliente',payment_method:'dinheiro',items:[{product_id:'p',name:'Peça',quantity:2,unit_price:25}],total:50};

@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 import ts from '../../node_modules/typescript/lib/typescript.js';
 const modules = {};
-for (const name of ['accounts', 'financialFlow']) {
+for (const name of ['accounts', 'pdv', 'financialFlow']) {
   const exports = {};
   vm.runInNewContext(ts.transpileModule(await readFile(new URL(`../../src/lib/${name}.ts`, import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
@@ -12,6 +12,14 @@ for (const name of ['accounts', 'financialFlow']) {
   modules[name] = exports;
 }
 const { actualFinancialFlow, projectedFinancialFlow, localDate } = modules.financialFlow;
+
+test('cash flow shows the full receipt including freight without changing merchandise revenue', () => {
+  const sale={id:'s',status:'concluida',total:100,freight_fee:15,payment_method:'pix',created_at:'2026-10-09',customer_name:'Cliente'};
+  const rows=actualFinancialFlow([sale],[],[],[],[],[]);
+  assert.equal(rows[0].amount,115);
+  assert.match(rows[0].description,/frete para repasse/);
+  assert.equal(sale.total,100);
+});
 
 test('faturamento não conta como entrada; recebimentos parciais entram uma vez por baixa', () => {
   const sales = [{ id: 's', status: 'concluida', total: 100, payment_method: 'faturado', created_at: '2026-09-01', customer_name: 'Cliente' }];

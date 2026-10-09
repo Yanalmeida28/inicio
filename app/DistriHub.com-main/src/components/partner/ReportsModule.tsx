@@ -398,6 +398,7 @@ function FinancialReport({ sales, allSales, products }: { sales: PartnerSale[]; 
   ];
 
   const totalRevenue = sales.reduce((s, x) => s + x.total, 0);
+  const freightTotal = sales.reduce((sum, sale) => sum + (sale.freight_fee ?? 0), 0);
   const costOfGoodsSold = getCostOfGoodsSold(sales, products);
   const grossProfit = totalRevenue - costOfGoodsSold;
   const financialRows: CsvValue[][] = [
@@ -413,6 +414,7 @@ function FinancialReport({ sales, allSales, products }: { sales: PartnerSale[]; 
     ['Receita bruta do período selecionado', totalRevenue.toFixed(2), ''],
     ['Custo dos produtos vendidos (CMV)', costOfGoodsSold.toFixed(2), ''],
     ['Lucro bruto estimado', grossProfit.toFixed(2), ''],
+    ['Fretes terceirizados (fora do faturamento)', freightTotal.toFixed(2), ''],
   ];
 
   return (
@@ -441,6 +443,7 @@ function FinancialReport({ sales, allSales, products }: { sales: PartnerSale[]; 
       </div>
 
       <h4 className="report-section-title">Visão Anual (12 meses)</h4>
+      <p>Fretes terceirizados no período: <strong>{money.format(freightTotal)}</strong>. Valor para repasse, excluído da receita e das comissões.</p>
       <div className="bar-chart">
         {monthlyData.map((m, i) => (
           <div key={i} className="bar-col">

@@ -380,7 +380,7 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
 .pdv-checkout-layout .pdv-right > .pdv-cart-header { display: none; }
 .pdv-checkout-layout .pdv-sale-scroll { flex: 1 1 0; min-width: 0; padding: 0; }
 .partner-panel .pdv-checkout-layout .pdv-form {
-  display: flex; flex-direction: row; flex-wrap: nowrap; align-items: flex-end; gap: 8px;
+  display: flex; flex-direction: row; flex-wrap: wrap; align-items: flex-end; gap: 8px;
 }
 .pdv-checkout-layout .pdv-form > label { flex: 1 1 110px; min-width: 100px; }
 .pdv-checkout-layout .pdv-form > .form-row { display: contents; }

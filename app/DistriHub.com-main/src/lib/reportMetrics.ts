@@ -110,7 +110,7 @@ export function buildSalesCsv(sales: PartnerSale[]): string {
     return `"${text.replace(/"/g, '""')}"`;
   };
   const rows = [
-    ['ID da venda', 'Data', 'Cliente', 'Status', 'Pagamento', 'Total'],
+    ['ID da venda', 'Data', 'Cliente', 'Status', 'Pagamento', 'Total (produtos/serviços)', 'Frete terceirizado', 'Total cobrado'],
     ...sales.map((sale) => [
       sale.id,
       sale.created_at,
@@ -118,6 +118,8 @@ export function buildSalesCsv(sales: PartnerSale[]): string {
       sale.status,
       sale.payment_method ?? 'Outros',
       Number(sale.total).toFixed(2),
+      Number(sale.freight_fee ?? 0).toFixed(2),
+      ((Math.round(Number(sale.total) * 100) + Math.round(Number(sale.freight_fee ?? 0) * 100)) / 100).toFixed(2),
     ]),
   ];
   return `\uFEFF${rows.map((row) => row.map(cell).join(';')).join('\r\n')}`;

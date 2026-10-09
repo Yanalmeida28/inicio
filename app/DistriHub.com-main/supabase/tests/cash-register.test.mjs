@@ -48,8 +48,59 @@ before(async () => {
   await db.exec(await read('../migrations/20261005211357_allow_owner_manager_sale_prices.sql'));
   await db.exec('ALTER TABLE partner_customers ADD COLUMN name text');
   await db.exec(await read('../migrations/20261007211956_change_open_order_customer.sql'));
+  await db.exec(await read('../migrations/20261009184720_add_third_party_freight.sql'));
 });
 after(() => db.close());
+
+async function freightSale(extra = {}) {
+  const r = { id: randomUUID(), fee: 15, method: 'dinheiro', status: 'concluida', customer: null, ...extra };
+  await sql('SELECT execute_partner_sale_mutation(NULL,NULL,$1,$2,$3,$4::jsonb,100,NULL,NULL,$5,$6,$7,$8,$9,$10,NULL,$11)',
+    [r.id,r.customer,'Cliente',JSON.stringify([{product_id:product,name:'Produto',quantity:1,unit_price:100}]),r.method,branch,r.status,'pdv','varejo','entrega',r.fee]);
+  return r;
+}
+
+test('third-party freight enters cash once while merchandise revenue remains separate; cancellation reverses full charge', async () => {
+  const session = await mutate('abrir', 0);
+  const r = await freightSale();
+  await freightSale(r);
+  const saved = (await sql('SELECT total,freight_fee FROM partner_sales WHERE id=$1',[r.id])).rows[0];
+  assert.equal(Number(saved.total),100);
+  assert.equal(Number(saved.freight_fee),15);
+  const movements = (await sql("SELECT amount FROM partner_cash_movements WHERE sale_id=$1 AND kind='venda'",[r.id])).rows;
+  assert.equal(movements.length,1);
+  assert.equal(Number(movements[0].amount),115);
+  await assert.rejects(freightSale({...r,fee:16}), /dados diferentes/);
+  await freightSale({...r,status:'cancelada'});
+  assert.equal((await sql('SELECT partner_cash_private.totals($1) AS totals',[session])).rows[0].totals.dinheiro,0);
+});
+
+test('billed freight consumes customer credit and the invoice includes the full charge', async () => {
+  await mutate('abrir',0);
+  const customer=randomUUID();
+  await sql("INSERT INTO partner_customers(id,user_id,branch_id,allow_credit,credit_limit) VALUES($1,$2,$3,true,110)",[customer,owner,branch]);
+  await assert.rejects(freightSale({customer,method:'faturado'}), /Credito insuficiente/);
+  assert.equal((await sql('SELECT count(*)::int AS n FROM partner_sales')).rows[0].n,0);
+  await sql('UPDATE partner_customers SET credit_limit=115 WHERE id=$1',[customer]);
+  const r=await freightSale({customer,method:'faturado'});
+  assert.equal(Number((await sql('SELECT amount FROM partner_invoices WHERE sale_id=$1',[r.id])).rows[0].amount),115);
+  assert.equal(Number((await sql('SELECT total FROM partner_sales WHERE id=$1',[r.id])).rows[0].total),100);
+});
+
+test('pre-sale preserves freight when finalized by a legacy caller; freight cannot change at checkout', async () => {
+  const r=await freightSale({status:'pre_venda'});
+  assert.equal((await sql('SELECT count(*)::int AS n FROM partner_cash_movements')).rows[0].n,0);
+  await mutate('abrir',0);
+  await assert.rejects(freightSale({...r,status:'concluida',fee:20}), /alterar o frete/);
+  await freightSale({...r,status:'concluida',fee:null});
+  assert.equal(Number((await sql('SELECT amount FROM partner_cash_movements WHERE sale_id=$1',[r.id])).rows[0].amount),115);
+});
+
+test('invalid freight is rejected atomically without stock or cash writes', async () => {
+  await mutate('abrir',0);
+  for (const fee of [-1, 0.001, 'NaN', 100000000]) await assert.rejects(freightSale({fee}), /Frete invalido/);
+  assert.equal((await sql('SELECT stock FROM partner_products WHERE id=$1',[product])).rows[0].stock,10);
+  assert.equal((await sql('SELECT count(*)::int AS n FROM partner_cash_movements')).rows[0].n,0);
+});
 beforeEach(async () => {
   await db.exec('RESET ROLE; TRUNCATE partner_plan_change_requests,fiscal_documents,fiscal_tax_rules,fiscal_inutilizations,partner_cash_movements,partner_cash_sessions,partner_audit_logs,stock_movements,partner_invoices,partner_sales,partner_products,partner_customers,partner_salespeople,partner_branches,partner_profiles CASCADE; TRUNCATE auth.users CASCADE');
   [owner,other,branch,foreignBranch,employee,employeeAuth,manager,product]=Array.from({length:8},()=>randomUUID());

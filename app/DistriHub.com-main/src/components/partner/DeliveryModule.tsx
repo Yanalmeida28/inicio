@@ -4,6 +4,7 @@ import {
 } from 'lucide-react';
 import type { DeliveryStatus, PartnerSale, PartnerSalesperson } from '../../types';
 import { money } from '../../utils';
+import { saleChargeTotal } from '../../lib/pdv';
 
 type Props = {
   sales: PartnerSale[];
@@ -35,7 +36,7 @@ export function DeliveryModule({ sales, salespeople, selectedBranchId, onUpdateD
           customerName: sale.customer_name ?? 'Cliente',
           address: '',
           items: Array.isArray(sale.items) ? sale.items.length : 0,
-          total: sale.total,
+          total: saleChargeTotal(sale),
           status: sale.delivery_status ?? 'pendente',
           driverId: sale.delivery_driver_id ?? null,
         };
