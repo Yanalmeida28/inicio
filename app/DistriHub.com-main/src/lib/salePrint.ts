@@ -22,6 +22,7 @@ export function printSale(sale: PrintableSale, format: 'receipt' | 'label', deta
     h1 { font-size: 16px; text-align: center; }
     p { margin: 7px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
     article { padding: 3mm 0; border-bottom: 1px dashed black; break-inside: avoid; }
+    hr { border: 0; border-top: 1px dashed black; margin: 3mm 0 0; }
     .label { width: 52mm; min-height: 30mm; padding: 2mm; border: 1px solid black; margin: 2mm auto; }
     button { display: block; margin: 16px auto; padding: 10px; }
     @media print { button { display: none; } }
@@ -29,16 +30,17 @@ export function printSale(sale: PrintableSale, format: 'receipt' | 'label', deta
   doc.head.append(style);
   const main = doc.createElement('main');
   doc.body.append(main);
-  function line(parent: HTMLElement, text: string, heading = false) {
+  function line(parent: HTMLElement, text: string, heading = false, bold = false) {
     const element = doc.createElement(heading ? 'h1' : 'p');
     element.textContent = text;
+    if (bold) element.style.fontWeight = '700';
     parent.append(element);
   }
   const date = new Date(sale.created_at).toLocaleString('pt-BR');
   const reference = sale.id ? `Venda: ${sale.id}` : `Venda: ${date}`;
   function identification(parent: HTMLElement) {
     line(parent, reference);
-    line(parent, `Cliente: ${sale.customer_name || 'Consumidor'}`);
+    line(parent, `Cliente: ${sale.customer_name || 'Consumidor'}`, false, format === 'receipt');
     if (sale.imei) line(parent, `IMEI / Selo: ${sale.imei}`);
     if (sale.serial_number) line(parent, `Nº de série: ${sale.serial_number}`);
   }
@@ -62,11 +64,12 @@ export function printSale(sale: PrintableSale, format: 'receipt' | 'label', deta
     const phones = [...new Set([customer?.phone, customer?.phone_commercial_1, customer?.phone_commercial_2].map((value) => value?.trim()).filter(Boolean))].join(' / ');
     const address = [customer?.address, customer?.address_number, customer?.complement, customer?.neighborhood].map((value) => value?.trim()).filter(Boolean).join(', ');
     const city = [customer?.city, customer?.state].map((value) => value?.trim()).filter(Boolean).join(' / ');
-    line(main, `Telefone: ${phones || 'Não informado'}`);
-    line(main, `Endereço: ${address || 'Não informado'}`);
-    line(main, `Cidade: ${city || 'Não informada'}`);
-    if (customer?.zip_code) line(main, `CEP: ${customer.zip_code}`);
+    line(main, `Telefone: ${phones || 'Não informado'}`, false, true);
+    line(main, `Endereço: ${address || 'Não informado'}`, false, true);
+    line(main, `Cidade: ${city || 'Não informada'}`, false, true);
+    if (customer?.zip_code) line(main, `CEP: ${customer.zip_code}`, false, true);
     if (sale.id) line(main, `Data: ${date}`);
+    main.append(doc.createElement('hr'));
     for (const item of sale.items) {
       const row = doc.createElement('article');
       line(row, item.name);

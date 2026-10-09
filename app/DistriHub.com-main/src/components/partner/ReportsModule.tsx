@@ -73,8 +73,6 @@ const roleLabels: Record<SalespersonRole, string> = {
   logistica: 'Logística / Entregador',
 };
 
-const operationalRoles: SalespersonRole[] = ['vendedor', 'tecnico', 'caixa', 'atendente'];
-
 export function ReportsModule({ sales, products, customers, salespeople, movements = [], initialTab = 'vendas' }: Props) {
   const [tab, setTab] = useState<ReportTab>(initialTab);
   const [range, setRange] = useState<SalesRange>('30d');
@@ -177,11 +175,6 @@ function SalesReport({ sales, products, salespeople }: { sales: PartnerSale[]; p
     [sales, products],
   );
 
-  const operationalSalespeople = useMemo(
-    () => salespeople.filter((sp) => operationalRoles.includes(sp.role)),
-    [salespeople],
-  );
-
   const bySalesperson = useMemo(() => {
     const map: Record<string, number> = {};
     for (const sale of sales) {
@@ -206,9 +199,25 @@ function SalesReport({ sales, products, salespeople }: { sales: PartnerSale[]; p
   }, [sales, salespeople]);
 
   const salespeopleWithSales = useMemo(
-    () => operationalSalespeople.filter((sp) => (bySalesperson[sp.id] ?? 0) > 0 || (commissionBySalesperson[sp.id] ?? 0) > 0),
-    [operationalSalespeople, bySalesperson, commissionBySalesperson],
+    () => salespeople.filter((sp) => Object.prototype.hasOwnProperty.call(bySalesperson, sp.id)),
+    [salespeople, bySalesperson],
   );
+
+  const unmatchedSales = useMemo(() => {
+    const knownIds = new Set(salespeople.map((sp) => sp.id));
+    const groups = new Map<string, { name: string; total: number }>();
+    for (const sale of sales) {
+      if (sale.salesperson_id && knownIds.has(sale.salesperson_id)) continue;
+      const key = sale.salesperson_id || 'unassigned';
+      const group = groups.get(key) ?? {
+        name: sale.salesperson_id ? `Colaborador não encontrado (${sale.salesperson_id})` : 'Sem colaborador vinculado',
+        total: 0,
+      };
+      group.total += sale.total;
+      groups.set(key, group);
+    }
+    return Array.from(groups, ([id, group]) => ({ id, ...group }));
+  }, [sales, salespeople]);
 
   const top5Products = useMemo(() => {
     const map: Record<string, { qty: number; revenue: number }> = {};
@@ -265,12 +274,12 @@ function SalesReport({ sales, products, salespeople }: { sales: PartnerSale[]; p
         </div>
       </div>
 
-      <h4 className="report-section-title"><UserCheck size={16} /> Vendas por Vendedor</h4>
+      <h4 className="report-section-title"><UserCheck size={16} /> Vendas por Colaborador</h4>
       <div className="stock-table-wrap">
         <table className="rma-table">
           <thead><tr><th>Colaborador</th><th>Função</th><th>Total Vendido</th><th>Comissão</th></tr></thead>
           <tbody>
-            {salespeopleWithSales.length === 0 ? (
+            {salespeopleWithSales.length === 0 && unmatchedSales.length === 0 ? (
               <tr><td colSpan={4} className="empty-row">Nenhum colaborador com vendas registradas.</td></tr>
             ) : (
               salespeopleWithSales.map((sp) => (
@@ -282,6 +291,14 @@ function SalesReport({ sales, products, salespeople }: { sales: PartnerSale[]; p
                 </tr>
               ))
             )}
+            {unmatchedSales.map((group) => (
+              <tr key={group.id}>
+                <td><strong>{group.name}</strong></td>
+                <td>Não informada</td>
+                <td>{money.format(group.total)}</td>
+                <td>—</td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
