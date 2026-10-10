@@ -328,14 +328,23 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
 .pdv-traceability summary { cursor: pointer; font-size: 12px; padding: 6px 0; }
 .pdv-traceability .form-row { margin-top: 6px; }
 /* Checkout follows the presale layout: products beside the current sale. */
-.partner-panel .pdv-layout.pdv-checkout-layout { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 12px; }
+.partner-panel .pdv-layout.pdv-checkout-layout,
+.partner-panel .pdv-layout.pdv-presale-layout { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); align-items: start; gap: 12px; }
 .pdv-checkout-layout .pdv-left, .pdv-checkout-layout .pdv-right { min-width: 0; min-height: 0; }
 .pdv-checkout-layout .pdv-left { gap: 10px; }
 .partner-panel .pdv-checkout-layout .pdv-right { display: flex; flex-direction: column; gap: 10px; padding: 12px; }
 .pdv-checkout-layout .pdv-product-search-results { position: static; max-height: min(65vh, 640px); overflow-y: auto; }
 .pdv-checkout-layout .pdv-search-bar input { min-width: 0; }
-.partner-panel .pdv-checkout-layout .pdv-product-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
-.partner-panel .pdv-checkout-layout .pdv-product-card { padding: 10px !important; }
+.partner-panel .pdv-checkout-layout .pdv-product-grid,
+.partner-panel .pdv-presale-layout .pdv-product-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.partner-panel .pdv-checkout-layout .pdv-product-card,
+.partner-panel .pdv-presale-layout .pdv-product-card { min-width: 0; padding: 8px !important; }
+.partner-panel .pdv-checkout-layout .pdv-product-card strong,
+.partner-panel .pdv-presale-layout .pdv-product-card strong { font-size: 12px; overflow-wrap: anywhere; }
+.partner-panel .pdv-checkout-layout .pdv-product-card span,
+.partner-panel .pdv-presale-layout .pdv-product-card span { font-size: 13px; }
+.partner-panel .pdv-checkout-layout .pdv-product-card small,
+.partner-panel .pdv-presale-layout .pdv-product-card small { overflow-wrap: anywhere; }
 .pdv-checkout-layout .pdv-product-card strong { overflow-wrap: anywhere; }
 .pdv-checkout-layout .pdv-cart-main { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .pdv-checkout-layout .pdv-cart-table-wrap { max-height: 240px; overflow: auto; }
@@ -358,7 +367,10 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
 .partner-panel .pdv-workspace { gap: 10px; }
 .partner-panel .pdv-workspace > .pdv-subtabs { margin-bottom: 0; }
 @media (max-width: 1000px) {
-  .partner-panel .pdv-layout.pdv-checkout-layout { grid-template-columns: minmax(0, 1fr); }
+  .partner-panel .pdv-layout.pdv-checkout-layout,
+  .partner-panel .pdv-layout.pdv-presale-layout { grid-template-columns: minmax(0, 1fr); }
+  .partner-panel .pdv-checkout-layout .pdv-product-grid,
+  .partner-panel .pdv-presale-layout .pdv-product-grid { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); }
 }
 .pdv-layout { display: grid; grid-template-columns: 1fr 380px; gap: 18px; }
 .pdv-left { display: flex; flex-direction: column; gap: 14px; }
@@ -2300,7 +2312,6 @@ html, body {
   gap: 8px;
   padding: 3px;
 }
-.partner-panel .pdv-presale-layout .pdv-product-card { padding: 10px !important; }
 .pdv-presale-layout .pdv-product-card strong { overflow-wrap: anywhere; }
 .partner-panel .pdv-presale-layout .pdv-right { gap: 10px; padding: 12px !important; }
 .pdv-presale-layout .pdv-cart-items { max-height: 180px; gap: 4px; }
