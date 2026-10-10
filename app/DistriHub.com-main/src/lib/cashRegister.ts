@@ -75,6 +75,22 @@ export function cashAmount(value: string): number {
   return amount;
 }
 
+const businessDayFormat = new Intl.DateTimeFormat('sv-SE', {
+  timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit',
+});
+
+export function cashBusinessDay(value: string | Date): string {
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? '' : businessDayFormat.format(date);
+}
+
+export function cashDaySalesTotal(movements: CashMovement[], sessions: CashSession[], branchId: string, actorKey: string, day: string): number {
+  const sessionIds = new Set(sessions.filter(session => session.branch_id === branchId && session.actor_key === actorKey).map(session => session.id));
+  return movements.filter(movement => sessionIds.has(movement.session_id) && cashBusinessDay(movement.created_at) === day &&
+    ['venda', 'estorno', 'devolucao'].includes(movement.kind) && ['dinheiro', 'pix', 'cartao', 'faturado'].includes(movement.payment_method))
+    .reduce((sum, movement) => sum + (movement.kind === 'venda' ? 1 : -1) * Math.round(Number(movement.amount) * 100), 0) / 100;
+}
+
 export function printCashReport(session: CashSession, movements: CashMovement[], branchName: string) {
   const popup = window.open('', '_blank', 'width=600,height=750');
   if (!popup) throw new Error('Permita pop-ups para imprimir o relatório.');

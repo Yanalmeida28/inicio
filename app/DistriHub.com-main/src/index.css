@@ -2271,10 +2271,15 @@ html, body {
 .cash-fields { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin: 12px 0; }
 .cash-fields label { display: grid; gap: 6px; flex: 1 1 180px; }
 .cash-module input, .cash-module select { width: 100%; min-width: 0; padding: 10px; border-radius: 8px; }
-.cash-summary { display: grid; grid-template-columns: repeat(auto-fit,minmax(160px,1fr)); gap: 12px; margin: 16px 0; }
-.cash-summary > div { padding: 12px; border: 1px solid rgba(127,151,169,.25); border-radius: 8px; }
+.cash-summary { display: grid; grid-template-columns: repeat(auto-fit,minmax(130px,1fr)); gap: 8px; margin: 16px 0; }
+.cash-summary > div { min-width: 0; padding: 10px; border: 1px solid rgba(127,151,169,.25); border-radius: 8px; }
 .cash-summary small, .cash-summary strong { display: block; }
-.cash-summary strong { margin-top: 6px; font-size: 20px; }
+.cash-summary strong { margin-top: 5px; font-size: 18px; overflow-wrap: anywhere; }
+.partner-panel .cash-summary .cash-day-total { background: #12382d; border-color: #278957; }
+.partner-panel .cash-summary .cash-day-total strong { color: #fff; }
+.partner-panel .cash-summary .cash-day-total small { color: #bbf7d0; }
+.cash-day-total strong + small { margin-top: 5px; font-size: 10px; }
+@media (max-width: 420px) { .cash-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
 /* Keep pre-sales compact even with a large catalog or many pending orders. */
 .partner-panel .open-orders-table-wrap { overflow: visible; }
