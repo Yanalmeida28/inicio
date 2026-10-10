@@ -2552,3 +2552,18 @@ body, .app-shell { background: #091724; color: #edf5fc; }
 .admin-panel .rma-advance-btn:hover:not(:disabled) { background: #204c70; }
 .personalization-panel-preview, .personalization-catalog-preview { color: #edf5fc; background: #091724; }
 .personalization-preview-card { background: #102638; }
+.product-profit-preview { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.product-profit-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.product-profit-card { padding: 14px; border: 1px solid #29465f; border-top: 3px solid #3193e5; border-radius: 10px; background: #102638; min-width: 0; }
+.product-profit-card h5 { margin: 0 0 12px; color: #a8daff; font-size: 14px; }
+.product-profit-card dl { margin: 0; display: flex; flex-direction: column; gap: 10px; }
+.product-profit-card dl > div { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.product-profit-card dt { color: #b8ccdc; font-size: 12px; }
+.product-profit-card dd { margin: 0; text-align: right; color: #edf5fc; font-weight: 700; font-size: 13px; }
+.product-profit-card .product-profit-total { padding-top: 10px; border-top: 1px solid #29465f; }
+.product-profit-card .product-profit-total dd { color: #4ade80; font-size: 17px; }
+.product-profit-card small { display: block; margin-top: 10px; }
+.product-profit-preview > p { margin: 0; font-size: 12px; color: #b8ccdc; line-height: 1.5; }
+.product-profit-card.is-loss { border-top-color: #fda4af; }
+.product-profit-card.is-loss .product-profit-total dd, .product-profit-card .product-profit-loss { color: #fda4af; }
+@media (max-width: 600px) { .product-profit-grid { grid-template-columns: minmax(0, 1fr); } }

@@ -14,6 +14,7 @@ import type {
   PersonType, RmaRequest,
 } from '../../types';
 import { formatCnpj, formatCpf, isValidCnpj, isValidCpf, money, normalizeDocument } from '../../utils';
+import { ProductProfitPreview } from './ProductProfitPreview';
 import { ImportExportModule, ExportButtons } from './ImportExportModule';
 import { saleReturnLabel, saleItemDescription } from '../../lib/saleReturns';
 
@@ -328,16 +329,7 @@ function ProductsSubTab({ defaultIsService = false, isActive = true, products, a
   const [savingEdit, setSavingEdit] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
 
-  function getGainPercentage(price: string) {
-    if (!cost.trim() || !price.trim()) return null;
-    const costValue = Number(cost);
-    const priceValue = Number(price);
-    if (!Number.isFinite(costValue) || !Number.isFinite(priceValue) || costValue <= 0 || priceValue <= 0) return null;
-    return ((priceValue - costValue) / costValue) * 100;
-  }
 
-  const retailGain = getGainPercentage(sale);
-  const wholesaleGain = getGainPercentage(wholesale);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -431,7 +423,7 @@ function ProductsSubTab({ defaultIsService = false, isActive = true, products, a
           </div>
           </section>
           <section className="product-form-section">
-            <h4>Preços e ganho</h4>
+            <h4>Preços e rentabilidade</h4>
           <div className="form-row product-form-row">
             <label>
               Preço de Custo
@@ -446,11 +438,7 @@ function ProductsSubTab({ defaultIsService = false, isActive = true, products, a
               <input type="number" step="0.01" value={wholesale} onChange={(e) => setWholesale(e.target.value)} placeholder="0,00" />
             </label>
           </div>
-          <div className="product-gain-preview" aria-live="polite">
-            <span>Ganho no varejo: <strong className={retailGain !== null && retailGain < 0 ? 'is-loss' : ''}>{retailGain === null ? 'Informe custo e preço' : `${retailGain.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`}</strong></span>
-            <span>Ganho no atacado: <strong className={wholesaleGain !== null && wholesaleGain < 0 ? 'is-loss' : ''}>{wholesaleGain === null ? 'Informe custo e preço' : `${wholesaleGain.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`}</strong></span>
-            <small>Percentual calculado sobre o preço de custo.</small>
-          </div>
+          <ProductProfitPreview cost={cost} retail={sale} wholesale={wholesale} />
           </section>
           <section className="product-form-section">
             <h4>Estoque e categoria</h4>
@@ -688,15 +676,7 @@ function ProductEditModal({ product, categories, suppliers, onAddSupplier, savin
   const [pisRate, setPisRate] = useState(String(product.pis_rate ?? 0));
   const [cofinsRate, setCofinsRate] = useState(String(product.cofins_rate ?? 0));
 
-  function getGainPercentage(price: string) {
-    const costValue = Number(cost);
-    const priceValue = Number(price);
-    if (!cost.trim() || !price.trim() || !Number.isFinite(costValue) || !Number.isFinite(priceValue) || costValue <= 0 || priceValue <= 0) return null;
-    return ((priceValue - costValue) / costValue) * 100;
-  }
 
-  const retailGain = getGainPercentage(sale);
-  const wholesaleGain = getGainPercentage(wholesale);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -717,13 +697,9 @@ function ProductEditModal({ product, categories, suppliers, onAddSupplier, savin
         <div className="modal-header"><h4>Editar produto</h4><button type="button" className="modal-close" onClick={onClose} aria-label="Fechar">×</button></div>
         <div className="product-edit-body">
           <div className="form-row"><label>Nome<input value={name} onChange={(e) => setName(e.target.value)} required /></label><label>SKU<input value={sku} onChange={(e) => setSku(e.target.value)} /></label></div>
-          <h4>Preços e ganho</h4>
+          <h4>Preços e rentabilidade</h4>
           <div className="form-row"><label>Preço de custo<input type="number" min="0" step="0.01" value={cost} onChange={(e) => setCost(e.target.value)} /></label><label>Preço varejo<input type="number" min="0" step="0.01" value={sale} onChange={(e) => setSale(e.target.value)} required /></label><label>Preço atacado<input type="number" min="0" step="0.01" value={wholesale} onChange={(e) => setWholesale(e.target.value)} /></label></div>
-          <div className="product-gain-preview" aria-live="polite">
-            <span>Ganho no varejo: <strong className={retailGain !== null && retailGain < 0 ? 'is-loss' : ''}>{retailGain === null ? 'Informe custo e preço' : `${retailGain.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`}</strong></span>
-            <span>Ganho no atacado: <strong className={wholesaleGain !== null && wholesaleGain < 0 ? 'is-loss' : ''}>{wholesaleGain === null ? 'Informe custo e preço' : `${wholesaleGain.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`}</strong></span>
-            <small>Percentual calculado sobre o preço de custo.</small>
-          </div>
+          <ProductProfitPreview cost={cost} retail={sale} wholesale={wholesale} />
           <div className="form-row"><label>Estoque<input type="number" min="0" step="1" value={stock} onChange={(e) => setStock(e.target.value)} /></label><label>Estoque mínimo<input type="number" min="0" step="1" value={minStock} onChange={(e) => setMinStock(e.target.value)} /></label><label>Categoria<select value={category} onChange={(e) => setCategory(e.target.value)}><option value="">Selecione...</option>{categories.map((item) => <option key={item.id} value={item.name}>{item.name}</option>)}</select></label></div>
           <SupplierField suppliers={suppliers} value={supplierId} onChange={setSupplierId} onAdd={onAddSupplier} disabled={saving} onBusyChange={setSupplierSaving} />
           <label className="checkbox-label"><input type="checkbox" checked={isService} onChange={(e) => setIsService(e.target.checked)} /> É um serviço (sem estoque)</label>

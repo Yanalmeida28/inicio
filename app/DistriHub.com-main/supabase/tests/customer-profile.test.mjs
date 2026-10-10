@@ -15,6 +15,7 @@ vm.runInNewContext(ts.transpileModule(source+'\nexports.CustomerProfile=Customer
   if(name==='../../utils')return {money:new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}),formatCpf:v=>v??'',formatCnpj:v=>v??'',normalizeDocument:v=>v??''};
   if(name==='../../hooks/useSessionDraft')return { useSessionDraftState: (_key, initial) => React.useState(initial) };
   if(name==='./ImportExportModule')return {ExportButtons:()=>null};
+  if(name==='./ProductProfitPreview')return {ProductProfitPreview:()=>null};
   if(name==='../../lib/saleReturns')return {};
   return require(name);
 }});
