@@ -30,16 +30,16 @@ type Props = {
 const cashierRoles: SalespersonRole[] = ['administrador', 'gerente', 'caixa', 'vendedor'];
 
 const statusLabels: Record<string, { label: string; color: string }> = {
-  aberta: { label: 'ABERTO', color: '#e6a06d' },
-  pre_venda: { label: 'ABERTO', color: '#e6a06d' },
-  concluida: { label: 'CONCLUÍDO', color: '#5bbc87' },
-  cancelada: { label: 'CANCELADO', color: '#e3829b' },
+  aberta: { label: 'ABERTO', color: '#7bc8ff' },
+  pre_venda: { label: 'ABERTO', color: '#7bc8ff' },
+  concluida: { label: 'CONCLUÍDO', color: '#4ade80' },
+  cancelada: { label: 'CANCELADO', color: '#fda4af' },
 };
 
 const payStatusLabels: Record<string, { label: string; color: string }> = {
-  pago: { label: 'Pago', color: '#5bbc87' },
-  pendente: { label: 'Pendente', color: '#e6a06d' },
-  cancelado: { label: 'Cancelado', color: '#e3829b' },
+  pago: { label: 'Pago', color: '#4ade80' },
+  pendente: { label: 'Pendente', color: '#fbbf24' },
+  cancelado: { label: 'Cancelado', color: '#fda4af' },
 };
 
 export function OpenOrdersModule({ canEditPrice, products, onUpdateItems, onUpdateCustomer, sales, customers, salespeople, currentRole, receiptDetails, onFinalizePreSale, onCancelSale, onDeleteSale, onPullToPdv }: Props) {
@@ -372,11 +372,11 @@ export function OpenOrdersModule({ canEditPrice, products, onUpdateItems, onUpda
                     <td data-label="Cliente">
                       <strong>{s.customer_name ?? '—'}</strong>
                       <small className="open-order-secondary">{s.items.length} {s.items.length === 1 ? 'item' : 'itens'}</small>
-                      <span className="rma-status-badge" style={{ color: st.color, borderColor: st.color }}>{st.label}</span>
+                      <span className="rma-status-badge" style={{ color: st.color, borderColor: st.color, backgroundColor: `${st.color}18` }}>{st.label}</span>
                     </td>
                     <td data-label="Pagamento">
                       <small className="open-order-secondary">{s.payment_method ?? 'A definir'}</small>
-                      <span className="rma-status-badge" style={{ color: pst.color, borderColor: pst.color }}>{pst.label}</span>
+                      <span className="rma-status-badge" style={{ color: pst.color, borderColor: pst.color, backgroundColor: `${pst.color}18` }}>{pst.label}</span>
                       {s.online_payment && <small className="open-order-secondary">Pagamento online</small>}
                     </td>
                     <td data-label="Total"><strong>{money.format(saleChargeTotal(s))}</strong>{s.freight_fee ? <small>Frete: {money.format(s.freight_fee)}</small> : null}</td>

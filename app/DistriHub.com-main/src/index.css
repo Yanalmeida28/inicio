@@ -2274,6 +2274,14 @@ html, body {
 
 /* Keep pre-sales compact even with a large catalog or many pending orders. */
 .partner-panel .open-orders-table-wrap { overflow: visible; }
+.partner-panel .open-orders-table-wrap .rma-status-badge { background: #102638; font-weight: 700; }
+.partner-panel .open-orders-table-wrap .orders-table td { color: #edf5fc; }
+.partner-panel .open-orders-table-wrap .open-order-secondary { color: #b8ccdc; }
+.partner-panel .open-orders-table-wrap .order-origin-badge { color: #a8daff; background: #173b58; }
+.sale-actions-menu button:hover, .sale-actions-menu button:focus-visible { background: #173b58; }
+.sale-actions-menu button svg { color: #4ade80; }
+.sale-actions-menu button.sale-actions-danger { color: #fda4af; background: #351c2e; }
+.sale-actions-menu button.sale-actions-danger svg { color: #fda4af; }
 .partner-panel .open-orders-table-wrap .orders-table { width: 100%; min-width: 0; table-layout: fixed; }
 .partner-panel .open-orders-table-wrap th,
 .partner-panel .open-orders-table-wrap td { padding: 10px; white-space: normal; overflow-wrap: anywhere; }
