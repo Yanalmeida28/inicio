@@ -2601,6 +2601,25 @@ body, .app-shell { background: #091724; color: #edf5fc; }
 
 /* Mobile usability: preserve desktop layouts and keep scroll inside tables and lists. */
 .sidebar-mobile-close { display: none; }
+.service-orders-module, .service-orders-module label, .service-order-fields > *, .service-order-parts-layout > * { min-width: 0; }
+.service-order-item-field { display: grid; gap: 4px; min-width: 0; font-size: 11px; color: var(--dh-text-secondary); }
+.service-order-item-row > span, .service-order-list-row > span { min-width: 0; overflow-wrap: anywhere; }
+@media screen and (max-width: 900px) {
+  .partner-panel .service-orders-module { padding: 8px 0 !important; width: 100%; }
+  .partner-panel .service-order-form, .partner-panel .service-order-list { padding: 14px !important; }
+  .partner-panel .service-order-section { padding: 12px !important; }
+  .partner-panel .service-order-form-header { align-items: flex-start !important; gap: 8px; }
+  .partner-panel .service-order-form-header > div { min-width: 0; }
+  .partner-panel .service-order-form-header > button { flex-shrink: 0; min-width: 44px; }
+  .partner-panel .service-order-section > div:first-child { flex-wrap: wrap; }
+  .partner-panel .service-order-fields, .partner-panel .service-order-parts-layout { grid-template-columns: minmax(0, 1fr) !important; gap: 12px !important; }
+  .partner-panel .service-order-item-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important; padding: 10px; border: 1px solid var(--dh-border); border-radius: 8px; }
+  .partner-panel .service-order-item-row > span { grid-column: 1 / -1; }
+  .partner-panel .service-order-item-row > button { grid-column: 2; justify-self: end; min-width: 44px; }
+  .partner-panel .service-order-list-row { gap: 8px; flex-wrap: wrap; padding: 12px 0 !important; }
+  .partner-panel .service-order-list-row > span { flex: 1 1 180px; }
+  .partner-panel .service-order-list-row > b { flex-shrink: 0; }
+}
 @media screen and (max-width: 620px) {
   .partner-panel .cadastros-scope .customer-list-wrap { min-width: 0; border: 0; background: transparent; overflow: visible !important; }
   .partner-panel .cadastros-scope .customer-list-table { display: block; min-width: 0; width: 100%; table-layout: auto; }

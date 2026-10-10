@@ -520,6 +520,7 @@ export function ServiceOrdersModule({
 
   return (
     <section
+      className="service-orders-module"
       style={{
         padding: 24,
         maxWidth: 1280,
@@ -589,13 +590,14 @@ export function ServiceOrdersModule({
 
       {open && (
         <div
-          className="partner-card"
+          className="partner-card service-order-form"
           style={{
             padding: 22,
             marginBottom: 24,
           }}
         >
           <div
+            className="service-order-form-header"
             style={{
               display: 'flex',
               justifyContent: 'space-between',
@@ -624,6 +626,7 @@ export function ServiceOrdersModule({
           </div>
 
           <div
+            className="service-order-fields"
             style={{
               display: 'grid',
               gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))',
@@ -679,13 +682,14 @@ export function ServiceOrdersModule({
             </label>
           </div>
 
-          <div style={{ marginTop: 24, padding: 18, borderRadius: 14, backgroundColor: '#102638', border: '1px solid #29465f' }}>
+          <div className="service-order-section" style={{ marginTop: 24, padding: 18, borderRadius: 14, backgroundColor: '#102638', border: '1px solid #29465f' }}>
             <h3 style={{ margin: '0 0 16px', display: 'flex', alignItems: 'center', gap: 8, color: '#edf5fc' }}>
               <ClipboardList size={18} />
               Laudo e Vistoria de Entrada
             </h3>
 
             <div
+              className="service-order-fields"
               style={{
                 display: 'grid',
                 gridTemplateColumns: 'repeat(auto-fit,minmax(280px,1fr))',
@@ -738,7 +742,7 @@ export function ServiceOrdersModule({
             </div>
           </div>
 
-          <div style={{ marginTop: 18, padding: 18, borderRadius: 14, backgroundColor: '#102638', border: '1px solid #29465f' }}>
+          <div className="service-order-section" style={{ marginTop: 18, padding: 18, borderRadius: 14, backgroundColor: '#102638', border: '1px solid #29465f' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
               <div>
                 <h3 style={{ margin: 0, color: '#edf5fc' }}>Checklist pré-reparo</h3>
@@ -748,7 +752,7 @@ export function ServiceOrdersModule({
                 {checklistComplete ? 'Completo' : 'Obrigatório'}
               </span>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))', gap: 10, marginTop: 14 }}>
+            <div className="service-order-fields" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))', gap: 10, marginTop: 14 }}>
               {([['screen', 'Tela acende'], ['touch', 'Touch responde'], ['camera', 'Câmera frontal']] as const).map(([key, label]) => (
                 <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 11, border: '1px solid #29465f', borderRadius: 9, color: '#edf5fc', fontSize: 13, cursor: 'pointer' }}>
                   <input type="checkbox" checked={preRepairChecklist[key]} onChange={(event) => setPreRepairChecklist((current) => ({ ...current, [key]: event.target.checked }))} />
@@ -774,6 +778,7 @@ export function ServiceOrdersModule({
               </div>
             )}
             <div
+              className="service-order-fields"
               style={{
                 display: 'grid',
                 gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
@@ -782,6 +787,7 @@ export function ServiceOrdersModule({
             >
               {saveError && <div className="branch-action-error" role="alert" style={{ marginBottom: 14 }}>{saveError}</div>}
               <div
+                className="service-order-section"
                 style={{
                   padding: 18,
                   borderRadius: 14,
@@ -863,6 +869,7 @@ export function ServiceOrdersModule({
               </div>
 
               <div
+                className="service-order-section"
                 style={{
                   padding: 18,
                   borderRadius: 14,
@@ -952,6 +959,7 @@ export function ServiceOrdersModule({
             </h3>
 
             <div
+              className="service-order-parts-layout"
               style={{
                 display: 'grid',
                 gridTemplateColumns:
@@ -1024,6 +1032,7 @@ export function ServiceOrdersModule({
                   items.map((item) => (
                     <div
                       key={item.product_id}
+                      className="service-order-item-row"
                       style={{
                         display: 'grid',
                         gridTemplateColumns:
@@ -1048,7 +1057,8 @@ export function ServiceOrdersModule({
                         </small>
                       </span>
 
-                      <input
+                      <label className="service-order-item-field"><span>Quantidade</span><input
+                        aria-label={`Quantidade de ${item.name}`}
                         type="number"
                         min={1}
                         max={item.is_service ? undefined : item.stock}
@@ -1074,9 +1084,10 @@ export function ServiceOrdersModule({
                           );
                         }}
                         style={{ ...inputDarkStyle }}
-                      />
+                      /></label>
 
-                      <input
+                      <label className="service-order-item-field"><span>Preço unitário</span><input
+                        aria-label={`Preço unitário de ${item.name}`}
                         type="number"
                         min={0}
                         step="0.01"
@@ -1096,10 +1107,11 @@ export function ServiceOrdersModule({
                           );
                         }}
                         style={{ ...inputDarkStyle }}
-                      />
+                      /></label>
 
                       <button
                         className="partner-icon-btn"
+                        aria-label={`Remover ${item.name}`}
                         onClick={() =>
                           removeProduct(
                             item.product_id
@@ -1170,7 +1182,7 @@ export function ServiceOrdersModule({
       )}
 
       <div
-        className="partner-card"
+        className="partner-card service-order-list"
         style={{
           padding: 18,
         }}
@@ -1203,6 +1215,7 @@ export function ServiceOrdersModule({
           filteredOrders.map((order) => (
             <div
               key={order.id}
+              className="service-order-list-row"
               style={{
                 padding: 14,
                 borderTop:
