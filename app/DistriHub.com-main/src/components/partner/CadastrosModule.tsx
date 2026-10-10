@@ -815,7 +815,7 @@ function CategoriesSubTab({ categories, products, onAdd, onDelete }: {
   onDelete: (id: string) => Promise<void>;
 }) {
   const [name, setName] = useSessionDraftState('categories:name', '');
-  const [selectedCategoryId, setSelectedCategoryId] = useSessionDraftState<string | null>('categories:selected-id', null);
+  const [selectedCategoryId, setSelectedCategoryId] = useSessionDraftState<string | null>('categories:selected-id', null, undefined, value => value === null || typeof value === 'string');
   const selectedCategory = categories.find((category) => category.id === selectedCategoryId) ?? null;
   const categoryProducts = selectedCategory
     ? products.filter((product) => product.category === selectedCategory.name)
@@ -1186,12 +1186,15 @@ function CustomersSubTab({ isActive = true, customers, branches, sales, rmaReque
   onDelete: (id: string) => Promise<void>;
 }) {
   const [showForm, setShowForm] = useSessionDraftState('customers:show-form', false);
-  const [editingCustomerId, setEditingCustomerId] = useSessionDraftState<string | null>('customers:editing-id', null);
+  const [editingCustomerId, setEditingCustomerId] = useSessionDraftState<string | null>('customers:editing-id', null, undefined, value => value === null || typeof value === 'string');
   const [name, setName] = useSessionDraftState('customers:name', '');
   const [customerBranchId, setCustomerBranchId] = useSessionDraftState('customers:branch-id', '');
   const [branchError, setBranchError] = useState<string | null>(null);
-  const existingBranchId = editingCustomerId ? customers.find(customer => customer.id === editingCustomerId)?.branch_id : null;
-  const targetBranchId = existingBranchId || selectedBranchId || customerBranchId || (branches.length === 1 ? branches[0].id : '');
+  const editingCustomer = editingCustomerId ? customers.find(customer => customer.id === editingCustomerId) : null;
+  const existingBranchId = editingCustomer?.branch_id;
+  const isSharedCustomer = Boolean(editingCustomer && !existingBranchId);
+  const validDraftBranchId = branches.some(branch => branch.id === customerBranchId) ? customerBranchId : '';
+  const targetBranchId = existingBranchId || selectedBranchId || validDraftBranchId || (branches.length === 1 ? branches[0].id : '');
   const [document, setDocument] = useSessionDraftState('customers:document', '');
   const [personType, setPersonType] = useSessionDraftState<PersonType | ''>('customers:person-type', 'PF');
   const [phone, setPhone] = useSessionDraftState('customers:phone', '');
@@ -1244,7 +1247,7 @@ function CustomersSubTab({ isActive = true, customers, branches, sales, rmaReque
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) return;
-    if (!targetBranchId) {
+    if (!targetBranchId && !isSharedCustomer) {
       setBranchError(branches.length ? 'Selecione a filial do cliente no campo abaixo para salvar.' : 'Cadastre uma filial em Configurações antes de salvar o cliente.');
       return;
     }
@@ -1291,10 +1294,10 @@ function CustomersSubTab({ isActive = true, customers, branches, sales, rmaReque
       device_model: device || null,
       notes: notes || null,
       customer_type: customerType,
-      branch_id: targetBranchId,
+      branch_id: isSharedCustomer ? null : targetBranchId,
     };
 
-    if (!payload.branch_id) {
+    if (!payload.branch_id && !isSharedCustomer) {
       window.alert('Não foi possível localizar a filial atual do cliente. Selecione uma filial antes de salvar.');
       return;
     }
@@ -1388,13 +1391,13 @@ function CustomersSubTab({ isActive = true, customers, branches, sales, rmaReque
       />
       {showForm && (
         <form className="rma-form" onSubmit={handleSubmit}>
-          <label>Filial do cliente
+          {isSharedCustomer ? <p>Cliente compartilhado entre filiais. O vínculo será preservado ao salvar.</p> : <label>Filial do cliente
             <select aria-label="Filial do cliente" value={targetBranchId} disabled={Boolean(existingBranchId || selectedBranchId)}
               onChange={event => { setCustomerBranchId(event.target.value); setBranchError(null); }}>
               <option value="">Selecione uma filial</option>
               {branches.map(branch => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
             </select>
-          </label>
+          </label>}
           {branchError && <p className="otp-error-msg" role="alert">{branchError}</p>}
           <div className="form-row">
             <label>
@@ -1745,7 +1748,7 @@ function SuppliersSubTab({ suppliers, onAdd, onUpdate, onDelete }: {
   const [name, setName] = useSessionDraftState('suppliers:name', '');
   const [phone, setPhone] = useSessionDraftState('suppliers:phone', '');
   const [notes, setNotes] = useSessionDraftState('suppliers:notes', '');
-  const [editingId, setEditingId] = useSessionDraftState<string | null>('suppliers:editing-id', null);
+  const [editingId, setEditingId] = useSessionDraftState<string | null>('suppliers:editing-id', null, undefined, value => value === null || typeof value === 'string');
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -1873,7 +1876,7 @@ function SalespeopleSubTab({
   const [role, setRole] = useSessionDraftState<SalespersonRole>('salespeople:role', 'vendedor');
   const [branchId, setBranchId] = useSessionDraftState('salespeople:branch-id', '');
 
-  const [editingId, setEditingId] = useSessionDraftState<string | null>('salespeople:editing-id', null);
+  const [editingId, setEditingId] = useSessionDraftState<string | null>('salespeople:editing-id', null, undefined, value => value === null || typeof value === 'string');
   const [editName, setEditName] = useSessionDraftState('salespeople:edit-name', '');
   const [editEmail, setEditEmail] = useSessionDraftState('salespeople:edit-email', '');
   const [editRate, setEditRate] = useSessionDraftState('salespeople:edit-rate', '');

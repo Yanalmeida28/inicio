@@ -8,19 +8,20 @@ import TestRenderer, { act } from 'react-test-renderer';
 import ts from '../../node_modules/typescript/lib/typescript.js';
 const require=createRequire(import.meta.url);
 const exports={};
+const draftInitialValues=new Map();
 const source=await readFile(new URL('../../src/components/partner/CadastrosModule.tsx',import.meta.url),'utf8');
 vm.runInNewContext(ts.transpileModule(source+'\nexports.CustomerProfile=CustomerProfileModal; exports.Customers=CustomersSubTab;',{
   compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,target:ts.ScriptTarget.ES2020},
 }).outputText,{exports,Error,window:{alert(){}},require(name){
   if(name==='../../utils')return {money:new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}),formatCpf:v=>v??'',formatCnpj:v=>v??'',normalizeDocument:v=>v??''};
-  if(name==='../../hooks/useSessionDraft')return { useSessionDraftState: (_key, initial) => React.useState(initial) };
+  if(name==='../../hooks/useSessionDraft')return { useSessionDraftState: (key, initial) => React.useState(draftInitialValues.has(key)?draftInitialValues.get(key):initial) };
   if(name==='./ImportExportModule')return {ExportButtons:()=>null};
   if(name==='./ProductProfitPreview')return {ProductProfitPreview:()=>null};
   if(name==='../../lib/saleReturns')return {};
   return require(name);
 }});
 let renderer;
-afterEach(async()=>{if(renderer)await act(async()=>renderer.unmount());renderer=null;});
+afterEach(async()=>{if(renderer)await act(async()=>renderer.unmount());renderer=null;draftInitialValues.clear();});
 const customer={id:'customer',name:'Cliente',user_id:'owner',branch_id:null,person_type:'PF',customer_type:'varejo',credit_limit:0,allow_credit:false};
 async function open(onUpdate,onClose=()=>{}){
   await act(async()=>{renderer=TestRenderer.create(React.createElement(exports.CustomerProfile,{customer,sales:[],salespeople:[],rmaRequests:[],onUpdate,onClose}));});
@@ -92,4 +93,18 @@ test('sem filial cadastrada não envia cliente e mostra onde cadastrar uma filia
   await saveCustomer();assert.equal(calls,0);
   assert.match(renderer.root.findByProps({role:'alert'}).children.join(''),/Configurações/);
   assert.equal(renderer.root.findAllByType('form').length,1);
+});
+
+test('edição restaurada de cliente compartilhado salva sem filial e não cria outro cliente',async()=>{
+  draftInitialValues.set('customers:show-form',true);
+  draftInitialValues.set('customers:editing-id','customer');
+  draftInitialValues.set('customers:name','Cliente atualizado');
+  let saved;
+  await act(async()=>{renderer=TestRenderer.create(React.createElement(exports.Customers,{
+    branches:[{id:'a',name:'Centro'},{id:'b',name:'Norte'}],selectedBranchId:'',customers:[customer],sales:[],salespeople:[],rmaRequests:[],
+    onAdd:async()=>assert.fail('Não deve criar outro cliente'),onUpdate:async(id,payload)=>{saved={id,...payload};},onDelete:async()=>{},onLoadCustomer:async()=>customer,
+  }));});
+  await saveCustomer();
+  assert.equal(saved.id,'customer');assert.equal(saved.branch_id,null);assert.equal(saved.name,'Cliente atualizado');
+  assert.equal(renderer.root.findAllByType('form').length,0);
 });

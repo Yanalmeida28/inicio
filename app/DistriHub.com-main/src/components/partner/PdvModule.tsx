@@ -461,7 +461,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
   const [paymentMethod, setPaymentMethod] = useSessionDraftState('checkout:payment-method', 'pix');
   const [paymentDraft, setPaymentDraft] = useSessionDraftState('checkout:split-payments', { ...emptySplitPaymentDraft });
   const [deliveryType, setDeliveryType] = useSessionDraftState<DeliveryType>('checkout:delivery-type', 'balcao');
-  const [freightFee, setFreightFee] = useSessionDraftState<number | string>('checkout:freight-fee', 0);
+  const [freightFee, setFreightFee] = useSessionDraftState<number | string>('checkout:freight-fee', 0, undefined, value => typeof value === 'string' || (typeof value === 'number' && Number.isFinite(value)));
   const freightAmount = freightFee === '' ? 0 : Number(freightFee);
   const [salespersonId, setSalespersonId] = useSessionDraftState('checkout:salesperson-id', '');
   const [completed, setCompleted] = useState(false);
@@ -929,7 +929,7 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
   const [clientType, setClientType] = useSessionDraftState<ClientType>('presale:client-type', 'varejo');
   const [priceTable, setPriceTable] = useSessionDraftState<PriceTable>('presale:price-table', 'varejo');
   const [deliveryType, setDeliveryType] = useSessionDraftState<DeliveryType>('presale:delivery-type', 'balcao');
-  const [freightFee, setFreightFee] = useSessionDraftState<number | string>('presale:freight-fee', 0);
+  const [freightFee, setFreightFee] = useSessionDraftState<number | string>('presale:freight-fee', 0, undefined, value => typeof value === 'string' || (typeof value === 'number' && Number.isFinite(value)));
   const freightAmount = freightFee === '' ? 0 : Number(freightFee);
   const [salespersonId, setSalespersonId] = useSessionDraftState('presale:salesperson-id', '');
   const [saved, setSaved] = useState(false);
