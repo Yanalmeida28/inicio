@@ -777,52 +777,63 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
 
             <>
               <div className="pdv-form">
-                <label>
-                  Tabela de preços
-                  <select aria-label="Tabela de preços da venda" value={clientType} onChange={event => handleClientTypeChange(event.target.value as ClientType)}>
-                    <option value="varejo">Varejo</option>
-                    <option value="atacado">Atacado</option>
-                  </select>
-                </label>
-                <CustomerSearchPicker
-                  key={`sale-${clientType}`}
-                  id="pdv-customer-search"
-                  customers={customers}
-                  customerId={customerId}
-                  clientType={clientType}
-                  onSelect={handleCustomerChange}
-                />
-                <label>
-                  Tipo de atendimento
-                  <select aria-label="Tipo de atendimento da venda" value={deliveryType} onChange={event => setDeliveryType(event.target.value as DeliveryType)}>
-                    <option value="balcao">Balcão</option>
-                    <option value="entrega">Entrega</option>
-                    <option value="retirada">Retirada</option>
-                  </select>
-                </label>
-                <label title="Frete terceirizado recebido para repasse ao entregador; não compõe o faturamento.">Frete (R$)
-                  <input type="number" min="0" max="99999999.99" step="0.01" inputMode="decimal" aria-label="Frete terceirizado" aria-invalid={!validSalePrice(freightAmount)} value={freightFee} onChange={event => setFreightFee(event.target.value)} />
-                </label>
-                <div className="form-row">
+                <div className="pdv-form-section">
+                  <span className="pdv-form-section-label">Cliente</span>
                   <label>
-                    Forma de Pagamento
-                    <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} disabled={!canCheckout}>
-                      <option value="pix">PIX</option>
-                      <option value="cartao">Cartão</option>
-                      <option value="dinheiro">Dinheiro</option>
-                      <option value="faturado">Faturado B2B</option>
-                      <option value="misto">Dividido (dinheiro / PIX / cartão)</option>
+                    Tabela de preços
+                    <select aria-label="Tabela de preços da venda" value={clientType} onChange={event => handleClientTypeChange(event.target.value as ClientType)}>
+                      <option value="varejo">Varejo</option>
+                      <option value="atacado">Atacado</option>
                     </select>
                   </label>
-                  {!activeSalespersonId && (
-                    <SalespersonSearchPicker
-                      id="pdv-salesperson-search"
-                      salespeople={salespeople}
-                      salespersonId={salespersonId}
-                      onSelect={setSalespersonId}
-                    />
+                  <CustomerSearchPicker
+                    key={`sale-${clientType}`}
+                    id="pdv-customer-search"
+                    customers={customers}
+                    customerId={customerId}
+                    clientType={clientType}
+                    onSelect={handleCustomerChange}
+                  />
+                </div>
+                <div className="pdv-form-section">
+                  <span className="pdv-form-section-label">Pagamento</span>
+                  <div className="form-row">
+                    <label>
+                      Forma de Pagamento
+                      <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} disabled={!canCheckout}>
+                        <option value="pix">PIX</option>
+                        <option value="cartao">Cartão</option>
+                        <option value="dinheiro">Dinheiro</option>
+                        <option value="faturado">Faturado B2B</option>
+                        <option value="misto">Dividido (dinheiro / PIX / cartão)</option>
+                      </select>
+                    </label>
+                    {!activeSalespersonId && (
+                      <SalespersonSearchPicker
+                        id="pdv-salesperson-search"
+                        salespeople={salespeople}
+                        salespersonId={salespersonId}
+                        onSelect={setSalespersonId}
+                      />
+                    )}
+                </div>
+                <div className="pdv-form-section">
+                  <span className="pdv-form-section-label">Entrega</span>
+                  <label>
+                    Tipo de atendimento
+                    <select aria-label="Tipo de atendimento da venda" value={deliveryType} onChange={event => setDeliveryType(event.target.value as DeliveryType)}>
+                      <option value="balcao">Balcão</option>
+                      <option value="entrega">Entrega</option>
+                      <option value="retirada">Retirada</option>
+                    </select>
+                  </label>
+                  {deliveryType === 'entrega' && (
+                    <label title="Frete terceirizado recebido para repasse ao entregador; não compõe o faturamento.">Frete (R$)
+                      <input type="number" min="0" max="99999999.99" step="0.01" inputMode="decimal" aria-label="Frete terceirizado" aria-invalid={!validSalePrice(freightAmount)} value={freightFee} onChange={event => setFreightFee(event.target.value)} />
+                    </label>
                   )}
                 </div>
+              </div>
               </div>
               {paymentMethod === 'misto' && <SplitPaymentFields total={chargeTotal} value={paymentDraft} onChange={setPaymentDraft} disabled={isCheckingOut || !canCheckout} />}
               {paymentMethod === 'faturado' && selectedCustomer && !credit && (
@@ -1156,56 +1167,77 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
           {cart.length > 0 && (
             <>
               <div className="pdv-form">
-                <label>
-                  Tabela de preços
-                  <div className="pdv-client-type-toggle">
-                    <button
-                      type="button"
-                      className={`price-toggle-btn ${clientType === 'varejo' ? 'active' : ''}`}
-                      onClick={() => handleClientTypeChange('varejo')}
-                    >
-                      <Tag size={15} /> Varejo
-                    </button>
-                    <button
-                      type="button"
-                      className={`price-toggle-btn ${clientType === 'atacado' ? 'active' : ''}`}
-                      onClick={() => handleClientTypeChange('atacado')}
-                    >
-                      <Tag size={15} /> Atacado
-                    </button>
-                  </div>
-                </label>
-                <CustomerSearchPicker
-                  key={`pre-sale-${clientType}`}
-                  id="presale-customer-search"
-                  customers={customers}
-                  customerId={customerId}
-                  clientType={clientType}
-                  onSelect={handleCustomerChange}
-                />
-                {!activeSalespersonId && (
-                  <SalespersonSearchPicker
-                    id="presale-salesperson-search"
-                    salespeople={salespeople}
-                    salespersonId={salespersonId}
-                    onSelect={setSalespersonId}
-                  />
-                )}
-                <label>
-                  Tipo de atendimento
-                  <div className="pdv-client-type-toggle">
-                    {(['balcao', 'entrega', 'retirada'] as DeliveryType[]).map((type) => (
+                <div className="pdv-form-section">
+                  <span className="pdv-form-section-label">Cliente</span>
+                  <label>
+                    Tabela de preços
+                    <div className="pdv-client-type-toggle">
                       <button
-                        key={type}
                         type="button"
-                        className={`price-toggle-btn ${deliveryType === type ? 'active' : ''}`}
-                        onClick={() => setDeliveryType(type)}
+                        className={`price-toggle-btn ${clientType === 'varejo' ? 'active' : ''}`}
+                        onClick={() => handleClientTypeChange('varejo')}
                       >
-                        {type === 'balcao' ? 'Balcão' : type === 'entrega' ? 'Entrega' : 'Retirada'}
+                        <Tag size={15} /> Varejo
                       </button>
-                    ))}
-                  </div>
-                </label>
+                      <button
+                        type="button"
+                        className={`price-toggle-btn ${clientType === 'atacado' ? 'active' : ''}`}
+                        onClick={() => handleClientTypeChange('atacado')}
+                      >
+                        <Tag size={15} /> Atacado
+                      </button>
+                    </div>
+                  </label>
+                  <CustomerSearchPicker
+                    key={`pre-sale-${clientType}`}
+                    id="presale-customer-search"
+                    customers={customers}
+                    customerId={customerId}
+                    clientType={clientType}
+                    onSelect={handleCustomerChange}
+                  />
+                </div>
+                <div className="pdv-form-section">
+                  <span className="pdv-form-section-label">Pagamento</span>
+                  <label style={{ display: 'block', marginBottom: '12px' }}>Forma de pagamento prevista
+                    <select value={preSalePayment} onChange={event => setPreSalePayment(event.target.value)} disabled={isSaving}>
+                      <option value="">A definir</option><option value="pix">PIX</option>
+                      <option value="dinheiro">Dinheiro</option><option value="cartao">Cartão</option><option value="faturado">Faturado</option>
+                    </select>
+                  </label>
+                  {!activeSalespersonId && (
+                    <SalespersonSearchPicker
+                      id="presale-salesperson-search"
+                      salespeople={salespeople}
+                      salespersonId={salespersonId}
+                      onSelect={setSalespersonId}
+                    />
+                  )}
+                </div>
+                <div className="pdv-form-section">
+                  <span className="pdv-form-section-label">Entrega</span>
+                  <label>
+                    Tipo de atendimento
+                    <div className="pdv-client-type-toggle">
+                      {(['balcao', 'entrega', 'retirada'] as DeliveryType[]).map((type) => (
+                        <button
+                          key={type}
+                          type="button"
+                          className={`price-toggle-btn ${deliveryType === type ? 'active' : ''}`}
+                          onClick={() => setDeliveryType(type)}
+                        >
+                          {type === 'balcao' ? 'Balcão' : type === 'entrega' ? 'Entrega' : 'Retirada'}
+                        </button>
+                      ))}
+                    </div>
+                  </label>
+                  {deliveryType === 'entrega' && (
+                    <label>Frete terceirizado (R$)
+                        <input type="number" min="0" max="99999999.99" step="0.01" inputMode="decimal" aria-label="Frete terceirizado" aria-invalid={!validSalePrice(freightAmount)} value={freightFee} onChange={event => setFreightFee(event.target.value)} />
+                        <small>Recebido para repasse ao entregador. Não compõe o faturamento.</small>
+                      </label>
+                  )}
+                </div>
               </div>
 
               <div className="pdv-total-bar">
@@ -1213,16 +1245,6 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
                 <strong>{money.format(chargeTotal)}</strong>
               </div>
 
-              <label>Frete terceirizado (R$)
-                  <input type="number" min="0" max="99999999.99" step="0.01" inputMode="decimal" aria-label="Frete terceirizado" aria-invalid={!validSalePrice(freightAmount)} value={freightFee} onChange={event => setFreightFee(event.target.value)} />
-                  <small>Recebido para repasse ao entregador. Não compõe o faturamento.</small>
-                </label>
-              <label style={{ display: 'block', marginBottom: '12px' }}>Forma de pagamento prevista
-                <select value={preSalePayment} onChange={event => setPreSalePayment(event.target.value)} disabled={isSaving}>
-                  <option value="">A definir</option><option value="pix">PIX</option>
-                  <option value="dinheiro">Dinheiro</option><option value="cartao">Cartão</option><option value="faturado">Faturado</option>
-                </select>
-              </label>
               <p className="otp-description">O pagamento será confirmado ao finalizar a pré-venda no caixa.</p>
               <button className="module-submit-btn pdv-checkout-btn" onClick={handleSavePreSale} disabled={isSaving}>
                 {saved ? <><Check size={18} /> Pré-Venda Salva!</> : <><ClipboardList size={18} /> {isSaving ? 'Salvando...' : 'Salvar Pré-Venda'}</>}
