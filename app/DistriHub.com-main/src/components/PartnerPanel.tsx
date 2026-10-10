@@ -2266,10 +2266,11 @@ export function PartnerPanel({
               <div hidden={activeTab !== 'financeiro'}>
               {renderTab('financeiro',
               <FinancialModule
+                rmaRequests={filteredRmaRequests}
+                onApplyCredit={partner.applyRmaCredit}
                 invoices={
                   filteredInvoices
                 }
-                walletBalance={0}
                 creditLimit={
                   filteredCustomers.reduce(
                     (
@@ -2318,6 +2319,7 @@ export function PartnerPanel({
               <div hidden={activeTab !== 'rma'}>
               {renderTab('rma',
               <RmaModule
+                onGrantCredit={partner.grantRmaCredit}
                 rmaRequests={
                   filteredRmaRequests
                 }
@@ -2330,7 +2332,6 @@ export function PartnerPanel({
                 sales={
                   filteredSales
                 }
-                walletBalance={0}
                 warrantyTerms={
                   storeSettings.warranty_terms ??
                   ''

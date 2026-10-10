@@ -450,6 +450,7 @@ fetchAllPages((from, to) => client
         serviceOrdersResult,
         serviceOrderItemsResult,
         serviceOrderPhotosResult,
+        rmaCreditApplicationsResult,
       ] = await Promise.all([
         fetchAllPages((from, to) => client
           .from('partner_suppliers')
@@ -534,11 +535,17 @@ fetchAllPages((from, to) => client
           .eq('user_id', companyUserId)
           .order('created_at')
           .order('id').range(from, to)),
+        fetchAllPages((from, to) => client
+          .from('partner_rma_credit_applications')
+          .select('id,rma_id,amount')
+          .eq('user_id', companyUserId)
+          .order('id').range(from, to)),
       ]);
 
       // Diagnóstico técnico de falhas secundárias — sem PIN, tokens
       // ou dados de linhas; apenas nome da consulta e mensagem de erro.
       const secondaryResults = [
+        ['partner_rma_credit_applications', rmaCreditApplicationsResult],
         ['partner_suppliers', suppliersResult],
         ['partner_categories', categoriesResult],
         ['partner_stock_movements', movementsResult],
@@ -628,7 +635,13 @@ fetchAllPages((from, to) => client
         settings:
           (settingsResult.data as StoreSettings | null) ?? null,
         rmas: filterBranch(
-          rmasResult.data as RmaRequest[] | null,
+          ((rmasResult.data as RmaRequest[] | null) ?? []).map(rma => ({
+            ...rma,
+            credit_used_amount: rmaCreditApplicationsResult.error ? null :
+              ((rmaCreditApplicationsResult.data as { rma_id: string; amount: number }[] | null) ?? [])
+                .filter(application => application.rma_id === rma.id)
+                .reduce((sum, application) => sum + Math.round(Number(application.amount) * 100), 0) / 100,
+          })),
         ),
         combos:
           (combosResult.data as PartnerCombo[] | null) ?? [],
@@ -670,10 +683,14 @@ fetchAllPages((from, to) => client
           service_order_items: 'serviceOrderItems', service_order_photos: 'serviceOrderPhotos',
         } as const;
         for (const [table, result] of secondaryResults) {
+          if (table === 'partner_rma_credit_applications') continue;
           if (result.error) {
             const key = secondaryCollections[table];
             Object.assign(snapshot, { [key]: previous[key] });
           }
+        }
+        if (rmaCreditApplicationsResult.error) {
+          snapshot.rmas = snapshot.rmas.map(rma => ({ ...rma, credit_used_amount: null }));
         }
         return snapshot;
       });
@@ -1716,12 +1733,16 @@ fetchAllPages((from, to) => client
         }[table] as 'sales' | 'products' | 'invoices' | 'movements' | 'orders' | 'rmas';
         if (payload.eventType !== 'DELETE' && (payload.new.user_id !== companyId || (branchId && payload.new.branch_id !== branchId))) return;
         if (payload.eventType === 'DELETE' && !dataSnapshotRef.current[key].some(row => row.id === payload.old.id && row.user_id === companyId && (!branchId || row.branch_id === branchId))) return;
+        const returnCreditChanged = (table === 'partner_invoices' && payload.eventType !== 'DELETE' &&
+          Number(payload.new.return_credit_amount ?? 0) !== Number(dataSnapshotRef.current.invoices.find(invoice => invoice.id === payload.new.id)?.return_credit_amount ?? 0)) ||
+          (table === 'rma_requests_v2' && Number(payload.new.credit_amount ?? 0) > 0);
         dataRevisionRef.current.invalidate([key]);
         setData(previous => {
           const rows = previous[key] as Array<PartnerSale | PartnerProduct | PartnerInvoice | StockMovement | B2BOrder | RmaRequest>;
           return { ...previous, [key]: mergePartnerChange(rows, payload.eventType, payload.new, payload.old.id, companyId, branchId, key === 'sales') };
         });
         setLastSyncedAt(new Date());
+        if (returnCreditChanged) void loadData();
         // Credit is company-wide and cannot be derived from this branch's rows.
         // Reconcile after financial events so billed checkout is not left disabled.
         if (table === 'partner_invoices' || table === 'partner_sales') {
@@ -1752,7 +1773,7 @@ fetchAllPages((from, to) => client
       document.removeEventListener('visibilitychange', reconcile);
       void client.removeChannel(channel);
     };
-  }, [identity, syncBranchId, loading, hasLoaded, refreshOperationalData]);
+  }, [identity, syncBranchId, loading, hasLoaded, refreshOperationalData, loadData]);
 
   const syncConfirmedSale = useCallback(async (branchId: string) => {
     try { await refreshPdv(branchId); }
@@ -2582,6 +2603,25 @@ fetchAllPages((from, to) => client
     },
     [data.rmas, requireIdentity, syncConfirmedSale],
   );
+
+  const grantRmaCredit = useCallback(async (id: string, amount: number) => {
+    requireIdentity();
+    if (!supabase) throw new Error('Supabase não configurado.');
+    const { error } = await supabase.rpc('grant_partner_rma_credit', { p_rma_id: id, p_amount: amount });
+    if (error) throw error;
+    await loadData();
+  }, [requireIdentity, loadData]);
+
+  const applyRmaCredit = useCallback(async (rmaId: string, invoiceId: string, amount: number, applicationId: string) => {
+    requireIdentity();
+    if (!supabase) throw new Error('Supabase não configurado.');
+    const { data: confirmed, error } = await supabase.rpc('apply_partner_rma_credit', {
+      p_rma_id: rmaId, p_invoice_id: invoiceId, p_amount: amount, p_application_id: applicationId,
+    });
+    if (error) throw error;
+    if (confirmed !== applicationId) throw new Error('O abatimento não foi confirmado pelo servidor.');
+    await loadData();
+  }, [requireIdentity, loadData]);
 
   const deleteRma = useCallback(
     async (id: string) => {
@@ -3930,6 +3970,8 @@ fetchAllPages((from, to) => client
 
     createRma,
     updateRmaStatus,
+    grantRmaCredit,
+    applyRmaCredit,
     deleteRma,
 
     addCombo,

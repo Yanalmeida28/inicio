@@ -1,21 +1,22 @@
 import { useMemo, useRef, useState } from 'react';
 import { Wallet, CreditCard, Receipt, Check } from 'lucide-react';
-import type { PartnerInvoice } from '../../types';
+import type { PartnerInvoice, RmaRequest } from '../../types';
 import { money } from '../../utils';
 
 type Props = {
   invoices: PartnerInvoice[];
-  walletBalance: number;
   creditLimit: number;
   creditUsed: number;
   onPayInvoice: (id: string, amount?: number) => Promise<void>;
+  rmaRequests?: RmaRequest[];
+  onApplyCredit?: (rmaId: string, invoiceId: string, amount: number, applicationId: string) => Promise<void>;
 };
 
 const paidAmount = (invoice: PartnerInvoice) => Number(invoice.paid_amount ?? (invoice.status === 'paga' ? invoice.amount : 0));
 const balance = (invoice: PartnerInvoice) => Math.max(0, Math.round(Number(invoice.amount) * 100) - Math.round(paidAmount(invoice) * 100)) / 100;
 const isOpen = (invoice: PartnerInvoice) => invoice.status === 'aberta' || invoice.status === 'parcial';
 
-export function FinancialModule({ invoices, walletBalance, creditLimit, creditUsed, onPayInvoice }: Props) {
+export function FinancialModule({ invoices, creditLimit, creditUsed, onPayInvoice, rmaRequests = [], onApplyCredit }: Props) {
   const [payingId, setPayingId] = useState<string | null>(null);
   const [paymentMode, setPaymentMode] = useState<'full' | 'partial'>('full');
   const [amount, setAmount] = useState('');
@@ -24,6 +25,39 @@ export function FinancialModule({ invoices, walletBalance, creditLimit, creditUs
   const [success, setSuccess] = useState<string | null>(null);
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'aberta' | 'paga'>('all');
+  const [creditInvoice, setCreditInvoice] = useState<PartnerInvoice | null>(null);
+  const [selectedCreditId, setSelectedCreditId] = useState('');
+  const [creditAmount, setCreditAmount] = useState('');
+  const [creditError, setCreditError] = useState<string | null>(null);
+  const applicationId = useRef<string | null>(null);
+  const availableCredit = (rma: RmaRequest) => Math.max(0, Math.round(Number(rma.credit_amount ?? 0) * 100) - Math.round(Number(rma.credit_used_amount ?? 0) * 100)) / 100;
+  const creditBalanceKnown = rmaRequests.every(rma => !Number(rma.credit_amount) || rma.credit_used_amount != null);
+  const walletBalance = rmaRequests.reduce((sum, rma) => sum + Math.round(availableCredit(rma) * 100), 0) / 100;
+  const eligibleCredits = (invoice: PartnerInvoice) => rmaRequests.filter(rma => rma.customer_id === invoice.customer_id && rma.branch_id === invoice.branch_id && rma.credit_used_amount != null && availableCredit(rma) > 0);
+
+  function openCredit(invoice: PartnerInvoice) {
+    const credit = eligibleCredits(invoice)[0];
+    setCreditInvoice(invoice); setSelectedCreditId(credit?.id ?? '');
+    setCreditAmount(credit ? Math.min(availableCredit(credit), balance(invoice)).toFixed(2) : '');
+    setCreditError(null); applicationId.current = crypto.randomUUID();
+  }
+
+  async function confirmCredit(event: React.FormEvent) {
+    event.preventDefault();
+    if (submittingRef.current || !creditInvoice || !onApplyCredit || !applicationId.current) return;
+    const normalized = creditAmount.trim().replace(',', '.');
+    const value = Number(normalized);
+    const credit = eligibleCredits(creditInvoice).find(rma => rma.id === selectedCreditId);
+    if (!credit || !/^\d+(\.\d{1,2})?$/.test(normalized) || !Number.isFinite(value) || value <= 0 || value > Math.min(availableCredit(credit), balance(creditInvoice))) {
+      setCreditError('Informe um valor válido dentro do saldo do crédito e da fatura.'); return;
+    }
+    submittingRef.current = true; setSubmitting(true); setCreditError(null);
+    try {
+      await onApplyCredit(credit.id, creditInvoice.id, value, applicationId.current);
+      setCreditInvoice(null); setSuccess('Crédito abatido na fatura. Nenhuma entrada em dinheiro foi registrada.');
+    } catch (error) { setCreditError(error && typeof error === 'object' && 'message' in error ? String(error.message) : 'Não foi possível abater o crédito.'); }
+    finally { submittingRef.current = false; setSubmitting(false); }
+  }
 
   const openInvoices = invoices.filter(isOpen);
   const totalOpen = openInvoices.reduce((sum, i) => sum + balance(i), 0);
@@ -110,10 +144,28 @@ export function FinancialModule({ invoices, walletBalance, creditLimit, creditUs
           <Wallet size={22} />
           <div>
             <small>Saldo de Crédito RMA</small>
-            <strong>{money.format(walletBalance)}</strong>
+            <strong>{creditBalanceKnown ? money.format(walletBalance) : 'Saldo indisponível'}</strong>
           </div>
         </div>
       </div>
+
+      {creditInvoice && <div className="modal-overlay">
+        <form className="modal-card pdv-form" onSubmit={confirmCredit}>
+          <h4>Abater crédito de devolução</h4>
+          <p>{creditInvoice.customer_name} — {creditInvoice.number} · Saldo da fatura: {money.format(balance(creditInvoice))}</p>
+          <label>Crédito disponível<select aria-label="Crédito disponível" value={selectedCreditId} disabled={submitting} onChange={event => {
+            setSelectedCreditId(event.target.value);
+            const credit = eligibleCredits(creditInvoice).find(rma => rma.id === event.target.value);
+            setCreditAmount(credit ? Math.min(availableCredit(credit), balance(creditInvoice)).toFixed(2) : '');
+          }}>{eligibleCredits(creditInvoice).map(rma => <option key={rma.id} value={rma.id}>{rma.product_name} — {money.format(availableCredit(rma))}</option>)}</select></label>
+          <label>Valor a abater (R$)<input aria-label="Valor a abater" inputMode="decimal" value={creditAmount} onChange={event => setCreditAmount(event.target.value)} disabled={submitting} required /></label>
+          {creditError && <p className="otp-error-msg" role="alert">{creditError}</p>}
+          <div className="pix-actions">
+            <button type="submit" className="module-submit-btn" disabled={submitting}>{submitting ? 'Registrando...' : 'Confirmar abatimento'}</button>
+            <button type="button" className="rma-advance-btn" disabled={submitting} onClick={() => setCreditInvoice(null)}>Cancelar</button>
+          </div>
+        </form>
+      </div>}
 
       <div className="orders-summary" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', margin: '18px 0 12px' }}>
         <div className="orders-summary-card" style={{ padding: '14px 16px', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', background: '#0f1f2c' }}>
@@ -121,7 +173,7 @@ export function FinancialModule({ invoices, walletBalance, creditLimit, creditUs
           <strong style={{ display: 'block', fontSize: '22px', marginTop: '6px' }}>{money.format(totalInvoiced)}</strong>
         </div>
         <div className="orders-summary-card" style={{ padding: '14px 16px', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', background: '#0f1f2c' }}>
-          <small style={{ color: '#8ba3b5' }}>Pago</small>
+          <small style={{ color: '#8ba3b5' }}>Liquidado (recebimentos + créditos)</small>
           <strong style={{ display: 'block', fontSize: '22px', marginTop: '6px' }}>{money.format(totalPaid)}</strong>
         </div>
         <div className="orders-summary-card" style={{ padding: '14px 16px', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', background: '#0f1f2c' }}>
@@ -151,7 +203,7 @@ export function FinancialModule({ invoices, walletBalance, creditLimit, creditUs
         <div className="stock-table-wrap">
           <table className="rma-table">
             <thead>
-              <tr><th>Cliente</th><th>Venda/Título</th><th>Original</th><th>Pago</th><th>Saldo</th><th>Vencimento</th><th>Status</th><th>Ação</th></tr>
+              <tr><th>Cliente</th><th>Venda/Título</th><th>Original</th><th>Liquidado</th><th>Saldo</th><th>Vencimento</th><th>Status</th><th>Ação</th></tr>
             </thead>
             <tbody>
               {visibleInvoices.length === 0 ? (
@@ -162,7 +214,7 @@ export function FinancialModule({ invoices, walletBalance, creditLimit, creditUs
                     <td>{inv.customer_name || '—'}</td>
                     <td>{inv.number || inv.sale_id?.slice(0, 8) || '—'}</td>
                     <td><strong>{money.format(inv.amount)}</strong></td>
-                    <td>{money.format(paidAmount(inv))}</td>
+                    <td>{money.format(paidAmount(inv))}{Number(inv.return_credit_amount) > 0 && <small style={{ display: 'block' }}>Inclui crédito RMA: {money.format(Number(inv.return_credit_amount))}</small>}</td>
                     <td>{money.format(balance(inv))}</td>
                     <td>{inv.due_date ? new Date(inv.due_date).toLocaleDateString('pt-BR') : '—'}</td>
                     <td>
@@ -191,6 +243,7 @@ export function FinancialModule({ invoices, walletBalance, creditLimit, creditUs
                             <div className="pix-actions">
                               <button className="rma-advance-btn" disabled={submitting} onClick={() => handlePay(inv.id, 'partial')}>Amortizar</button>
                               <button className="rma-advance-btn" disabled={submitting} onClick={() => handlePay(inv.id, 'full')}>Quitar título</button>
+                              {onApplyCredit && eligibleCredits(inv).length > 0 && <button className="rma-advance-btn" disabled={submitting} onClick={() => openCredit(inv)}>Abater crédito RMA</button>}
                             </div>
                           )}
                           {paymentError && payingId === inv.id && <p className="otp-error-msg" role="alert">{paymentError}</p>}

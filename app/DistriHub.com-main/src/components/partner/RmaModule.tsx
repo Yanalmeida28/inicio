@@ -13,11 +13,11 @@ type RmaModuleProps = {
   customers: PartnerCustomer[];
   products: PartnerProduct[];
   sales: PartnerSale[];
-  walletBalance: number;
   warrantyTerms: string;
   currentRole: SalespersonRole;
   onCreate: (rma: RmaPayload) => Promise<void>;
   onUpdateStatus: (id: string, status: RmaStatus) => Promise<unknown>;
+  onGrantCredit?: (id: string, amount: number) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
 };
 
@@ -29,7 +29,7 @@ function errorMessage(error: unknown, fallback: string) {
 }
 
 export function RmaModule({
-  rmaRequests, customers, products, sales, walletBalance, warrantyTerms, currentRole, onCreate, onUpdateStatus, onDelete,
+  rmaRequests, customers, products, sales, warrantyTerms, currentRole, onCreate, onUpdateStatus, onGrantCredit, onDelete,
 }: RmaModuleProps) {
   const [showForm, setShowForm] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -58,6 +58,33 @@ export function RmaModule({
   const [, setEditDefect] = useState('');
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | RmaStatus>('all');
+  const [creditRma, setCreditRma] = useState<RmaRequest | null>(null);
+  const [creditAmount, setCreditAmount] = useState('');
+  const [creditError, setCreditError] = useState<string | null>(null);
+  const creditBalanceKnown = rmaRequests.every(rma => !Number(rma.credit_amount) || rma.credit_used_amount != null);
+  const walletBalance = rmaRequests.reduce((sum, rma) => sum + Math.max(0, Math.round(Number(rma.credit_amount ?? 0) * 100) - Math.round(Number(rma.credit_used_amount ?? 0) * 100)), 0) / 100;
+
+  function openCredit(rma: RmaRequest) {
+    const sale = sales.find(item => item.id === rma.sale_id);
+    const item = sale?.items[rma.sale_item_index ?? -1];
+    setCreditRma(rma);
+    setCreditAmount(item ? (item.unit_price * (rma.quantity ?? 1)).toFixed(2) : '');
+    setCreditError(null);
+  }
+
+  async function confirmCredit(event: React.FormEvent) {
+    event.preventDefault();
+    if (busy || !creditRma || !onGrantCredit) return;
+    const normalized = creditAmount.trim().replace(',', '.');
+    const value = Number(normalized);
+    if (!/^\d+(\.\d{1,2})?$/.test(normalized) || !Number.isFinite(value) || value <= 0) {
+      setCreditError('Informe um valor maior que zero, com até duas casas decimais.'); return;
+    }
+    setBusy(true); setCreditError(null);
+    try { await onGrantCredit(creditRma.id, value); setCreditRma(null); }
+    catch (error) { setCreditError(errorMessage(error, 'Não foi possível gerar o crédito.')); }
+    finally { setBusy(false); }
+  }
 
   const canDelete = deleteAllowedRoles.includes(currentRole);
   const selectedCustomer = customers.find((customer) => customer.id === customerId) ?? null;
@@ -184,6 +211,7 @@ export function RmaModule({
     if (busy) return;
     const idx = rmaStatusFlow.indexOf(rma.status);
     if (idx < 0 || idx >= rmaStatusFlow.length - 1) return;
+    if (rmaStatusFlow[idx + 1] === 'credito_gerado') { openCredit(rma); return; }
     setBusy(true);
     setActionError(null);
     try { await onUpdateStatus(rma.id, rmaStatusFlow[idx + 1]); }
@@ -232,11 +260,25 @@ export function RmaModule({
       <div className="rma-wallet-card">
         <div className="wallet-icon"><Wallet size={24} /></div>
         <div>
-          <small>Saldo disponível em garantias aprovadas</small>
-          <strong>{money.format(walletBalance)}</strong>
+          <small>Créditos de devolução disponíveis aos clientes</small>
+          <strong>{creditBalanceKnown ? money.format(walletBalance) : 'Saldo indisponível'}</strong>
         </div>
-        <span className="wallet-hint">Valor abatido automaticamente em futuros pedidos</span>
+        <span className="wallet-hint">Abata em faturas do cliente pelo Financeiro, inclusive de novas compras faturadas.</span>
       </div>
+
+      {creditRma && <div className="modal-overlay">
+        <form className="modal-card rma-form" onSubmit={confirmCredit}>
+          <h4>Gerar crédito de devolução</h4>
+          <p>{creditRma.customer_name} — {creditRma.product_name} ({creditRma.quantity ?? 1} unidade(s))</p>
+          <p>O crédito poderá abater faturas do cliente. O valor máximo é o valor dos itens devolvidos na venda.</p>
+          <label>Valor do crédito (R$)<input aria-label="Valor do crédito" inputMode="decimal" value={creditAmount} onChange={event => setCreditAmount(event.target.value)} disabled={busy} required autoFocus /></label>
+          {creditError && <p className="otp-error-msg" role="alert">{creditError}</p>}
+          <div className="pix-actions">
+            <button type="submit" className="module-submit-btn" disabled={busy}>{busy ? 'Registrando...' : 'Confirmar crédito'}</button>
+            <button type="button" className="rma-advance-btn" disabled={busy} onClick={() => setCreditRma(null)}>Cancelar</button>
+          </div>
+        </form>
+      </div>}
 
       <div className="orders-summary" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px', margin: '18px 0' }}>
         <div className="orders-summary-card" style={{ padding: '14px 16px', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', background: '#0f1f2c' }}>
@@ -507,10 +549,15 @@ export function RmaModule({
                       <td>
                         <div className="row-action-group">
                           {rma.status !== 'credito_gerado' && (
-                            <button className="rma-advance-btn" disabled={busy} onClick={() => advanceStatus(rma)} title="Avançar Status">
+                            <button className="rma-advance-btn" disabled={busy || (rma.status === 'reintegrado_estoque' && (!canDelete || !rma.customer_id || !rma.sale_id))} onClick={() => advanceStatus(rma)} title="Avançar Status">
                               <ArrowRightCircle size={13} /> Avançar
                             </button>
                           )}
+                          {rma.status === 'credito_gerado' && !Number(rma.credit_amount) && canDelete && (
+                            <button className="rma-advance-btn" disabled={busy || !rma.customer_id || !rma.sale_id} onClick={() => openCredit(rma)}>Registrar crédito</button>
+                          )}
+                          {Number(rma.credit_amount) > 0 && <small>Crédito: {money.format(Number(rma.credit_amount))} · Saldo: {rma.credit_used_amount == null ? 'indisponível' : money.format(Number(rma.credit_amount) - Number(rma.credit_used_amount))}</small>}
+                          {!rma.customer_id && (rma.status === 'reintegrado_estoque' || rma.status === 'credito_gerado') && <small>Crédito exige uma devolução vinculada à venda do cliente.</small>}
                           <button className="rma-advance-btn" onClick={() => startEdit(rma)} title="Editar">
                             <Pencil size={14} />
                           </button>

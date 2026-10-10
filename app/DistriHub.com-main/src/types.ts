@@ -392,6 +392,9 @@ export interface RmaRequest {
   customer_id?: string | null;
   quantity?: number;
   stock_restored_at?: string | null;
+  credit_amount?: number;
+  credit_used_amount?: number | null;
+  credited_at?: string | null;
   product_name: string;
   product_sku: string;
   batch_or_order: string;
@@ -411,6 +414,9 @@ export type RmaPayload =
     | 'updated_at'
     | 'status'
     | 'stock_restored_at'
+    | 'credit_amount'
+    | 'credit_used_amount'
+    | 'credited_at'
     | 'branch_id'
     | 'customer_name'
   > & {
@@ -449,6 +455,7 @@ export interface PartnerInvoice {
   customer_name: string;
   amount: number;
   paid_amount?: number;
+  return_credit_amount?: number;
   status:
     | 'aberta'
     | 'paga'
