@@ -512,7 +512,6 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
   const filtered = useMemo(() => {
     const normalize = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
     const term = normalize(search.trim());
-    if (!term) return [];
     return products.filter((p) => {
       // `products` já chega filtrado pela filial ativa (ou pela filial fixa do funcionário).
       // Aplica o filtro local apenas quando uma filial específica está selecionada,
@@ -673,12 +672,11 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
             <p className="pdv-selection-notice" role="alert">{selectionNotice}</p>
           )}
 
-          {search.trim() && (
           <div className="pdv-product-search-results" aria-label="Resultados da pesquisa">
           <div className="pdv-product-grid">
             {filtered.length === 0 ? (
               <p className="empty-row">
-                {`Nenhum produto encontrado para "${search.trim()}".`}
+                {search.trim() ? `Nenhum produto encontrado para "${search.trim()}".` : 'Nenhum produto disponível nesta filial.'}
               </p>
             ) : (
               filtered.slice(0, visibleProductCount).map((p) => {
@@ -722,7 +720,8 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
             </button>
           )}
           </div>
-          )}
+        </div>
+        <div className="pdv-right" role="region" aria-label="Opções da venda">
           <section className="pdv-cart-main" aria-label="Carrinho">
           <div className="pdv-cart-header">
             <h4>Carrinho · {cart.reduce((count, item) => count + item.quantity, 0)} itens</h4>
@@ -738,7 +737,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
             <thead><tr><th>Produto</th><th>Quantidade</th><th>Preço</th><th>Subtotal</th><th>Remover</th></tr></thead>
             <tbody>
             {cart.length === 0 ? (
-              <tr><td colSpan={5} className="empty-row">Carrinho vazio. Pesquise um produto acima para começar.</td></tr>
+              <tr><td colSpan={5} className="empty-row">Carrinho vazio. Selecione um produto à esquerda para começar.</td></tr>
             ) : (
               cart.map((item) => (
                 <tr key={item.product_id}>
@@ -760,9 +759,6 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
           </table>
           </div>
           </section>
-        </div>
-        <div className="pdv-right" role="region" aria-label="Opções da venda">
-          <div className="pdv-cart-header"><h4>Dados da venda</h4></div>
           <div className="pdv-sale-scroll">
           {branchChangedWithCart && cart.length > 0 && (
             <div className="pdv-restricted-checkout" role="alert">

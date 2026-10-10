@@ -73,15 +73,17 @@ function assertVisibleControls() {
   assert.ok(controls().findByProps({ 'aria-label': 'Tipo de atendimento da venda' }));
   assert.ok(controls().findByProps({ id: 'pdv-salesperson-search' }));
 }
-test('carrinho aparece acima das opções, mantendo a pesquisa no topo', async () => {
+test('pesquisa fica à esquerda e carrinho acima das opções à direita', async () => {
   await act(async () => { renderer = TestRenderer.create(React.createElement(module.exports.Checkout, props)); });
   assertVisibleControls();
   const left = renderer.root.findByProps({ className: 'pdv-left' });
   assert.equal(left.children[0].props.className, 'pdv-search-bar');
-  assert.equal(left.children[1].props['aria-label'], 'Carrinho');
+  assert.equal(left.findAllByProps({ className: 'pdv-product-card' }).length, 1);
+  assert.equal(left.findAllByProps({ 'aria-label': 'Carrinho' }).length, 0);
   const layout = renderer.root.findByProps({ className: 'pdv-layout pdv-checkout-layout' });
   assert.equal(layout.children[0], left);
   assert.equal(layout.children[1].props['aria-label'], 'Opções da venda');
+  assert.equal(layout.children[1].children[0].props['aria-label'], 'Carrinho');
 });
 test('selecionar e remover o último produto mantém as opções da venda visíveis', async () => {
   await act(async () => { renderer = TestRenderer.create(React.createElement(module.exports.Checkout, props)); });

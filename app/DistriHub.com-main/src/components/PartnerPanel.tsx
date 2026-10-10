@@ -1873,6 +1873,14 @@ export function PartnerPanel({
           </div>
         </div>
 
+          <BranchSelector
+            branches={partner.branches}
+            selectedBranchId={effectiveBranchId}
+            onSelectBranch={handleSelectBranch}
+            isEmployeeLocked={isEmployeeRestricted}
+            lockedBranchName={lockedBranch?.name}
+          />
+
         <nav className="sidebar-nav">
           {visibleTabs.map(
             ({
@@ -1929,13 +1937,6 @@ export function PartnerPanel({
 
       <div className="sidebar-main">
         <div className="sidebar-main-inner">
-          <BranchSelector
-            branches={partner.branches}
-            selectedBranchId={effectiveBranchId}
-            onSelectBranch={handleSelectBranch}
-            isEmployeeLocked={isEmployeeRestricted}
-            lockedBranchName={lockedBranch?.name}
-          />
           {partner.error && (
             <p className="partner-loading">
               {partner.error}

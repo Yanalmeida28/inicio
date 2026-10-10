@@ -1,4 +1,4 @@
-import { Building2, Lock } from 'lucide-react';
+import { Building2, Check, ChevronDown, Lock } from 'lucide-react';
 import type { PartnerBranch } from '../../types';
 
 type Props = {
@@ -11,16 +11,28 @@ type Props = {
 
 export function BranchSelector({ branches, selectedBranchId, onSelectBranch, isEmployeeLocked, lockedBranchName }: Props) {
   const options = isEmployeeLocked ? branches.filter(branch => branch.id === selectedBranchId) : branches;
-  return <div className="panel-module branch-toolbar partner-branch-topbar">
-    <div className="branch-toolbar-selection">
-      <Building2 size={18} aria-hidden="true" />
-      <label htmlFor="active-partner-branch">Filial ativa</label>
-      <select id="active-partner-branch" value={selectedBranchId} disabled={isEmployeeLocked} onChange={event => onSelectBranch(event.target.value)}>
-        {!isEmployeeLocked && <option value="">Visão Consolidada — Todas as filiais</option>}
-        {isEmployeeLocked && options.length === 0 && <option value={selectedBranchId}>{lockedBranchName ?? 'Filial vinculada'}</option>}
-        {options.map(branch => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
-      </select>
-      {isEmployeeLocked && <span className="branch-toolbar-locked"><Lock size={14} /> Filial fixa</span>}
-    </div>
+  const selectedName = options.find(branch => branch.id === selectedBranchId)?.name
+    ?? (isEmployeeLocked ? lockedBranchName ?? 'Filial vinculada' : selectedBranchId ? 'Filial selecionada' : 'Todas as filiais');
+  return <div className="sidebar-branch-selector">
+    <span className="sidebar-branch-label">Filial ativa</span>
+    {isEmployeeLocked ? (
+      <div className="sidebar-branch-current"><Lock size={16} aria-hidden="true" /><span>{selectedName}</span></div>
+    ) : (
+      <details className="sidebar-branch-dropdown" key={selectedBranchId}>
+        <summary aria-label={`Selecionar filial: ${selectedName}`}>
+          <Building2 size={16} aria-hidden="true" /><span>{selectedName}</span><ChevronDown size={16} aria-hidden="true" />
+        </summary>
+        <div className="sidebar-branch-options" role="group" aria-label="Filiais disponíveis">
+          {[{ id: '', name: 'Todas as filiais' }, ...options].map(branch => (
+            <button type="button" key={branch.id} aria-pressed={selectedBranchId === branch.id} onClick={event => {
+              onSelectBranch(branch.id);
+              event.currentTarget.closest('details')?.removeAttribute('open');
+            }}>
+              <span>{branch.name}</span>{selectedBranchId === branch.id && <Check size={14} aria-hidden="true" />}
+            </button>
+          ))}
+        </div>
+      </details>
+    )}
   </div>;
 }
