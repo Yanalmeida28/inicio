@@ -2641,7 +2641,7 @@ function ReplenishmentSubTab({ products, sales, selectedBranchId, onReplenishSto
   const classB = abcAnalysis.filter((p) => p.abcClass === 'B');
   const classC = abcAnalysis.filter((p) => p.abcClass === 'C');
 
-  const abcColors: Record<string, string> = { A: '#15803D', B: '#B45309', C: '#7bc8ff' };
+
 
   async function handleReplenish(e: React.FormEvent) {
     e.preventDefault();
@@ -2742,7 +2742,7 @@ function ReplenishmentSubTab({ products, sales, selectedBranchId, onReplenishSto
                     <td><strong>{p.name}</strong></td>
                     <td>{p.sku ?? '—'}</td>
                     <td>
-                      <span className="rma-status-badge" style={{ color: p.abcClass === 'C' ? '#fff' : abcColors[p.abcClass], borderColor: abcColors[p.abcClass], background: p.abcClass === 'C' ? '#1d4ed8' : undefined }}>
+                      <span className={`rma-status-badge status-${p.abcClass === 'A' ? 'success' : p.abcClass === 'B' ? 'warning' : 'info'}`}>
                         Classe {p.abcClass}
                       </span>
                     </td>
@@ -2800,7 +2800,7 @@ function ReplenishmentSubTab({ products, sales, selectedBranchId, onReplenishSto
                   <td><strong>{p.name}</strong></td>
                   <td>{p.sku ?? '—'}</td>
                   <td>
-                    <span className="rma-status-badge" style={{ color: p.abcClass === 'C' ? '#fff' : abcColors[p.abcClass], borderColor: abcColors[p.abcClass], background: p.abcClass === 'C' ? '#1d4ed8' : undefined }}>
+                    <span className={`rma-status-badge status-${p.abcClass === 'A' ? 'success' : p.abcClass === 'B' ? 'warning' : 'info'}`}>
                       {p.abcClass}
                     </span>
                   </td>
