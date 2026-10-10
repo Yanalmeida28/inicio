@@ -136,8 +136,8 @@ export function SalesHistoryModule({ sales, rmaRequests = [], customers, salespe
       {shareNotice && <p role="status">{shareNotice}</p>}
       <div className="pdv-recent-sales sales-history-table">
         <h4>Vendas</h4>
-        <div className="stock-table-wrap">
-          <table className="rma-table">
+        <div className="stock-table-wrap sales-history-list-wrap">
+          <table className="rma-table sales-history-list-table">
             <thead><tr><th>Cliente</th><th>Itens</th><th>Total</th><th>Pagamento</th><th>{traceabilityLabel}</th><th>Status</th><th>Data</th><th></th></tr></thead>
             <tbody>
               {filteredSales.length === 0 ? (
@@ -145,8 +145,8 @@ export function SalesHistoryModule({ sales, rmaRequests = [], customers, salespe
               ) : (
                 filteredSales.map((s) => (
                   <tr key={s.id} className={s.status === 'cancelada' ? 'cancelled-row' : ''}>
-                    <td><strong>{s.customer_name ?? '—'}</strong><small className="sales-history-id" title={s.id}>#{s.id.slice(0, 8)}</small></td>
-                    <td>
+                    <td data-label="Cliente"><strong>{s.customer_name ?? '—'}</strong><small className="sales-history-id" title={s.id}>#{s.id.slice(0, 8)}</small></td>
+                    <td data-label="Itens">
                       {s.items.length} {s.items.length === 1 ? 'item' : 'itens'}
                       {s.items.length > 0 && <details style={{ marginTop: '6px' }}>
                         <summary style={{ cursor: 'pointer', color: '#5cb5f1' }}>Visualizar produtos</summary>
@@ -155,18 +155,18 @@ export function SalesHistoryModule({ sales, rmaRequests = [], customers, salespe
                         </small>
                       </details>}
                     </td>
-                    <td>{money.format(saleChargeTotal(s))}{s.freight_fee ? <small>Frete: {money.format(s.freight_fee)}</small> : null}</td>
-                    <td>{salePaymentDescription(s)}</td>
-                    <td>{s.imei ?? s.serial_number ?? '—'}</td>
-                    <td>
+                    <td data-label="Total">{money.format(saleChargeTotal(s))}{s.freight_fee ? <small>Frete: {money.format(s.freight_fee)}</small> : null}</td>
+                    <td data-label="Pagamento">{salePaymentDescription(s)}</td>
+                    <td data-label={traceabilityLabel}>{s.imei ?? s.serial_number ?? '—'}</td>
+                    <td data-label="Status">
                       {s.status === 'cancelada' ? (
                         <span className="rma-status-badge history-status-cancelled">Cancelada</span>
                       ) : (
                         <span className={`rma-status-badge ${saleReturnLabel(s, rmaRequests) || s.status === 'devolucao' ? 'history-status-returned' : s.status === 'concluida' ? 'history-status-completed' : 'history-status-open'}`}>{saleReturnLabel(s, rmaRequests) || (s.status === 'concluida' ? 'Concluída' : s.status === 'aberta' ? 'Aberta' : 'Devolução')}</span>
                       )}
                     </td>
-                    <td>{new Date(s.created_at).toLocaleString('pt-BR')}</td>
-                    <td>
+                    <td data-label="Data">{new Date(s.created_at).toLocaleString('pt-BR')}</td>
+                    <td className="sales-history-actions" data-label="Ações">
                       {s.status !== 'cancelada' && (
                         <SaleActionsMenu
                           onPrintReceipt={() => handlePrint(s, 'receipt')}

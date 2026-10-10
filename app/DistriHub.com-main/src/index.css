@@ -2601,6 +2601,28 @@ body, .app-shell { background: #091724; color: #edf5fc; }
 
 /* Mobile usability: preserve desktop layouts and keep scroll inside tables and lists. */
 .sidebar-mobile-close { display: none; }
+@media screen and (max-width: 768px) {
+  .partner-panel .sales-history-list-wrap { min-width: 0; border: 0; background: transparent; overflow: visible !important; }
+  .partner-panel .sales-history-list-table { display: block; width: 100%; min-width: 0; }
+  .partner-panel .sales-history-list-table thead { display: none; }
+  .partner-panel .sales-history-list-table tbody { display: grid; gap: 12px; }
+  .partner-panel .sales-history-list-table tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 12px; padding: 12px; border: 1px solid var(--dh-border); border-radius: 10px; background: var(--dh-surface); }
+  .partner-panel .sales-history-list-table td { display: block; min-width: 0; padding: 0; border: 0; font-size: 13px; white-space: normal; overflow-wrap: anywhere; }
+  .partner-panel .sales-history-list-table td:first-child,
+  .partner-panel .sales-history-list-table td:nth-child(2),
+  .partner-panel .sales-history-list-table td:nth-child(5),
+  .partner-panel .sales-history-list-table td.sales-history-actions,
+  .partner-panel .sales-history-list-table td.empty-row { grid-column: 1 / -1; }
+  .partner-panel .sales-history-list-table td[data-label]::before { content: attr(data-label); display: block; margin-bottom: 4px; font-size: 11px; font-weight: 600; color: var(--dh-text-secondary); }
+  .partner-panel .sales-history-list-table td:first-child strong { font-size: 14px; }
+  .partner-panel .sales-history-list-table td > small { display: block; }
+  .partner-panel .sales-history-list-table .cancelled-row td { text-decoration: none; }
+  .partner-panel .sales-history-list-table .sales-history-actions { justify-self: end; text-align: right; }
+  .partner-panel .sales-history-list-table .cancelled-row .sales-history-actions:empty { display: none; }
+  .partner-panel .sales-history-list-table .sale-actions-trigger { min-width: 44px; }
+  .sale-actions-menu { max-width: calc(100vw - 16px); max-height: calc(100dvh - 16px); overflow-y: auto; }
+  .sale-actions-menu button { min-height: 44px; }
+}
 .service-orders-module, .service-orders-module label, .service-order-fields > *, .service-order-parts-layout > * { min-width: 0; }
 .service-order-item-field { display: grid; gap: 4px; min-width: 0; font-size: 11px; color: var(--dh-text-secondary); }
 .service-order-item-row > span, .service-order-list-row > span { min-width: 0; overflow-wrap: anywhere; }
