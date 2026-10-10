@@ -1489,7 +1489,7 @@ function CustomersSubTab({ isActive = true, customers, branches, sales, rmaReque
         </form>
       )}
 
-      <div className="stock-table-wrap">
+      <div className="stock-table-wrap customer-list-wrap">
         <table className="rma-table customer-list-table">
           <colgroup><col className="customer-col-name" /><col className="customer-col-document" /><col className="customer-col-phone" /><col className="customer-col-location" /><col className="customer-col-birthday" /><col className="customer-col-actions" /></colgroup>
           <thead><tr><th>Nome</th><th>CPF/CNPJ</th><th>WhatsApp</th><th>Bairro/Cidade</th><th>Aniversário</th><th className="customer-actions-heading">Ações</th></tr></thead>
@@ -1504,11 +1504,11 @@ function CustomersSubTab({ isActive = true, customers, branches, sales, rmaReque
 
                 return (
                   <tr key={c.id}>
-                    <td>
+                    <td data-label="Nome">
                       <strong>{c.name}</strong>
                       {c.customer_type === 'atacado' && <small className="tag-service">Atacado</small>}
                     </td>
-                    <td>
+                    <td data-label="CPF/CNPJ">
                       <div>
                         <span>{formattedDoc}</span>
                         {normDoc && (
@@ -1518,10 +1518,10 @@ function CustomersSubTab({ isActive = true, customers, branches, sales, rmaReque
                         )}
                       </div>
                     </td>
-                    <td>{c.phone ?? '—'}</td>
-                    <td>{[c.neighborhood, c.city].filter(Boolean).join(', ') || '—'}</td>
-                    <td>{c.birthday ? new Date(c.birthday).toLocaleDateString('pt-BR') : '—'}</td>
-                    <td className="customer-actions-cell">
+                    <td data-label="WhatsApp">{c.phone ?? '—'}</td>
+                    <td data-label="Bairro/Cidade">{[c.neighborhood, c.city].filter(Boolean).join(', ') || '—'}</td>
+                    <td data-label="Aniversário">{c.birthday ? new Date(c.birthday).toLocaleDateString('pt-BR') : '—'}</td>
+                    <td className="customer-actions-cell" data-label="Ações">
                       <div className="product-actions-menu">
                         <button type="button" className="product-actions-trigger" onClick={(event) => { setOpenCustomerActionId(openCustomerActionId === c.id ? null : c.id); setCustomerActionPosition(openCustomerActionId === c.id ? null : getActionPopoverPosition(event, 245, 204)); }} aria-label={`Ações de ${c.name}`} aria-expanded={openCustomerActionId === c.id}>
                           <MoreVertical size={18} />
