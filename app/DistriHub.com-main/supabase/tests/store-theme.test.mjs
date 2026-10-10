@@ -32,7 +32,7 @@ test('texto mantém contraste em cores claras, escuras e saturadas', () => {
     assert.ok(contrast(color, theme['--dh-on-primary']) >= 4.5);
     assert.ok(contrast(color, theme['--store-nav-text']) >= 4.5);
     assert.ok(contrast(theme['--dh-blue-hover'], theme['--dh-on-primary-hover']) >= 4.5);
-    assert.ok(contrast('#ffffff', theme['--dh-accent-text']) >= 4.5);
+    assert.ok(contrast('#102638', theme['--dh-accent-text']) >= 4.5);
   }
 });
 

@@ -29,7 +29,9 @@ export function storeTheme(primary?: string | null, navigation?: string | null):
   const color = normalizeColor(primary);
   const nav = normalizeColor(navigation, '#0f2747');
   let readable = color;
-  while (1.05 / (luminance(readable) + 0.05) < 4.5) readable = darken(readable, 0.9);
+  while ((luminance(readable) + 0.05) / (luminance('#102638') + 0.05) < 4.5) {
+    readable = '#' + rgb(readable).map(value => Math.min(255, Math.round(value + (255 - value) * 0.15)).toString(16).padStart(2, '0')).join('');
+  }
   const hover = darken(color, 0.85);
   const channels = rgb(color).join(',');
   return {

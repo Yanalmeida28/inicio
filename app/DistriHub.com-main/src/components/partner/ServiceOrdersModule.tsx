@@ -57,9 +57,9 @@ const money = (value: number) =>
 
 const inputDarkStyle: React.CSSProperties = {
   width: '100%',
-  backgroundColor: '#FFFFFF',
-  color: '#172033',
-  border: '1px solid #E2E8F0',
+  backgroundColor: '#102638',
+  color: '#edf5fc',
+  border: '1px solid #29465f',
   borderRadius: 8,
   padding: '10px 12px',
   fontSize: 14,
@@ -71,7 +71,7 @@ const labelDarkStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   gap: 8,
-  color: '#172033',
+  color: '#edf5fc',
   fontWeight: 600,
   fontSize: 14,
 };
@@ -610,7 +610,7 @@ export function ServiceOrdersModule({
               <small>
                 Filial: {branch?.name ?? 'Não selecionada'}
               </small>
-              <p role="note" style={{ margin: '8px 0 0', color: '#64748b', fontSize: 12 }}>
+              <p role="note" style={{ margin: '8px 0 0', color: '#adc2d6', fontSize: 12 }}>
                 O rascunho é salvo nesta sessão para este usuário e filial. Fotos precisam ser selecionadas novamente após atualizar a página.
               </p>
             </div>
@@ -632,15 +632,15 @@ export function ServiceOrdersModule({
             }}
           >
             <label style={labelDarkStyle}>
-              <span style={{ color: '#172033' }}>Cliente</span>
+              <span style={{ color: '#edf5fc' }}>Cliente</span>
               <select
                 value={customerId}
                 onChange={(event) => setCustomerId(event.target.value)}
                 style={{ ...inputDarkStyle, WebkitAppearance: 'none', appearance: 'none' }}
               >
-                <option value="" style={{ backgroundColor: '#FFFFFF', color: '#172033' }}>Sem cliente</option>
+                <option value="" style={{ backgroundColor: '#102638', color: '#edf5fc' }}>Sem cliente</option>
                 {customers.map((item) => (
-                  <option key={item.id} value={item.id} style={{ backgroundColor: '#FFFFFF', color: '#172033' }}>
+                  <option key={item.id} value={item.id} style={{ backgroundColor: '#102638', color: '#edf5fc' }}>
                     {item.name}
                   </option>
                 ))}
@@ -648,7 +648,7 @@ export function ServiceOrdersModule({
             </label>
 
             <label style={labelDarkStyle}>
-              <span style={{ color: '#172033' }}>Tipo de equipamento</span>
+              <span style={{ color: '#edf5fc' }}>Tipo de equipamento</span>
               <input
                 value={equipmentType}
                 onChange={(event) => setEquipmentType(event.target.value)}
@@ -659,7 +659,7 @@ export function ServiceOrdersModule({
             </label>
 
             <label style={labelDarkStyle}>
-              <span style={{ color: '#172033' }}>Identificação do Equipamento</span>
+              <span style={{ color: '#edf5fc' }}>Identificação do Equipamento</span>
               <input
                 value={identification}
                 onChange={(event) => setIdentification(event.target.value)}
@@ -669,7 +669,7 @@ export function ServiceOrdersModule({
             </label>
 
             <label style={labelDarkStyle}>
-              <span style={{ color: '#172033' }}>Nº de Série</span>
+              <span style={{ color: '#edf5fc' }}>Nº de Série</span>
               <input
                 value={serial}
                 onChange={(event) => setSerial(event.target.value)}
@@ -679,8 +679,8 @@ export function ServiceOrdersModule({
             </label>
           </div>
 
-          <div style={{ marginTop: 24, padding: 18, borderRadius: 14, backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
-            <h3 style={{ margin: '0 0 16px', display: 'flex', alignItems: 'center', gap: 8, color: '#172033' }}>
+          <div style={{ marginTop: 24, padding: 18, borderRadius: 14, backgroundColor: '#102638', border: '1px solid #29465f' }}>
+            <h3 style={{ margin: '0 0 16px', display: 'flex', alignItems: 'center', gap: 8, color: '#edf5fc' }}>
               <ClipboardList size={18} />
               Laudo e Vistoria de Entrada
             </h3>
@@ -693,7 +693,7 @@ export function ServiceOrdersModule({
               }}
             >
               <label style={labelDarkStyle}>
-                <span style={{ color: '#172033' }}>Acessórios Deixados</span>
+                <span style={{ color: '#edf5fc' }}>Acessórios Deixados</span>
                 <textarea
                   value={accessories}
                   onChange={(event) => setAccessories(event.target.value)}
@@ -704,7 +704,7 @@ export function ServiceOrdersModule({
               </label>
 
               <label style={labelDarkStyle}>
-                <span style={{ color: '#172033' }}>Estado físico</span>
+                <span style={{ color: '#edf5fc' }}>Estado físico</span>
                 <textarea
                   value={condition}
                   onChange={(event) => setCondition(event.target.value)}
@@ -715,7 +715,7 @@ export function ServiceOrdersModule({
               </label>
 
               <label style={labelDarkStyle}>
-                <span style={{ color: '#172033' }}>Avarias identificadas</span>
+                <span style={{ color: '#edf5fc' }}>Avarias identificadas</span>
                 <textarea
                   value={damage}
                   onChange={(event) => setDamage(event.target.value)}
@@ -726,7 +726,7 @@ export function ServiceOrdersModule({
               </label>
 
               <label style={labelDarkStyle}>
-                <span style={{ color: '#172033' }}>Observações</span>
+                <span style={{ color: '#edf5fc' }}>Observações</span>
                 <textarea
                   value={notes}
                   onChange={(event) => setNotes(event.target.value)}
@@ -738,30 +738,30 @@ export function ServiceOrdersModule({
             </div>
           </div>
 
-          <div style={{ marginTop: 18, padding: 18, borderRadius: 14, backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+          <div style={{ marginTop: 18, padding: 18, borderRadius: 14, backgroundColor: '#102638', border: '1px solid #29465f' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
               <div>
-                <h3 style={{ margin: 0, color: '#172033' }}>Checklist pré-reparo</h3>
-                <small style={{ color: '#64748B' }}>Registre a condição funcional antes de iniciar o serviço.</small>
+                <h3 style={{ margin: 0, color: '#edf5fc' }}>Checklist pré-reparo</h3>
+                <small style={{ color: '#adc2d6' }}>Registre a condição funcional antes de iniciar o serviço.</small>
               </div>
-              <span style={{ padding: '5px 9px', borderRadius: 999, background: checklistComplete ? '#DCFCE7' : '#FEF3C7', color: checklistComplete ? '#15803D' : '#B45309', fontSize: 11, fontWeight: 700 }}>
+              <span style={{ padding: '5px 9px', borderRadius: 999, background: checklistComplete ? '#12382d' : '#102638', color: checklistComplete ? '#4ade80' : '#fbbf24', fontSize: 11, fontWeight: 700 }}>
                 {checklistComplete ? 'Completo' : 'Obrigatório'}
               </span>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))', gap: 10, marginTop: 14 }}>
               {([['screen', 'Tela acende'], ['touch', 'Touch responde'], ['camera', 'Câmera frontal']] as const).map(([key, label]) => (
-                <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 11, border: '1px solid #E2E8F0', borderRadius: 9, color: '#334155', fontSize: 13, cursor: 'pointer' }}>
+                <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 11, border: '1px solid #29465f', borderRadius: 9, color: '#edf5fc', fontSize: 13, cursor: 'pointer' }}>
                   <input type="checkbox" checked={preRepairChecklist[key]} onChange={(event) => setPreRepairChecklist((current) => ({ ...current, [key]: event.target.checked }))} />
                   {label}
                 </label>
               ))}
             </div>
             {possibleRecurrence && (
-              <div style={{ marginTop: 12, padding: 11, borderRadius: 9, background: '#FFFBEB', border: '1px solid #FCD34D', color: '#92400E', fontSize: 12 }}>
+              <div style={{ marginTop: 12, padding: 11, borderRadius: 9, background: '#102638', border: '1px solid #29465f', color: '#fbbf24', fontSize: 12 }}>
                 Possível reincidência: já existe uma OS com a mesma identificação ou número de série nesta filial. Verifique a garantia antes de prosseguir.
               </div>
             )}
-            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 14, color: '#334155', fontSize: 12, cursor: 'pointer' }}>
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 14, color: '#edf5fc', fontSize: 12, cursor: 'pointer' }}>
               <input type="checkbox" checked={customerAcknowledged} onChange={(event) => setCustomerAcknowledged(event.target.checked)} />
               Cliente informado e de acordo com as condições registradas, acessórios e avarias de entrada.
             </label>
@@ -769,7 +769,7 @@ export function ServiceOrdersModule({
 
           <div style={{ marginTop: 22 }}>
             {photoError && (
-              <div role="alert" style={{ marginBottom: 12, padding: 11, borderRadius: 9, background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C', fontSize: 12 }}>
+              <div role="alert" style={{ marginBottom: 12, padding: 11, borderRadius: 9, background: '#102638', border: '1px solid #29465f', color: '#fda4af', fontSize: 12 }}>
                 {photoError}
               </div>
             )}
@@ -785,8 +785,8 @@ export function ServiceOrdersModule({
                 style={{
                   padding: 18,
                   borderRadius: 14,
-                  backgroundColor: '#F8FAFC',
-                  border: '1px solid #E2E8F0',
+                  backgroundColor: '#102638',
+                  border: '1px solid #29465f',
                 }}
               >
                 <div
@@ -802,7 +802,7 @@ export function ServiceOrdersModule({
                     <Camera size={18} />
                     Fotos de entrada
                   </h3>
-                  <small style={{ color: '#64748B' }}>Compressão WebP automática, até 300 KB</small>
+                  <small style={{ color: '#adc2d6' }}>Compressão WebP automática, até 300 KB</small>
 
                   <button
                     className="partner-secondary-btn"
@@ -852,7 +852,7 @@ export function ServiceOrdersModule({
                   <div
                     style={{
                       padding: 20,
-                      border: '1px dashed #999',
+                      border: '1px dashed #29465f',
                       borderRadius: 10,
                       opacity: 0.65,
                     }}
@@ -866,8 +866,8 @@ export function ServiceOrdersModule({
                 style={{
                   padding: 18,
                   borderRadius: 14,
-                  backgroundColor: '#F8FAFC',
-                  border: '1px solid #E2E8F0',
+                  backgroundColor: '#102638',
+                  border: '1px solid #29465f',
                 }}
               >
                 <div
@@ -883,7 +883,7 @@ export function ServiceOrdersModule({
                     <Package size={18} />
                     Fotos de saída
                   </h3>
-                  <small style={{ color: '#64748B' }}>Use na conclusão da OS</small>
+                  <small style={{ color: '#adc2d6' }}>Use na conclusão da OS</small>
 
                   <button
                     className="partner-secondary-btn"
@@ -933,7 +933,7 @@ export function ServiceOrdersModule({
                   <div
                     style={{
                       padding: 20,
-                      border: '1px dashed #999',
+                      border: '1px dashed #29465f',
                       borderRadius: 10,
                       opacity: 0.65,
                     }}
@@ -961,7 +961,7 @@ export function ServiceOrdersModule({
             >
               <div>
                 <label style={labelDarkStyle}>
-                  <span style={{ color: '#172033' }}>Buscar no estoque da filial</span>
+                  <span style={{ color: '#edf5fc' }}>Buscar no estoque da filial</span>
                   <input
                     value={productSearch}
                     onChange={(event) => setProductSearch(event.target.value)}
@@ -998,9 +998,9 @@ export function ServiceOrdersModule({
                         padding: 10,
                         marginTop: 7,
                         borderRadius: 9,
-                        backgroundColor: '#FFFFFF',
-                        border: '1px solid #E2E8F0',
-                        color: '#172033',
+                        backgroundColor: '#102638',
+                        border: '1px solid #29465f',
+                        color: '#edf5fc',
                       }}
                     >
                       <b>{product.name}</b>
@@ -1135,7 +1135,7 @@ export function ServiceOrdersModule({
             }}
           >
             <label style={labelDarkStyle}>
-              <span style={{ color: '#172033' }}>Mão de obra</span>
+              <span style={{ color: '#edf5fc' }}>Mão de obra</span>
               <input
                 type="number"
                 min={0}
@@ -1190,9 +1190,9 @@ export function ServiceOrdersModule({
             placeholder="Pesquisar OS"
             style={{
               flex: 1,
-              backgroundColor: '#FFFFFF',
-              color: '#172033',
-              border: '1px solid #E2E8F0',
+              backgroundColor: '#102638',
+              color: '#edf5fc',
+              border: '1px solid #29465f',
               borderRadius: 10,
               padding: '10px 12px',
             }}

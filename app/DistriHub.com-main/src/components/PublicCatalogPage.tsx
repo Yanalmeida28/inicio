@@ -92,7 +92,7 @@ export function PublicCatalogPage({ slug, branchSlug }: PublicCatalogPageProps) 
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f3f4f6', color: '#172033', fontFamily: 'sans-serif' }}>
+    <div style={{ minHeight: '100vh', background: '#102638', color: '#edf5fc', fontFamily: 'sans-serif' }}>
       <header style={{ background: normalizeColor(settings?.nav_color, '#0b1927'), color: contrastText(normalizeColor(settings?.nav_color, '#0b1927')), padding: '20px 24px' }}>
         <div style={{ maxWidth: 1200, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -114,25 +114,25 @@ export function PublicCatalogPage({ slug, branchSlug }: PublicCatalogPageProps) 
         )}
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 20, marginBottom: 24 }}>
-          <div style={{ background: '#fff', borderRadius: 16, padding: 18, boxShadow: '0 8px 24px rgba(15,23,42,0.06)' }}>
+          <div style={{ background: '#102638', borderRadius: 16, padding: 18, boxShadow: '0 8px 24px rgba(15,23,42,0.06)' }}>
             <strong style={{ display: 'block', marginBottom: 8 }}>Identidade da loja</strong>
-            <div style={{ fontSize: 14, color: '#475569' }}>{summary.address}</div>
+            <div style={{ fontSize: 14, color: '#adc2d6' }}>{summary.address}</div>
           </div>
-          <div style={{ background: '#fff', borderRadius: 16, padding: 18, boxShadow: '0 8px 24px rgba(15,23,42,0.06)' }}>
+          <div style={{ background: '#102638', borderRadius: 16, padding: 18, boxShadow: '0 8px 24px rgba(15,23,42,0.06)' }}>
             <strong style={{ display: 'block', marginBottom: 8 }}>Produtos ativos</strong>
-            <div style={{ fontSize: 14, color: '#475569' }}>{products.length} itens disponíveis</div>
+            <div style={{ fontSize: 14, color: '#adc2d6' }}>{products.length} itens disponíveis</div>
           </div>
         </div>
 
-        {preferences.welcome_message && <p style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', padding: '16px 20px', background: '#fff', borderRadius: 12 }}>{preferences.welcome_message}</p>}
+        {preferences.welcome_message && <p style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', padding: '16px 20px', background: '#102638', borderRadius: 12 }}>{preferences.welcome_message}</p>}
         <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, ${preferences.card_size === 'compact' ? 220 : 280}px), 1fr))`, gap: preferences.card_size === 'compact' ? 12 : 20 }}>
           {products.map((product) => (
-            <article key={product.id} style={{ background: '#fff', borderRadius: 16, overflow: 'hidden', boxShadow: '0 8px 24px rgba(15,23,42,0.06)' }}>
-              <div style={{ position: 'relative', background: '#eef2ff', minHeight: 180 }}>
+            <article key={product.id} style={{ background: '#102638', borderRadius: 16, overflow: 'hidden', boxShadow: '0 8px 24px rgba(15,23,42,0.06)' }}>
+              <div style={{ position: 'relative', background: '#132f4d', minHeight: 180 }}>
                 {product.image_url ? (
                   <img src={product.image_url} alt={product.name} style={{ width: '100%', height: 180, objectFit: 'cover', display: 'block' }} />
                 ) : (
-                  <div style={{ width: '100%', height: 180, display: 'grid', placeItems: 'center', color: '#64748b' }}><ImageIcon size={36} /></div>
+                  <div style={{ width: '100%', height: 180, display: 'grid', placeItems: 'center', color: '#adc2d6' }}><ImageIcon size={36} /></div>
                 )}
                 <span style={{ position: 'absolute', top: 12, left: 12, background: '#0f172a', color: '#fff', fontSize: 11, borderRadius: 999, padding: '6px 10px' }}>
                   {product.category ?? 'Produto'}
@@ -141,12 +141,12 @@ export function PublicCatalogPage({ slug, branchSlug }: PublicCatalogPageProps) 
               <div style={{ padding: 18 }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
                   <strong style={{ fontSize: 18 }}>{product.name}</strong>
-                  {preferences.show_sku && <span style={{ fontSize: 12, color: '#64748b' }}>SKU {product.sku ?? 'N/A'}</span>}
+                  {preferences.show_sku && <span style={{ fontSize: 12, color: '#adc2d6' }}>SKU {product.sku ?? 'N/A'}</span>}
                 </div>
-                <p style={{ color: '#475569', minHeight: 48, margin: '8px 0 14px' }}>{product.category ?? 'Produto da loja'}</p>
+                <p style={{ color: '#adc2d6', minHeight: 48, margin: '8px 0 14px' }}>{product.category ?? 'Produto da loja'}</p>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                  <strong style={{ color: '#0f172a', fontSize: 22 }}>R$ {Number(product.sale_price ?? 0).toFixed(2).replace('.', ',')}</strong>
-                  {preferences.show_stock && <span style={{ color: product.stock > 0 ? '#0f766e' : '#b91c1c', fontSize: 12, fontWeight: 700 }}>
+                  <strong style={{ color: '#edf5fc', fontSize: 22 }}>R$ {Number(product.sale_price ?? 0).toFixed(2).replace('.', ',')}</strong>
+                  {preferences.show_stock && <span style={{ color: product.stock > 0 ? '#adc2d6' : '#fda4af', fontSize: 12, fontWeight: 700 }}>
                     {product.stock > 0 ? `${product.stock} em estoque` : 'Indisponível'}
                   </span>}
                 </div>
