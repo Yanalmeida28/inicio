@@ -1069,20 +1069,14 @@ export function PartnerPanel({
         effectiveBranchId;
 
     if (!targetBranch) {
-      window.alert(
-        'Selecione uma filial para realizar a venda.',
-      );
-      return;
+      throw new Error('Selecione uma filial para realizar a venda.');
     }
 
     if (
       isEmployeeRestricted &&
       targetBranch !== effectiveBranchId
     ) {
-      window.alert(
-        'Acesso negado: você só pode realizar vendas na sua filial vinculada.',
-      );
-      return;
+      throw new Error('Acesso negado: você só pode realizar vendas na sua filial vinculada.');
     }
 
     const {
@@ -1091,7 +1085,7 @@ export function PartnerPanel({
     } = getOperatorContext();
 
     if (!partner.pendingSale) await checkoutCash.assertOpen();
-    await partner.createSale(
+    return await partner.createSale(
       {
         ...sale,
         branch_id: targetBranch,
@@ -2021,6 +2015,7 @@ export function PartnerPanel({
                 currentRole={
                   effectiveRole
                 }
+                receiptDetails={{ settings: storeSettings, companyName: partner.profile?.account_name || partner.profile?.name, companyDocument: partner.profile?.document, companyAddress: partner.branches.find((branch) => branch.id === effectiveBranchId)?.address }}
                 onCreateSale={
                   handleCreateSale
                 }

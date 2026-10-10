@@ -1,7 +1,8 @@
+import { printSale, type ReceiptDetails } from '../../lib/salePrint';
 import { SplitPaymentFields } from './SplitPaymentFields';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Search, Trash2, ShoppingCart, Check,
+  Search, Trash2, ShoppingCart, Check, Printer,
   X, Tag, Ban, Lock, ClipboardList, Wallet, Lock as LockIcon,
 } from 'lucide-react';
 import type { DeliveryType, PartnerProduct, PartnerCustomer, PartnerSale, SalePayment, PartnerSalesperson, SaleItem, SalespersonRole } from '../../types';
@@ -241,6 +242,7 @@ type Props = {
   segment: string;
   selectedBranchId: string | null;
   currentRole: SalespersonRole;
+  receiptDetails?: ReceiptDetails;
   onCreateSale: (sale: {
     customer_id: string | null;
     customer_name: string;
@@ -254,7 +256,7 @@ type Props = {
     payment_method?: string; payment_splits?: SalePayment[];
     salesperson_id?: string | null;
     branch_id?: string | null;
-  }) => Promise<void>;
+  }) => Promise<PartnerSale>;
   onCreatePreSale: (sale: {
     customer_id: string | null;
     customer_name: string;
@@ -281,7 +283,7 @@ export function PdvModule({
   cashContext, onOpenCash, onConfirmCashOperator,
   products, customers, sales, credits, hasPendingSale, salespeople, segment, selectedBranchId,
   preSaleToCheckout, onConsumePreSale, onRequestPreSale,
-  activeSalespersonId, activeBranchName, currentRole, canEditPrice, onCreateSale, onCreatePreSale, onFinalizePreSale, onCancelSale, onDeleteSale,
+  activeSalespersonId, activeBranchName, receiptDetails, currentRole, canEditPrice, onCreateSale, onCreatePreSale, onFinalizePreSale, onCancelSale, onDeleteSale,
 }: Props) {
   const parentDraftScope = useSessionDraftScope();
   const contextKey = `${selectedBranchId ?? 'all'}:${activeSalespersonId ?? 'owner'}`;
@@ -386,6 +388,7 @@ export function PdvModule({
           selectedBranchId={selectedBranchId}
           canCheckout={canCheckout}
           canEditPrice={canEditPrice}
+          receiptDetails={receiptDetails}
           onCreateSale={onCreateSale}
         />
         </div>
@@ -418,7 +421,7 @@ export function PdvModule({
 
 /* ============ PDV Checkout ============ */
 
-function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople, activeSalespersonId, selectedBranchId, canCheckout, canEditPrice, onCreateSale }: {
+function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople, activeSalespersonId, selectedBranchId, canCheckout, canEditPrice, receiptDetails, onCreateSale }: {
   products: PartnerProduct[];
   customers: PartnerCustomer[];
   credits: CustomerCredit[];
@@ -429,7 +432,8 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
   segment: string;
   selectedBranchId: string | null;
   canCheckout: boolean;
-  onCreateSale: (sale: { customer_id: string | null; customer_name: string; items: SaleItem[]; total: number; freight_fee?: number; customer_type: ClientType; delivery_type: DeliveryType; imei?: string; serial_number?: string; payment_method?: string; payment_splits?: SalePayment[]; salesperson_id?: string | null; branch_id?: string | null }) => Promise<void>;
+  receiptDetails?: ReceiptDetails;
+  onCreateSale: (sale: { customer_id: string | null; customer_name: string; items: SaleItem[]; total: number; freight_fee?: number; customer_type: ClientType; delivery_type: DeliveryType; imei?: string; serial_number?: string; payment_method?: string; payment_splits?: SalePayment[]; salesperson_id?: string | null; branch_id?: string | null }) => Promise<PartnerSale>;
 }) {
   const [search, setSearch] = useSessionDraftState('checkout:product-search', '');
   const [visibleProductCount, setVisibleProductCount] = useState(PRODUCT_PAGE_SIZE);
@@ -589,7 +593,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
     setCart((prev) => prev.filter((i) => i.product_id !== id));
   }
 
-  async function handleCheckout() {
+  async function handleCheckout(shouldPrint = false) {
     if (cart.length === 0 || checkoutInFlight.current || hasPendingSale) return;
     if (!validSalePrice(freightAmount) || cart.some(item => !validSalePrice(item.unit_price))) {
       setCheckoutError('Informe preços e frete válidos com até duas casas decimais.');
@@ -608,11 +612,13 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
     const validation = paymentMethod === 'misto' ? splitPaymentError(chargeTotal, parts) : null;
     if (validation) { setCheckoutError(validation); return; }
     const fallbackName = clientType === 'atacado' ? 'Cliente Atacado' : 'Cliente Varejo';
+    const printWindow = shouldPrint ? window.open('', '_blank', 'width=440,height=700') : null;
+    if (printWindow) printWindow.document.body.textContent = 'Aguardando confirmação da venda...';
     checkoutInFlight.current = true;
     setIsCheckingOut(true);
     setCheckoutError(null);
     try {
-      await onCreateSale({
+      const confirmedSale = await onCreateSale({
         customer_id: customerId || null,
         customer_name: customerName || customer?.name || fallbackName,
         items: cart,
@@ -636,7 +642,21 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
       setVisibleProductCount(PRODUCT_PAGE_SIZE);
       setSelectionNotice(null);
       setLastAddedId(null);
+      if (shouldPrint) {
+        try {
+          if (!printWindow || printWindow.closed) throw new Error('Permita pop-ups no navegador e reimprima pelo Histórico.');
+          printSale(confirmedSale, 'receipt', {
+            ...receiptDetails,
+            customer: customers.find(c => c.id === confirmedSale.customer_id),
+            salespersonName: salespeople.find(person => person.id === confirmedSale.salesperson_id)?.name,
+          }, printWindow);
+        } catch (error) {
+          printWindow?.close();
+          setCheckoutError('Venda finalizada. ' + (error instanceof Error ? error.message : 'Não foi possível imprimir. Reimprima pelo Histórico.'));
+        }
+      }
     } catch (error) {
+      printWindow?.close();
       setCheckoutError(pdvErrorMessage(error));
     } finally {
       checkoutInFlight.current = false;
@@ -855,9 +875,14 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
               </div>
 
               {canCheckout ? (
-                <button className="module-submit-btn pdv-checkout-btn" onClick={handleCheckout} disabled={cart.length === 0 || isCheckingOut || billedSaleBlocked || hasPendingSale || cartHasWrongBranch}>
-                  <Check size={18} /> {isCheckingOut ? 'Finalizando...' : 'Finalizar Venda'}
+                <>
+                <button className="module-submit-btn pdv-checkout-btn" onClick={() => handleCheckout(true)} disabled={cart.length === 0 || isCheckingOut || billedSaleBlocked || hasPendingSale || cartHasWrongBranch}>
+                  <Printer size={18} /> {isCheckingOut ? 'Finalizando...' : 'Finalizar e imprimir'}
                 </button>
+                <button className="module-cancel-btn pdv-checkout-btn" onClick={() => handleCheckout(false)} disabled={cart.length === 0 || isCheckingOut || billedSaleBlocked || hasPendingSale || cartHasWrongBranch}>
+                  <Check size={18} /> Finalizar sem imprimir
+                </button>
+                </>
               ) : (
                 <div className="pdv-restricted-checkout">
                   <LockIcon size={16} />

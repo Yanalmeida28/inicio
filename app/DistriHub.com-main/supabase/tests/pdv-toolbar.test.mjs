@@ -19,12 +19,13 @@ const sessionDraftMocks = {
 };
 vm.runInNewContext(compile(await readFile(new URL('../../src/lib/pdv.ts', import.meta.url), 'utf8')), { exports: helpers, Error });
 const source = compile(await readFile(new URL('../../src/components/partner/PdvModule.tsx', import.meta.url), 'utf8')) + '\nexports.Checkout = PdvCheckout; exports.Presale = PreVendaTab;';
-function loadCheckout(react) {
+function loadCheckout(react, printing = {}) {
 const module = { exports: {} };
 vm.runInNewContext(source, {
   exports: module.exports, Date, Error, setTimeout: () => 1,
-  window: { setTimeout: () => 1, clearTimeout() {} },
+  window: { open: printing.open ?? (() => null), setTimeout: () => 1, clearTimeout() {} },
   require(name) {
+    if (name === '../../lib/salePrint') return { printSale: printing.printSale ?? (() => {}) };
     if(name==='./SplitPaymentFields') return splitPaymentComponent;
     if (name === 'react') return react;
     if (name === '../../lib/pdv') return helpers;
@@ -57,12 +58,12 @@ test('split checkout rejects a missing balance, completes remaining PIX and subm
   await act(async()=>paymentSelect().props.onChange({target:{value:'misto'}}));
   assert.equal(renderer.root.findByProps({'aria-label':'Valor em Dinheiro'}).props.value,'');
   await act(async()=>renderer.root.findByProps({'aria-label':'Valor em Dinheiro'}).props.onChange({target:{value:'50'}}));
-  await act(async()=>renderer.root.findByProps({className:'module-submit-btn pdv-checkout-btn'}).props.onClick());
+  await act(async()=>renderer.root.findByProps({className:'module-cancel-btn pdv-checkout-btn'}).props.onClick());
   assert.equal(submitted,undefined);
   assert.match(renderer.root.findByProps({role:'alert'}).children.join(''),/duas formas/);
   await act(async()=>renderer.root.findAllByType('button').find(node=>node.children.includes('Completar restante no PIX')).props.onClick());
   assert.equal(renderer.root.findByProps({'aria-label':'Valor em PIX'}).props.value,'65.00');
-  await act(async()=>renderer.root.findByProps({className:'module-submit-btn pdv-checkout-btn'}).props.onClick());
+  await act(async()=>renderer.root.findByProps({className:'module-cancel-btn pdv-checkout-btn'}).props.onClick());
   assert.equal(submitted.payment_method,'misto');
   assert.deepEqual(JSON.parse(JSON.stringify(submitted.payment_splits)),[{method:'dinheiro',amount:50},{method:'pix',amount:65}]);
   assert.equal(submitted.total,100); assert.equal(submitted.freight_fee,15);
@@ -102,7 +103,7 @@ test('checkout collects freight separately and resets it after the confirmed sal
   await act(async()=>renderer.root.findByProps({'aria-label':'Tipo de atendimento da venda'}).props.onChange({target:{value:'entrega'}}));
   await act(async () => renderer.root.findByProps({ 'aria-label': 'Frete terceirizado' }).props.onChange({ target: { value:'15.25' } }));
   assert.equal(renderer.root.findByProps({className:'pdv-total-bar'}).findByType('strong').children.join(''),new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(115.25));
-  await act(async()=>renderer.root.findByProps({className:'module-submit-btn pdv-checkout-btn'}).props.onClick());
+  await act(async()=>renderer.root.findByProps({className:'module-cancel-btn pdv-checkout-btn'}).props.onClick());
   assert.equal(submitted.total,100);
   assert.equal(submitted.freight_fee,15.25);
   assert.equal(renderer.root.findAllByProps({'aria-label':'Frete terceirizado'}).length,0);
@@ -119,7 +120,7 @@ test('freight zero can be cleared and an empty field is submitted as zero', asyn
   assert.equal(renderer.root.findByProps({'aria-label':'Frete terceirizado'}).props.value,'');
   await act(async () => renderer.root.findByProps({ 'aria-label': 'Buscar produto por nome ou SKU' }).props.onChange({ target: { value: 'Produto' } }));
   await act(async () => renderer.root.findByProps({ className: 'pdv-product-card' }).props.onClick());
-  await act(async()=>renderer.root.findByProps({className:'module-submit-btn pdv-checkout-btn'}).props.onClick());
+  await act(async()=>renderer.root.findByProps({className:'module-cancel-btn pdv-checkout-btn'}).props.onClick());
   assert.equal(submitted.freight_fee,0);
   assert.equal(submitted.total,100);
 });
@@ -136,6 +137,72 @@ test('pre-sale freight zero can be cleared before entering another amount',async
   await act(async()=>renderer.root.findByProps({className:'module-submit-btn pdv-checkout-btn'}).props.onClick());
   assert.equal(submitted.freight_fee,12.5);
   assert.equal(submitted.total,100);
+});
+
+test('finalizar e imprimir aguarda confirmação, imprime a venda salva e bloqueia envio duplicado', async () => {
+  const events = [];
+  const popup = { document: { body: {} }, closed: false, close() { this.closed = true; } };
+  let resolveSale;
+  let submitted;
+  const Checkout = loadCheckout(React, {
+    open: () => { events.push('open'); return popup; },
+    printSale: (...args) => { events.push('print'); submitted = args; },
+  }).Checkout;
+  await act(async () => { renderer = TestRenderer.create(React.createElement(Checkout, {
+    ...props, receiptDetails: { companyName: 'DistriHub' },
+    onCreateSale: () => { events.push('save'); return new Promise(resolve => { resolveSale = resolve; }); },
+  })); });
+  await act(async () => renderer.root.findByProps({ className: 'pdv-product-card' }).props.onClick());
+  const button = renderer.root.findByProps({ className: 'module-submit-btn pdv-checkout-btn' });
+  assert.ok(button.children.includes('Finalizar e imprimir'));
+  let checkout;
+  await act(async () => { checkout = button.props.onClick(); });
+  assert.deepEqual(events, ['open', 'save']);
+  assert.equal(button.props.disabled, true);
+  await act(async () => button.props.onClick());
+  assert.deepEqual(events, ['open', 'save']);
+  const saved = { id: 'confirmed-sale', customer_id: null, salesperson_id: null, total: 100, items: props.products };
+  await act(async () => { resolveSale(saved); await checkout; });
+  assert.deepEqual(events, ['open', 'save', 'print']);
+  assert.equal(submitted[0], saved);
+  assert.equal(submitted[1], 'receipt');
+  assert.equal(submitted[2].companyName, 'DistriHub');
+  assert.equal(submitted[3], popup);
+});
+
+test('venda rejeitada fecha a janela e mantém o carrinho sem imprimir', async () => {
+  let prints = 0;
+  const popup = { document: { body: {} }, closed: false, close() { this.closed = true; } };
+  const Checkout = loadCheckout(React, { open: () => popup, printSale: () => { prints++; } }).Checkout;
+  await act(async () => { renderer = TestRenderer.create(React.createElement(Checkout, { ...props, onCreateSale: async () => { throw new Error('Venda recusada'); } })); });
+  await act(async () => renderer.root.findByProps({ className: 'pdv-product-card' }).props.onClick());
+  await act(async () => renderer.root.findByProps({ className: 'module-submit-btn pdv-checkout-btn' }).props.onClick());
+  assert.equal(prints, 0);
+  assert.equal(popup.closed, true);
+  assert.equal(renderer.root.findByProps({ className: 'module-submit-btn pdv-checkout-btn' }).props.disabled, false);
+  assert.match(renderer.root.findByProps({ role: 'alert' }).children.join(''), /Venda recusada/);
+});
+
+test('falha de impressão conserva a venda concluída e orienta reimpressão sem nova venda', async () => {
+  let saves = 0;
+  const popup = { document: { body: {} }, closed: false, close() { this.closed = true; } };
+  const Checkout = loadCheckout(React, { open: () => popup, printSale: () => { throw new Error('Reimprima pelo Histórico.'); } }).Checkout;
+  await act(async () => { renderer = TestRenderer.create(React.createElement(Checkout, { ...props, onCreateSale: async () => { saves++; return { id: 'confirmed-sale' }; } })); });
+  await act(async () => renderer.root.findByProps({ className: 'pdv-product-card' }).props.onClick());
+  await act(async () => renderer.root.findByProps({ className: 'module-submit-btn pdv-checkout-btn' }).props.onClick());
+  assert.equal(saves, 1);
+  assert.equal(renderer.root.findByProps({ className: 'module-submit-btn pdv-checkout-btn' }).props.disabled, true);
+  assert.match(renderer.root.findByProps({ role: 'alert' }).children.join(''), /Venda finalizada.*Histórico/);
+});
+
+test('finalizar sem imprimir salva uma vez sem abrir janela', async () => {
+  let saves = 0;
+  const Checkout = loadCheckout(React, { open: () => assert.fail('Não deve abrir janela'), printSale: () => assert.fail('Não deve imprimir') }).Checkout;
+  await act(async () => { renderer = TestRenderer.create(React.createElement(Checkout, { ...props, onCreateSale: async () => { saves++; return { id: 'confirmed-sale' }; } })); });
+  await act(async () => renderer.root.findByProps({ className: 'pdv-product-card' }).props.onClick());
+  await act(async () => renderer.root.findByProps({ className: 'module-cancel-btn pdv-checkout-btn' }).props.onClick());
+  assert.equal(saves, 1);
+  assert.equal(renderer.root.findByProps({ className: 'module-submit-btn pdv-checkout-btn' }).props.disabled, true);
 });
 
 // Optional isolated browser fixture, with synthetic data and no account credentials.
