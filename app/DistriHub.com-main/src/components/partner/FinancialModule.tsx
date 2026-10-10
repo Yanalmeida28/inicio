@@ -166,10 +166,7 @@ export function FinancialModule({ invoices, walletBalance, creditLimit, creditUs
                     <td>{money.format(balance(inv))}</td>
                     <td>{inv.due_date ? new Date(inv.due_date).toLocaleDateString('pt-BR') : '—'}</td>
                     <td>
-                      <span className="rma-status-badge" style={{
-                        color: inv.status === 'paga' ? '#5bbc87' : '#e6a06d',
-                        borderColor: inv.status === 'paga' ? '#5bbc87' : '#e6a06d',
-                      }}>
+                      <span className={`rma-status-badge status-${inv.status === 'paga' ? 'success' : inv.status === 'cancelada' ? 'danger' : 'warning'}`}>
                         {inv.status === 'paga' ? 'Paga' : inv.status === 'parcial' ? 'Parcialmente paga' : inv.status === 'cancelada' ? 'Cancelada' : 'Em Aberto'}
                       </span>
                     </td>

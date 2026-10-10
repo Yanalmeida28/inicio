@@ -194,7 +194,7 @@ export function DeliveryModule({ sales, salespeople, selectedBranchId, onUpdateD
                       </select>
                     </td>
                     <td>
-                      <span className="rma-status-badge" style={{ color: cfg.color, borderColor: cfg.color }}>
+                      <span className={`rma-status-badge status-${d.status === 'entregue' ? 'success' : d.status === 'falhou' ? 'danger' : d.status === 'em_rota' ? 'info' : 'warning'}`}>
                         <cfg.icon size={11} style={{ display: 'inline', marginRight: '4px' }} />
                         {cfg.label}
                       </span>
