@@ -1449,6 +1449,12 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
 .subscription-detail-item small { color: #7f97a9; font-size: 13px; }
 .subscription-detail-item strong { font: 600 15.5px Manrope; color: #e2eaf0; }
 .subscription-actions { display: flex; gap: 10px; }
+.admin-access-editor { border: 1px solid #294357; padding: 16px; border-radius: 8px; }
+.admin-access-editor label { min-width: 0; }
+.admin-access-editor textarea { min-height: 80px; resize: vertical; }
+.admin-save-actions { position: sticky; bottom: 0; z-index: 2; padding: 12px 0; flex-wrap: wrap; background: #0e1d2b; }
+.admin-save-actions .module-submit-btn { width: auto; min-width: 180px; }
+.admin-editor-error { color: #fca5a5; }
 
 /* ===== Plan Cards ===== */
 .plan-cards-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 14px; }

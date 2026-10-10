@@ -40,17 +40,23 @@ export function AdminSaasModule({ view, initialCompanyId, onChanged }: { view: '
   }
   async function save(event: React.FormEvent) {
     event.preventDefault();
-    if (!supabase || mutationPending.current) return;
+    if (mutationPending.current) return;
+    if (!supabase) { setError('Supabase não configurado. As alterações não foram salvas.'); return; }
+    if (reason.trim().length < 5 || reason.length > 500) {
+      setError('Preencha o motivo da alteração com 5 a 500 caracteres para salvar.');
+      return;
+    }
     mutationPending.current = true;
     setBusy(true); setError(null); setMessage(null);
     try {
       const result = editing ? await supabase.rpc('admin_update_saas_subscription', {
         p_company_id: editing.company_id, p_plan_id: editing.plan_id, p_billing_mode: editing.billing_mode,
-        p_full_access: editing.full_access, p_status: editing.status, p_reason: reason,
+        p_full_access: editing.full_access, p_status: editing.status, p_reason: reason.trim(),
         p_admin_access_until: editing.admin_access_until,
       }) : cancelRenewal ? await supabase.rpc('cancel_saas_renewal', { p_company_id: cancelRenewal, p_reason: reason })
         : await supabase.rpc('admin_cancel_saas_invoice', { p_invoice_id: cancelInvoice, p_reason: reason });
       if (result.error) throw result.error;
+      if (editing && !result.data) throw new Error('O servidor não confirmou o salvamento. Suas alterações continuam no formulário.');
       setMessage(editing ? `${editing.company_name}: configuração salva. ${result.data?.can_access ? 'Acesso ao aplicativo liberado.' : 'Acesso ao aplicativo bloqueado.'}`
         : cancelRenewal ? 'Renovação cancelada. O período já pago permanece disponível.' : 'Cancelamento da cobrança registrado.');
       setEditing(null); setCancelInvoice(null); setCancelRenewal(null); setReason('');
@@ -95,6 +101,36 @@ export function AdminSaasModule({ view, initialCompanyId, onChanged }: { view: '
         ['Contas isentas', subscriptions.filter(s => s.billing_mode === 'exempt').length],
       ].map(([label, value]) => <div className="admin-financial-kpi" key={label}><small>{label}</small><strong>{value}</strong></div>)}
     </div>}
+    {(editing || cancelInvoice || cancelRenewal) && <form className="rma-form module-card admin-access-editor" aria-busy={busy} onSubmit={save}>
+      <h4>{editing ? `Controlar acesso: ${editing.company_name}` : cancelRenewal ? 'Cancelar renovação' : 'Cancelar cobrança pendente'}</h4>
+      {editing && <>
+        <label>Plano<select value={editing.plan_id} disabled={busy} onChange={e => setEditing({ ...editing, plan_id: e.target.value as SaasPlanId })}>
+          <option value="basico">Básico</option><option value="profissional">Profissional</option><option value="enterprise">Enterprise</option>
+        </select></label>
+        <label>Cobrança da empresa<select value={editing.billing_mode} disabled={busy} onChange={e => setEditing({ ...editing, billing_mode: e.target.value as 'paid' | 'exempt', full_access: false })}>
+          <option value="paid">Cobrar mensalidade do plano</option><option value="exempt">Isentar de cobrança</option>
+        </select></label>
+        {editing.billing_mode === 'exempt' && <label><input type="checkbox" checked={editing.full_access} disabled={busy} onChange={e => setEditing({ ...editing, full_access: e.target.checked })} /> Liberar todos os recursos</label>}
+        <label>Situação do acesso<select value={editing.status} disabled={busy} onChange={e => setEditing({ ...editing, status: e.target.value as SaasSubscription['status'] })}>
+          <option value="trial">Período de teste</option><option value="active">Ativado</option><option value="suspended">Suspenso — impedir uso do app</option><option value="cancelled">Assinatura cancelada</option>
+        </select></label>
+        <label>Liberar acesso até<input type="date" disabled={busy} value={saasAccessDateForInput(editing.admin_access_until)}
+          onChange={e => setEditing({ ...editing, admin_access_until: e.target.value ? `${e.target.value}T23:59:59-03:00` : null })} /></label>
+        <p>{editing.status === 'suspended' ? 'A suspensão bloqueia as operações da empresa e de seus funcionários, mesmo com pagamento ou isenção.'
+          : editing.billing_mode === 'exempt' ? 'A empresa poderá utilizar o aplicativo sem mensalidade. Marque acesso completo para liberar todos os recursos.'
+          : 'Para ativar sem pagamento ou teste vigente, defina uma data em Liberar acesso até. Essa liberação não registra pagamento.'}</p>
+        <p>A mudança de plano encerra a renovação anterior no Mercado Pago. A remoção da isenção exige autorização de pagamento pelo titular.</p>
+      </>}
+      {cancelRenewal && <p>As próximas cobranças serão canceladas. O período já pago permanece disponível; use Suspender acesso para bloquear o uso do aplicativo.</p>}
+      {cancelInvoice && <p>O cancelamento concede acesso até o fim desta cobrança e desativa a renovação. Pagamentos já recebidos exigem estorno no Mercado Pago.</p>}
+      <label>Motivo da alteração (obrigatório)<textarea required minLength={5} maxLength={500} disabled={busy} value={reason}
+        aria-describedby="admin-change-reason-help" placeholder="Ex.: Alteração do plano solicitada pela empresa"
+        onChange={e => setReason(e.target.value)} /></label>
+      <small id="admin-change-reason-help">Informe de 5 a 500 caracteres. O motivo fica registrado junto com a alteração.</small>
+      {error && <p className="admin-editor-error">{error}</p>}
+      <div className="subscription-actions admin-save-actions"><button type="submit" className="module-submit-btn" disabled={busy}>{busy ? 'Salvando...' : editing ? 'Salvar alterações' : 'Confirmar cancelamento'}</button>
+        <button type="button" className="rma-advance-btn" disabled={busy} onClick={() => { setEditing(null); setCancelInvoice(null); setCancelRenewal(null); setReason(''); setError(null); }}>Cancelar edição</button></div>
+    </form>}
     {data && view === 'subscriptions' && <div className="stock-table-wrap"><table className="rma-table">
       <thead><tr><th>Empresa</th><th>Plano</th><th>Cobrança</th><th>Status</th><th>Acesso ao app</th><th>Renovação</th><th>Controles</th></tr></thead>
       <tbody>{filtered.map(s => <tr key={s.company_id}>
@@ -119,31 +155,5 @@ export function AdminSaasModule({ view, initialCompanyId, onChanged }: { view: '
     {!!data?.jobs.length && <div className="module-card"><h4>Cancelamentos no gateway</h4>
       {data.jobs.map(job => <p key={job.id}>{subscriptions.find(s => s.company_id === job.company_id)?.company_name ?? job.company_id}: {job.status}{job.last_error ? ` · ${job.last_error}` : ''}</p>)}
     </div>}
-    {(editing || cancelInvoice || cancelRenewal) && <form className="rma-form module-card" onSubmit={save}>
-      <h4>{editing ? `Controlar acesso: ${editing.company_name}` : cancelRenewal ? 'Cancelar renovação' : 'Cancelar cobrança pendente'}</h4>
-      {editing && <>
-        <label>Plano<select value={editing.plan_id} disabled={busy} onChange={e => setEditing({ ...editing, plan_id: e.target.value as SaasPlanId })}>
-          <option value="basico">Básico</option><option value="profissional">Profissional</option><option value="enterprise">Enterprise</option>
-        </select></label>
-        <label>Cobrança da empresa<select value={editing.billing_mode} disabled={busy} onChange={e => setEditing({ ...editing, billing_mode: e.target.value as 'paid' | 'exempt', full_access: false })}>
-          <option value="paid">Cobrar mensalidade do plano</option><option value="exempt">Isentar de cobrança</option>
-        </select></label>
-        {editing.billing_mode === 'exempt' && <label><input type="checkbox" checked={editing.full_access} disabled={busy} onChange={e => setEditing({ ...editing, full_access: e.target.checked })} /> Liberar todos os recursos</label>}
-        <label>Situação do acesso<select value={editing.status} disabled={busy} onChange={e => setEditing({ ...editing, status: e.target.value as SaasSubscription['status'] })}>
-          <option value="trial">Período de teste</option><option value="active">Ativado</option><option value="suspended">Suspenso — impedir uso do app</option><option value="cancelled">Assinatura cancelada</option>
-        </select></label>
-        <label>Liberar acesso até<input type="date" disabled={busy} value={saasAccessDateForInput(editing.admin_access_until)}
-          onChange={e => setEditing({ ...editing, admin_access_until: e.target.value ? `${e.target.value}T23:59:59-03:00` : null })} /></label>
-        <p>{editing.status === 'suspended' ? 'A suspensão bloqueia as operações da empresa e de seus funcionários, mesmo com pagamento ou isenção.'
-          : editing.billing_mode === 'exempt' ? 'A empresa poderá utilizar o aplicativo sem mensalidade. Marque acesso completo para liberar todos os recursos.'
-          : 'Para ativar sem pagamento ou teste vigente, defina uma data em Liberar acesso até. Essa liberação não registra pagamento.'}</p>
-        <p>A mudança de plano encerra a renovação anterior no Mercado Pago. A remoção da isenção exige autorização de pagamento pelo titular.</p>
-      </>}
-      {cancelRenewal && <p>As próximas cobranças serão canceladas. O período já pago permanece disponível; use Suspender acesso para bloquear o uso do aplicativo.</p>}
-      {cancelInvoice && <p>O cancelamento concede acesso até o fim desta cobrança e desativa a renovação. Pagamentos já recebidos exigem estorno no Mercado Pago.</p>}
-      <label>Motivo<textarea required minLength={5} maxLength={500} disabled={busy} value={reason} onChange={e => setReason(e.target.value)} /></label>
-      <div className="subscription-actions"><button className="module-submit-btn" disabled={busy || reason.trim().length < 5}>{busy ? 'Salvando...' : 'Confirmar alteração'}</button>
-        <button type="button" className="rma-advance-btn" disabled={busy} onClick={() => { setEditing(null); setCancelInvoice(null); setCancelRenewal(null); }}>Voltar</button></div>
-    </form>}
   </section>;
 }

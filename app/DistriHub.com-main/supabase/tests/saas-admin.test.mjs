@@ -109,3 +109,46 @@ test('duas confirmações simultâneas enviam somente uma alteração administra
   assert.equal(h.calls.length, 1);
   await act(async () => { release({ data: { can_access: false } }); await first; });
 });
+
+test('salvar sem motivo explica o campo obrigatório e não envia alteração ao banco', async () => {
+  const h = await harness();
+  await act(async () => button('Gerenciar').props.onClick());
+  assert.equal(button('Salvar alterações').props.disabled, false);
+  await submit();
+  assert.equal(h.calls.length, 0);
+  assert.equal(renderer.root.findAllByType('form').length, 1);
+  assert.match(renderer.root.findByProps({ role: 'alert' }).children.join(''), /motivo.*5 a 500/);
+});
+
+test('plano e acesso salvos voltam do servidor ao atualizar e reabrir o editor', async () => {
+  const subscriptions = [company()];
+  const h = await harness({ subscriptions, mutation: async (_name, args) => {
+    subscriptions[0] = { ...subscriptions[0], plan_id: args.p_plan_id, effective_plan: args.p_plan_id,
+      billing_mode: args.p_billing_mode, full_access: args.p_full_access, status: args.p_status,
+      admin_access_until: args.p_admin_access_until, can_access: false };
+    return { data: subscriptions[0] };
+  } });
+  await act(async () => button('Gerenciar').props.onClick());
+  await act(async () => field('Plano', 'select').props.onChange({ target: { value: 'profissional' } }));
+  await act(async () => field('Situação do acesso', 'select').props.onChange({ target: { value: 'suspended' } }));
+  await reason(); await submit();
+  assert.equal(h.calls.length, 1);
+  assert.equal(h.calls[0].args.p_plan_id, 'profissional');
+  assert.equal(h.changed, 1);
+  await act(async () => button('Atualizar').props.onClick());
+  await act(async () => button('Gerenciar').props.onClick());
+  assert.equal(field('Plano', 'select').props.value, 'profissional');
+  assert.equal(field('Situação do acesso', 'select').props.value, 'suspended');
+  await act(async () => renderer.unmount()); renderer = null;
+  await harness({ subscriptions, initialCompanyId: 'owner' });
+  assert.equal(field('Plano', 'select').props.value, 'profissional');
+  assert.equal(field('Situação do acesso', 'select').props.value, 'suspended');
+});
+
+test('resposta sem confirmação preserva o rascunho e não anuncia salvamento', async () => {
+  const h = await harness({ mutation: async () => ({ data: null, error: null }) });
+  await act(async () => button('Gerenciar').props.onClick()); await reason(); await submit();
+  assert.equal(h.changed, 0);
+  assert.equal(renderer.root.findAllByType('form').length, 1);
+  assert.match(renderer.root.findByProps({ role: 'alert' }).children.join(''), /não confirmou/);
+});
