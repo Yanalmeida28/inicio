@@ -51,6 +51,7 @@ test('split checkout rejects a missing balance, completes remaining PIX and subm
   await act(async()=>{renderer=TestRenderer.create(React.createElement(module.exports.Checkout,{...props,onCreateSale:async sale=>{submitted=sale;}}));});
   await act(async()=>renderer.root.findByProps({'aria-label':'Buscar produto por nome ou SKU'}).props.onChange({target:{value:'Produto'}}));
   await act(async()=>renderer.root.findByProps({className:'pdv-product-card'}).props.onClick());
+  await act(async()=>renderer.root.findByProps({'aria-label':'Tipo de atendimento da venda'}).props.onChange({target:{value:'entrega'}}));
   await act(async()=>renderer.root.findByProps({'aria-label':'Frete terceirizado'}).props.onChange({target:{value:'15'}}));
   const paymentSelect=()=>renderer.root.findAllByType('select').find(node=>node.findAllByType('option').some(option=>option.props.value==='misto'));
   await act(async()=>paymentSelect().props.onChange({target:{value:'misto'}}));
@@ -96,17 +97,22 @@ test('checkout collects freight separately and resets it after the confirmed sal
   await act(async () => { renderer = TestRenderer.create(React.createElement(module.exports.Checkout, {...props,onCreateSale:async sale=>{submitted=sale;}})); });
   await act(async () => renderer.root.findByProps({ 'aria-label': 'Buscar produto por nome ou SKU' }).props.onChange({ target: { value: 'Produto' } }));
   await act(async () => renderer.root.findByProps({ className: 'pdv-product-card' }).props.onClick());
+  await act(async()=>renderer.root.findByProps({'aria-label':'Tipo de atendimento da venda'}).props.onChange({target:{value:'entrega'}}));
   await act(async () => renderer.root.findByProps({ 'aria-label': 'Frete terceirizado' }).props.onChange({ target: { value:'15.25' } }));
   assert.equal(renderer.root.findByProps({className:'pdv-total-bar'}).findByType('strong').children.join(''),new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(115.25));
   await act(async()=>renderer.root.findByProps({className:'module-submit-btn pdv-checkout-btn'}).props.onClick());
   assert.equal(submitted.total,100);
   assert.equal(submitted.freight_fee,15.25);
+  assert.equal(renderer.root.findAllByProps({'aria-label':'Frete terceirizado'}).length,0);
+  await act(async()=>renderer.root.findByProps({'aria-label':'Tipo de atendimento da venda'}).props.onChange({target:{value:'entrega'}}));
   assert.equal(renderer.root.findByProps({'aria-label':'Frete terceirizado'}).props.value,0);
 });
 
 test('freight zero can be cleared and an empty field is submitted as zero', async () => {
   let submitted;
   await act(async () => { renderer = TestRenderer.create(React.createElement(module.exports.Checkout, {...props,onCreateSale:async sale=>{submitted=sale;}})); });
+  assert.equal(renderer.root.findAllByProps({'aria-label':'Frete terceirizado'}).length,0);
+  await act(async()=>renderer.root.findByProps({'aria-label':'Tipo de atendimento da venda'}).props.onChange({target:{value:'entrega'}}));
   await act(async()=>renderer.root.findByProps({'aria-label':'Frete terceirizado'}).props.onChange({target:{value:''}}));
   assert.equal(renderer.root.findByProps({'aria-label':'Frete terceirizado'}).props.value,'');
   await act(async () => renderer.root.findByProps({ 'aria-label': 'Buscar produto por nome ou SKU' }).props.onChange({ target: { value: 'Produto' } }));
@@ -120,6 +126,8 @@ test('pre-sale freight zero can be cleared before entering another amount',async
   let submitted;
   await act(async()=>{renderer=TestRenderer.create(React.createElement(module.exports.Presale,{...props,sales:[],onCreatePreSale:async sale=>{submitted=sale;}}));});
   await act(async()=>renderer.root.findByProps({className:'pdv-product-card'}).props.onClick());
+  assert.equal(renderer.root.findAllByProps({'aria-label':'Frete terceirizado'}).length,0);
+  await act(async()=>renderer.root.findAllByType('button').find(node=>node.children.includes('Entrega')).props.onClick());
   await act(async()=>renderer.root.findByProps({'aria-label':'Frete terceirizado'}).props.onChange({target:{value:''}}));
   assert.equal(renderer.root.findByProps({'aria-label':'Frete terceirizado'}).props.value,'');
   await act(async()=>renderer.root.findByProps({'aria-label':'Frete terceirizado'}).props.onChange({target:{value:'12.50'}}));
