@@ -822,20 +822,14 @@ export function PartnerPanel({
         effectiveBranchId;
 
     if (!targetBranch) {
-      window.alert(
-        'Selecione uma filial antes de cadastrar clientes.',
-      );
-      return;
+      throw new Error('Selecione a filial do cliente antes de salvar.');
     }
 
     if (
       isEmployeeRestricted &&
       targetBranch !== effectiveBranchId
     ) {
-      window.alert(
-        'Acesso negado: você só pode cadastrar clientes na sua filial vinculada.',
-      );
-      return;
+      throw new Error('Acesso negado: você só pode cadastrar clientes na sua filial vinculada.');
     }
 
     const {

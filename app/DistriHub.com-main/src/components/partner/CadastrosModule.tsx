@@ -185,6 +185,7 @@ export function CadastrosModule({
           <div hidden={subTab !== 'clientes'}>
           <CustomersSubTab
             customers={customers}
+            branches={branches}
             isActive={isActive && subTab === 'clientes'}
             sales={allSales}
             rmaRequests={rmaRequests}
@@ -1195,10 +1196,11 @@ function ModifiersSubTab({ modifiers, products, onAdd, onDelete }: {
   );
 }
 
-function CustomersSubTab({ isActive = true, customers, sales, rmaRequests, salespeople, selectedBranchId, onAdd, onUpdate, onDelete, onLoadCustomer }: {
+function CustomersSubTab({ isActive = true, customers, branches, sales, rmaRequests, salespeople, selectedBranchId, onAdd, onUpdate, onDelete, onLoadCustomer }: {
   isActive?: boolean;
   rmaRequests: RmaRequest[];
   customers: PartnerCustomer[];
+  branches: PartnerBranch[];
   sales: PartnerSale[];
   salespeople: PartnerSalesperson[];
   onLoadCustomer: (id: string) => Promise<PartnerCustomer>;
@@ -1210,6 +1212,10 @@ function CustomersSubTab({ isActive = true, customers, sales, rmaRequests, sales
   const [showForm, setShowForm] = useSessionDraftState('customers:show-form', false);
   const [editingCustomerId, setEditingCustomerId] = useSessionDraftState<string | null>('customers:editing-id', null);
   const [name, setName] = useSessionDraftState('customers:name', '');
+  const [customerBranchId, setCustomerBranchId] = useSessionDraftState('customers:branch-id', '');
+  const [branchError, setBranchError] = useState<string | null>(null);
+  const existingBranchId = editingCustomerId ? customers.find(customer => customer.id === editingCustomerId)?.branch_id : null;
+  const targetBranchId = existingBranchId || selectedBranchId || customerBranchId || (branches.length === 1 ? branches[0].id : '');
   const [document, setDocument] = useSessionDraftState('customers:document', '');
   const [personType, setPersonType] = useSessionDraftState<PersonType | ''>('customers:person-type', 'PF');
   const [phone, setPhone] = useSessionDraftState('customers:phone', '');
@@ -1233,12 +1239,14 @@ function CustomersSubTab({ isActive = true, customers, sales, rmaRequests, sales
   }, [isActive]);
 
   function resetForm() {
+    setCustomerBranchId(''); setBranchError(null);
     setName(''); setDocument(''); setPersonType('PF'); setPhone(''); setEmail(''); setBirthday(''); setAddress('');
     setNeighborhood(''); setCity(''); setDevice(''); setNotes(''); setCustomerType('varejo');
     setEditingCustomerId(null); setShowForm(false);
   }
 
   function openEditForm(customer: PartnerCustomer) {
+    setCustomerBranchId(''); setBranchError(null);
     setEditingCustomerId(customer.id);
     setName(customer.name ?? '');
     const normDoc = customer.document ? normalizeDocument(customer.document) : '';
@@ -1260,10 +1268,11 @@ function CustomersSubTab({ isActive = true, customers, sales, rmaRequests, sales
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) return;
-    if (!selectedBranchId && !editingCustomerId) {
-      window.alert('Selecione uma filial antes de cadastrar clientes para manter a separação entre filiais.');
+    if (!targetBranchId) {
+      setBranchError(branches.length ? 'Selecione a filial do cliente no campo abaixo para salvar.' : 'Cadastre uma filial em Configurações antes de salvar o cliente.');
       return;
     }
+    setBranchError(null);
 
     const normalizedDocument = normalizeDocument(document);
     let effectivePersonType = personType;
@@ -1306,7 +1315,7 @@ function CustomersSubTab({ isActive = true, customers, sales, rmaRequests, sales
       device_model: device || null,
       notes: notes || null,
       customer_type: customerType,
-      branch_id: editingCustomerId ? (customers.find((customer) => customer.id === editingCustomerId)?.branch_id ?? selectedBranchId) : selectedBranchId,
+      branch_id: targetBranchId,
     };
 
     if (!payload.branch_id) {
@@ -1382,6 +1391,7 @@ function CustomersSubTab({ isActive = true, customers, sales, rmaRequests, sales
           }
           setShowForm(!showForm);
           if (!showForm) {
+            setCustomerBranchId(''); setBranchError(null);
             setName(''); setDocument(''); setPersonType('PF'); setPhone(''); setEmail(''); setBirthday(''); setAddress('');
             setNeighborhood(''); setCity(''); setDevice(''); setNotes(''); setCustomerType('varejo');
             setEditingCustomerId(null);
@@ -1402,6 +1412,14 @@ function CustomersSubTab({ isActive = true, customers, sales, rmaRequests, sales
       />
       {showForm && (
         <form className="rma-form" onSubmit={handleSubmit}>
+          <label>Filial do cliente
+            <select aria-label="Filial do cliente" value={targetBranchId} disabled={Boolean(existingBranchId || selectedBranchId)}
+              onChange={event => { setCustomerBranchId(event.target.value); setBranchError(null); }}>
+              <option value="">Selecione uma filial</option>
+              {branches.map(branch => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
+            </select>
+          </label>
+          {branchError && <p className="otp-error-msg" role="alert">{branchError}</p>}
           <div className="form-row">
             <label>
               Nome Completo / Razão Social

@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { PGlite } from '@electric-sql/pglite';
 
 const db=new PGlite();
-const read=path=>readFile(new URL(path,import.meta.url),'utf8');
+const read=async path=>(await readFile(new URL(path,import.meta.url),'utf8')).replace(/\r\n/g,'\n');
 const sql=(text,args=[])=>db.query(text,args);
 let owner,other,branch,secondBranch,foreignBranch,customer,manager;
 const login=id=>sql("SELECT set_config('test.auth_uid',$1,false)",[id??'']);
