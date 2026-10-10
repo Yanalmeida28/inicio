@@ -134,7 +134,7 @@ export function SalesHistoryModule({ sales, rmaRequests = [], customers, salespe
     <p>{filteredSales.length} vendas encontradas nos dados carregados da filial. Total concluído: <strong>{money.format(filteredSales.filter(s => s.status === 'concluida').reduce((sum, s) => sum + Number(s.total), 0))}</strong></p>
       {printError && <p className="otp-error-msg" role="alert">{printError}</p>}
       {shareNotice && <p role="status">{shareNotice}</p>}
-      <div className="pdv-recent-sales">
+      <div className="pdv-recent-sales sales-history-table">
         <h4>Vendas</h4>
         <div className="stock-table-wrap">
           <table className="rma-table">
@@ -160,9 +160,9 @@ export function SalesHistoryModule({ sales, rmaRequests = [], customers, salespe
                     <td>{s.imei ?? s.serial_number ?? '—'}</td>
                     <td>
                       {s.status === 'cancelada' ? (
-                        <span className="rma-status-badge" style={{ color: '#e3829b', borderColor: '#e3829b' }}>Cancelada</span>
+                        <span className="rma-status-badge history-status-cancelled">Cancelada</span>
                       ) : (
-                        <span className="rma-status-badge" style={{ color: '#5bbc87', borderColor: '#5bbc87' }}>{saleReturnLabel(s, rmaRequests) || (s.status === 'concluida' ? 'Concluída' : s.status === 'aberta' ? 'Aberta' : 'Devolução')}</span>
+                        <span className={`rma-status-badge ${saleReturnLabel(s, rmaRequests) || s.status === 'devolucao' ? 'history-status-returned' : s.status === 'concluida' ? 'history-status-completed' : 'history-status-open'}`}>{saleReturnLabel(s, rmaRequests) || (s.status === 'concluida' ? 'Concluída' : s.status === 'aberta' ? 'Aberta' : 'Devolução')}</span>
                       )}
                     </td>
                     <td>{new Date(s.created_at).toLocaleString('pt-BR')}</td>
