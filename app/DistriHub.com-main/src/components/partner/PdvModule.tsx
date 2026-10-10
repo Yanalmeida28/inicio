@@ -761,16 +761,16 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
             ) : (
               cart.map((item) => (
                 <tr key={item.product_id}>
-                  <td>
+                  <td data-label="Produto">
                     <strong>{item.name}</strong>
                   </td>
-                  <td><div className="pdv-item-controls">
+                  <td data-label="Quantidade"><div className="pdv-item-controls">
                     <button aria-label={`Diminuir quantidade de ${item.name}`} onClick={() => changeQty(item.product_id, -1)}>−</button>
                     <b>{item.quantity}</b>
                     <button aria-label={`Aumentar quantidade de ${item.name}`} onClick={() => changeQty(item.product_id, 1)}>+</button>
                   </div></td>
-                  <td>{canEditPrice ? <SalePriceInput value={item.unit_price} name={item.name} disabled={isCheckingOut || hasPendingSale} onChange={value => setCart(previous => previous.map(row => row.product_id === item.product_id ? { ...row, unit_price: value } : row))} /> : money.format(item.unit_price)}</td>
-                  <td>{money.format(item.unit_price * item.quantity)}</td>
+                  <td data-label="Preço unitário">{canEditPrice ? <SalePriceInput value={item.unit_price} name={item.name} disabled={isCheckingOut || hasPendingSale} onChange={value => setCart(previous => previous.map(row => row.product_id === item.product_id ? { ...row, unit_price: value } : row))} /> : money.format(item.unit_price)}</td>
+                  <td data-label="Subtotal">{money.format(item.unit_price * item.quantity)}</td>
                   <td><button className="pdv-remove" aria-label={`Remover ${item.name}`} onClick={() => removeFromCart(item.product_id)}><Trash2 size={16} /></button></td>
                 </tr>
               ))

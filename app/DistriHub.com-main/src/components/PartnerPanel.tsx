@@ -252,6 +252,24 @@ export function PartnerPanel({
   }, [activeTab, setVisitedTabs]);
   const [selectedBranchId, setSelectedBranchId] = useState<string>('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    const mobile = window.matchMedia('(max-width: 900px)');
+    if (!mobile.matches) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSidebarOpen(false);
+    };
+    const closeOnDesktop = () => { if (!mobile.matches) setSidebarOpen(false); };
+    document.addEventListener('keydown', closeOnEscape);
+    mobile.addEventListener('change', closeOnDesktop);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', closeOnEscape);
+      mobile.removeEventListener('change', closeOnDesktop);
+    };
+  }, [sidebarOpen]);
 
   const [currentSalespersonId, setCurrentSalespersonId] =
     useState<string | null>(null);
@@ -1690,6 +1708,8 @@ export function PartnerPanel({
             )
           }
           aria-label="Menu"
+          aria-expanded={sidebarOpen}
+          aria-controls="partner-navigation"
         >
           {sidebarOpen ? (
             <X size={22} />
@@ -1711,6 +1731,7 @@ export function PartnerPanel({
 
         <button
           className="partner-back-btn compact"
+          aria-label="Voltar"
           onClick={onBack}
         >
           <ArrowLeft size={18} />
@@ -1727,11 +1748,13 @@ export function PartnerPanel({
       )}
 
       <aside
+        id="partner-navigation"
         className={`partner-sidebar ${
           sidebarOpen ? 'open' : ''
         }`}
       >
         <div className="sidebar-header">
+          <button type="button" className="sidebar-mobile-close" aria-label="Fechar menu" onClick={() => setSidebarOpen(false)}><X size={22} /></button>
           <div className="sidebar-brand">
             <span className="sidebar-brand-mark">
               {storeSettings.logo_url ? <img src={storeSettings.logo_url} alt="Logo da loja" style={{ width: 36, height: 36, objectFit: 'contain' }} /> : <Store size={22} />}
