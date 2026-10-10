@@ -2514,3 +2514,54 @@ html, body {
 .sidebar-branch-options button svg { flex-shrink: 0; }
 .sidebar-branch-options button:hover, .sidebar-branch-options button[aria-pressed="true"] { background: rgba(255,255,255,.14); }
 .sidebar-branch-dropdown summary:focus-visible, .sidebar-branch-options button:focus-visible { outline: 2px solid #7bc8f5; outline-offset: 2px; }
+
+/* Super Admin: brighter surfaces and clear accents for actions and access. */
+.admin-panel { background: linear-gradient(145deg, #edf4ff 0%, #f5f3ff 50%, #f0fdfa 100%); color: #172554; }
+.admin-panel .admin-header { background: linear-gradient(110deg, #173ba4, #2563eb 65%, #6d28d9); border-bottom: 3px solid #60a5fa; box-shadow: 0 5px 20px rgba(37,99,235,.16); }
+.admin-panel .partner-title h2 { font-weight: 800; letter-spacing: -.02em; }
+.admin-panel .partner-title p { color: #e0e7ff; }
+.admin-panel .partner-body { padding-top: 22px; }
+.admin-panel .partner-content { max-width: none; }
+.admin-panel .partner-tabs { gap: 7px; padding: 8px; margin-bottom: 24px; border: 1px solid #dbeafe; border-radius: 14px; background: #fff; box-shadow: 0 4px 14px rgba(30,64,175,.06); }
+.admin-panel .partner-tab { padding: 11px 14px; border: 0; border-radius: 9px; color: #475569; font-weight: 700; transition: background .15s, color .15s; }
+.admin-panel .partner-tab:hover { background: #eff6ff; color: #1d4ed8; }
+.admin-panel .partner-tab.active { color: #fff; background: #2563eb; box-shadow: 0 3px 9px rgba(37,99,235,.24); }
+.admin-panel .module-header h3 { color: #1e3a8a; font-weight: 800; }
+.admin-panel .module-header p { color: #475569; }
+.admin-panel .module-icon { background: #dbeafe; color: #1d4ed8; border-radius: 12px; }
+.admin-panel .admin-financial-kpi { padding: 20px; border: 1px solid #bfdbfe; border-top: 4px solid #2563eb; border-radius: 12px; background: linear-gradient(135deg, #fff, #eff6ff); box-shadow: 0 5px 16px rgba(30,64,175,.07); }
+.admin-panel .admin-financial-kpi:nth-child(2) { border-top-color: #059669; background: linear-gradient(135deg, #fff, #ecfdf5); }
+.admin-panel .admin-financial-kpi:nth-child(3) { border-top-color: #d97706; background: linear-gradient(135deg, #fff, #fffbeb); }
+.admin-panel .admin-financial-kpi:nth-child(4) { border-top-color: #7c3aed; background: linear-gradient(135deg, #fff, #f5f3ff); }
+.admin-panel .admin-financial-kpi small { color: #334155; font-size: 12px; font-weight: 600; }
+.admin-panel .admin-financial-kpi strong { color: #1e40af; font-size: 27px; }
+.admin-panel .admin-financial-kpi:nth-child(2) strong { color: #047857; }
+.admin-panel .admin-financial-kpi:nth-child(3) strong { color: #92400e; }
+.admin-panel .admin-financial-kpi:nth-child(4) strong { color: #6d28d9; }
+.admin-panel .stock-table-wrap { border: 1px solid #bfdbfe; border-radius: 12px; box-shadow: 0 5px 16px rgba(30,64,175,.06); }
+.admin-panel .rma-table th { padding-top: 14px; padding-bottom: 14px; background: #e8f0ff; color: #1e3a8a; font-weight: 800; border-bottom-color: #bfdbfe; }
+.admin-panel .rma-table tbody tr:nth-child(even) { background: #f8faff; }
+.admin-panel .rma-table tbody tr:hover { background: #eff6ff; }
+.admin-panel .module-card, .admin-panel .rma-form { background: #fff; color: #172554; border-color: #bfdbfe; border-radius: 12px; box-shadow: 0 4px 14px rgba(30,64,175,.05); }
+.admin-panel .admin-access-editor { border-top: 4px solid #2563eb; }
+.admin-panel .admin-access-editor h4 { color: #1e3a8a; font-size: 17px; }
+.admin-panel .rma-form label { color: #334155; font-weight: 600; }
+.admin-panel .rma-form input, .admin-panel .rma-form select, .admin-panel .rma-form textarea { background: #f8faff; border-color: #b9ccef; color: #172554; border-radius: 8px; }
+.admin-panel .rma-form input:focus, .admin-panel .rma-form select:focus, .admin-panel .rma-form textarea:focus { border-color: #2563eb; box-shadow: 0 0 0 3px #dbeafe; }
+.admin-panel input[type="checkbox"] { accent-color: #2563eb; }
+.admin-panel .module-submit-btn { background: #2563eb; color: #fff; border-color: #2563eb; border-radius: 8px; box-shadow: 0 3px 8px rgba(37,99,235,.18); }
+.admin-panel .module-submit-btn:hover:not(:disabled) { background: #1d4ed8; }
+.admin-panel .rma-advance-btn { background: #eff6ff; color: #1e40af; border-color: #bfdbfe; border-radius: 8px; font-weight: 700; }
+.admin-panel .rma-advance-btn:hover:not(:disabled) { background: #dbeafe; border-color: #60a5fa; }
+.admin-panel button:focus-visible { outline: 3px solid #60a5fa; outline-offset: 3px; }
+.admin-panel button:disabled { opacity: .55; box-shadow: none; }
+.admin-panel .subscription-actions { flex-wrap: wrap; }
+.admin-panel .admin-save-actions { background: #fff; border-top: 1px solid #dbeafe; }
+.admin-panel .admin-editor-error { color: #b91c1c; }
+.admin-panel .admin-plan-badge, .admin-panel .admin-access-badge { display: inline-flex; align-items: center; padding: 5px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.admin-panel .admin-plan-badge { color: #6d28d9; background: #ede9fe; text-transform: capitalize; }
+.admin-panel .admin-access-badge.allowed { color: #047857; background: #d1fae5; }
+.admin-panel .admin-access-badge.blocked { color: #b91c1c; background: #fee2e2; }
+.admin-panel .admin-feedback { padding: 12px 16px; border: 1px solid; border-radius: 10px; font-weight: 600; }
+.admin-panel .admin-feedback-success { color: #065f46; background: #ecfdf5; border-color: #a7f3d0; }
+.admin-panel .admin-feedback-error { color: #991b1b; background: #fef2f2; border-color: #fecaca; }

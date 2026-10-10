@@ -77,8 +77,8 @@ export function AdminSaasModule({ view, initialCompanyId, onChanged }: { view: '
       <button className="rma-advance-btn" disabled={loading || busy} onClick={() => { void refresh(); }}>Atualizar</button>
     </div>
     {loading && <p role="status">Carregando assinaturas...</p>}
-    {error && <p role="alert">{error}</p>}
-    {message && <p role="status">{message}</p>}
+    {error && <p className="admin-feedback admin-feedback-error" role="alert">{error}</p>}
+    {message && <p className="admin-feedback admin-feedback-success" role="status">{message}</p>}
     {data && view === 'subscriptions' && <>
       <div className="admin-financial-kpis">
         {[
@@ -134,8 +134,8 @@ export function AdminSaasModule({ view, initialCompanyId, onChanged }: { view: '
     {data && view === 'subscriptions' && <div className="stock-table-wrap"><table className="rma-table">
       <thead><tr><th>Empresa</th><th>Plano</th><th>Cobrança</th><th>Status</th><th>Acesso ao app</th><th>Renovação</th><th>Controles</th></tr></thead>
       <tbody>{filtered.map(s => <tr key={s.company_id}>
-        <td>{s.company_name}</td><td>{s.effective_plan}</td><td>{s.billing_mode === 'exempt' ? 'Isenta' : money.format(s.monthly_amount)}</td>
-        <td>{saasStatusLabels[s.status]}</td><td>{s.can_access ? 'Liberado' : 'Bloqueado'}</td><td>{s.auto_renew ? 'Ativa' : 'Desativada'}</td>
+        <td>{s.company_name}</td><td><span className="admin-plan-badge">{s.effective_plan}</span></td><td>{s.billing_mode === 'exempt' ? 'Isenta' : money.format(s.monthly_amount)}</td>
+        <td>{saasStatusLabels[s.status]}</td><td><span className={`admin-access-badge ${s.can_access ? 'allowed' : 'blocked'}`}>{s.can_access ? 'Liberado' : 'Bloqueado'}</span></td><td>{s.auto_renew ? 'Ativa' : 'Desativada'}</td>
         <td><div className="subscription-actions">
           <button className="rma-advance-btn" disabled={busy || loading} onClick={() => edit(s)}>Gerenciar</button>
           <button className="rma-advance-btn" disabled={busy || loading} onClick={() => edit(s, s.can_access ? 'suspend' : 'activate')}>{s.can_access ? 'Suspender acesso' : 'Ativar acesso'}</button>
