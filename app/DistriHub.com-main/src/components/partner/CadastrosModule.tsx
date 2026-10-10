@@ -531,13 +531,13 @@ function ProductsSubTab({ defaultIsService = false, isActive = true, products, a
                   <td>{p.is_service ? '—' : p.stock}</td>
                   <td>
                     {!p.is_service && p.stock <= (p.min_stock || 0) && p.stock > 0 && (
-                      <span className="rma-status-badge" style={{ color: '#B45309', borderColor: '#B45309' }}>Estoque baixo</span>
+                      <span className="rma-status-badge stock-low">Estoque baixo</span>
                     )}
                     {!p.is_service && p.stock === 0 && (
-                      <span className="rma-status-badge" style={{ color: '#B91C1C', borderColor: '#B91C1C' }}>Sem estoque</span>
+                      <span className="rma-status-badge stock-empty">Sem estoque</span>
                     )}
                     {!p.is_service && p.stock > (p.min_stock || 0) && (
-                      <span className="rma-status-badge" style={{ color: '#15803D', borderColor: '#15803D' }}>OK</span>
+                      <span className="rma-status-badge stock-ok">OK</span>
                     )}
                   </td>
                   <td className="product-actions-cell">
@@ -2746,7 +2746,7 @@ function ReplenishmentSubTab({ products, sales, selectedBranchId, onReplenishSto
                         Classe {p.abcClass}
                       </span>
                     </td>
-                    <td className="text-red"><strong>{p.stock}</strong></td>
+                    <td className={p.stock <= 0 ? 'stock-empty-value' : 'stock-low-value'}><strong>{p.stock}</strong></td>
                     <td>{p.minStock}</td>
                     <td>{p.totalSold}</td>
                     <td>{money.format(p.revenue)}</td>
@@ -2810,11 +2810,11 @@ function ReplenishmentSubTab({ products, sales, selectedBranchId, onReplenishSto
                   <td>{p.stock}</td>
                   <td>
                     {p.stock === 0 ? (
-                      <span className="rma-status-badge" style={{ color: '#B91C1C', borderColor: '#B91C1C' }}>Sem estoque</span>
+                      <span className="rma-status-badge stock-empty">Sem estoque</span>
                     ) : p.stock <= (p.minStock || 0) ? (
-                      <span className="rma-status-badge" style={{ color: '#B45309', borderColor: '#B45309' }}>Baixo</span>
+                      <span className="rma-status-badge stock-low">Baixo</span>
                     ) : (
-                      <span className="rma-status-badge" style={{ color: '#15803D', borderColor: '#15803D' }}>OK</span>
+                      <span className="rma-status-badge stock-ok">OK</span>
                     )}
                   </td>
                   <td><button type="button" className="module-submit-btn compact" onClick={() => { setSelectedProduct(products.find((product) => product.id === p.id) ?? null); setError(null); setSuccess(null); }}>Repor estoque</button></td>

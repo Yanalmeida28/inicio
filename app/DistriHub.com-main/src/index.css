@@ -2584,3 +2584,8 @@ body, .app-shell { background: #091724; color: #edf5fc; }
 .partner-panel .sales-history-table .history-status-open { color: #a8daff; background: #173b58; border-color: #3193e5; }
 .partner-panel .sales-history-table .history-status-returned { color: #fbbf24; background: #342b1b; border-color: #b98723; }
 .partner-panel .sales-history-table .history-status-cancelled { color: #fda4af; background: #351c2e; border-color: #bd5269; }
+.partner-panel .rma-status-badge.stock-low { color: #fff; background: #747400; border-color: #fde047; }
+.partner-panel .rma-status-badge.stock-empty { color: #fff; background: #dc2626; border-color: #f87171; }
+.partner-panel .rma-status-badge.stock-ok { color: #fff; background: #15803d; border-color: #4ade80; }
+.partner-panel .stock-low-value, .partner-panel .stock-low-value strong { color: #fde047; }
+.partner-panel .stock-empty-value, .partner-panel .stock-empty-value strong { color: #f87171; }
