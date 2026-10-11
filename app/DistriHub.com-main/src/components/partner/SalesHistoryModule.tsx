@@ -124,7 +124,7 @@ export function SalesHistoryModule({ sales, rmaRequests = [], customers, salespe
 
   return (<>
     <div className="orders-filter-row sales-history-filters">
-      <label>Buscar venda<input type="search" name="sales-history-search" autoComplete="off" data-lpignore="true" data-1p-ignore="true" value={search} onChange={e => setSearch(e.target.value)} placeholder="Cliente, número, IMEI ou série" /></label>
+      <label>Buscar venda<input type="search" name="sales-history-search" autoComplete="off" data-lpignore="true" data-1p-ignore="true" disabled={!!cancelTarget} value={search} onChange={e => { if (!cancelTarget) setSearch(e.target.value); }} placeholder="Cliente, número, IMEI ou série" /></label>
       <label>De<input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} /></label>
       <label>Até<input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} /></label>
       <label>Status<select value={status} onChange={e => setStatus(e.target.value)}><option value="all">Todos</option><option value="concluida">Concluída</option><option value="cancelada">Cancelada</option><option value="aberta">Aberta</option><option value="devolucao">Devolução</option></select></label>
@@ -188,10 +188,10 @@ export function SalesHistoryModule({ sales, rmaRequests = [], customers, salespe
 
       {cancelTarget && (
         <div className="modal-backdrop" onClick={() => setCancelTarget(null)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '380px' }}>
+          <form id="sales-history-cancel-authorization" autoComplete="off" className="modal-content" onSubmit={e => e.preventDefault()} onClick={(e) => e.stopPropagation()} style={{ maxWidth: '380px' }}>
             <div className="modal-header">
               <h3><Lock size={18} style={{ display: 'inline', marginRight: '6px' }} /> Confirmação Necessária</h3>
-              <button onClick={() => setCancelTarget(null)}><X size={18} /></button>
+              <button type="button" onClick={() => setCancelTarget(null)}><X size={18} /></button>
             </div>
             <p className="otp-description">
               Cancelar ou apagar uma venda requer permissão de Administrador ou Gerente. Selecione o responsável e digite o PIN dele para continuar.
@@ -214,6 +214,11 @@ export function SalesHistoryModule({ sales, rmaRequests = [], customers, salespe
                   <strong>PIN do responsável</strong>
                   <input
                     type="password"
+                    name="sales-cancellation-supervisor-pin"
+                    autoComplete="new-password"
+                    data-lpignore="true"
+                    data-1p-ignore="true"
+                    inputMode="numeric"
                     value={pinInput}
                     onChange={(e) => { setPinInput(e.target.value); setPinError(null); }}
                     maxLength={8}
@@ -225,14 +230,14 @@ export function SalesHistoryModule({ sales, rmaRequests = [], customers, salespe
             )}
             {pinError && <p className="otp-error-msg">{pinError}</p>}
             <div className="otp-actions">
-              <button className="rma-advance-btn danger" onClick={() => verifyPinAndCancel('delete')} disabled={isVerifyingPin || managers.length === 0}>
+              <button type="button" className="rma-advance-btn danger" onClick={() => verifyPinAndCancel('delete')} disabled={isVerifyingPin || managers.length === 0}>
                 <Trash2 size={16} /> {isVerifyingPin ? 'Verificando...' : 'Apagar Venda'}
               </button>
-              <button className="module-submit-btn" onClick={() => verifyPinAndCancel('cancel')} disabled={isVerifyingPin || managers.length === 0}>
+              <button type="button" className="module-submit-btn" onClick={() => verifyPinAndCancel('cancel')} disabled={isVerifyingPin || managers.length === 0}>
                 <Ban size={16} /> {isVerifyingPin ? 'Verificando...' : 'Cancelar Venda'}
               </button>
             </div>
-          </div>
+          </form>
         </div>
       )}
     </>
