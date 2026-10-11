@@ -14,6 +14,17 @@ vm.runInNewContext(ts.transpileModule(await readFile(new URL('../../src/componen
 }).outputText, { exports, Error, require: name => name === '../../lib/pdv' ? pdvHelpers : name === '../../utils' ? { money: new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }) } : require(name) });
 const sales = ['one', 'two'].map(id => ({ id, customer_name: id, items: [], total: 100, delivery_type: 'entrega', status: 'concluida', branch_id: 'branch' }));
 
+test('indicadores contam somente valores em rota e fila ativa; entrega mantém endereço e soma unidades', async () => {
+  let renderer;
+  await act(async()=>{renderer=TestRenderer.create(React.createElement(exports.DeliveryModule,{
+    sales:[{...sales[0],total:40,delivery_status:'em_rota',delivery_address:'Rua preservada',items:[{quantity:3},{quantity:2}]},{...sales[1],total:100,delivery_status:'entregue'}],salespeople:[],selectedBranchId:'branch',onUpdateDelivery:async()=>{},
+  }));});
+  const content=JSON.stringify(renderer.toJSON());assert.match(content,/Rua preservada/);assert.match(content,/40,00/);assert.match(content,/"5"," "/);
+  const summaries=renderer.root.findAll(node=>node.props.className==='orders-summary-card');
+  assert.equal(summaries[2].findByType('strong').children.join(''),'1');
+  await act(async()=>renderer.unmount());
+});
+
 test('cliques repetidos não duplicam gravação; entregas diferentes mantêm bloqueios independentes', async () => {
   const calls = [];
   const resolve = [];

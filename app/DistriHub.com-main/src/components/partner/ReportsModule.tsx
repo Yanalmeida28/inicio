@@ -20,8 +20,12 @@ import {
   stagnantLevelLabels, type StagnantLevel,
 } from '../../lib/stagnantStock';
 import { useStagnantStock } from '../../hooks/useStagnantStock';
+import { CrmWorkspace } from './CrmWorkspace';
 
 type Props = {
+  companyUserId?: string | null;
+  branchId?: string | null;
+  invoices?: import('../../types').PartnerInvoice[];
   sales: PartnerSale[];
   products: PartnerProduct[];
   customers: PartnerCustomer[];
@@ -74,12 +78,16 @@ const roleLabels: Record<SalespersonRole, string> = {
   logistica: 'Logística / Entregador',
 };
 
-export function ReportsModule({ sales, products, customers, salespeople, movements = [], initialTab = 'vendas' }: Props) {
+export function ReportsModule({ sales, products, customers, salespeople, movements = [], companyUserId = null, branchId = null, invoices = [], initialTab = 'vendas' }: Props) {
   const [tab, setTab] = useState<ReportTab>(initialTab);
   const [range, setRange] = useState<SalesRange>('30d');
   const [startDate, setStartDate] = useState(() => localDateInput(new Date(Date.now() - 30 * 86_400_000)));
   const [endDate, setEndDate] = useState(() => localDateInput(new Date()));
   const [rangeError, setRangeError] = useState<string | null>(null);
+  const [customerFilter, setCustomerFilter] = useState('');
+  const [sellerFilter, setSellerFilter] = useState('');
+  const [paymentFilter, setPaymentFilter] = useState('');
+  const [productFilter, setProductFilter] = useState('');
 
   const tabs: { id: ReportTab; label: string; icon: typeof BarChart3 }[] = [
     { id: 'vendas', label: 'Vendas & Serviços', icon: BarChart3 },
@@ -91,8 +99,10 @@ export function ReportsModule({ sales, products, customers, salespeople, movemen
 
   const completedSales = useMemo(() => completedSalesOnly(sales), [sales]);
   const visibleSales = useMemo(
-    () => filterReportSales(sales, range, startDate, endDate),
-    [sales, range, startDate, endDate],
+    () => filterReportSales(sales, range, startDate, endDate).filter(sale =>
+      (!customerFilter || sale.customer_id === customerFilter) && (!sellerFilter || sale.salesperson_id === sellerFilter)
+      && (!paymentFilter || sale.payment_method === paymentFilter) && (!productFilter || sale.items.some(item => item.product_id === productFilter))),
+    [sales, range, startDate, endDate, customerFilter, sellerFilter, paymentFilter, productFilter],
   );
 
   function exportCsv() {
@@ -158,11 +168,20 @@ export function ReportsModule({ sales, products, customers, salespeople, movemen
       )}
 
       <div className="subtab-content">
+        {tab !== 'sem-giro' && <div className="orders-filter-row">
+          <select aria-label="Filtrar cliente no relatório" value={customerFilter} onChange={e=>setCustomerFilter(e.target.value)}><option value="">Todos os clientes</option>{customers.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select>
+          <select aria-label="Filtrar vendedor no relatório" value={sellerFilter} onChange={e=>setSellerFilter(e.target.value)}><option value="">Todos os vendedores</option>{salespeople.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select>
+          <select aria-label="Filtrar pagamento no relatório" value={paymentFilter} onChange={e=>setPaymentFilter(e.target.value)}><option value="">Todos os pagamentos</option>{Array.from(new Set(completedSales.map(s=>s.payment_method).filter(Boolean))).map(method=><option key={method} value={method!}>{method}</option>)}</select>
+          <select aria-label="Filtrar produto no relatório" value={productFilter} onChange={e=>setProductFilter(e.target.value)}><option value="">Todos os produtos</option>{products.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select>
+          <button type="button" onClick={()=>{setCustomerFilter('');setSellerFilter('');setPaymentFilter('');setProductFilter('');}}>Limpar filtros</button>
+          {productFilter && <small>Totais das vendas que contêm o produto selecionado, incluindo os demais itens dessas vendas.</small>}
+        </div>}
         {tab === 'vendas' && <SalesReport sales={visibleSales} products={products} salespeople={salespeople} />}
         {tab === 'financeiro' && <FinancialReport sales={visibleSales} allSales={completedSales} products={products} />}
         {tab === 'estoque' && <StockReport products={products} sales={visibleSales} />}
         {tab === 'sem-giro' && <StagnantStockReport products={products} sales={sales} movements={movements} />}
-        {tab === 'crm' && <CrmReport customers={customers} sales={visibleSales} />}
+        {tab === 'crm' && <><CrmReport customers={customers} sales={visibleSales} /><CrmWorkspace customers={customers} sales={completedSales} invoices={invoices} salespeople={salespeople} companyUserId={companyUserId} branchId={branchId} /></>}
+        {(tab === 'vendas' || tab === 'financeiro') && <details><summary>Vendas que compõem os totais ({visibleSales.length})</summary><div className="stock-table-wrap"><table className="rma-table"><thead><tr><th>Venda</th><th>Data</th><th>Cliente</th><th>Pagamento</th><th>Total</th></tr></thead><tbody>{visibleSales.map(s=><tr key={s.id}><td>#{s.id.slice(0,8)}</td><td>{new Date(s.created_at).toLocaleString('pt-BR')}</td><td>{s.customer_name}</td><td>{s.payment_method}</td><td>{money.format(s.total)}</td></tr>)}</tbody></table></div></details>}
       </div>
     </div>
   );
@@ -427,6 +446,7 @@ function FinancialReport({ sales, allSales, products }: { sales: PartnerSale[]; 
           <Download size={15} /> Exportar relatório financeiro CSV
         </button>
       </div>
+      <p>Comparativo e histórico mensal: meses do calendário. Os demais totais seguem o período selecionado. Margens de vendas antigas sem custo histórico são estimadas.</p>
       <div className="report-cards">
         <div className="report-card">
           <small>Mês Atual</small>
@@ -740,7 +760,7 @@ function CrmReport({ customers, sales }: { customers: PartnerCustomer[]; sales: 
     const internationalNumber = phone.trim().startsWith('+') || (digits.startsWith('55') && digits.length >= 12)
       ? digits
       : `55${digits}`;
-    const msg = `Olá ${name}! Parabéns pelo seu aniversário! 🎉 Aproveite um cupom especial de desconto na sua próxima visita!`;
+    const msg = `Olá ${name}! Parabéns pelo seu aniversário! 🎉 Será um prazer receber você novamente em nossa loja!`;
     window.open(`https://wa.me/${internationalNumber}?text=${encodeURIComponent(msg)}`, '_blank', 'noopener,noreferrer');
   }
 
@@ -751,6 +771,7 @@ function CrmReport({ customers, sales }: { customers: PartnerCustomer[]; sales: 
           <Download size={15} /> Exportar CRM CSV
         </button>
       </div>
+      <p>Ranking pelo período selecionado. Aniversariantes do mês atual.</p>
       <h4 className="report-section-title"><Trophy size={16} /> Top 5 Clientes</h4>
       <div className="ranking-list">
         {topCustomers.length === 0 ? (

@@ -88,6 +88,8 @@ export function getCostOfGoodsSold(sales: PartnerSale[], products: PartnerProduc
   const productById = new Map(products.map((product) => [product.id, product]));
   return sales.reduce((total, sale) => total + (Array.isArray(sale.items) ? sale.items : []).reduce((saleCost, item) => {
     const product = productById.get(item.product_id);
+    const snapshot = sale.cost_snapshot?.[item.product_id];
+    if (snapshot != null) return saleCost + Number(snapshot) * item.quantity;
     if (!product || product.is_service) return saleCost;
     return saleCost + (Number(product.cost_price) || 0) * item.quantity;
   }, 0), 0);

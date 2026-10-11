@@ -98,6 +98,9 @@ async function component(file, name) {
  const source=await readFile(new URL(`../../src/components/partner/${file}.tsx`,import.meta.url),'utf8');
  vm.runInNewContext(ts.transpileModule(source,{compilerOptions:{jsx:ts.JsxEmit.ReactJSX,module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText,{
   exports:module.exports, crypto:{randomUUID:()=>operation}, require(dependency) {
+   if(dependency==='../../lib/supabase') return {supabase:null};
+   if(dependency==='../../lib/accounts') return {isOverdue:()=>false};
+   if(dependency==='./InvoiceReceipts') return {InvoiceReceipts:()=>null};
    if(dependency==='react') return React;
    if(dependency==='react/jsx-runtime') return jsx;
    if(dependency==='lucide-react') return new Proxy({},{get:()=>()=>null});

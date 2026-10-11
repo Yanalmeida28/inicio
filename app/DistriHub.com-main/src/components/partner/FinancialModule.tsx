@@ -1,13 +1,15 @@
 import { useMemo, useRef, useState } from 'react';
 import { Wallet, CreditCard, Receipt, Check } from 'lucide-react';
 import type { PartnerInvoice, RmaRequest } from '../../types';
+import { isOverdue } from '../../lib/accounts';
+import { InvoiceReceipts } from './InvoiceReceipts';
 import { money } from '../../utils';
 
 type Props = {
   invoices: PartnerInvoice[];
   creditLimit: number;
   creditUsed: number;
-  onPayInvoice: (id: string, amount?: number) => Promise<void>;
+  onPayInvoice: (id: string, amount?: number, requestId?: string) => Promise<void>;
   rmaRequests?: RmaRequest[];
   onApplyCredit?: (rmaId: string, invoiceId: string, amount: number, applicationId: string) => Promise<void>;
 };
@@ -22,8 +24,10 @@ export function FinancialModule({ invoices, creditLimit, creditUsed, onPayInvoic
   const [amount, setAmount] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const submittingRef = useRef(false);
+  const paymentRequest = useRef<{ id: string; amount: number; token: string } | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [receiptInvoiceId, setReceiptInvoiceId] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'aberta' | 'paga'>('all');
   const [creditInvoice, setCreditInvoice] = useState<PartnerInvoice | null>(null);
   const [selectedCreditId, setSelectedCreditId] = useState('');
@@ -66,7 +70,7 @@ export function FinancialModule({ invoices, creditLimit, creditUsed, onPayInvoic
   const creditAvailable = creditLimit - creditUsed;
 
   const overdueCount = useMemo(
-    () => openInvoices.filter((invoice) => invoice.due_date && new Date(invoice.due_date) < new Date()).length,
+    () => openInvoices.filter((invoice) => isOverdue(invoice)).length,
     [openInvoices],
   );
 
@@ -96,7 +100,11 @@ export function FinancialModule({ invoices, creditLimit, creditUsed, onPayInvoic
     submittingRef.current = true;
     setSubmitting(true);
     try {
-      await onPayInvoice(invoice.id, value);
+      if (!paymentRequest.current || paymentRequest.current.id !== invoice.id || paymentRequest.current.amount !== value) {
+        paymentRequest.current = { id: invoice.id, amount: value, token: crypto.randomUUID() };
+      }
+      await onPayInvoice(invoice.id, value, paymentRequest.current.token);
+      paymentRequest.current = null;
       setPayingId(null);
       setSuccess(paymentMode === 'partial' ? 'Amortização registrada com sucesso!' : 'Título quitado com sucesso!');
     } catch (error) {
@@ -223,6 +231,8 @@ export function FinancialModule({ invoices, creditLimit, creditUsed, onPayInvoic
                       </span>
                     </td>
                     <td>
+                      <button type="button" className="rma-advance-btn" onClick={()=>setReceiptInvoiceId(receiptInvoiceId === inv.id ? null : inv.id)}>Histórico de recebimentos</button>
+                      {receiptInvoiceId === inv.id && <InvoiceReceipts invoice={inv} />}
                       {isOpen(inv) && (
                         <>
                           {payingId === inv.id ? (

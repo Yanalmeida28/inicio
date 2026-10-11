@@ -61,7 +61,7 @@ type Props = {
   renderSettings?: () => ReactNode;
   renderCadastros?: (target: AdminCadastrosTarget) => ReactNode;
   invoices?: PartnerInvoice[];
-  onReceiveInvoice?: (id: string, amount: number) => Promise<void>;
+  onReceiveInvoice?: (id: string, amount: number, requestId?: string) => Promise<void>;
   userId?: string;
   sales: PartnerSale[];
   products: PartnerProduct[];
@@ -303,6 +303,9 @@ function AdminModuleInner({
           )}
           {activeAdminTab === 'relatorios' && (
             <ReportsModule
+              companyUserId={userId ?? null}
+              branchId={branchFilter || null}
+              invoices={scopedInvoices}
               key={reportsInitialTab}
               initialTab={reportsInitialTab}
               movements={movements}
@@ -487,7 +490,7 @@ function ExecutiveDashboard({
     let totalCost = 0;
     for (const sale of salesList) {
       for (const item of safeItems(sale)) {
-        totalCost += (productCostMap[item.product_id] ?? 0) * item.quantity;
+        totalCost += (sale.cost_snapshot?.[item.product_id] ?? productCostMap[item.product_id] ?? 0) * item.quantity;
       }
     }
     const netRevenue = grossRevenue - totalCost;
@@ -520,7 +523,7 @@ function ExecutiveDashboard({
       let cost = 0;
       for (const sale of daySales) {
         for (const item of safeItems(sale)) {
-          cost += (productCostMap[item.product_id] ?? 0) * item.quantity;
+          cost += (sale.cost_snapshot?.[item.product_id] ?? productCostMap[item.product_id] ?? 0) * item.quantity;
         }
       }
       days.push({ date: dayStart, gross, net: gross - cost });
@@ -537,7 +540,7 @@ function ExecutiveDashboard({
         const catName = product?.category ?? 'Sem categoria';
         if (!map[catName]) map[catName] = { name: catName, revenue: 0, cost: 0, profit: 0 };
         const rev = item.unit_price * item.quantity;
-        const cost = (productCostMap[item.product_id] ?? 0) * item.quantity;
+        const cost = (sale.cost_snapshot?.[item.product_id] ?? productCostMap[item.product_id] ?? 0) * item.quantity;
         map[catName].revenue += rev;
         map[catName].cost += cost;
         map[catName].profit += rev - cost;
@@ -629,7 +632,7 @@ function ExecutiveDashboard({
     const rows = currentSales.map((s) => {
       const sp = salespeople.find((p) => p.id === s.salesperson_id);
       let cost = 0;
-      for (const item of safeItems(s)) cost += (productCostMap[item.product_id] ?? 0) * item.quantity;
+      for (const item of safeItems(s)) cost += (s.cost_snapshot?.[item.product_id] ?? productCostMap[item.product_id] ?? 0) * item.quantity;
       return [
         new Date(s.created_at).toLocaleString('pt-BR'),
         s.customer_name ?? '—',
@@ -664,7 +667,7 @@ function ExecutiveDashboard({
       <div>
         <div class="kpi"><small>Receita Bruta</small><strong>${money.format(current.grossRevenue)}</strong></div>
         <div class="kpi"><small>Custo dos Produtos</small><strong>${money.format(current.totalCost)}</strong></div>
-        <div class="kpi"><small>Lucro Líquido</small><strong>${money.format(current.netRevenue)}</strong></div>
+        <div class="kpi"><small>Lucro bruto estimado</small><strong>${money.format(current.netRevenue)}</strong></div>
         <div class="kpi"><small>Margem</small><strong>${current.profitMargin.toFixed(1)}%</strong></div>
         <div class="kpi"><small>Ticket Médio</small><strong>${money.format(current.averageTicket)}</strong></div>
         <div class="kpi"><small>Vendas</small><strong>${current.count}</strong></div>
@@ -772,7 +775,7 @@ function ExecutiveDashboard({
           </div>
         </div>
         <div className="report-card admin-kpi-card">
-          <small><TrendingUp size={13} /> Lucro Líquido</small>
+          <small><TrendingUp size={13} /> Lucro bruto estimado</small>
           <strong className="text-green">{money.format(current.netRevenue)}</strong>
           <div className="kpi-footer">
             <GrowthBadge pct={profitGrowth} />
@@ -1296,7 +1299,7 @@ function AdminFinancialSummary({
   let totalCost = 0;
   for (const sale of completed) {
     for (const item of safeItems(sale)) {
-      totalCost += (productCostMap[item.product_id] ?? 0) * item.quantity;
+      totalCost += (sale.cost_snapshot?.[item.product_id] ?? productCostMap[item.product_id] ?? 0) * item.quantity;
     }
   }
   const netRevenue = grossRevenue - totalCost;
@@ -1307,19 +1310,19 @@ function AdminFinancialSummary({
   const accountsPayable = accounts.payable;
   const billedSaleIds = new Set(invoices.filter(invoice => invoice.status !== 'cancelada').map(invoice => invoice.sale_id));
   const immediateReceipts = completed.filter(sale => sale.payment_method !== 'faturado' && !billedSaleIds.has(sale.id))
-    .reduce((sum, sale) => sum + Number(sale.total), 0);
+    .reduce((sum, sale) => sum + saleRevenuePayments(sale).filter(payment => payment.method !== 'rma' && payment.method !== 'faturado').reduce((amount, payment) => amount + payment.amount, 0), 0);
   const cashBalance = immediateReceipts + accounts.received - accounts.paid;
 
   const dreRows = [
     { label: 'Receita Bruta de Vendas', value: grossRevenue, bold: true },
-    { label: '(-) Deduções e Impostos', value: -grossRevenue * 0.08, bold: false },
+    { label: '(-) Deduções e Impostos (estimado: 8%)', value: -grossRevenue * 0.08, bold: false },
     { label: 'Receita Líquida', value: grossRevenue * 0.92, bold: true },
     { label: '(-) Custo dos Produtos Vendidos (CMV)', value: -totalCost, bold: false },
     { label: 'Lucro Bruto', value: grossRevenue * 0.92 - totalCost, bold: true },
     { label: '(-) Despesas Operacionais (estimado)', value: -grossRevenue * 0.12, bold: false },
     { label: 'Lucro Operacional (EBIT)', value: grossRevenue * 0.92 - totalCost - grossRevenue * 0.12, bold: true },
     { label: '(-) Imposto de Renda (estimado)', value: -(grossRevenue * 0.92 - totalCost - grossRevenue * 0.12) * 0.15, bold: false },
-    { label: 'Lucro Líquido do Período', value: (grossRevenue * 0.92 - totalCost - grossRevenue * 0.12) * 0.85, bold: true },
+    { label: 'Resultado líquido simulado', value: (grossRevenue * 0.92 - totalCost - grossRevenue * 0.12) * 0.85, bold: true },
   ];
 
   const cashFlowRows = [
@@ -1377,7 +1380,7 @@ function AdminFinancialSummary({
 
       <div className="admin-dre-grid">
         <div className="module-card">
-          <h4 className="report-section-title"><FileText size={16} /> DRE — Demonstrativo do Resultado</h4>
+          <h4 className="report-section-title"><FileText size={16} /> DRE — Simulação de resultado</h4>
           <div className="stock-table-wrap">
             <table className="rma-table">
               <thead><tr><th>Descrição</th><th>Valor</th></tr></thead>

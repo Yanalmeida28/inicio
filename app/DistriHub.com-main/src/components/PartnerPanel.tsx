@@ -2267,6 +2267,7 @@ export function PartnerPanel({
               <div hidden={activeTab !== 'entregas'}>
               {renderTab('entregas',
               <DeliveryModule
+                customers={filteredCustomers}
                 sales={
                   filteredSales
                 }
@@ -2277,9 +2278,9 @@ export function PartnerPanel({
                   effectiveBranchId ||
                   null
                 }
-                onUpdateDelivery={(saleId, status, driverId) => {
+                onUpdateDelivery={(saleId, status, driverId, details) => {
                   const { operatorId, operatorPin } = getOperatorContext();
-                  return partner.updateDelivery(saleId, status, driverId, operatorId, operatorPin);
+                  return partner.updateDelivery(saleId, status, driverId, operatorId, operatorPin, details);
                 }}
               />)}
               </div>
@@ -2379,6 +2380,9 @@ export function PartnerPanel({
               <div hidden={activeTab !== 'relatorios'}>
               {renderTab('relatorios',
               <ReportsModule
+                invoices={filteredInvoices}
+                branchId={effectiveBranchId || null}
+                companyUserId={identity?.companyUserId ?? null}
                 movements={
                   filteredMovements
                 }

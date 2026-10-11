@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PostgrestError } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { InvoicePaymentAttempts } from '../lib/invoicePayments';
 import { mergePartnerChange, PartnerDataVersions } from '../lib/partnerSync';
 import { splitPaymentError, billedSaleError, saleChargeTotal, validSalePrice, isDefinitiveSaleRejection, PdvSaleAttemptStore, pdvErrorMessage, type CustomerCredit } from '../lib/pdv';
 import type {
@@ -1937,6 +1938,7 @@ fetchAllPages((from, to) => client
       driverId: string | null,
       operatorId?: string | null,
       operatorPin?: string | null,
+      details?: import('../types').DeliveryDetails & { address: string; contact: string },
     ) => {
       const { identity: currentIdentity, client } = await requireAuthenticatedSession();
       const sale = data.sales.find((item) => item.id === saleId);
@@ -1947,18 +1949,20 @@ fetchAllPages((from, to) => client
         throw new Error('Esta venda não está disponível para gestão de entrega.');
       }
 
-      const { data: confirmed, error } = await client.rpc('execute_partner_delivery_mutation', {
+      const { data: confirmed, error } = await client.rpc(details ? 'save_partner_delivery_details' : 'execute_partner_delivery_mutation', {
         p_salesperson_id: operatorId ?? null,
         p_pin: operatorPin ?? null,
         p_sale_id: saleId,
         p_status: status,
         p_driver_id: driverId,
+        ...(details ? { p_details: details } : {}),
       });
       if (error) {
         throw new Error(pdvErrorMessage(error));
       }
       if (confirmed !== true) throw new Error('O servidor não confirmou o salvamento da entrega.');
 
+      if (details) { await loadData(); return; }
       const scope = currentIdentity.authUserId + ':' + currentIdentity.companyUserId;
       if (identityScopeRef.current === scope) {
         dataRevisionRef.current.invalidate(["sales"]);
@@ -1970,7 +1974,7 @@ fetchAllPages((from, to) => client
         }));
       }
     },
-    [data.sales, requireAuthenticatedSession],
+    [data.sales, requireAuthenticatedSession, loadData],
   );
 
   const finalizePreSale = useCallback(
@@ -2329,6 +2333,7 @@ fetchAllPages((from, to) => client
     async (
       id: string,
       amount?: number,
+      requestId?: string,
     ) => {
       const currentIdentity = requireIdentity();
 
@@ -2380,17 +2385,21 @@ fetchAllPages((from, to) => client
         );
       }
 
+      const attemptStore = new InvoicePaymentAttempts(window.localStorage);
+      const paymentScope = currentIdentity.authUserId + ':' + currentIdentity.companyUserId;
+      const attempt = attemptStore.get(paymentScope, id, paymentAmount, requestId ?? crypto.randomUUID());
       const { data: paidInvoiceId, error } =
         await supabase.rpc(
-          'record_partner_invoice_payment',
+          'record_partner_invoice_payment_once',
           {
             p_invoice_id: id,
             p_amount: paymentAmount,
+            p_request_id: attempt.token,
           },
         );
 
       if (error) {
-        throw error;
+        throw new Error(pdvErrorMessage(error));
       }
 
       if (paidInvoiceId !== id) {
@@ -2398,8 +2407,9 @@ fetchAllPages((from, to) => client
           'O recebimento não foi confirmado pelo servidor.',
         );
       }
-
-      await loadData();
+      attemptStore.confirm(paymentScope, id);
+      dataRevisionRef.current.invalidate(['invoices']);
+      try { await loadData(); } catch { console.warn('[usePartnerData] Recebimento confirmado; atualização dos dados pendente.'); }
     },
     [data.invoices, loadData, requireIdentity],
   );
@@ -2507,11 +2517,23 @@ fetchAllPages((from, to) => client
         throw new Error('Supabase não configurado.');
       }
 
+      const { files = [], request_id = crypto.randomUUID(), ...payload } = rma;
+      const { data: prior, error: priorError } = await supabase.from('rma_requests_v2').select('*').eq('id', request_id).eq('user_id', currentIdentity.companyUserId).maybeSingle();
+      if (priorError) throw priorError;
+      if (prior) { await loadData(); return prior as RmaRequest; }
+      const attachments = [];
+      for (const { kind, file } of files) {
+        if (file.size > 20 * 1024 * 1024 || !['image/jpeg','image/png','image/webp','image/heic','video/mp4','video/webm'].includes(file.type)) throw new Error('Use imagem JPEG, PNG, WebP, HEIC ou vídeo MP4/WebM de até 20 MB.');
+        const path = `${currentIdentity.authUserId}/${request_id}/${kind}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+        const { error: uploadError } = await supabase.storage.from('rma-attachments').upload(path, file, { upsert: true, contentType: file.type });
+        if (uploadError) throw uploadError;
+        attachments.push({ kind, name: file.name, path });
+      }
       const { data: created, error } =
         await supabase
           .from('rma_requests_v2')
           .insert({
-            ...rma,
+            ...payload, id: request_id, attachments,
             user_id:
               currentIdentity.companyUserId,
           })
@@ -2536,7 +2558,7 @@ fetchAllPages((from, to) => client
 
       return createdRma;
     },
-    [requireIdentity],
+    [requireIdentity, loadData],
   );
 
   const updateRmaStatus = useCallback(

@@ -2,15 +2,16 @@ import { useMemo, useRef, useState } from 'react';
 import {
   Truck, MapPin, Package, Check, Clock, X, Navigation,
 } from 'lucide-react';
-import type { DeliveryStatus, PartnerSale, PartnerSalesperson } from '../../types';
+import type { DeliveryStatus, DeliveryDetails, PartnerSale, PartnerSalesperson, PartnerCustomer } from '../../types';
 import { money } from '../../utils';
 import { saleChargeTotal } from '../../lib/pdv';
 
 type Props = {
   sales: PartnerSale[];
   salespeople: PartnerSalesperson[];
+  customers?: PartnerCustomer[];
   selectedBranchId: string | null;
-  onUpdateDelivery: (saleId: string, status: DeliveryStatus, driverId: string | null) => Promise<void>;
+  onUpdateDelivery: (saleId: string, status: DeliveryStatus, driverId: string | null, details?: DeliveryDetails & { address: string; contact: string }) => Promise<void>;
 };
 
 const statusConfig: Record<DeliveryStatus, { label: string; color: string; icon: typeof Clock }> = {
@@ -20,7 +21,7 @@ const statusConfig: Record<DeliveryStatus, { label: string; color: string; icon:
   falhou: { label: 'Falhou', color: '#e3829b', icon: X },
 };
 
-export function DeliveryModule({ sales, salespeople, selectedBranchId, onUpdateDelivery }: Props) {
+export function DeliveryModule({ sales, salespeople, customers = [], selectedBranchId, onUpdateDelivery }: Props) {
   const drivers = salespeople.filter((s) => s.role === 'logistica' && (s.active ?? s.is_active));
   const [savingSaleIds, setSavingSaleIds] = useState<Set<string>>(() => new Set());
   const savingRef = useRef(new Set<string>());
@@ -34,8 +35,11 @@ export function DeliveryModule({ sales, salespeople, selectedBranchId, onUpdateD
         return {
           saleId: sale.id,
           customerName: sale.customer_name ?? 'Cliente',
-          address: '',
-          items: Array.isArray(sale.items) ? sale.items.length : 0,
+          address: sale.delivery_address ?? '',
+          contact: sale.delivery_contact ?? '',
+          details: sale.delivery_details ?? {},
+          history: sale.delivery_history ?? [],
+          items: Array.isArray(sale.items) ? sale.items.reduce((sum, item) => sum + item.quantity, 0) : 0,
           total: saleChargeTotal(sale),
           status: sale.delivery_status ?? 'pendente',
           driverId: sale.delivery_driver_id ?? null,
@@ -44,15 +48,39 @@ export function DeliveryModule({ sales, salespeople, selectedBranchId, onUpdateD
     [sales, selectedBranchId],
   );
 
+  const [query, setQuery] = useState('');
+  const [driverFilter, setDriverFilter] = useState('');
+  const [dateFilter, setDateFilter] = useState('');
+  const [editing, setEditing] = useState<{ saleId: string; status: DeliveryStatus; driverId: string | null; address: string; contact: string; scheduled_date: string; failure_reason: string; received_by: string; notes: string } | null>(null);
   const [filter, setFilter] = useState<DeliveryStatus | 'all'>('all');
 
   const filtered = useMemo(
-    () => (filter === 'all' ? deliveries : deliveries.filter((d) => d.status === filter)),
-    [deliveries, filter],
+    () => deliveries.filter(d => (filter === 'all' || d.status === filter) && (!query.trim() || `${d.customerName} ${d.saleId}`.toLowerCase().includes(query.trim().toLowerCase())) && (!driverFilter || d.driverId === driverFilter) && (!dateFilter || d.details.scheduled_date === dateFilter)),
+    [deliveries, filter, query, driverFilter, dateFilter],
   );
 
-  const totalValue = useMemo(() => deliveries.reduce((sum, d) => sum + d.total, 0), [deliveries]);
+  const totalValue = useMemo(() => deliveries.filter(d => d.status === 'em_rota').reduce((sum, d) => sum + d.total, 0), [deliveries]);
   const assignedCount = useMemo(() => deliveries.filter((d) => d.driverId).length, [deliveries]);
+
+  function editDelivery(saleId: string, status?: DeliveryStatus) {
+    const d = deliveries.find(item => item.saleId === saleId);
+    if (!d) return;
+    const sale = sales.find(item => item.id === saleId);
+    const customer = customers.find(item => item.id === sale?.customer_id);
+    const address = d.address || [customer?.address, customer?.address_number, customer?.complement, customer?.neighborhood, customer?.city, customer?.state, customer?.zip_code].filter(Boolean).join(', ');
+    setEditing({ saleId, status: status ?? d.status, driverId: d.driverId, address, contact: d.contact || customer?.phone || '', scheduled_date: d.details.scheduled_date ?? '', failure_reason: d.details.failure_reason ?? '', received_by: d.details.received_by ?? '', notes: d.details.notes ?? '' });
+    setSaveError('');
+  }
+
+  async function saveDetails(event: React.FormEvent) {
+    event.preventDefault();
+    if (!editing || savingRef.current.has(editing.saleId)) return;
+    if (editing.status === 'falhou' && !editing.failure_reason.trim() || editing.status === 'entregue' && !editing.received_by.trim()) { setSaveError('Informe o motivo da falha ou quem recebeu a entrega.'); return; }
+    savingRef.current.add(editing.saleId); setSavingSaleIds(new Set(savingRef.current)); setSaveError('');
+    try { await onUpdateDelivery(editing.saleId, editing.status, editing.driverId, { address: editing.address, contact: editing.contact, scheduled_date: editing.scheduled_date, failure_reason: editing.failure_reason, received_by: editing.received_by, notes: editing.notes }); setEditing(null); }
+    catch (error) { setSaveError(error instanceof Error ? error.message : 'Não foi possível salvar os detalhes.'); }
+    finally { savingRef.current.delete(editing.saleId); setSavingSaleIds(new Set(savingRef.current)); }
+  }
 
   async function saveDelivery(saleId: string, status: DeliveryStatus, driverId: string | null) {
     if (savingRef.current.has(saleId)) return;
@@ -86,6 +114,22 @@ export function DeliveryModule({ sales, salespeople, selectedBranchId, onUpdateD
         </div>
       </div>
 
+      {editing && <div className="modal-overlay"><form className="module-card" onSubmit={saveDetails} style={{ maxWidth: 620, maxHeight: '90vh', overflowY: 'auto', padding: 24 }}>
+        <h4>Detalhes da entrega</h4>
+        <fieldset disabled={savingSaleIds.has(editing.saleId)} style={{ border: 0 }}>
+          <label>Endereço<input value={editing.address} onChange={e => setEditing({ ...editing, address: e.target.value })} required maxLength={1500} /></label>
+          <label>Contato<input value={editing.contact} onChange={e => setEditing({ ...editing, contact: e.target.value })} maxLength={200} /></label>
+          <label>Previsão de entrega<input type="date" value={editing.scheduled_date} onChange={e => setEditing({ ...editing, scheduled_date: e.target.value })} /></label>
+          <label>Status<select value={editing.status} onChange={e => setEditing({ ...editing, status: e.target.value as DeliveryStatus })}>{Object.entries(statusConfig).map(([key,cfg]) => <option key={key} value={key}>{cfg.label}</option>)}</select></label>
+          {editing.status === 'falhou' && <label>Motivo da falha<input value={editing.failure_reason} onChange={e => setEditing({ ...editing, failure_reason: e.target.value })} required /></label>}
+          {editing.status === 'entregue' && <label>Recebido por<input value={editing.received_by} onChange={e => setEditing({ ...editing, received_by: e.target.value })} required /></label>}
+          <label>Observações<textarea value={editing.notes} onChange={e => setEditing({ ...editing, notes: e.target.value })} maxLength={4000} /></label>
+          {saveError && <p role="alert">{saveError}</p>}
+          <button type="submit" className="module-action-btn">Salvar entrega</button>
+          <button type="button" className="rma-advance-btn" onClick={() => setEditing(null)}>Fechar</button>
+        </fieldset>
+        <h4>Histórico</h4>{(deliveries.find(d => d.saleId === editing.saleId)?.history ?? []).map((entry,index) => <p key={index}>{new Date(entry.at).toLocaleString('pt-BR')} — {statusConfig[entry.status]?.label ?? entry.status}{entry.details?.received_by ? ' — ' + entry.details.received_by : ''}{entry.details?.failure_reason ? ' — ' + entry.details.failure_reason : ''}</p>)}
+      </form></div>}
       {saveError && <p className="otp-error-msg" role="alert">{saveError}</p>}
 
       <div className="financial-dashboard">
@@ -138,10 +182,15 @@ export function DeliveryModule({ sales, salespeople, selectedBranchId, onUpdateD
         </div>
         <div className="orders-summary-card" style={{ padding: '14px 16px', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', background: '#0f1f2c' }}>
           <small style={{ color: '#8ba3b5' }}>Fila ativa</small>
-          <strong style={{ display: 'block', fontSize: '22px', marginTop: '6px' }}>{filtered.length}</strong>
+          <strong style={{ display: 'block', fontSize: '22px', marginTop: '6px' }}>{deliveries.filter(d => d.status === 'pendente' || d.status === 'em_rota').length}</strong>
         </div>
       </div>
 
+      <div className="orders-filter-row">
+        <input type="search" aria-label="Buscar entrega" placeholder="Buscar cliente ou pedido" autoComplete="off" value={query} onChange={e => setQuery(e.target.value)} />
+        <select aria-label="Filtrar entregador" value={driverFilter} onChange={e => setDriverFilter(e.target.value)}><option value="">Todos os entregadores</option>{drivers.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}</select>
+        <label>Previsão<input type="date" value={dateFilter} onChange={e => setDateFilter(e.target.value)} /></label>
+      </div>
       <div className="subtab-bar">
         <button className={`subtab ${filter === 'all' ? 'active' : ''}`} onClick={() => setFilter('all')}>
           <Package size={15} /> Todas
@@ -174,7 +223,10 @@ export function DeliveryModule({ sales, salespeople, selectedBranchId, onUpdateD
                 return (
                   <tr key={d.saleId}>
                     <td>
-                      <strong>{d.customerName}</strong>
+                      <strong>{d.customerName}</strong><small>Pedido #{d.saleId.slice(0, 8)}</small>
+                      {!d.address && <small>Endereço não informado — abra os detalhes</small>}
+                      {d.contact && <small>{d.contact}</small>}
+                      {d.details.scheduled_date && <small>Previsão: {d.details.scheduled_date.split('-').reverse().join('/')}</small>}
                       {d.address && <small><MapPin size={10} /> {d.address}</small>}
                     </td>
                     <td>{d.items} {d.items === 1 ? 'item' : 'itens'}</td>
@@ -201,7 +253,8 @@ export function DeliveryModule({ sales, salespeople, selectedBranchId, onUpdateD
                     </td>
                     <td>
                       <div className="row-action-group">
-                        {d.status !== 'em_rota' && (
+                        <button type="button" className="rma-advance-btn" disabled={isSaving} onClick={() => editDelivery(d.saleId)}>Detalhes</button>
+                        {d.status !== 'em_rota' && d.status !== 'entregue' && (
                           <button
                             className="rma-advance-btn"
                             onClick={() => saveDelivery(d.saleId, 'em_rota', d.driverId)}
@@ -214,7 +267,7 @@ export function DeliveryModule({ sales, salespeople, selectedBranchId, onUpdateD
                         {d.status !== 'entregue' && (
                           <button
                             className="rma-advance-btn"
-                            onClick={() => saveDelivery(d.saleId, 'entregue', d.driverId)}
+                            onClick={() => editDelivery(d.saleId, 'entregue')}
                             disabled={isSaving}
                             title="Marcar Entregue"
                           >
@@ -224,7 +277,7 @@ export function DeliveryModule({ sales, salespeople, selectedBranchId, onUpdateD
                         {d.status !== 'falhou' && d.status !== 'entregue' && (
                           <button
                             className="rma-advance-btn danger"
-                            onClick={() => saveDelivery(d.saleId, 'falhou', d.driverId)}
+                            onClick={() => editDelivery(d.saleId, 'falhou')}
                             disabled={isSaving}
                             title="Marcar Falha"
                           >

@@ -106,7 +106,7 @@ test('return form submits the item identity and quantity, bounds remaining units
   const component = { exports:{} };
   vm.runInNewContext(ts.transpileModule(await readFile(new URL('../../src/components/partner/RmaModule.tsx',import.meta.url),'utf8'), {
     compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,target:ts.ScriptTarget.ES2020},
-  }).outputText, { exports:component.exports, require(name) {
+  }).outputText, { crypto:{randomUUID:()=>'rma-attempt'}, exports:component.exports, require(name) {
     if(name==='react') return React;
     if(name==='react/jsx-runtime') return jsx;
     if(name==='lucide-react') return new Proxy({}, {get:()=>()=>null});
