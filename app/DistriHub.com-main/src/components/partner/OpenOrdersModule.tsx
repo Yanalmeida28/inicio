@@ -525,7 +525,6 @@ export function OpenOrdersModule({ canEditPrice, products, onUpdateItems, onUpda
                     type="password"
                     value={pinInput}
                     onChange={(e) => { setPinInput(e.target.value); setPinError(null); }}
-                    placeholder="Digite o PIN"
                     maxLength={8}
                     style={{ width: '100%', marginTop: '6px' }}
                     autoFocus

@@ -1731,7 +1731,7 @@ export function PartnerPanel({
 
         <button
           className="partner-back-btn compact"
-          aria-label="Voltar"
+          aria-label="Sair do app"
           onClick={onBack}
         >
           <ArrowLeft size={18} />
@@ -1772,7 +1772,7 @@ export function PartnerPanel({
             onClick={onBack}
           >
             <ArrowLeft size={16} />
-            Voltar ao início
+            Sair do app
           </button>
         </div>
 
@@ -2583,7 +2583,6 @@ export function PartnerPanel({
                           '',
                         );
                       }}
-                      placeholder="Digite o PIN do funcionário"
                       maxLength={8}
                       autoFocus
                     />

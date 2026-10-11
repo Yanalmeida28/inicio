@@ -78,8 +78,7 @@ export function formatWhatsAppMessage(
   if (deliveryMethod) sections.push(`Entrega: ${deliveryLabel[deliveryMethod] ?? deliveryMethod}`);
   sections.push('', '*Itens do pedido:*', lines.join('\n'), '', `*Total do pedido: ${money.format(total)}*`);
   if (paymentMethod === 'pix') {
-    sections.push('', '_PIX Copia e Cola:_');
-    sections.push('00020126360014BR.GOV.BCB.PIX0114+5511940000000520400005303986580BR6009SAOPAULO62070503***6304ABCD');
+    sections.push('', 'Solicite a chave PIX ao estabelecimento antes de realizar o pagamento.');
   }
   sections.push('', `Pedido enviado via Catálogo B2B DistriHub`);
   return sections.join('\n');

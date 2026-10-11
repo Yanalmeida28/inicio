@@ -124,7 +124,7 @@ export function SalesHistoryModule({ sales, rmaRequests = [], customers, salespe
 
   return (<>
     <div className="orders-filter-row sales-history-filters">
-      <label>Buscar venda<input value={search} onChange={e => setSearch(e.target.value)} placeholder="Cliente, número, IMEI ou série" /></label>
+      <label>Buscar venda<input type="search" name="sales-history-search" autoComplete="off" data-lpignore="true" data-1p-ignore="true" value={search} onChange={e => setSearch(e.target.value)} placeholder="Cliente, número, IMEI ou série" /></label>
       <label>De<input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} /></label>
       <label>Até<input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} /></label>
       <label>Status<select value={status} onChange={e => setStatus(e.target.value)}><option value="all">Todos</option><option value="concluida">Concluída</option><option value="cancelada">Cancelada</option><option value="aberta">Aberta</option><option value="devolucao">Devolução</option></select></label>
@@ -216,7 +216,6 @@ export function SalesHistoryModule({ sales, rmaRequests = [], customers, salespe
                     type="password"
                     value={pinInput}
                     onChange={(e) => { setPinInput(e.target.value); setPinError(null); }}
-                    placeholder="Digite o PIN"
                     maxLength={8}
                     style={{ width: '100%', marginTop: '6px' }}
                     autoFocus

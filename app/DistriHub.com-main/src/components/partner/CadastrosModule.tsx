@@ -1447,7 +1447,7 @@ function CustomersSubTab({ isActive = true, customers, branches, sales, rmaReque
             </label>
             <label>
               E-mail
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="cliente@email.com" />
+              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}  />
             </label>
             <label>
               Data de Nascimento
@@ -2082,7 +2082,6 @@ function SalespeopleSubTab({
               onChange={(e) =>
                 setEmail(e.target.value)
               }
-              placeholder="joao@email.com"
               required
             />
           </label>
@@ -2113,7 +2112,6 @@ function SalespeopleSubTab({
                     .slice(0, 4)
                 )
               }
-              placeholder="4 dígitos"
               maxLength={4}
             />
           </label>
@@ -2271,7 +2269,6 @@ function SalespeopleSubTab({
                               e.target.value
                             )
                           }
-                          placeholder="E-mail"
                           style={{
                             width: '100%',
                           }}
@@ -2373,7 +2370,6 @@ function SalespeopleSubTab({
                                 .slice(0, 4)
                             )
                           }
-                          placeholder="PIN"
                           maxLength={4}
                           style={{
                             width: '60px',

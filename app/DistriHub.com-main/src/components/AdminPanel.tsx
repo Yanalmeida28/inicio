@@ -109,7 +109,7 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
       <div className="partner-header admin-header">
         <div className="page-container partner-header-inner">
           <button className="partner-back-btn" onClick={onBack}>
-            <ArrowLeft size={18} /> Voltar ao início
+            <ArrowLeft size={18} /> Sair do app
           </button>
           <div className="partner-title">
             <h2>Painel Super Admin</h2>
@@ -262,7 +262,6 @@ function ChangePasswordSection({ auth }: { auth: ReturnType<typeof useSuperAdmin
               type={showNew ? 'text' : 'password'}
               value={newPassword}
               onChange={(e) => { setNewPassword(e.target.value); setError(null); setSuccess(false); }}
-              placeholder="Mínimo 6 caracteres"
               autoComplete="new-password"
               minLength={6}
               required
@@ -279,7 +278,6 @@ function ChangePasswordSection({ auth }: { auth: ReturnType<typeof useSuperAdmin
               type={showConfirm ? 'text' : 'password'}
               value={confirmPassword}
               onChange={(e) => { setConfirmPassword(e.target.value); setError(null); setSuccess(false); }}
-              placeholder="Repita a nova senha"
               autoComplete="new-password"
               minLength={6}
               required

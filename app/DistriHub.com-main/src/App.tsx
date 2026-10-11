@@ -6,7 +6,8 @@ import { useSuperAdminAuth } from './hooks/useSuperAdminAuth';
 import { useCart } from './hooks/useCart';
 import { CartDrawer } from './components/CartDrawer';
 import { HubHome } from './components/HubHome';
-import { supabase, isSupabaseConfigured } from './lib/supabase';
+import { supabase } from './lib/supabase';
+import { saveB2bOrder } from './lib/b2bOrder';
 
 const PartnerPanel = lazy(() => import('./components/PartnerPanel').then((module) => ({ default: module.PartnerPanel })));
 const AuthScreen = lazy(() => import('./components/AuthScreen').then((module) => ({ default: module.AuthScreen })));
@@ -34,48 +35,59 @@ function App() {
   const [view, setView] = useState<View>('hub');
   const [partnerInitialTab, setPartnerInitialTab] = useState<string | undefined>(undefined);
   const [superAdminUnlocked, setSuperAdminUnlocked] = useState(false);
+  const [sessionAccess, setSessionAccess] = useState<{ userId: string; master: boolean; error: string | null } | null>(null);
+  const [sessionRetry, setSessionRetry] = useState(0);
+  const [navigationError, setNavigationError] = useState<string | null>(null);
   const { cart, cartCount, cartTotal, incrementQuantity, decrementQuantity, removeFromCart } = useCart();
   const [cartOpen, setCartOpen] = useState(false);
   const [businessName, setBusinessName] = useState('');
   const [city, setCity] = useState('');
   const storeWhatsapp = auth.profile?.whatsapp ?? null;
+  const sessionUserId = auth.user?.id ?? null;
 
   useEffect(() => {
+    if (auth.loading) return;
     if (auth.passwordRecovery) {
+      setSuperAdminUnlocked(false);
       setView('auth');
+      return;
     }
-  }, [auth.passwordRecovery]);
+    if (!sessionUserId) {
+      setSessionAccess(null);
+      setSuperAdminUnlocked(false);
+      setView(current => current === 'partner' || current === 'admin' || current === 'super-admin' ? 'auth' : current);
+      return;
+    }
+    let cancelled = false;
+    async function restorePanel() {
+      try {
+        if (!supabase) throw new Error('Não foi possível conectar para recuperar o painel.');
+        const { data, error } = await supabase.rpc('is_super_admin');
+        if (error || typeof data !== 'boolean') throw new Error('Não foi possível confirmar o acesso ao painel. Tente novamente.');
+        if (cancelled) return;
+        setSessionAccess({ userId: sessionUserId!, master: data, error: null });
+        setSuperAdminUnlocked(data);
+        setView(current => current === 'hub' || current === 'auth' || current === 'partner' || current === 'admin'
+          ? data ? 'super-admin' : 'partner' : current);
+      } catch (error) {
+        if (!cancelled) setSessionAccess({ userId: sessionUserId!, master: false, error: error instanceof Error ? error.message : 'Não foi possível recuperar o painel.' });
+      }
+    }
+    void restorePanel();
+    return () => { cancelled = true; };
+  }, [auth.loading, auth.passwordRecovery, sessionUserId, sessionRetry]);
 
   const segment: BusinessSegment = auth.profile?.segment ?? 'assistencia';
 
-  async function sendOrder(paymentMethod = 'pix', deliveryMethod = 'balcao') {
-    if (!cart.length || !businessName.trim() || !city.trim()) return;
-    if (isSupabaseConfigured && supabase && auth.user) {
-      await supabase.from('b2b_orders').insert({
-        user_id: auth.user.id,
-        business_name: businessName.trim(),
-        items: cart,
-        total: cartTotal + (deliveryMethod === 'motoboy' ? 15 : 0),
-        payment_method: paymentMethod,
-        delivery_method: deliveryMethod,
-        delivery_rate: deliveryMethod === 'motoboy' ? 15 : 0,
-        status: 'pendente',
-      });
-    }
-    // O envio via WhatsApp fica centralizado no checkout para respeitar a escolha do destino.
-    return;
+  async function sendOrder(paymentMethod: string, deliveryMethod: string, requestId: string) {
+    return saveB2bOrder(supabase, auth.user?.id ?? null, {
+      cart, businessName, city, paymentMethod, deliveryMethod, requestId,
+    });
   }
 
-  async function handlePartnerClick() {
-    // O acesso pelo botão "Entrar" deve sempre exigir as credenciais.
-    // Uma sessão persistida pode continuar válida após fechar ou recarregar
-    // o navegador, portanto ela é encerrada antes de exibir o login.
-    if (auth.user) {
-      await auth.signOut();
-    }
-
+  function handlePartnerClick() {
     setPartnerInitialTab(undefined);
-    setView('auth');
+    setView(auth.user ? sessionAccess?.master ? 'super-admin' : 'partner' : 'auth');
   }
 
   async function handleSuperAdminUnlock(email: string, password: string): Promise<{ ok: boolean; error: string | null }> {
@@ -87,21 +99,23 @@ function App() {
     return result;
   }
 
-  function handleSuperAdminBack() {
-    setSuperAdminUnlocked(false);
-    setView('hub');
+  async function handleLogout() {
+    setNavigationError(null);
+    try {
+      await auth.signOut();
+      setPartnerInitialTab(undefined);
+      setCartOpen(false);
+      setSuperAdminUnlocked(false);
+      setSessionAccess(null);
+      setView('auth');
+    } catch (error) {
+      setNavigationError(error instanceof Error ? error.message : 'Não foi possível sair. Tente novamente.');
+    }
   }
 
-  async function handlePartnerBack() {
-    setPartnerInitialTab(undefined);
-    setCartOpen(false);
-
-    // Sair da área do parceiro também encerra a sessão do Supabase.
-    // Isso evita voltar ao Hub com uma sessão antiga e, ao clicar
-    // novamente em "Cadastrar ou Entrar", entrar sem refazer a autenticação.
-    await auth.signOut();
-
-    setView('hub');
+  function handleSuperAdminBack() {
+    if (superAdminUnlocked) void handleLogout();
+    else setView('hub');
   }
 
   function handleAuthBack() {
@@ -124,15 +138,28 @@ function App() {
     password: string;
   }) {
     const result = await auth.signUp(data);
-    if (!result.error) {
+    if (!result.error && !result.needsEmailConfirmation) {
       setPartnerInitialTab(undefined);
       setView('partner');
     }
     return result;
   }
 
+  if (auth.loading || (sessionUserId && !auth.passwordRecovery && sessionAccess?.userId !== sessionUserId)) {
+    return <LoadingScreen label="Recuperando sua sessão" />;
+  }
+  if (sessionUserId && !auth.passwordRecovery && sessionAccess?.error) {
+    return <div className="super-admin-gate"><div className="super-admin-gate-card">
+      <p role="alert">{sessionAccess.error}</p>
+      <button className="module-submit-btn" onClick={() => { setSessionAccess(null); setSessionRetry(value => value + 1); }}>Tentar novamente</button>
+      <button className="partner-back-btn" onClick={() => void handleLogout()}>Sair do app</button>
+      {navigationError && <p role="alert">{navigationError}</p>}
+    </div></div>;
+  }
+
   return (
     <div className="app-shell">
+      {navigationError && <p role="alert" className="otp-error-msg">{navigationError}</p>}
       {view === 'hub' && (
         <HubHome
           onAccessPanel={handlePartnerClick}
@@ -157,7 +184,7 @@ function App() {
       {view === 'partner' && (
         <Suspense fallback={<LoadingScreen label="Área do parceiro" />}>
           <PartnerPanel
-            onBack={handlePartnerBack}
+            onBack={handleLogout}
             user={auth.user}
             identity={auth.identity}
             identityError={auth.error}
@@ -189,6 +216,7 @@ function App() {
       )}
 
       <CartDrawer
+        key={auth.user?.id ?? 'anonymous'}
         open={cartOpen}
         cart={cart}
         cartCount={cartCount}
@@ -216,7 +244,7 @@ export default App;
 
 type SuperAdminAuth = ReturnType<typeof useSuperAdminAuth>;
 
-type RecoveryStep = 'request' | 'verify' | 'done';
+type RecoveryStep = 'request' | 'sent';
 
 function SuperAdminGate({
   onBack,
@@ -275,7 +303,6 @@ function SuperAdminGate({
               type="email"
               value={email}
               onChange={(e) => { setEmail(e.target.value); setError(null); }}
-              placeholder="admin@distrihub.com"
               autoFocus
               required
             />
@@ -286,7 +313,6 @@ function SuperAdminGate({
               type="password"
               value={password}
               onChange={(e) => { setPassword(e.target.value); setError(null); }}
-              placeholder="••••••••••••"
               required
             />
           </label>
@@ -323,9 +349,6 @@ function RecoveryFlow({
 }) {
   const [step, setStep] = useState<RecoveryStep>('request');
   const [email, setEmail] = useState('');
-  const [code, setCode] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
@@ -334,36 +357,18 @@ function RecoveryFlow({
     e.preventDefault();
     setLoading(true);
     setError(null);
-    const { error: err } = await auth.requestRecovery(email);
-    setLoading(false);
-    if (err) {
-      setError(err);
-      return;
+    try {
+      const { error: err } = await auth.requestRecovery(email);
+      if (err) { setError(err); return; }
+      setInfo('Se o e-mail estiver cadastrado, você receberá um link seguro para concluir a troca de senha.');
+      setStep('sent');
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Não foi possível solicitar o link de recuperação.');
+    } finally {
+      setLoading(false);
     }
-    setInfo('Link de recuperação enviado para o e-mail informado. Use a redefinição segura do Supabase Auth para concluir a troca de senha.');
-    setStep('done');
   }
 
-  async function handleReset(e: React.FormEvent) {
-    e.preventDefault();
-    if (newPassword !== confirmPassword) {
-      setError('As senhas não conferem.');
-      return;
-    }
-    if (newPassword.length < 6) {
-      setError('A nova senha deve ter ao menos 6 caracteres.');
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    const { error: err } = await auth.resetPassword(newPassword);
-    setLoading(false);
-    if (err) {
-      setError(err);
-      return;
-    }
-    setStep('done');
-  }
 
   return (
     <div className="super-admin-gate">
@@ -371,7 +376,7 @@ function RecoveryFlow({
         <div className="super-admin-gate-header">
           <span className="super-admin-gate-icon"><KeyRound size={28} /></span>
           <h2>Recuperar Acesso Master</h2>
-          {step !== 'done' && <p>Verifique sua identidade para redefinir a senha master.</p>}
+          {step !== 'sent' && <p>Verifique sua identidade para redefinir a senha master.</p>}
         </div>
 
         {step === 'request' && (
@@ -382,7 +387,6 @@ function RecoveryFlow({
                 type="email"
                 value={email}
                 onChange={(e) => { setEmail(e.target.value); setError(null); }}
-                placeholder="admin@distrihub.com"
                 autoFocus
                 required
               />
@@ -393,64 +397,18 @@ function RecoveryFlow({
                 <ArrowLeft size={16} /> Voltar ao login
               </button>
               <button type="submit" className="module-submit-btn" disabled={loading}>
-                <ShieldCheck size={16} /> {loading ? 'Enviando...' : 'Gerar código'}
+                <ShieldCheck size={16} /> {loading ? 'Enviando...' : 'Enviar link por e-mail'}
               </button>
             </div>
           </form>
         )}
 
-        {step === 'verify' && (
-          <form onSubmit={handleReset} className="super-admin-gate-form">
-            {info && <p className="super-admin-recovery-info">{info}</p>}
-            <label>
-              <span className="social-label"><KeyRound size={14} /> Código de Verificação</span>
-              <input
-                type="text"
-                value={code}
-                onChange={(e) => { setCode(e.target.value); setError(null); }}
-                placeholder="XXXXXXXX"
-                autoFocus
-                required
-              />
-            </label>
-            <label>
-              <span className="social-label"><Lock size={14} /> Nova Senha Master</span>
-              <input
-                type="password"
-                value={newPassword}
-                onChange={(e) => { setNewPassword(e.target.value); setError(null); }}
-                placeholder="Mínimo 6 caracteres"
-                required
-              />
-            </label>
-            <label>
-              <span className="social-label"><Lock size={14} /> Confirmar Nova Senha</span>
-              <input
-                type="password"
-                value={confirmPassword}
-                onChange={(e) => { setConfirmPassword(e.target.value); setError(null); }}
-                placeholder="Repita a nova senha"
-                required
-              />
-            </label>
-            {error && <p className="super-admin-gate-error">{error}</p>}
-            <div className="super-admin-gate-actions">
-              <button type="button" className="partner-back-btn" onClick={() => setStep('request')}>
-                <ArrowLeft size={16} /> Voltar
-              </button>
-              <button type="submit" className="module-submit-btn" disabled={loading}>
-                <ShieldCheck size={16} /> {loading ? 'Redefinindo...' : 'Redefinir senha'}
-              </button>
-            </div>
-          </form>
-        )}
-
-        {step === 'done' && (
+        {step === 'sent' && (
           <div className="super-admin-gate-form">
             <div className="super-admin-recovery-success">
               <CheckCircle2 size={40} />
-              <h3>Senha redefinida com sucesso!</h3>
-              <p>Você já pode acessar o painel master com sua nova senha.</p>
+              <h3>Confira seu e-mail</h3>
+              <p>{info}</p>
             </div>
             <button type="button" className="module-submit-btn" onClick={onSuccess}>
               <ArrowLeft size={16} /> Voltar ao login

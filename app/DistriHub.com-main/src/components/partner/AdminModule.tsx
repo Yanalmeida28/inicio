@@ -1,4 +1,5 @@
 import { saleRevenuePayments, salePaymentDescription } from '../../lib/pdv';
+import { buildCsv, escapeHtml } from '../../lib/exportSafety';
 import { Component, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   Shield, BarChart3, Users, TrendingUp, TrendingDown,
@@ -637,9 +638,9 @@ function ExecutiveDashboard({
         (s.total - cost).toFixed(2),
         salePaymentDescription(s),
         sp?.name ?? '—',
-      ].join(';');
+      ];
     });
-    const csv = [headers.join(';'), ...rows].join('\n');
+    const csv = buildCsv([headers, ...rows]);
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -669,10 +670,10 @@ function ExecutiveDashboard({
         <div class="kpi"><small>Vendas</small><strong>${current.count}</strong></div>
       </div>
       <h2>Top SKUs</h2><table><tr><th>Produto</th><th>SKU</th><th>Qtd</th><th>Receita</th></tr>
-      ${topSkus.map((s) => `<tr><td>${s.name}</td><td>${s.sku ?? '—'}</td><td>${s.quantity}</td><td>${money.format(s.revenue)}</td></tr>`).join('')}
+      ${topSkus.map((s) => `<tr><td>${escapeHtml(s.name)}</td><td>${escapeHtml(s.sku ?? '—')}</td><td>${escapeHtml(s.quantity)}</td><td>${money.format(s.revenue)}</td></tr>`).join('')}
       </table>
       <h2>Lucro por Categoria</h2><table><tr><th>Categoria</th><th>Receita</th><th>Lucro</th></tr>
-      ${profitByCategory.map((c) => `<tr><td>${c.name}</td><td>${money.format(c.revenue)}</td><td>${money.format(c.profit)}</td></tr>`).join('')}
+      ${profitByCategory.map((c) => `<tr><td>${escapeHtml(c.name)}</td><td>${money.format(c.revenue)}</td><td>${money.format(c.profit)}</td></tr>`).join('')}
       </table>
       <p style="margin-top:40px;color:#888">Gerado em ${new Date().toLocaleString('pt-BR')}</p>
       </body></html>`;
