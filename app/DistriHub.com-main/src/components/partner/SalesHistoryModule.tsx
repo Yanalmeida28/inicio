@@ -1,5 +1,6 @@
 import { salePaymentDescription } from '../../lib/pdv';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { supabase } from '../../lib/supabase';
 import { Ban, Lock, Trash2, X } from 'lucide-react';
 import type { PartnerSale, PartnerCustomer, PartnerSalesperson, RmaRequest } from '../../types';
 import { saleReturnLabel, saleItemDescription } from '../../lib/saleReturns';
@@ -10,6 +11,10 @@ import { printSale, type PrintableSale, type ReceiptDetails } from '../../lib/sa
 import { saleShareUrl } from '../../lib/saleShare';
 
 type Props = {
+  companyId?: string;
+  branchId?: string | null;
+  isActive?: boolean;
+  onPageLoaded?: (sales: PartnerSale[]) => void;
   sales: PartnerSale[];
   rmaRequests?: RmaRequest[];
   customers: PartnerCustomer[];
@@ -25,13 +30,45 @@ function localDate(value: string | Date) {
   return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
 }
 
-export function SalesHistoryModule({ sales, rmaRequests = [], customers, salespeople, segment, receiptDetails, onCancelSale, onDeleteSale }: Props) {
+export function SalesHistoryModule({ companyId, branchId = null, isActive = true, onPageLoaded, sales, rmaRequests = [], customers, salespeople, segment, receiptDetails, onCancelSale, onDeleteSale }: Props) {
   const [search, setSearch] = useState('');
   const [startDate, setStartDate] = useState(() => localDate(new Date()));
   const [endDate, setEndDate] = useState(() => localDate(new Date()));
   const [status, setStatus] = useState('all');
+  const serverMode = Boolean(companyId);
+  const [page, setPage] = useState(0);
+  const [historyVersion, setHistoryVersion] = useState(0);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [serverHistory, setServerHistory] = useState<{ key: string; sales: PartnerSale[]; rmas: RmaRequest[]; total: number; completedTotal: number } | null>(null);
+  const historyKey = JSON.stringify([companyId, branchId, startDate, endDate, status, search, page, historyVersion]);
+  const currentHistory = serverHistory?.key === historyKey ? serverHistory : null;
+  const historyRmas = useMemo(() => serverMode ? [...new Map([...rmaRequests, ...(currentHistory?.rmas ?? [])].map(row => [row.id, row])).values()] : rmaRequests, [serverMode, rmaRequests, currentHistory]);
+  useEffect(() => { setPage(0); }, [companyId, branchId, startDate, endDate, status, search]);
+  useEffect(() => {
+    if (!serverMode || !isActive) return;
+    let active = true; setHistoryError(null);
+    const timer = setTimeout(() => {
+      if (!supabase) { setHistoryError('Historico indisponivel.'); return; }
+      void Promise.resolve(supabase.rpc('read_partner_sales_history', { p_company_id: companyId, p_branch_id: branchId || null, p_start: startDate || null, p_end: endDate || null, p_status: status, p_search: search.trim(), p_page: page })).then(({ data, error }) => {
+        if (!active) return;
+        if (error || !data || !Array.isArray(data.sales) || !Array.isArray(data.rmas) || !Number.isInteger(Number(data.total)) || Number(data.total) < 0 || !Number.isFinite(Number(data.completed_total))) { setHistoryError(error?.message ?? 'Resposta do historico invalida.'); return; }
+        setServerHistory({ key: historyKey, sales: data.sales, rmas: data.rmas, total: Number(data.total), completedTotal: Number(data.completed_total) });
+        onPageLoaded?.(data.sales);
+      }).catch(() => { if (active) setHistoryError('Nao foi possivel carregar o historico.'); });
+    }, 250);
+    return () => { active = false; clearTimeout(timer); };
+  }, [serverMode, isActive, companyId, branchId, startDate, endDate, status, search, page, historyVersion, historyKey, onPageLoaded]);
+  useEffect(() => {
+    if (!companyId || !isActive || !supabase || typeof supabase.channel !== 'function') return;
+    const client = supabase;
+    const channel = client.channel('history-' + companyId + '-' + (branchId ?? 'all'));
+    for (const table of ['partner_sales', 'rma_requests_v2']) channel.on('postgres_changes', { event: '*', schema: 'public', table, filter: 'user_id=eq.' + companyId }, () => setHistoryVersion(value => value + 1));
+    channel.subscribe();
+    return () => { void client.removeChannel(channel); };
+  }, [companyId, branchId, isActive]);
   const traceabilityLabel = segment === 'assistencia' ? 'IMEI / Selo' : 'Serie';
   const filteredSales = useMemo(() => {
+    if (serverMode) return [];
     const normalize = (text: string) => text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
     const term = normalize(search.trim());
     return sales.filter(sale => {
@@ -40,7 +77,8 @@ export function SalesHistoryModule({ sales, rmaRequests = [], customers, salespe
         && (status === 'all' || (status === 'devolucao' ? !!saleReturnLabel(sale, rmaRequests) || sale.status === status : sale.status === status && !saleReturnLabel(sale, rmaRequests)))
         && (!term || normalize([sale.id, sale.customer_name, sale.imei, sale.serial_number].join(' ')).includes(term));
     }).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-  }, [sales, rmaRequests, search, startDate, endDate, status]);
+  }, [serverMode, sales, rmaRequests, search, startDate, endDate, status]);
+  const displayedSales = serverMode ? currentHistory?.sales ?? [] : filteredSales;
   const [printError, setPrintError] = useState<string | null>(null);
   const [shareNotice, setShareNotice] = useState<string | null>(null);
 
@@ -111,6 +149,7 @@ export function SalesHistoryModule({ sales, rmaRequests = [], customers, salespe
       } else {
         await onDeleteSale(cancelTarget.id, supervisorId, pinInput);
       }
+      setHistoryVersion(value => value + 1);
       setCancelTarget(null);
       setSupervisorId('');
       setPinInput('');
@@ -124,14 +163,16 @@ export function SalesHistoryModule({ sales, rmaRequests = [], customers, salespe
 
   return (<>
     <div className="orders-filter-row sales-history-filters">
-      <label>Buscar venda<input type="search" name="sales-history-search" autoComplete="off" data-lpignore="true" data-1p-ignore="true" disabled={!!cancelTarget} value={search} onChange={e => { if (!cancelTarget) setSearch(e.target.value); }} placeholder="Cliente, número, IMEI ou série" /></label>
+      <label>Buscar venda<input type="search" name="sales-history-search" maxLength={200} autoComplete="off" data-lpignore="true" data-1p-ignore="true" disabled={!!cancelTarget} value={search} onChange={e => { if (!cancelTarget) setSearch(e.target.value); }} placeholder="Cliente, número, IMEI ou série" /></label>
       <label>De<input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} /></label>
       <label>Até<input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} /></label>
       <label>Status<select value={status} onChange={e => setStatus(e.target.value)}><option value="all">Todos</option><option value="concluida">Concluída</option><option value="cancelada">Cancelada</option><option value="aberta">Aberta</option><option value="devolucao">Devolução</option></select></label>
       <button className="rma-advance-btn" onClick={() => { const today = localDate(new Date()); setStartDate(today); setEndDate(today); }}>Hoje</button>
       <button className="rma-advance-btn" onClick={() => { setStartDate(''); setEndDate(''); }}>Todo o período</button>
     </div>
-    <p>{filteredSales.length} vendas encontradas nos dados carregados da filial. Total concluído: <strong>{money.format(filteredSales.filter(s => s.status === 'concluida').reduce((sum, s) => sum + Number(s.total), 0))}</strong></p>
+    {historyError && <p role="alert" className="otp-error-msg">{historyError}<button className="rma-advance-btn" onClick={() => setHistoryVersion(value => value + 1)}>Tentar novamente</button></p>}
+    {serverMode && !currentHistory ? !historyError && <p role="status">Carregando histórico...</p> : <p>{serverMode ? currentHistory?.total ?? 0 : filteredSales.length} vendas encontradas no período. Total concluído: <strong>{money.format(serverMode ? currentHistory?.completedTotal ?? 0 : filteredSales.filter(s => s.status === 'concluida').reduce((sum, s) => sum + Number(s.total), 0))}</strong></p>}
+    {serverMode && <div className="subscription-actions"><button type="button" disabled={page === 0 || !currentHistory} onClick={() => setPage(value => value - 1)}>Anterior</button><span>Página {page + 1} · {currentHistory?.total ?? '…'} venda(s)</span><button type="button" disabled={!currentHistory || (page + 1) * 25 >= currentHistory.total} onClick={() => setPage(value => value + 1)}>Próxima</button><button type="button" onClick={() => setHistoryVersion(value => value + 1)}>Atualizar histórico</button></div>}
       {printError && <p className="otp-error-msg" role="alert">{printError}</p>}
       {shareNotice && <p role="status">{shareNotice}</p>}
       <div className="pdv-recent-sales sales-history-table">
@@ -140,10 +181,10 @@ export function SalesHistoryModule({ sales, rmaRequests = [], customers, salespe
           <table className="rma-table sales-history-list-table">
             <thead><tr><th>Cliente</th><th>Itens</th><th>Total</th><th>Pagamento</th><th>{traceabilityLabel}</th><th>Status</th><th>Data</th><th></th></tr></thead>
             <tbody>
-              {filteredSales.length === 0 ? (
-                <tr><td colSpan={8} className="empty-row">Nenhuma venda registrada.</td></tr>
+              {displayedSales.length === 0 ? (
+                <tr><td colSpan={8} className="empty-row">{serverMode && !currentHistory ? 'Aguardando consulta do historico.' : 'Nenhuma venda registrada.'}</td></tr>
               ) : (
-                filteredSales.map((s) => (
+                displayedSales.map((s) => (
                   <tr key={s.id} className={s.status === 'cancelada' ? 'cancelled-row' : ''}>
                     <td data-label="Cliente"><strong>{s.customer_name ?? '—'}</strong><small className="sales-history-id" title={s.id}>#{s.id.slice(0, 8)}</small></td>
                     <td data-label="Itens">
@@ -151,7 +192,7 @@ export function SalesHistoryModule({ sales, rmaRequests = [], customers, salespe
                       {s.items.length > 0 && <details style={{ marginTop: '6px' }}>
                         <summary style={{ cursor: 'pointer', color: '#5cb5f1' }}>Visualizar produtos</summary>
                         <small style={{ display: 'block', whiteSpace: 'normal', overflowWrap: 'anywhere', maxWidth: '360px', maxHeight: '260px', overflowY: 'auto', marginTop: '8px' }}>
-                          {saleItemDescription(s, rmaRequests)}
+                          {saleItemDescription(s, historyRmas)}
                         </small>
                       </details>}
                     </td>
@@ -162,7 +203,7 @@ export function SalesHistoryModule({ sales, rmaRequests = [], customers, salespe
                       {s.status === 'cancelada' ? (
                         <span className="rma-status-badge history-status-cancelled">Cancelada</span>
                       ) : (
-                        <span className={`rma-status-badge ${saleReturnLabel(s, rmaRequests) || s.status === 'devolucao' ? 'history-status-returned' : s.status === 'concluida' ? 'history-status-completed' : 'history-status-open'}`}>{saleReturnLabel(s, rmaRequests) || (s.status === 'concluida' ? 'Concluída' : s.status === 'aberta' ? 'Aberta' : 'Devolução')}</span>
+                        <span className={`rma-status-badge ${saleReturnLabel(s, historyRmas) || s.status === 'devolucao' ? 'history-status-returned' : s.status === 'concluida' ? 'history-status-completed' : 'history-status-open'}`}>{saleReturnLabel(s, historyRmas) || (s.status === 'concluida' ? 'Concluída' : s.status === 'aberta' ? 'Aberta' : 'Devolução')}</span>
                       )}
                     </td>
                     <td data-label="Data">{new Date(s.created_at).toLocaleString('pt-BR')}</td>
@@ -173,7 +214,7 @@ export function SalesHistoryModule({ sales, rmaRequests = [], customers, salespe
                           onPrintLabel={() => handlePrint(s, 'label')}
                           onWhatsApp={() => handleShare(s, 'whatsapp')}
                           onEmail={() => handleShare(s, 'email')}
-                          onCancel={saleReturnLabel(s, rmaRequests) ? undefined : () => requestCancelSale(s)}
+                          onCancel={saleReturnLabel(s, historyRmas) ? undefined : () => requestCancelSale(s)}
                         />
                       )}
                     </td>

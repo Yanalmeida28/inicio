@@ -14,6 +14,7 @@ test('trocar módulos preserva rascunhos; revogar acesso desmonta a tela', async
     require: createRequire(import.meta.url), exports: {}, Suspense: React.Suspense,
     visitedTabs: new Set(['cadastros','pdv']), blockedTabs: [], activeTab: 'cadastros',
     saas: {subscription: {}}, canUseSaasFeature: () => true,
+    partner: {resourcesReady:true,loading:false},
   });
   vm.runInContext(ts.transpileModule(code + '\nexports.renderTab=renderTab;', {
     compilerOptions: {module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX},
@@ -31,7 +32,7 @@ test('trocar módulos preserva rascunhos; revogar acesso desmonta a tela', async
   context.activeTab='pdv';
   await act(async () => renderer.update(screen()));
   assert.equal(renderer.root.findByProps({'aria-label':'cadastro'}).props.value,'rascunho');
-  assert.equal(renderer.root.findByProps({'aria-label':'cadastro'}).parent.parent.props.hidden,true);
+  assert.equal(renderer.root.findByProps({'aria-label':'cadastro'}).parent.parent.parent.props.hidden,true);
   await act(async () => renderer.root.findByProps({'aria-label':'venda'}).props.onChange({target:{value:'produto selecionado'}}));
   context.activeTab='cadastros';
   await act(async () => renderer.update(screen()));

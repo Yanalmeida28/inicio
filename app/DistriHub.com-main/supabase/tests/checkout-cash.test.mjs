@@ -18,6 +18,28 @@ const helpers=await compile('../../src/lib/checkoutCash.ts');
 const managerSession={id:'manager-session',branch_id:'branch',actor_key:'manager',operator_id:'manager',operator_name:'Gerente',closed_at:null};
 const ownerSession={...managerSession,id:'owner-session',actor_key:'owner',operator_id:null,operator_name:'Proprietário'};
 
+test('inactive screens skip cash reads and concurrent active refreshes share one request',async()=>{
+  const pending=[];
+  const hook=await compile('../../src/hooks/useCheckoutCash.ts',{
+    react:React,'../lib/supabase':{supabase:{rpc:()=>new Promise(resolve=>pending.push(resolve))}},
+    '../lib/checkoutCash':helpers,'../lib/pdv':{pdvErrorMessage:error=>error.message},
+  });
+  let api;
+  function Consumer({active}){api=hook.useCheckoutCash('branch',null,null,'Owner','owner',active);return null;}
+  let view;
+  await act(async()=>{view=TestRenderer.create(React.createElement(Consumer,{active:false}));});
+  try {
+    assert.equal(pending.length,0);
+    await act(async()=>view.update(React.createElement(Consumer,{active:true})));
+    const first=api.refresh(),second=api.refresh();
+    assert.equal(first,second);assert.equal(pending.length,1);
+    await act(async()=>{pending[0]({data:{actor_key:'owner',sessions:[ownerSession]},error:null});await first;});
+    assert.equal(api.status,'open');
+    await act(async()=>view.update(React.createElement(Consumer,{active:false})));
+    assert.equal(pending.length,1);
+  } finally {act(()=>view.unmount());}
+});
+
 test('cash belongs to the resolved operator and branch, even when owner can read the manager report',()=>{
   const result=helpers.checkoutCash({actor_key:'owner',sessions:[managerSession,{...ownerSession,branch_id:'other'}, {...ownerSession,closed_at:'yesterday'}]},'branch');
   assert.equal(result.current,null);

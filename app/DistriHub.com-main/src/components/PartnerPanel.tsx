@@ -289,7 +289,8 @@ export function PartnerPanel({
     setVisitedTabs((current) => current.has(activeTab) ? current : new Set(current).add(activeTab));
   }, [activeTab]);
 
-  const partner = usePartnerData(identity, identity?.salespersonId ? identity.branchId : selectedBranchId || null);
+  const [cadastroDataScope, setCadastroDataScope] = useState('produtos');
+  const partner = usePartnerData(identity, identity?.salespersonId ? identity.branchId : selectedBranchId || null, activeTab === 'cadastros' ? 'cadastros:' + cadastroDataScope : activeTab);
   const saas = useSaasSubscription(identity?.companyUserId);
   const [pdvRevision, setPdvRevision] = useState(0);
   const [preSaleToCheckout, setPreSaleToCheckout] = useState<PartnerSale | null>(null);
@@ -333,7 +334,7 @@ export function PartnerPanel({
   useDeviceHeartbeat(identity?.companyUserId, effectiveBranchId);
 
   useEffect(() => {
-    if (!effectiveBranchId || partner.loading || (activeTab !== 'pdv' && activeTab !== 'pedidos' && activeTab !== 'historico')) return;
+    if (!effectiveBranchId || partner.loading || (activeTab !== 'pdv' && activeTab !== 'pedidos')) return;
     let active = true;
     setPdvReadError(null);
     void refreshPdv(effectiveBranchId).catch(error => { if (active) setPdvReadError(pdvErrorMessage(error)); });
@@ -396,7 +397,7 @@ export function PartnerPanel({
   }, [operatorScope, operatorSelectionScope, identity, isEmployeeRestricted, selectedBranchId, currentSalespersonId]);
 
   const checkoutCash = useCheckoutCash(effectiveBranchId, isEmployeeRestricted ? null : currentSalespersonId,
-    isEmployeeRestricted ? null : activeOperatorPin, activeSalesperson?.name ?? 'Proprietário / Administrador', operatorScope);
+    isEmployeeRestricted ? null : activeOperatorPin, activeSalesperson?.name ?? 'Proprietário / Administrador', operatorScope, ['pdv', 'pedidos', 'caixa'].includes(activeTab));
   const refreshCash = checkoutCash.refresh;
   useEffect(() => {
     if (activeTab === 'pdv' || activeTab === 'pedidos' || activeTab === 'caixa') void refreshCash().catch(() => {});
@@ -1582,7 +1583,8 @@ export function PartnerPanel({
     return (
       <div key={tab + instance} hidden={activeTab !== tab}>
         <Suspense fallback={<div className="partner-loading" role="status">Carregando módulo...</div>}>
-          {content}
+          {activeTab === tab && (partner.resourcesReady === false || partner.loading) && <p role="status" className="partner-loading">Carregando dados da tela...{(partner.error || partner.syncError) && <button type="button" className="rma-advance-btn" onClick={() => void partner.synchronize()}>Tentar carregar novamente</button>}</p>}
+          <div hidden={activeTab === tab && (partner.resourcesReady === false || partner.loading)}>{content}</div>
         </Suspense>
       </div>
     );
@@ -1596,6 +1598,7 @@ export function PartnerPanel({
               <CadastrosModule
                 key={target ?? 'principal'}
                 isActive={activeTab === (target ? 'administrativo' : 'cadastros')}
+                onDataScopeChange={target ? undefined : setCadastroDataScope}
                 adminTarget={target}
                 initialTab={cadastroDestination(target).tab}
                 productType={cadastroDestination(target).productType}
@@ -1990,7 +1993,7 @@ export function PartnerPanel({
             {visitedTabs.has('pdv') && !blockedTabs.includes('pdv') && canUseSaasFeature(saas.subscription, 'pdv') && (
               <div hidden={activeTab !== 'pdv'}>
               {renderTab('pdv', <PdvModule
-                isActive={activeTab === 'pdv'}
+                isActive={activeTab === 'pdv' && partner.resourcesReady !== false && !partner.loading}
                 preSaleToCheckout={preSaleToCheckout}
                 onRequestPreSale={setPreSaleToCheckout}
                 onConsumePreSale={() => setPreSaleToCheckout(null)}
@@ -2124,7 +2127,7 @@ export function PartnerPanel({
               {renderTab('os',
               <ServiceOrdersModule
                 authUserId={user?.id}
-                onChanged={() => { void partner.load(); }}
+                onChanged={() => { void partner.refreshCollections(['products', 'movements', 'invoices']); }}
                 userId={
                   identity?.companyUserId
                 }
@@ -2164,6 +2167,10 @@ export function PartnerPanel({
               {renderTab('historico',
               <OrderHistoryModule
                 salesHistory={!blockedTabs.includes('pdv') ? <SalesHistoryModule
+                  companyId={identity?.companyUserId}
+                  branchId={effectiveBranchId}
+                  isActive={activeTab === 'historico'}
+                  onPageLoaded={partner.mergeHistorySales}
                   rmaRequests={partner.rmas}
                   sales={filteredSales}
                   customers={filteredCustomers}

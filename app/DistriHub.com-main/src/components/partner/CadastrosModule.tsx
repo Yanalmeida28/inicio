@@ -33,6 +33,7 @@ type Props = {
   adminTarget?: string;
   initialTab?: SubTab;
   isActive?: boolean;
+  onDataScopeChange?: (tab: string) => void;
   productType?: 'produto' | 'servico' | 'todos';
   products: PartnerProduct[];
   branches: PartnerBranch[];
@@ -97,7 +98,7 @@ function getActionPopoverPosition(event: React.MouseEvent<HTMLButtonElement>, wi
 export function CadastrosModule({
   adminTarget,
   initialTab = 'produtos', productType = 'todos',
-  isActive = true,
+  isActive = true, onDataScopeChange,
   products, branches, selectedBranchId, categories, suppliers, salespeople, combos, modifiers, customers, sales,
   allSales, rmaRequests = [], segment, onAddProduct, onUpdateProduct, onDeleteProduct,
   onReplenishStock,
@@ -108,6 +109,7 @@ export function CadastrosModule({
 }: Props) {
   const parentDraftScope = useSessionDraftScope();
   const [subTab, setSubTab] = useSessionDraftState<SubTab>(`cadastros:${adminTarget ?? 'principal'}:active-subtab`, initialTab);
+  useEffect(() => { if (isActive) onDataScopeChange?.(subTab); }, [isActive, subTab, onDataScopeChange]);
   const [visitedSubTabs, setVisitedSubTabs] = useState<Set<SubTab>>(() => new Set([initialTab]));
   useEffect(() => {
     setVisitedSubTabs((current) => current.has(subTab) ? current : new Set(current).add(subTab));

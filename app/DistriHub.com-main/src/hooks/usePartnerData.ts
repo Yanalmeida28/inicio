@@ -3,7 +3,7 @@ import type { PostgrestError } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { InvoicePaymentAttempts } from '../lib/invoicePayments';
 import { OperationAttempts } from '../lib/operationAttempts';
-import { mergePartnerChange, PartnerDataVersions } from '../lib/partnerSync';
+import { mergePartnerChange, PartnerDataVersions, PartnerLoadCache, partnerResources, type PartnerCollection } from '../lib/partnerSync';
 import { splitPaymentError, billedSaleError, saleChargeTotal, validSalePrice, isDefinitiveSaleRejection, PdvSaleAttemptStore, pdvErrorMessage, type CustomerCredit } from '../lib/pdv';
 import type {
   AdminCompany,
@@ -242,8 +242,12 @@ function ensureEmployeeBranch(
   }
 }
 
-export function usePartnerData(identity: PartnerIdentity | null, syncBranchId: string | null = null) {
+export function usePartnerData(identity: PartnerIdentity | null, syncBranchId: string | null = null, resourceScope: string | null = null) {
   const [data, setData] = useState<PartnerDataState>(initialData);
+  const resourceScopeRef = useRef(resourceScope); resourceScopeRef.current = resourceScope;
+  const requestedResourcesRef = useRef(partnerResources(resourceScope)); requestedResourcesRef.current = partnerResources(resourceScope);
+  const loadCacheRef = useRef(new PartnerLoadCache());
+  const authorizedPdvScopeRef = useRef('');
   const dataSnapshotRef = useRef(data);
   dataSnapshotRef.current = data;
   const [loading, setLoading] = useState(false);
@@ -327,9 +331,15 @@ export function usePartnerData(identity: PartnerIdentity | null, syncBranchId: s
     setError(null);
   }, []);
 
-  const loadData = useCallback(async (background = false) => {
+  const loadData = useCallback(async (background = false, collections?: PartnerCollection[], force = true) => {
     const currentRequestId = ++requestIdRef.current;
-    const readRevision = dataRevisionRef.current.begin();
+    const loadScope = identity ? identity.authUserId + ':' + identity.companyUserId + ':' + (identity.salespersonId ?? '') + ':' + (identity.branchId ?? '') : '';
+    if (loadCacheRef.current.reset(loadScope)) { clearData(); dataSnapshotRef.current = initialData; authorizedPdvScopeRef.current = ''; setLastSyncedAt(null); setSyncError(null); }
+    const requested = new Set((collections ?? requestedResourcesRef.current).filter(key => force || loadCacheRef.current.needs(key)));
+    const readRevision = dataRevisionRef.current.begin([...requested]);
+    const read = <T,>(key: PartnerCollection, loader: () => PromiseLike<T>, queryKey: string = key): Promise<T | { data: null; error: null }> =>
+      requested.has(key) ? loadCacheRef.current.read(queryKey, loader) : Promise.resolve({ data: null, error: null });
+    if (!requested.size) { if (mountedRef.current) setLoading(false); return; }
 
     if (!identity) {
       clearData();
@@ -378,45 +388,45 @@ export function usePartnerData(identity: PartnerIdentity | null, syncBranchId: s
         salespeopleResult,
         salesResult,
       ] = await Promise.all([
-        client
+        read('profile', () => client
   .from('partner_profiles')
   .select('*')
   .eq('id', companyUserId)
-  .maybeSingle(),
+  .maybeSingle()),
 
-fetchAllPages((from, to) => client
+read('branches', () => fetchAllPages((from, to) => client
   .from('partner_branches')
   .select('*')
   .eq('user_id', companyUserId)
   .order('name')
   .order('id')
-  .range(from, to)),
+  .range(from, to))),
 
-fetchAllPages((from, to) => client
+read('customers', () => fetchAllPages((from, to) => client
   .from('partner_customers')
   .select('*')
   .eq('user_id', companyUserId)
   .order('name')
   .order('id')
-  .range(from, to)),
+  .range(from, to))),
 
-fetchAllPages((from, to) => client
+read('products', () => fetchAllPages((from, to) => client
   .from('partner_products')
   .select('*')
   .eq('user_id', companyUserId)
   .order('name')
   .order('id')
-  .range(from, to)),
+  .range(from, to))),
 
-fetchAllPages((from, to) => fetchSalespeople().range(from, to)),
+read('salespeople', () => fetchAllPages((from, to) => fetchSalespeople().range(from, to))),
 
-fetchAllPages((from, to) => client
+read('sales', () => fetchAllPages((from, to) => client
   .from('partner_sales')
   .select('*')
   .eq('user_id', companyUserId)
   .order('created_at', { ascending: false })
   .order('id', { ascending: false })
-  .range(from, to)),
+  .range(from, to))),
       ]);
 
       const essentialResults = [
@@ -454,94 +464,105 @@ fetchAllPages((from, to) => client
         serviceOrderPhotosResult,
         rmaCreditApplicationsResult,
       ] = await Promise.all([
-        fetchAllPages((from, to) => client
+        read('suppliers', () => fetchAllPages((from, to) => client
           .from('partner_suppliers')
           .select('*')
           .eq('user_id', companyUserId)
-          .order('name').order('id').range(from, to)),
+          .order('name').order('id').range(from, to))),
 
-        fetchAllPages((from, to) => client
+        read('categories', () => fetchAllPages((from, to) => client
           .from('partner_categories')
           .select('*')
           .eq('user_id', companyUserId)
-          .order('name').order('id').range(from, to)),
+          .order('name').order('id').range(from, to))),
 
-        fetchAllPages((from, to) => client
+        read('movements', () => fetchAllPages((from, to) => client
           .from('partner_stock_movements')
           .select('*')
           .eq('user_id', companyUserId)
           .order('created_at', { ascending: false })
-          .order('id', { ascending: false }).range(from, to)),
+          .order('id', { ascending: false }).range(from, to))),
 
-        supabase
+        read('settings', () => client
           .from('partner_store_settings')
           .select('*')
           .eq('user_id', companyUserId)
-          .maybeSingle(),
+          .maybeSingle()),
 
-        fetchAllPages((from, to) => client
+        read('rmas', () => fetchAllPages((from, to) => client
           .from('rma_requests_v2')
           .select('*')
           .eq('user_id', companyUserId)
           .order('created_at', { ascending: false })
-          .order('id', { ascending: false }).range(from, to)),
+          .order('id', { ascending: false }).range(from, to))),
 
-        fetchAllPages((from, to) => client
+        read('combos', () => fetchAllPages((from, to) => client
           .from('partner_combos')
           .select('*')
           .eq('user_id', companyUserId)
-          .order('name').order('id').range(from, to)),
+          .order('name').order('id').range(from, to))),
 
-        fetchAllPages((from, to) => client
+        read('modifiers', () => fetchAllPages((from, to) => client
           .from('partner_modifiers')
           .select('*')
           .eq('user_id', companyUserId)
-          .order('name').order('id').range(from, to)),
+          .order('name').order('id').range(from, to))),
 
-        fetchAllPages((from, to) => client
+        read('invoices', () => {
+          const employeeScope = currentIdentity.authUserId + ':' + currentIdentity.companyUserId;
+          if (resourceScopeRef.current !== null && currentIdentity.salespersonId && currentIdentity.branchId && authorizedPdvScopeRef.current === employeeScope) {
+            return Promise.resolve(client.rpc('get_partner_pdv_snapshot', { p_branch_id: currentIdentity.branchId })).then(({ data: snapshot, error }) => {
+              if (error) return { data: null, error };
+              if (!snapshot || !Array.isArray(snapshot.invoices) || !Array.isArray(snapshot.credits)) return { data: null, error: { name: 'PostgrestError', code: 'INVALID_SNAPSHOT', message: 'Invalid authorized invoice snapshot', details: '', hint: '' } };
+              if (mountedRef.current && identityScopeRef.current === employeeScope && dataRevisionRef.current.isCurrent(readRevision, 'invoices')) setPdvCredits(snapshot.credits);
+              return { data: snapshot.invoices as PartnerInvoice[], error: null };
+            });
+          }
+          return fetchAllPages((from, to) => client
           .from('partner_invoices')
           .select('*')
           .eq('user_id', companyUserId)
-          .order('due_date').order('id').range(from, to)),
+          .order('due_date').order('id').range(from, to));
+        }),
 
-        fetchAllPages((from, to) => client
+        read('orders', () => fetchAllPages((from, to) => client
           .from('b2b_orders')
           .select('*')
           .eq('user_id', companyUserId)
           .order('created_at', { ascending: false })
-          .order('id', { ascending: false }).range(from, to)),
+          .order('id', { ascending: false }).range(from, to))),
 
-        fetchAllPages((from, to) => client
+        read('auditLogs', () => fetchAllPages((from, to) => client
           .from('partner_audit_logs')
           .select('*')
           .eq('user_id', companyUserId)
           .order('created_at', { ascending: false })
-          .order('id', { ascending: false }).range(from, to)),
+          .order('id', { ascending: false }).range(from, to))),
 
-        fetchAllPages((from, to) => client
+        read('serviceOrders', () => fetchAllPages((from, to) => client
           .from('service_orders')
           .select('*')
           .eq('user_id', companyUserId)
           .order('created_at', { ascending: false })
-          .order('id', { ascending: false }).range(from, to)),
+          .order('id', { ascending: false }).range(from, to))),
 
-        fetchAllPages((from, to) => client
+        read('serviceOrderItems', () => fetchAllPages((from, to) => client
           .from('service_order_items')
           .select('*')
           .eq('user_id', companyUserId)
-          .range(from, to)),
+          .range(from, to))),
 
-        fetchAllPages((from, to) => client
+        read('serviceOrderPhotos', () => fetchAllPages((from, to) => client
           .from('service_order_photos')
           .select('*')
           .eq('user_id', companyUserId)
           .order('created_at')
-          .order('id').range(from, to)),
-        fetchAllPages((from, to) => client
+          .order('id').range(from, to))),
+        read('rmas', () => fetchAllPages((from, to) => client
           .from('partner_rma_credit_applications')
           .select('id,rma_id,amount')
           .eq('user_id', companyUserId)
-          .order('id').range(from, to)),
+          .order('id').range(from, to)), 'rmaCreditApplications'),
       ]);
 
       // Diagnóstico técnico de falhas secundárias — sem PIN, tokens
@@ -601,6 +622,11 @@ fetchAllPages((from, to) => client
         );
       };
 
+      for (const [table, result] of [...essentialResults, ...secondaryResults]) {
+        const key = ({ partner_profiles: 'profile', partner_branches: 'branches', partner_customers: 'customers', partner_products: 'products', partner_salespeople: 'salespeople', partner_sales: 'sales', partner_suppliers: 'suppliers', partner_categories: 'categories', partner_stock_movements: 'movements', partner_store_settings: 'settings', rma_requests_v2: 'rmas', partner_combos: 'combos', partner_modifiers: 'modifiers', partner_invoices: 'invoices', b2b_orders: 'orders', partner_audit_logs: 'auditLogs', service_orders: 'serviceOrders', service_order_items: 'serviceOrderItems', service_order_photos: 'serviceOrderPhotos', partner_rma_credit_applications: 'rmas' } as Record<string, PartnerCollection>)[table];
+        if (requested.has(key) && !result.error && dataRevisionRef.current.isCurrent(readRevision, key) && !(key === 'rmas' && (rmasResult.error || rmaCreditApplicationsResult.error))) loadCacheRef.current.mark(key);
+      }
+      setError(null);
       setData((previous) => {
         const snapshot: PartnerDataState = {
         profile:
@@ -673,7 +699,7 @@ fetchAllPages((from, to) => client
         };
         // A PDV read, local mutation or Realtime event may have superseded this read.
         for (const key of Object.keys(initialData) as Array<keyof PartnerDataState>) {
-          if (!dataRevisionRef.current.isCurrent(readRevision, key)) {
+          if (!requested.has(key as PartnerCollection) || !dataRevisionRef.current.isCurrent(readRevision, key)) {
             Object.assign(snapshot, { [key]: previous[key] });
           }
         }
@@ -724,11 +750,9 @@ fetchAllPages((from, to) => client
   useEffect(() => {
     const requests = requestIdRef;
     const revisions = dataRevisionRef;
-    setLastSyncedAt(null);
-    setSyncError(null);
-    void loadData();
+    void loadData(false, undefined, false);
     return () => { ++requests.current; revisions.current.invalidate(); };
-  }, [loadData]);
+  }, [loadData, resourceScope]);
 
   useEffect(() => {
     const profileId = identity?.companyUserId;
@@ -1662,6 +1686,10 @@ fetchAllPages((from, to) => client
       if (dataRevisionRef.current.isCurrent(readRevision, 'invoices') && dataRevisionRef.current.isCurrent(readRevision, 'sales')) {
         setPdvCredits(result.credits);
       }
+      if (currentIdentity.salespersonId && resourceScopeRef.current !== null) {
+        for (const key of ['products', 'sales', 'invoices', 'movements']) if (dataRevisionRef.current.isCurrent(readRevision, key)) loadCacheRef.current.mark(key);
+        if (dataRevisionRef.current.isCurrent(readRevision, 'invoices')) authorizedPdvScopeRef.current = scope;
+      }
       setPdvSyncWarning(null);
     }
     return result;
@@ -1679,7 +1707,7 @@ fetchAllPages((from, to) => client
     try {
       // Employee table RLS intentionally exposes fewer rows than the PDV RPC.
       // Never replace an authorized branch snapshot with that smaller subset.
-      if (identity.salespersonId && syncBranchId) {
+      if (identity.salespersonId && syncBranchId && (resourceScopeRef.current === null || ['pdv', 'pedidos', 'caixa'].includes(resourceScopeRef.current))) {
         await refreshPdv(syncBranchId);
         if (scope === identityScopeRef.current) { setLastSyncedAt(new Date()); setSyncError(null); }
       } else await loadData(true);
@@ -1692,12 +1720,13 @@ fetchAllPages((from, to) => client
   }, [identity, syncBranchId, loading, loadData, refreshPdv]);
 
   const refreshOperationalData = useCallback(async () => {
-    if (!syncBranchId || loading || syncInFlight.current || saleInFlight.current || !navigator.onLine) return;
+    if (loading || syncInFlight.current || saleInFlight.current || !navigator.onLine) return;
     const scope = identityScopeRef.current;
     syncInFlight.current = true;
     setSyncing(true);
     try {
-      await refreshPdv(syncBranchId);
+      if (syncBranchId && (resourceScopeRef.current === null || ['pdv', 'pedidos', 'caixa'].includes(resourceScopeRef.current))) await refreshPdv(syncBranchId);
+      else await loadData(true);
       if (scope === identityScopeRef.current) {
         setLastSyncedAt(new Date());
         setSyncError(null);
@@ -1708,7 +1737,7 @@ fetchAllPages((from, to) => client
       syncInFlight.current = false;
       if (mountedRef.current) setSyncing(false);
     }
-  }, [syncBranchId, loading, refreshPdv]);
+  }, [syncBranchId, loading, refreshPdv, loadData]);
 
   const hasLoaded = lastSyncedAt !== null;
   useEffect(() => {
@@ -1719,6 +1748,7 @@ fetchAllPages((from, to) => client
     const branchId = identity.salespersonId ? identity.branchId : syncBranchId;
     let active = true;
     let subscribed = false;
+    let connectedOnce = false;
     let debounce: number | undefined;
     const reconcile = () => {
       if (!active || document.visibilityState !== 'visible' || !navigator.onLine) return;
@@ -1735,6 +1765,7 @@ fetchAllPages((from, to) => client
         }[table] as 'sales' | 'products' | 'invoices' | 'movements' | 'orders' | 'rmas';
         if (payload.eventType !== 'DELETE' && (payload.new.user_id !== companyId || (branchId && payload.new.branch_id !== branchId))) return;
         if (payload.eventType === 'DELETE' && !dataSnapshotRef.current[key].some(row => row.id === payload.old.id && row.user_id === companyId && (!branchId || row.branch_id === branchId))) return;
+        if (!loadCacheRef.current.has(key) && !requestedResourcesRef.current.includes(key)) return;
         const returnCreditChanged = (table === 'partner_invoices' && payload.eventType !== 'DELETE' &&
           Number(payload.new.return_credit_amount ?? 0) !== Number(dataSnapshotRef.current.invoices.find(invoice => invoice.id === payload.new.id)?.return_credit_amount ?? 0)) ||
           (table === 'rma_requests_v2' && Number(payload.new.credit_amount ?? 0) > 0);
@@ -1744,7 +1775,7 @@ fetchAllPages((from, to) => client
           return { ...previous, [key]: mergePartnerChange(rows, payload.eventType, payload.new, payload.old.id, companyId, branchId, key === 'sales') };
         });
         setLastSyncedAt(new Date());
-        if (returnCreditChanged) void loadData();
+        if (returnCreditChanged) void loadData(true, ['invoices', ...(loadCacheRef.current.has('rmas') ? ['rmas' as const] : [])]);
         // Credit is company-wide and cannot be derived from this branch's rows.
         // Reconcile after financial events so billed checkout is not left disabled.
         if (table === 'partner_invoices' || table === 'partner_sales') {
@@ -1758,11 +1789,11 @@ fetchAllPages((from, to) => client
     }
     channel.subscribe(status => {
       subscribed = status === 'SUBSCRIBED';
-      if (subscribed) reconcile();
+      if (subscribed) { const reconnecting = connectedOnce; connectedOnce = true; if (reconnecting || resourceScopeRef.current === null || ['pdv', 'pedidos', 'caixa'].includes(resourceScopeRef.current)) reconcile(); }
     });
     // Employee RLS is narrower than the authorized PDV RPC (especially invoices).
     // Keep branch reconciliation for employees without broadening table access.
-    const timer = window.setInterval(() => { if (!subscribed || identity.salespersonId) reconcile(); }, 30_000);
+    const timer = window.setInterval(() => { if (!subscribed || (identity.salespersonId && (resourceScopeRef.current === null || ['pdv', 'pedidos', 'caixa'].includes(resourceScopeRef.current)))) reconcile(); }, 30_000);
     window.addEventListener('focus', reconcile);
     window.addEventListener('online', reconcile);
     document.addEventListener('visibilitychange', reconcile);
@@ -2302,7 +2333,16 @@ fetchAllPages((from, to) => client
         }
         attempts.confirm(scope, 'replenishment');
         dataRevisionRef.current.invalidate(['products', 'movements']);
-        try { await loadData(); } catch { console.warn('Reposição confirmada; atualização do estoque pendente.'); }
+        const operationScope = currentIdentity.authUserId + ':' + currentIdentity.companyUserId;
+        if (identityScopeRef.current !== operationScope || !mountedRef.current) return { newStock };
+        setData(previous => ({ ...previous, products: previous.products.map(row => row.id === productId ? { ...row, stock: newStock } : row) }));
+        const readRevision = dataRevisionRef.current.begin(['products']);
+        try {
+          const { data: updated, error } = await supabase.from('partner_products').select('*').eq('id', productId).eq('user_id', currentIdentity.companyUserId).maybeSingle();
+          if (error || !updated) throw error ?? new Error('Product refresh pending');
+          if (identityScopeRef.current === operationScope && mountedRef.current && dataRevisionRef.current.isCurrent(readRevision, 'products')) setData(previous => ({ ...previous, products: previous.products.map(row => row.id === productId ? updated as PartnerProduct : row) }));
+        } catch { loadCacheRef.current.stale('products'); console.warn('Stock confirmed; product details refresh pending.'); }
+        if (identityScopeRef.current === operationScope && loadCacheRef.current.has('movements')) await loadData(true, ['movements']);
         return { newStock };
       }
 
@@ -2422,7 +2462,7 @@ fetchAllPages((from, to) => client
       }
       attemptStore.confirm(paymentScope, id);
       dataRevisionRef.current.invalidate(['invoices']);
-      try { await loadData(); } catch { console.warn('[usePartnerData] Recebimento confirmado; atualização dos dados pendente.'); }
+      try { await loadData(true, ['invoices']); } catch { console.warn('[usePartnerData] Recebimento confirmado; atualização dos dados pendente.'); }
     },
     [data.invoices, loadData, requireIdentity],
   );
@@ -3936,6 +3976,12 @@ fetchAllPages((from, to) => client
     [data.profile?.name, data.salespeople, requireIdentity],
   );
 
+  const mergeHistorySales = useCallback((rows: PartnerSale[]) => {
+    const current = requireIdentity();
+    dataRevisionRef.current.invalidate(['sales']);
+    setData(previous => ({ ...previous, sales: rows.reduce((sales, row) => mergePartnerChange(sales, 'UPDATE', row, undefined, current.companyUserId, current.salespersonId ? current.branchId : null, true), previous.sales) }));
+  }, [requireIdentity]);
+
   const load = useCallback(
     async () => {
       await loadData();
@@ -3954,6 +4000,9 @@ fetchAllPages((from, to) => client
 
     load,
     loadData,
+    mergeHistorySales,
+    resourcesReady: requestedResourcesRef.current.every(key => loadCacheRef.current.has(key)),
+    refreshCollections: (keys: PartnerCollection[]) => loadData(true, keys.filter(key => loadCacheRef.current.has(key) || requestedResourcesRef.current.includes(key))),
     synchronize,
     syncing,
     syncError,

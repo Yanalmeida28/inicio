@@ -19,18 +19,21 @@ const operationModule={exports:{}};
 vm.runInNewContext(compile(await readFile(new URL('../../src/lib/operationAttempts.ts',import.meta.url),'utf8')),{exports:operationModule.exports,crypto:{randomUUID},Error});
 let renderer;
 afterEach(async()=>{if(renderer) await act(async()=>renderer.unmount());renderer=null;});
-async function harness({initialSales=[],initialInvoices=[],initialCustomers=[],rpc,values=new Map(),readResult,branchId=null,identity: suppliedIdentity}={}) {
+async function harness({initialSales=[],initialInvoices=[],initialCustomers=[],rpc,values=new Map(),readResult,branchId=null,resourceScope=null,identity: suppliedIdentity}={}) {
   const storage={getItem:k=>values.get(k)??null,setItem:(k,v)=>values.set(k,v),removeItem:k=>values.delete(k)};
   const identity=suppliedIdentity??{authUserId:'owner',companyUserId:'owner',salespersonId:null,branchId:null,role:'administrador'};
   const initial={partner_sales:initialSales,partner_invoices:initialInvoices,partner_customers:initialCustomers};
+  const queries=[];
+  let activeScope=resourceScope;
   const channels=[];
   const intervals=[];
   const timeouts=new Map();
   let timerId=0;
   const client={rpc,auth:{getSession:async()=>({data:{session:{user:{id:identity.authUserId}}},error:null})},from(table){
-    const q={select(){return q;},eq(){return q;},order(){return q;},limit(){return q;},range(){return q;},
-      maybeSingle(){return Promise.resolve({data:null,error:null});},
-      then(resolve,reject){const fallback={data:[...(initial[table]??[])],error:null};return Promise.resolve(readResult?.(table,fallback)??fallback).then(resolve,reject);}};
+    queries.push(table); let first=0,last=499;
+    const q={select(){return q;},eq(){return q;},order(){return q;},limit(){return q;},range(from,to){first=from;last=to;return q;},
+      maybeSingle(){return Promise.resolve(readResult?.(table,{data:null,error:null})??{data:null,error:null});},
+      then(resolve,reject){const fallback={data:[...(initial[table]??[])].slice(first,last+1),error:null};return Promise.resolve(readResult?.(table,fallback)??fallback).then(resolve,reject);}};
     return q;
   },channel(name){const channel={name,handlers:[],on(event,filter,handler){channel.handlers.push({filter,handler});return channel;},subscribe(callback){channel.status=callback;return channel;}};channels.push(channel);return channel;},removeChannel(channel){channel.removed=true;return Promise.resolve('ok');}};
   const helperModule={exports:{}};
@@ -54,9 +57,10 @@ async function harness({initialSales=[],initialInvoices=[],initialCustomers=[],r
     },
   });
   let current;
-  function Probe(){current=hookModule.exports.usePartnerData(identity,branchId);return null;}
+  function Probe(){current=hookModule.exports.usePartnerData(identity,branchId,activeScope);return null;}
   await act(async()=>{renderer=TestRenderer.create(React.createElement(Probe));});
-  return {get current(){return current;},values,
+  return {get current(){return current;},values,queries,
+    async setScope(scope){activeScope=scope;await act(async()=>renderer.update(React.createElement(Probe)));},
     emit(table,eventType,record,old={}){for(const channel of channels.filter(channel=>!channel.removed))for(const {filter,handler} of channel.handlers)if(filter.table===table&&filter.event===eventType)handler({eventType,new:record,old});},
     status(status){channels.findLast(channel=>channel.name.startsWith('partner-sync-')&&!channel.removed)?.status?.(status);},
     tick(){for(const callback of intervals)callback();},
@@ -410,4 +414,61 @@ test('billed pre-sale UX rejects insufficient authorized credit before mutation'
   }});
   await act(async()=>{await assert.rejects(h.current.finalizePreSale('pre','faturado'),/insuficiente/);});
   assert.equal(writes,0);
+});
+
+test('on-demand product screen makes seven reads and skips histories, finance and OS',async()=>{
+  const h=await harness({resourceScope:'cadastros:produtos',rpc:async()=>({data:null,error:null})});
+  assert.equal(h.queries.length,7);
+  assert.equal(h.current.resourcesReady,true);
+  for(const table of ['partner_sales','partner_invoices','service_orders','service_order_items','service_order_photos','partner_audit_logs','partner_customers'])assert.equal(h.queries.includes(table),false,table);
+  const initialCount=h.queries.length;
+  await h.setScope('configuracoes');assert.equal(h.queries.length,initialCount);
+  await h.setScope('cadastros:produtos');assert.equal(h.queries.length,initialCount);
+});
+test('reports retrieve every sales/invoice page on demand and never replace other loaded collections with empty data',async()=>{
+  const sales=Array.from({length:1203},(_,i)=>({id:'sale-'+i,user_id:'owner',branch_id:'branch',status:'concluida',total:10,items:[]}));
+  const invoices=Array.from({length:1002},(_,i)=>({id:'invoice-'+i,user_id:'owner',branch_id:'branch',amount:20,status:'aberta'}));
+  const h=await harness({resourceScope:'cadastros:produtos',initialSales:sales,initialInvoices:invoices,rpc:async()=>({data:null,error:null}),readResult:(table,fallback)=>table==='partner_products'?{data:[{id:'product',user_id:'owner',branch_id:'branch',name:'Product',stock:1}],error:null}:fallback});
+  assert.equal(h.queries.includes('partner_sales'),false);
+  await h.setScope('relatorios');
+  assert.equal(h.current.sales.length,1203);assert.equal(h.current.sales.reduce((sum,row)=>sum+row.total,0),12030);
+  assert.equal(h.current.invoices.length,1002);assert.equal(h.queries.filter(t=>t==='partner_sales').length,3);
+  await h.setScope('suporte');assert.equal(h.current.products.length,1);assert.equal(h.current.sales.length,1203);
+  const previous=h.queries.length;await h.setScope('relatorios');assert.equal(h.queries.length,previous);
+});
+test('a failed required finance collection remains unready and can be retried without declaring empty totals complete',async()=>{
+  let fail=true;
+  const h=await harness({resourceScope:'financeiro',rpc:async()=>({data:null,error:null}),readResult:(table,fallback)=>table==='partner_invoices'&&fail?{data:null,error:{message:'unavailable'}}:fallback});
+  assert.equal(h.current.resourcesReady,false);assert.match(h.current.syncError,/atualizados/);
+  fail=false;await act(async()=>h.current.synchronize());assert.equal(h.current.resourcesReady,true);
+});
+test('confirmed stock replenishment refreshes one product and avoids unrelated table reloads',async()=>{
+  let stock=10;
+  const product=()=>({id:'product',user_id:'owner',branch_id:'branch',name:'Product',stock,cost_price:4,is_service:false});
+  const h=await harness({resourceScope:'cadastros:produtos',rpc:async(name)=>{assert.equal(name,'execute_partner_stock_replenishment_once');stock=12;return{data:{new_stock:12},error:null};},readResult:(table,fallback)=>table==='partner_products'?{data:Array.isArray(fallback.data)?[product()]:product(),error:null}:fallback});
+  const initial=h.queries.length;
+  await act(async()=>h.current.replenishStock('product','branch',2));
+  assert.equal(h.queries.length-initial,1);assert.equal(h.queries.at(-1),'partner_products');assert.equal(h.current.products[0].stock,12);
+});
+
+test('lazy finance refresh preserves employee-authorized invoice snapshots instead of narrower table rows',async()=>{
+  const identity={authUserId:'employee-auth',companyUserId:'company',salespersonId:'employee',branchId:'branch',role:'gerente'};
+  const invoice={id:'authorized-invoice',user_id:'company',branch_id:'branch',amount:100,status:'aberta'};
+  let reads=0;
+  const h=await harness({identity,branchId:'branch',resourceScope:'pdv',rpc:async name=>{assert.equal(name,'get_partner_pdv_snapshot');reads++;return{data:snapshot({invoices:[invoice]}),error:null};}});
+  await act(async()=>h.current.refreshPdv('branch'));await h.setScope('financeiro');assert.equal(h.current.invoices[0].id,'authorized-invoice');
+  await act(async()=>h.current.loadData(true));assert.equal(h.current.invoices[0].id,'authorized-invoice');assert.equal(reads,2);
+  assert.equal(h.queries.includes('partner_invoices'),false);
+});
+
+test('collection cache deduplicates in-flight reads and never shares them between identity scopes',async()=>{
+  const exports={};vm.runInNewContext(compile(syncSource),{exports});const cache=new exports.PartnerLoadCache();cache.reset('first');let oldResolve,newResolve,calls=0;
+  const first=cache.read('products',()=>{calls++;return new Promise(resolve=>{oldResolve=resolve;});});
+  assert.equal(cache.read('products',()=>{throw Error('Duplicate read');}),first);
+  await Promise.resolve();assert.equal(calls,1);cache.reset('second');
+  const second=cache.read('products',()=>{calls++;return new Promise(resolve=>{newResolve=resolve;});});await Promise.resolve();
+  oldResolve('old');await first;assert.equal(cache.read('products',()=>{throw Error('New scope request was removed');}),second);
+  newResolve('new');assert.equal(await second,'new');assert.equal(calls,2);
+  cache.mark('products');assert.equal(cache.needs('products'),false);assert.equal(cache.needs('products',Date.now()+31000),true);
+  cache.reset('third');assert.equal(cache.has('products'),false);
 });
