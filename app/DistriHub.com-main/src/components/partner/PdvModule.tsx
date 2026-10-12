@@ -41,10 +41,10 @@ function BarcodeCameraDialog({ onDetected, onClose }: { onDetected: (code: strin
         controls = await new BrowserMultiFormatReader().decodeFromConstraints(
           { video: { facingMode: { ideal: 'environment' } } },
           videoRef.current,
-          (result) => {
+          (result, _error, activeControls) => {
             if (!result || cancelled) return;
             cancelled = true;
-            controls?.stop();
+            activeControls.stop();
             callbacksRef.current.onDetected(result.getText());
           },
         );
@@ -306,6 +306,7 @@ type Props = {
   sales: PartnerSale[];
   credits: CustomerCredit[];
   hasPendingSale?: boolean;
+  isActive?: boolean;
   barcodeScannerEnabled?: boolean;
   cameraScannerEnabled?: boolean;
   preSaleToCheckout?: PartnerSale | null;
@@ -356,7 +357,7 @@ const PRODUCT_PAGE_SIZE = 30;
 
 export function PdvModule({
   cashContext, onOpenCash, onConfirmCashOperator,
-  products, customers, sales, credits, hasPendingSale, salespeople, segment, selectedBranchId,
+  products, customers, sales, credits, hasPendingSale, isActive = true, salespeople, segment, selectedBranchId,
   barcodeScannerEnabled = true, cameraScannerEnabled = false,
   preSaleToCheckout, onConsumePreSale, onRequestPreSale,
   activeSalespersonId, activeBranchName, receiptDetails, currentRole, canEditPrice, onCreateSale, onCreatePreSale, onFinalizePreSale, onCancelSale, onDeleteSale,
@@ -458,6 +459,7 @@ export function PdvModule({
           customers={customers}
           credits={credits}
           hasPendingSale={hasPendingSale}
+          isActive={isActive && subTab === 'pdv' && !checkoutPreSale}
           barcodeScannerEnabled={barcodeScannerEnabled}
           cameraScannerEnabled={cameraScannerEnabled}
           salespeople={salespeople}
@@ -499,12 +501,13 @@ export function PdvModule({
 
 /* ============ PDV Checkout ============ */
 
-function PdvCheckout({ products, customers, credits, hasPendingSale, barcodeScannerEnabled = true, cameraScannerEnabled = false, salespeople, activeSalespersonId, selectedBranchId, canCheckout, canEditPrice, receiptDetails, onCreateSale }: {
+function PdvCheckout({ products, customers, credits, hasPendingSale, isActive = true, barcodeScannerEnabled = true, cameraScannerEnabled = false, salespeople, activeSalespersonId, selectedBranchId, canCheckout, canEditPrice, receiptDetails, onCreateSale }: {
   products: PartnerProduct[];
   customers: PartnerCustomer[];
   credits: CustomerCredit[];
   canEditPrice: boolean;
   hasPendingSale?: boolean;
+  isActive?: boolean;
   barcodeScannerEnabled?: boolean;
   cameraScannerEnabled?: boolean;
   salespeople: PartnerSalesperson[];
@@ -523,6 +526,14 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, barcodeScan
     setVisibleProductCount(PRODUCT_PAGE_SIZE);
   }, [search, selectedBranchId]);
   const [cart, setCart] = useSessionDraftState<{ product_id: string; name: string; quantity: number; unit_price: number }[]>('checkout:cart', []);
+  const cartRef = useRef(cart);
+  cartRef.current = cart;
+  function updateCart(update: typeof cart | ((previous: typeof cart) => typeof cart), force = false) {
+    if (!force && !canChangeCart()) return;
+    const next = typeof update === 'function' ? update(cartRef.current) : update;
+    cartRef.current = next;
+    setCart(next);
+  }
   const previousBranchId = useRef(selectedBranchId);
   const [branchChangedWithCart, setBranchChangedWithCart] = useState(false);
   useEffect(() => {
@@ -548,6 +559,22 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, barcodeScan
   const [completed, setCompleted] = useState(false);
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const checkoutInFlight = useRef(false);
+  const activityRef = useRef({ isActive, hasPendingSale });
+  activityRef.current = { isActive, hasPendingSale };
+  const cartLocked = isCheckingOut || Boolean(hasPendingSale) || !isActive;
+  function canChangeCart() {
+    return !checkoutInFlight.current && !activityRef.current.hasPendingSale && activityRef.current.isActive
+      && (typeof document === 'undefined' || document.visibilityState !== 'hidden');
+  }
+  useEffect(() => {
+    setCameraOpen(false);
+  }, [isActive, hasPendingSale, isCheckingOut, cameraScannerEnabled, selectedBranchId]);
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const closeHiddenCamera = () => { if (document.visibilityState === 'hidden') setCameraOpen(false); };
+    document.addEventListener('visibilitychange', closeHiddenCamera);
+    return () => document.removeEventListener('visibilitychange', closeHiddenCamera);
+  }, []);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [priceTable, setPriceTable] = useSessionDraftState<PriceTable>('checkout:price-table', 'varejo');
   const [selectionNotice, setSelectionNotice] = useState<string | null>(null);
@@ -572,7 +599,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, barcodeScan
     setPriceTable(type);
     setCustomerId('');
     setCustomerName('');
-    setCart((prev) => prev.map((item) => {
+    updateCart((prev) => prev.map((item) => {
       const product = products.find((p) => p.id === item.product_id);
       if (!product) return item;
       return { ...item, unit_price: getPriceForProduct(product, type) };
@@ -622,6 +649,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, barcodeScan
 
   function handleCameraCode(code: string) {
     setCameraOpen(false);
+    if (!canChangeCart()) return;
     const normalizedCode = code.trim().toLocaleLowerCase();
     const matches = products.filter((product) =>
       (!selectedBranchId || product.branch_id === selectedBranchId)
@@ -638,6 +666,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, barcodeScan
   }
 
   function addToCart(product: PartnerProduct, fromScanner = false) {
+    if (!canChangeCart()) return;
     // Ignora disparo duplicado do mesmo toque/clique (ex.: double-tap acidental no mobile).
     const now = Date.now();
     if (!fromScanner) {
@@ -646,7 +675,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, barcodeScan
     }
 
     if (!product.is_service) {
-      const inCart = cart.find((i) => i.product_id === product.id)?.quantity ?? 0;
+      const inCart = cartRef.current.find((i) => i.product_id === product.id)?.quantity ?? 0;
       if (product.stock <= 0) {
         showSelectionNotice(`"${product.name}" está sem estoque nesta filial.`);
         return;
@@ -658,7 +687,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, barcodeScan
     }
 
     const price = getPriceForProduct(product, priceTable);
-    setCart((prev) => {
+    updateCart((prev) => {
       const existing = prev.find((i) => i.product_id === product.id);
       if (existing) return prev.map((i) => i.product_id === product.id ? { ...i, quantity: i.quantity + 1 } : i);
       return [...prev, { product_id: product.id, name: product.name, quantity: 1, unit_price: price }];
@@ -674,15 +703,16 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, barcodeScan
   }
 
   function changeQty(id: string, delta: number) {
+    if (!canChangeCart()) return;
     if (delta > 0) {
       const product = products.find((p) => p.id === id);
-      const inCart = cart.find((i) => i.product_id === id)?.quantity ?? 0;
+      const inCart = cartRef.current.find((i) => i.product_id === id)?.quantity ?? 0;
       if (product && !product.is_service && inCart + 1 > product.stock) {
         showSelectionNotice(`Estoque insuficiente: apenas ${product.stock} un. de "${product.name}" disponíveis.`);
         return;
       }
     }
-    setCart((prev) => prev.flatMap((i) => {
+    updateCart((prev) => prev.flatMap((i) => {
       if (i.product_id !== id) return [i];
       const q = i.quantity + delta;
       return q > 0 ? [{ ...i, quantity: q }] : [];
@@ -690,12 +720,16 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, barcodeScan
   }
 
   function removeFromCart(id: string) {
-    setCart((prev) => prev.filter((i) => i.product_id !== id));
+    if (!canChangeCart()) return;
+    updateCart((prev) => prev.filter((i) => i.product_id !== id));
   }
 
   async function handleCheckout(shouldPrint = false) {
-    if (cart.length === 0 || checkoutInFlight.current || hasPendingSale) return;
-    if (!validSalePrice(freightAmount) || cart.some(item => !validSalePrice(item.unit_price))) {
+    if (cartRef.current.length === 0 || !canChangeCart()) return;
+    const checkoutCart = cartRef.current;
+    const checkoutTotal = pdvTotal(checkoutCart);
+    const checkoutChargeTotal = saleChargeTotal({ total: checkoutTotal, freight_fee: freightAmount });
+    if (!validSalePrice(freightAmount) || checkoutCart.some(item => !validSalePrice(item.unit_price))) {
       setCheckoutError('Informe preços e frete válidos com até duas casas decimais.');
       return;
     }
@@ -705,24 +739,25 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, barcodeScan
     }
     const customer = customers.find((c) => c.id === customerId);
     if (paymentMethod === 'faturado') {
-      const message = billedSaleError(credit, customerId || null, chargeTotal);
+      const message = billedSaleError(credit, customerId || null, checkoutChargeTotal);
       if (message) { setCheckoutError(message); return; }
     }
     const parts = paymentMethod === 'misto' ? draftPayments(paymentDraft) : [];
-    const validation = paymentMethod === 'misto' ? splitPaymentError(chargeTotal, parts) : null;
+    const validation = paymentMethod === 'misto' ? splitPaymentError(checkoutChargeTotal, parts) : null;
     if (validation) { setCheckoutError(validation); return; }
     const fallbackName = clientType === 'atacado' ? 'Cliente Atacado' : 'Cliente Varejo';
     const printWindow = shouldPrint ? window.open('', '_blank', 'width=440,height=700') : null;
     if (printWindow) printWindow.document.body.textContent = 'Aguardando confirmação da venda...';
     checkoutInFlight.current = true;
     setIsCheckingOut(true);
+    setCameraOpen(false);
     setCheckoutError(null);
     try {
       const confirmedSale = await onCreateSale({
         customer_id: customerId || null,
         customer_name: customerName || customer?.name || fallbackName,
-        items: cart,
-        total,
+        items: checkoutCart,
+        total: checkoutTotal,
         freight_fee: freightAmount,
         customer_type: clientType,
         delivery_type: deliveryType,
@@ -731,7 +766,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, barcodeScan
         salesperson_id: salespersonId || null,
         branch_id: selectedBranchId,
       });
-      setCart([]); setFreightFee(0); setCustomerId(''); setCustomerName(''); setSalespersonId('');
+      updateCart([], true); setFreightFee(0); setCustomerId(''); setCustomerName(''); setSalespersonId('');
       setCompleted(true);
       setClientType('varejo');
       setPriceTable('varejo');
@@ -766,9 +801,10 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, barcodeScan
 
   return (
     <>
-      {cameraOpen && cameraScannerEnabled && (
+      {cameraOpen && cameraScannerEnabled && !cartLocked && (
         <BarcodeCameraDialog onDetected={handleCameraCode} onClose={() => setCameraOpen(false)} />
       )}
+      <fieldset disabled={cartLocked} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
       <div className="pdv-layout pdv-checkout-layout">
         <div className="pdv-left">
           <div className="pdv-search-bar">
@@ -776,6 +812,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, barcodeScan
             <input
   type="search"
   ref={searchInputRef}
+  disabled={cartLocked}
   name="new-product-search"
   autoComplete="new-password"
   autoCorrect="off"
@@ -788,7 +825,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, barcodeScan
   onKeyDown={(event) => {
     if (event.key !== 'Enter' || !search.trim()) return;
     event.preventDefault();
-    if (!barcodeScannerEnabled) return;
+    if (!barcodeScannerEnabled || !canChangeCart()) return;
     const code = search.trim().toLocaleLowerCase();
     const matches = filtered.filter((product) => product.sku?.trim().toLocaleLowerCase() === code);
     if (matches.length === 1) {
@@ -803,7 +840,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, barcodeScan
   aria-label="Buscar produto por nome ou SKU"
 />
             {cameraScannerEnabled && (
-              <button type="button" className="pdv-camera-button" aria-label="Ler código pela câmera" onClick={() => setCameraOpen(true)}>
+              <button type="button" className="pdv-camera-button" aria-label="Ler código pela câmera" disabled={cartLocked} onClick={() => { if (canChangeCart()) setCameraOpen(true); }}>
                 <Camera size={18} />
               </button>
             )}
@@ -830,7 +867,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, barcodeScan
                     type="button"
                     className={`pdv-product-card${justAdded ? ' added' : ''}`}
                     onClick={() => addToCart(p)}
-                    disabled={outOfStock}
+                    disabled={outOfStock || cartLocked}
                   >
                     <strong>{p.name}</strong>
                     {p.sku && <small>SKU: {p.sku}</small>}
@@ -867,7 +904,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, barcodeScan
           <div className="pdv-cart-header">
             <h4>Carrinho · {cart.reduce((count, item) => count + item.quantity, 0)} itens</h4>
             {cart.length > 0 && (
-              <button className="rma-advance-btn danger" onClick={() => setCart([])}>
+              <button className="rma-advance-btn danger" onClick={() => updateCart([])}>
                 <X size={14} /> Limpar
               </button>
             )}
@@ -886,13 +923,13 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, barcodeScan
                     <strong>{item.name}</strong>
                   </td>
                   <td data-label="Quantidade"><div className="pdv-item-controls">
-                    <button aria-label={`Diminuir quantidade de ${item.name}`} onClick={() => changeQty(item.product_id, -1)}>−</button>
+                    <button aria-label={`Diminuir quantidade de ${item.name}`} disabled={cartLocked} onClick={() => changeQty(item.product_id, -1)}>−</button>
                     <b>{item.quantity}</b>
-                    <button aria-label={`Aumentar quantidade de ${item.name}`} onClick={() => changeQty(item.product_id, 1)}>+</button>
+                    <button aria-label={`Aumentar quantidade de ${item.name}`} disabled={cartLocked} onClick={() => changeQty(item.product_id, 1)}>+</button>
                   </div></td>
-                  <td data-label="Preço unitário">{canEditPrice ? <SalePriceInput value={item.unit_price} name={item.name} disabled={isCheckingOut || hasPendingSale} onChange={value => setCart(previous => previous.map(row => row.product_id === item.product_id ? { ...row, unit_price: value } : row))} /> : money.format(item.unit_price)}</td>
+                  <td data-label="Preço unitário">{canEditPrice ? <SalePriceInput value={item.unit_price} name={item.name} disabled={isCheckingOut || hasPendingSale} onChange={value => updateCart(previous => previous.map(row => row.product_id === item.product_id ? { ...row, unit_price: value } : row))} /> : money.format(item.unit_price)}</td>
                   <td data-label="Subtotal">{money.format(item.unit_price * item.quantity)}</td>
-                  <td><button className="pdv-remove" aria-label={`Remover ${item.name}`} onClick={() => removeFromCart(item.product_id)}><Trash2 size={16} /></button></td>
+                  <td><button className="pdv-remove" disabled={cartLocked} aria-label={`Remover ${item.name}`} onClick={() => removeFromCart(item.product_id)}><Trash2 size={16} /></button></td>
                 </tr>
               ))
             )}
@@ -905,7 +942,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, barcodeScan
             <div className="pdv-restricted-checkout" role="alert">
               <LockIcon size={16} />
               <span>A filial foi alterada e o carrinho foi mantido. Confira os produtos antes de finalizar.</span>
-              <button type="button" className="rma-advance-btn" onClick={() => setCart([])}>Esvaziar carrinho</button>
+              <button type="button" className="rma-advance-btn" onClick={() => updateCart([])}>Esvaziar carrinho</button>
             </div>
           )}
           {cartHasWrongBranch && (
@@ -1021,6 +1058,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, barcodeScan
         </div>
       </div>
 
+      </fieldset>
     </>
   );
 }

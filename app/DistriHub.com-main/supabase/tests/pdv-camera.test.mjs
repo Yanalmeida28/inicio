@@ -1,0 +1,48 @@
+import assert from 'node:assert/strict';
+import {test,afterEach} from 'node:test';
+import {readFile} from 'node:fs/promises';
+import {createRequire} from 'node:module';
+import vm from 'node:vm';
+import React from 'react';
+import TestRenderer,{act} from 'react-test-renderer';
+import ts from '../../node_modules/typescript/lib/typescript.js';
+import {splitPaymentComponent} from './fixtures/split_payment_component.mjs';
+import {pdvHelpers} from './fixtures/pdv_helpers.mjs';
+const require=createRequire(import.meta.url);
+const source=ts.transpileModule(await readFile(new URL('../../src/components/partner/PdvModule.tsx',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,target:ts.ScriptTarget.ES2020}}).outputText+'\nexports.Checkout=PdvCheckout;exports.Camera=BarcodeCameraDialog;';
+let renderer;
+afterEach(async()=>{if(renderer)await act(async()=>renderer.unmount());renderer=null;});
+function harness({secure=true,error=null,pending=false}={}){
+ let callback,resolve,stops=0;
+ const controls={stop(){stops++;}};
+ const document={visibilityState:'visible',listeners:new Set(),addEventListener(_event,fn){this.listeners.add(fn);},removeEventListener(_event,fn){this.listeners.delete(fn);}};
+ const library={BrowserMultiFormatReader:class{async decodeFromConstraints(constraints,_video,cb){assert.equal(constraints.video.facingMode.ideal,'environment');if(error)throw {name:error};callback=cb;return pending?new Promise(done=>resolve=done):controls;}}};
+ const exports={};
+ vm.runInNewContext(source,{exports,Date,Error,document,navigator:{mediaDevices:{getUserMedia(){}}},window:{isSecureContext:secure,open:()=>null,setTimeout:()=>1,clearTimeout(){}},require(name){
+  if(name==='react')return React;if(name==='@zxing/browser')return library;
+  if(name==='../../lib/pdv')return pdvHelpers;
+  if(name==='../../hooks/useSessionDraft')return {SessionDraftProvider:({children})=>children,useSessionDraftScope:()=> 'test',useSessionDraftState:(_id,initial)=>React.useState(initial)};
+  if(name==='../../utils')return {money:new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'})};
+  if(name==='../../lib/salePrint')return {printSale(){}};
+  if(name==='./SplitPaymentFields')return splitPaymentComponent;
+  if(name==='./PreSaleCheckout')return {};
+  if(name==='./SalePriceInput')return {SalePriceInput:()=>null};
+  return require(name);
+ }});
+ return {exports,document,get stops(){return stops;},detect(code){callback({getText:()=>code},null,controls);},resolve(){resolve(controls);}};
+}
+const props={products:[{id:'product',name:'Produto',sku:'0789012345678',branch_id:'branch',stock:5,sale_price:100}],customers:[],salespeople:[],credits:[],selectedBranchId:'branch',segment:'assistencia',canCheckout:true,canEditPrice:false,cameraScannerEnabled:true,onCreateSale:async()=>{}};
+const search=()=>renderer.root.findByProps({'aria-label':'Buscar produto por nome ou SKU'});
+const qty=()=>renderer.root.findAllByProps({'data-label':'Quantidade'})[0]?.findByType('b').children.join('');
+async function mount(h,overrides={}){await act(async()=>{renderer=TestRenderer.create(React.createElement(h.exports.Checkout,{...props,...overrides}),{createNodeMock:()=>({focus(){}})});});}
+async function typeCode(){await act(async()=>search().props.onChange({target:{value:'0789012345678'}}));}
+function enter(){search().props.onKeyDown({key:'Enter',preventDefault(){}});}
+async function openCamera(){await act(async()=>renderer.root.findByProps({'aria-label':'Ler código pela câmera'}).props.onClick());}
+test('leituras no mesmo ciclo respeitam estoque e preservam duas unidades legítimas',async()=>{const h=harness();await mount(h,{products:[{...props.products[0],stock:1}]});await typeCode();act(()=>{enter();enter();});assert.equal(qty(),'1');assert.match(renderer.root.findByProps({role:'alert'}).children.join(''),/insuficiente/);await act(async()=>renderer.unmount());renderer=null;await mount(h,{products:[{...props.products[0],stock:2}]});await typeCode();act(()=>{enter();enter();});assert.equal(qty(),'2');});
+test('finalização bloqueia teclado, câmera e alteração de quantidade sem perder uma leitura',async()=>{const h=harness();let release,payload;await mount(h,{onCreateSale:sale=>{payload=sale;return new Promise(done=>release=done);}});await typeCode();await act(async()=>enter());await openCamera();const staleDetected=renderer.root.findByType(h.exports.Camera).props.onDetected;await typeCode();act(()=>{void renderer.root.findByProps({className:'module-cancel-btn pdv-checkout-btn'}).props.onClick();enter();staleDetected('0789012345678');renderer.root.findByProps({'aria-label':'Aumentar quantidade de Produto'}).props.onClick();});assert.equal(qty(),'1');assert.equal(payload.items[0].quantity,1);assert.equal(renderer.root.findAllByType(h.exports.Camera).length,0);assert.equal(search().props.disabled,true);assert.equal(renderer.root.findByProps({'aria-label':'Ler código pela câmera'}).props.disabled,true);assert.ok(h.stops>0);await act(async()=>release({id:'saved',...payload}));assert.equal(qty(),undefined);});
+test('venda incerta bloqueia leitor e carrinho até recuperação',async()=>{const h=harness();await mount(h,{hasPendingSale:true});await typeCode();act(()=>enter());assert.equal(qty(),undefined);assert.equal(search().props.disabled,true);});
+test('sair do PDV encerra a câmera e ignora callback atrasado',async()=>{const h=harness();await mount(h);await openCamera();const detected=renderer.root.findByType(h.exports.Camera).props.onDetected;await act(async()=>renderer.update(React.createElement(h.exports.Checkout,{...props,isActive:false})));assert.equal(renderer.root.findAllByType(h.exports.Camera).length,0);assert.ok(h.stops>0);act(()=>detected('0789012345678'));assert.equal(qty(),undefined);});
+test('ocultar página encerra câmera e preserva carrinho',async()=>{const h=harness();await mount(h);await openCamera();await act(async()=>{h.document.visibilityState='hidden';for(const fn of h.document.listeners)fn();});assert.equal(renderer.root.findAllByType(h.exports.Camera).length,0);assert.ok(h.stops>0);});
+test('decodificação adiciona uma unidade e ignora repetição do mesmo frame',async()=>{const h=harness();await mount(h);await openCamera();await act(async()=>{h.detect('0789012345678');h.detect('0789012345678');});assert.equal(qty(),'1');assert.ok(h.stops>0);});
+test('fechar durante inicialização encerra controles quando a permissão chega',async()=>{const h=harness({pending:true});await mount(h);await openCamera();await act(async()=>renderer.root.findByProps({'aria-label':'Fechar leitor de câmera'}).props.onClick());await act(async()=>h.resolve());assert.ok(h.stops>0);assert.equal(renderer.root.findAllByType(h.exports.Camera).length,0);});
+for(const [options,message] of [[{secure:false},/HTTPS/],[{error:'NotAllowedError'},/Permita/],[{error:'NotReadableError'},/em uso/]])test('câmera informa pré-requisito ou erro: '+JSON.stringify(options),async()=>{const h=harness(options);await mount(h);await openCamera();assert.match(renderer.root.findByProps({role:'alert'}).children.join(''),message);});

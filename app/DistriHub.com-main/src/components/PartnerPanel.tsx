@@ -1989,6 +1989,7 @@ export function PartnerPanel({
             {visitedTabs.has('pdv') && !blockedTabs.includes('pdv') && canUseSaasFeature(saas.subscription, 'pdv') && (
               <div hidden={activeTab !== 'pdv'}>
               {renderTab('pdv', <PdvModule
+                isActive={activeTab === 'pdv'}
                 preSaleToCheckout={preSaleToCheckout}
                 onRequestPreSale={setPreSaleToCheckout}
                 onConsumePreSale={() => setPreSaleToCheckout(null)}
