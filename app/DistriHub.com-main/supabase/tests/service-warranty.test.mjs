@@ -75,6 +75,22 @@ test('personalization preserves independent panel, receipt and catalog choices w
   assert.equal(submitted.receipt_footer_text,settings.receipt_footer_text);
 });
 
+test('barcode reader can be disabled in PDV personalization and persists across reloads', async () => {
+  let submitted;
+  await act(async () => { renderer = TestRenderer.create(React.createElement(Component, { settings, onUpdate: async value => { submitted = value; } })); });
+  await act(async () => renderer.root.findAllByType('button').find(button => button.children.includes('PDV')).props.onClick());
+  const toggle = () => renderer.root.findByProps({ 'aria-label': 'Ativar leitor de código de barras' });
+  assert.equal(toggle().props.checked, true);
+  await act(async () => toggle().props.onChange({ target: { checked: false } }));
+  await act(async () => saveButton().props.onClick());
+  assert.equal(submitted.personalization.pdv.barcode_scanner_enabled, false);
+  await act(async () => renderer.update(React.createElement(Component, {
+    settings: { ...settings, personalization: submitted.personalization },
+    onUpdate: async () => {},
+  })));
+  assert.equal(toggle().props.checked, false);
+});
+
 test('restoring panel defaults preserves the receipt draft and invalid WhatsApp blocks saving',async()=>{
   let submitted,calls=0;
   await act(async()=>{renderer=TestRenderer.create(React.createElement(Component,{settings,onUpdate:async value=>{submitted=value;calls++;}}));});

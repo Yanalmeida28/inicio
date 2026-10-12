@@ -233,6 +233,7 @@ type Props = {
   sales: PartnerSale[];
   credits: CustomerCredit[];
   hasPendingSale?: boolean;
+  barcodeScannerEnabled?: boolean;
   preSaleToCheckout?: PartnerSale | null;
   onConsumePreSale?: () => void;
   onRequestPreSale?: (sale: PartnerSale) => void;
@@ -282,6 +283,7 @@ const PRODUCT_PAGE_SIZE = 30;
 export function PdvModule({
   cashContext, onOpenCash, onConfirmCashOperator,
   products, customers, sales, credits, hasPendingSale, salespeople, segment, selectedBranchId,
+  barcodeScannerEnabled = true,
   preSaleToCheckout, onConsumePreSale, onRequestPreSale,
   activeSalespersonId, activeBranchName, receiptDetails, currentRole, canEditPrice, onCreateSale, onCreatePreSale, onFinalizePreSale, onCancelSale, onDeleteSale,
 }: Props) {
@@ -382,6 +384,7 @@ export function PdvModule({
           customers={customers}
           credits={credits}
           hasPendingSale={hasPendingSale}
+          barcodeScannerEnabled={barcodeScannerEnabled}
           salespeople={salespeople}
           activeSalespersonId={activeSalespersonId}
           segment={segment}
@@ -421,12 +424,13 @@ export function PdvModule({
 
 /* ============ PDV Checkout ============ */
 
-function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople, activeSalespersonId, selectedBranchId, canCheckout, canEditPrice, receiptDetails, onCreateSale }: {
+function PdvCheckout({ products, customers, credits, hasPendingSale, barcodeScannerEnabled = true, salespeople, activeSalespersonId, selectedBranchId, canCheckout, canEditPrice, receiptDetails, onCreateSale }: {
   products: PartnerProduct[];
   customers: PartnerCustomer[];
   credits: CustomerCredit[];
   canEditPrice: boolean;
   hasPendingSale?: boolean;
+  barcodeScannerEnabled?: boolean;
   salespeople: PartnerSalesperson[];
   activeSalespersonId?: string | null;
   segment: string;
@@ -687,6 +691,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
   onKeyDown={(event) => {
     if (event.key !== 'Enter' || !search.trim()) return;
     event.preventDefault();
+    if (!barcodeScannerEnabled) return;
     const code = search.trim().toLocaleLowerCase();
     const matches = filtered.filter((product) => product.sku?.trim().toLocaleLowerCase() === code);
     if (matches.length === 1) {

@@ -104,6 +104,21 @@ test('leitor de código adiciona o produto pelo SKU e leituras repetidas aumenta
   await scan();
   assert.equal(renderer.root.findByProps({ 'aria-label': 'Carrinho' }).findByType('b').children[0], '2');
 });
+test('leitor desativado não adiciona produto ao confirmar a busca com Enter', async () => {
+  await act(async () => {
+    renderer = TestRenderer.create(React.createElement(module.exports.Checkout, {
+      ...props,
+      barcodeScannerEnabled: false,
+      products: [{ ...props.products[0], sku: '0789012345678' }],
+    }));
+  });
+  const searchInput = renderer.root.findByProps({ 'aria-label': 'Buscar produto por nome ou SKU' });
+  await act(async () => searchInput.props.onChange({ target: { value: '0789012345678' } }));
+  let prevented = false;
+  await act(async () => searchInput.props.onKeyDown({ key: 'Enter', preventDefault: () => { prevented = true; } }));
+  assert.equal(prevented, true);
+  assert.match(renderer.root.findByProps({ 'aria-label': 'Carrinho' }).findByType('tbody').children[0].findAllByType('td')[0].children.join(''), /Carrinho vazio/);
+});
 test('selecionar e remover o último produto mantém as opções da venda visíveis', async () => {
   await act(async () => { renderer = TestRenderer.create(React.createElement(module.exports.Checkout, props)); });
   await act(async () => renderer.root.findByProps({ 'aria-label': 'Buscar produto por nome ou SKU' }).props.onChange({ target: { value: 'Produto' } }));

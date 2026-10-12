@@ -14,16 +14,20 @@ const navigationColors = ['#0f2747', '#0f172a', '#1e293b', '#14532d', '#134e4a',
 
 export function WhiteLabelModule({ settings: initialSettings, onUpdate: persist }: WhiteLabelModuleProps) {
   const [settings, setSettings] = useState(initialSettings);
-  const [activeTab, setActiveTab] = useState<'visual' | 'painel' | 'cupom' | 'catalogo'>('visual');
+  const [activeTab, setActiveTab] = useState<'visual' | 'painel' | 'cupom' | 'catalogo' | 'pdv'>('visual');
   const receipt = receiptPreferences(settings.personalization?.receipt);
   const panel = panelPreferences(settings.personalization?.panel);
   const catalog = catalogPreferences(settings.personalization?.catalog);
+  const barcodeScannerEnabled = settings.personalization?.pdv?.barcode_scanner_enabled !== false;
   function updatePreference<K extends keyof StorePersonalization>(group: K, value: StorePersonalization[K]) {
     onUpdate({ personalization: { ...settings.personalization, [group]: value } });
   }
   function restoreSection() {
     if (activeTab === 'visual') onUpdate({ primary_color: '#3193e5', nav_color: '#0f2747' });
-    else updatePreference(activeTab === 'painel' ? 'panel' : activeTab === 'cupom' ? 'receipt' : 'catalog', {});
+    else {
+      const group = activeTab === 'painel' ? 'panel' : activeTab === 'cupom' ? 'receipt' : activeTab === 'catalogo' ? 'catalog' : 'pdv';
+      updatePreference(group, {});
+    }
   }
   const [dirty, setDirty] = useState(false);
   useEffect(() => {
@@ -84,15 +88,32 @@ export function WhiteLabelModule({ settings: initialSettings, onUpdate: persist 
         <span className="module-icon"><Wand2 size={20} /></span>
         <div>
           <h3>Personalização da Loja</h3>
-          <p>Configure a identidade visual e as opções de impressão</p>
+          <p>Configure a identidade visual, o PDV e as opções de impressão</p>
         </div>
       </div>
 
       <nav className="personalization-tabs" aria-label="Seções de personalização">
-        {([{ id: 'visual', label: 'Identidade visual' }, { id: 'painel', label: 'Painel' }, { id: 'cupom', label: 'Cupom e termos' }, { id: 'catalogo', label: 'Catálogo' }] as const).map(tab => (
+        {([{ id: 'visual', label: 'Identidade visual' }, { id: 'painel', label: 'Painel' }, { id: 'cupom', label: 'Cupom e termos' }, { id: 'catalogo', label: 'Catálogo' }, { id: 'pdv', label: 'PDV' }] as const).map(tab => (
           <button key={tab.id} type="button" className={activeTab === tab.id ? 'active' : ''} aria-pressed={activeTab === tab.id} onClick={() => setActiveTab(tab.id)}>{tab.label}</button>
         ))}
       </nav>
+      <section hidden={activeTab !== 'pdv'} aria-label="Personalização do PDV">
+        <div className="module-card">
+          <div className="module-card-title">Leitor de código de barras</div>
+          <div className="print-toggle-list">
+            <label className="print-toggle-item">
+              <input
+                type="checkbox"
+                aria-label="Ativar leitor de código de barras"
+                checked={barcodeScannerEnabled}
+                onChange={e => updatePreference('pdv', { ...settings.personalization?.pdv, barcode_scanner_enabled: e.target.checked })}
+              />
+              <span>Ativar leitor de código de barras no PDV</span>
+            </label>
+          </div>
+          <p className="otp-description">Com a opção ativa, leia o código no campo de busca do PDV. O leitor deve funcionar como teclado e enviar Enter ao final; o código precisa estar cadastrado no SKU do produto. A leitura por câmera não está disponível.</p>
+        </div>
+      </section>
       <section hidden={activeTab !== 'visual'} aria-label="Identidade visual">
       <div className="module-card">
         <div className="module-card-title"><Palette size={16} /> Temas prontos</div>

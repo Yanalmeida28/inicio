@@ -337,6 +337,9 @@ export interface StorePersonalization {
   receipt?: Partial<ReceiptPreferences>;
   panel?: Partial<PanelPreferences>;
   catalog?: Partial<CatalogPreferences>;
+  pdv?: {
+    barcode_scanner_enabled?: boolean;
+  };
 }
 
 export interface StoreSettings {

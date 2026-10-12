@@ -2003,6 +2003,7 @@ export function PartnerPanel({
                 canEditPrice={effectiveRole === 'gerente' || (!isEmployeeRestricted && effectiveRole === 'administrador')}
                 key={`${pdvRevision}:${effectiveBranchId}:${activeSalesperson?.id ?? 'owner'}`}
                 hasPendingSale={Boolean(partner.pendingSale)}
+                barcodeScannerEnabled={storeSettings.personalization?.pdv?.barcode_scanner_enabled !== false}
                 products={
                   filteredProducts
                 }
