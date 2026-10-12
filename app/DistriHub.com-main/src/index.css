@@ -2204,6 +2204,61 @@ html, body {
 .partner-panel .cadastros-scope .replenishment-critical-banner strong { color: var(--dh-danger); }
 .partner-panel .cadastros-scope .replenishment-critical-banner span { color: var(--dh-text-secondary); }
 .partner-panel .cadastros-scope .replenishment-row-critical { background: rgba(185,28,28,.05); }
+.admin-panel .admin-filters { margin: 16px 0; gap: 12px; flex-wrap: wrap; align-items: end; }
+.admin-panel .admin-detail-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.admin-panel .admin-detail-grid dt { font-size: 12px; color: #adc2d6; }
+.admin-panel .admin-detail-grid dd { margin: 4px 0 0; color: #edf5fc; overflow-wrap: anywhere; }
+.admin-panel .admin-client-detail { margin-bottom: 16px; }
+.admin-panel .admin-overview-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 12px; margin-bottom: 16px; }
+.admin-panel .admin-overview-list .module-card { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.admin-panel .admin-overview-actions { margin: 16px 0; gap: 10px; }
+.admin-panel .admin-cell-note { display: block; margin-top: 5px; max-width: 280px; color: #adc2d6; font-size: 11px; overflow-wrap: anywhere; }
+.admin-panel .admin-event-details { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
+.admin-panel .admin-context-note { color: #adc2d6; font-size: 12px; }
+.admin-panel .admin-revenue-months { display: grid; gap: 12px; margin: 16px 0 24px; }
+.admin-panel .admin-revenue-months > div { display: grid; grid-template-columns: 75px minmax(0, 1fr) 130px; align-items: center; gap: 12px; }
+.admin-panel .admin-revenue-months progress { width: 100%; height: 14px; accent-color: #22c55e; }
+@media (max-width: 767px) {
+  .admin-panel .admin-detail-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .admin-panel .admin-responsive-table { border: 0; background: transparent; overflow: visible; }
+  .admin-panel .admin-responsive-table table, .admin-panel .admin-responsive-table tbody { display: block; width: 100%; min-width: 0; }
+  .admin-panel .admin-responsive-table thead { display: none; }
+  .admin-panel .admin-responsive-table tr { display: block; padding: 12px; margin-bottom: 12px; border: 1px solid #29465f; border-radius: 12px; background: #102638; }
+  .admin-panel .admin-responsive-table td { display: block; width: 100%; padding: 10px 0; min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+  .admin-panel .admin-responsive-table td[data-label]::before { content: attr(data-label); display: block; color: #adc2d6; font-size: 11px; margin-bottom: 6px; }
+  .admin-panel .admin-responsive-table td:last-child { border-bottom: 0; }
+  .admin-panel .admin-responsive-table .subscription-actions { display: grid; grid-template-columns: 1fr; gap: 8px; }
+  .admin-panel .admin-responsive-table button, .admin-panel .admin-responsive-table select { width: 100%; }
+  .admin-panel .admin-revenue-months > div { grid-template-columns: 65px minmax(0, 1fr); font-size: 12px; }
+  .admin-panel .admin-revenue-months strong { grid-column: 2; }
+}
+.replenishment-class-cards { display: none; }
+@media (max-width: 767px) {
+  .replenishment-analysis-table { display: none; }
+  .replenishment-class-cards { display: grid; gap: 16px; }
+  .replenishment-class-card { min-width: 0; border: 1px solid var(--dh-border, #29465f); border-top: 3px solid var(--replenishment-class-color); border-radius: 12px; background: var(--dh-surface, #102638); overflow: hidden; }
+  .replenishment-class-a { --replenishment-class-color: #16a34a; }
+  .replenishment-class-b { --replenishment-class-color: #b45309; }
+  .replenishment-class-c { --replenishment-class-color: #0284c7; }
+  .replenishment-class-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px; border-bottom: 1px solid var(--dh-border, #29465f); }
+  .replenishment-class-header h5 { margin: 0 0 4px; font-size: 16px; color: var(--dh-text, #edf5fc); }
+  .replenishment-class-header span { font-size: 12px; color: var(--dh-text-secondary, #adc2d6); }
+  .replenishment-class-count { flex-shrink: 0; }
+  .replenishment-class-card > .admin-empty-hint { padding: 0 16px; }
+  .replenishment-class-products { display: grid; gap: 12px; padding: 12px; }
+  .replenishment-product-card { min-width: 0; padding: 12px; border: 1px solid var(--dh-border, #29465f); border-radius: 8px; }
+  .replenishment-product-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+  .replenishment-product-heading > div { min-width: 0; }
+  .replenishment-product-heading strong { display: block; overflow-wrap: anywhere; color: var(--dh-text, #edf5fc); font-size: 14px; }
+  .replenishment-product-heading small { display: block; margin-top: 4px; overflow-wrap: anywhere; color: var(--dh-text-secondary, #adc2d6); font-size: 11px; }
+  .replenishment-product-heading .rma-status-badge { flex-shrink: 0; }
+  .replenishment-product-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 16px 0; }
+  .replenishment-product-stats dt { color: var(--dh-text-secondary, #adc2d6); font-size: 11px; }
+  .replenishment-product-stats dd { margin: 4px 0 0; color: var(--dh-text, #edf5fc); font-size: 14px; font-weight: 700; overflow-wrap: anywhere; }
+  .replenishment-product-stats dd.stock-low-value { color: var(--dh-danger, #dc2626); }
+  .replenishment-product-card .replenishment-suggestion { margin: 0 0 12px; font-size: 12px; }
+  .replenishment-product-card .module-submit-btn { width: 100%; min-height: 44px; justify-content: center; }
+}
 .partner-panel .cadastros-scope .replenishment-suggestion { color: var(--dh-accent-text); }
 .partner-panel .cadastros-scope .report-cards { gap: 10px; }
 .partner-panel .cadastros-scope .report-card { padding: 14px 16px; }

@@ -2723,7 +2723,7 @@ function ReplenishmentSubTab({ products, sales, selectedBranchId, onReplenishSto
       {lowStockHighDemand.length === 0 ? (
         <p className="admin-empty-hint">Nenhum alerta de reposição no momento. Todos os produtos com demanda estão com estoque adequado.</p>
       ) : (
-        <div className="stock-table-wrap">
+        <div className="stock-table-wrap replenishment-alert-table">
           <table className="rma-table">
             <thead>
               <tr>
@@ -2783,7 +2783,48 @@ function ReplenishmentSubTab({ products, sales, selectedBranchId, onReplenishSto
       {abcAnalysis.length === 0 ? (
         <p className="admin-empty-hint">Nenhuma venda registrada para análise. Conclua vendas no PDV para gerar dados preditivos.</p>
       ) : (
-        <div className="stock-table-wrap">
+        <>
+        <div className="replenishment-class-cards">
+          {([
+            { label: 'A', description: 'Alto Giro', items: classA },
+            { label: 'B', description: 'Médio Giro', items: classB },
+            { label: 'C', description: 'Baixo Giro', items: classC },
+          ] as const).map(({ label, description, items }) => (
+            <section key={label} className={`replenishment-class-card replenishment-class-${label.toLowerCase()}`} aria-label={`Produtos Classe ${label}`}>
+              <div className="replenishment-class-header">
+                <div><h5>Classe {label}</h5><span>{description}</span></div>
+                <span className="replenishment-class-count">{items.length} {items.length === 1 ? 'produto' : 'produtos'}</span>
+              </div>
+              {items.length === 0 ? <p className="admin-empty-hint">Nenhum produto nesta classe.</p> : (
+                <div className="replenishment-class-products">
+                  {items.map((p) => {
+                    const lowStock = p.stock <= (p.minStock || 0);
+                    const suggestedQty = Math.max(p.totalSold, p.minStock * 2) - p.stock;
+                    return (
+                      <article key={p.id} className="replenishment-product-card">
+                        <div className="replenishment-product-heading">
+                          <div><strong>{p.name}</strong><small>SKU: {p.sku || '—'}</small></div>
+                          <span className={`rma-status-badge ${p.stock <= 0 ? 'stock-empty' : lowStock ? 'stock-low' : 'stock-ok'}`}>
+                            {p.stock <= 0 ? 'Sem estoque' : lowStock ? 'Baixo' : 'OK'}
+                          </span>
+                        </div>
+                        <dl className="replenishment-product-stats">
+                          <div><dt>Estoque</dt><dd className={lowStock ? 'stock-low-value' : ''}>{p.stock}</dd></div>
+                          <div><dt>Mínimo</dt><dd>{p.minStock}</dd></div>
+                          <div><dt>Vendidos</dt><dd>{p.totalSold}</dd></div>
+                          <div><dt>Receita</dt><dd>{money.format(p.revenue)}</dd></div>
+                        </dl>
+                        {lowStock && p.totalSold > 0 && suggestedQty > 0 && <p className="replenishment-suggestion">Reposição sugerida: +{suggestedQty} un.</p>}
+                        <button type="button" className="module-submit-btn" onClick={() => { setSelectedProduct(products.find((product) => product.id === p.id) ?? null); setError(null); setSuccess(null); }}>Repor estoque</button>
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+          ))}
+        </div>
+        <div className="stock-table-wrap replenishment-analysis-table">
           <table className="rma-table">
             <thead>
               <tr>
@@ -2819,6 +2860,7 @@ function ReplenishmentSubTab({ products, sales, selectedBranchId, onReplenishSto
             </tbody>
           </table>
         </div>
+        </>
       )}
     </div>
   );

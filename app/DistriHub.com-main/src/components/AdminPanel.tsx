@@ -10,17 +10,22 @@ import { money } from '../utils';
 import { AdminSaasModule } from './AdminSaasModule';
 import { AdminSupportModule } from './AdminSupportModule';
 import { AdminPlanRequestsModule } from './AdminPlanRequestsModule';
+import { AdminResponsiveTable } from './AdminResponsiveTable';
 
 
 type AdminPanelProps = {
   onBack: () => void;
 };
 
-type AdminTab = 'lojistas' | 'financeiro' | 'faturas' | 'planos' | 'seguranca' | 'suporte' | 'assinaturas';
+type AdminTab = 'visao' | 'historico' | 'lojistas' | 'financeiro' | 'faturas' | 'planos' | 'seguranca' | 'suporte' | 'assinaturas';
 
 
 export function AdminPanel({ onBack }: AdminPanelProps) {
-  const [tab, setTab] = useState<AdminTab>('assinaturas');
+  const [tab, setTab] = useState<AdminTab>('visao');
+  const [search, setSearch] = useState('');
+  const [clientFilter, setClientFilter] = useState('all');
+  const [planFilter, setPlanFilter] = useState('all');
+  const [details, setDetails] = useState<AdminCompany | null>(null);
   const [accessCompanyId, setAccessCompanyId] = useState<string | null>(null);
   const [companiesVersion, setCompaniesVersion] = useState(0);
   const [lojistas, setLojistas] = useState<AdminCompany[]>([]);
@@ -95,14 +100,20 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
   }
 
   const tabs: { id: AdminTab; label: string; icon: typeof Users }[] = [
+    { id: 'visao', label: 'Visão geral', icon: BarChart3 },
     { id: 'lojistas', label: 'Gestão de Clientes', icon: Users },
     { id: 'financeiro', label: 'Financeiro SaaS', icon: BarChart3 },
     { id: 'faturas', label: 'Faturas SaaS', icon: Receipt },
     { id: 'assinaturas', label: 'Acesso ao aplicativo', icon: ShieldCheck },
     { id: 'planos', label: 'Solicitações de Plano', icon: ClipboardList },
     { id: 'suporte', label: 'Suporte', icon: Headphones },
+    { id: 'historico', label: 'Histórico administrativo', icon: ClipboardList },
     { id: 'seguranca', label: 'Segurança', icon: ShieldCheck },
   ];
+  const filteredClients = lojistas.filter(c =>
+    `${c.business_name} ${c.email ?? ''} ${c.document ?? ''} ${c.whatsapp ?? ''}`.toLocaleLowerCase('pt-BR').includes(search.trim().toLocaleLowerCase('pt-BR'))
+    && (clientFilter === 'all' || c.client_status === clientFilter)
+    && (planFilter === 'all' || c.subscription_plan === planFilter));
 
   return (
     <div className="partner-panel admin-panel">
@@ -131,6 +142,8 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
 
         <div className="partner-content">
           {error && !loading && <div className="admin-load-error admin-load-error-panel" role="alert">{error}</div>}
+          {tab === 'visao' && <AdminSaasModule view="overview" onNavigate={destination => setTab(destination)} />}
+          {tab === 'historico' && <AdminSaasModule view="history" />}
 
           {tab === 'lojistas' && (
             <div className="panel-module">
@@ -142,18 +155,27 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
                 </div>
               </div>
               <div className="admin-client-summary">
-                <strong>{lojistas.length}</strong> clientes cadastrados
+                <strong>{filteredClients.length}</strong> de {lojistas.length} clientes
               </div>
-              <div className="stock-table-wrap">
+              <div className="rma-form inline admin-filters">
+                <label>Buscar cliente<input type="search" placeholder="Empresa, e-mail, documento ou telefone" value={search} onChange={e => setSearch(e.target.value)} /></label>
+                <label>Cadastro comercial<select value={clientFilter} onChange={e => setClientFilter(e.target.value)}><option value="all">Todos</option><option value="pendente">Pendente</option><option value="aprovado">Aprovado</option><option value="reprovado">Bloqueado</option></select></label>
+                <label>Plano<select value={planFilter} onChange={e => setPlanFilter(e.target.value)}><option value="all">Todos</option><option value="basico">Básico</option><option value="profissional">Profissional</option><option value="enterprise">Enterprise</option></select></label>
+                <button type="button" className="rma-advance-btn" disabled={loading} onClick={() => setCompaniesVersion(v => v + 1)}>Atualizar</button>
+              </div>
+              {details && <section className="module-card admin-client-detail"><div className="module-header"><h4>{details.business_name}</h4><button className="rma-advance-btn" onClick={() => setDetails(null)}>Fechar ficha</button></div><dl className="admin-detail-grid">
+                {Object.entries({ 'Responsável': details.account_name, 'E-mail': details.email, 'Contato': details.whatsapp, 'Documento': details.document, 'Segmento': details.segment, 'Plano': details.subscription_plan, 'Assinatura': details.subscription_status, 'Cadastro comercial': details.client_status, 'Pedidos': details.orders_count, 'Total de compras': money.format(details.orders_total), 'Limite de crédito': details.credit_limit == null ? 'Não definido' : money.format(details.credit_limit) }).map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value ?? '—'}</dd></div>)}
+              </dl></section>}
+              <AdminResponsiveTable>
                 <table className="rma-table">
                   <thead>
                     <tr><th>Empresa</th><th>Login</th><th>Contato</th><th>Documento</th><th>Segmento</th><th>Assinatura</th><th>Compras</th><th>Cadastro comercial</th><th>Acesso ao aplicativo</th></tr>
                   </thead>
                   <tbody>
-                    {lojistas.length === 0 ? (
-                      <tr><td colSpan={9} className="empty-row">Nenhuma empresa cadastrada.</td></tr>
+                    {filteredClients.length === 0 ? (
+                      <tr><td colSpan={9} className="empty-row">{loading ? 'Carregando clientes...' : 'Nenhuma empresa encontrada.'}</td></tr>
                     ) : (
-                      lojistas.map((cliente) => (
+                      filteredClients.map((cliente) => (
                         <tr key={cliente.id}>
                           <td><strong>{cliente.business_name}</strong><small className="admin-client-id">{cliente.account_name ?? cliente.user_id?.slice(0, 8)}</small></td>
                           <td>{cliente.email ?? '—'}</td>
@@ -183,15 +205,15 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
                               </small>
                             )}
                           </td>
-                          <td><button className="rma-advance-btn" disabled={!cliente.user_id} onClick={() => {
+                          <td><div className="subscription-actions"><button className="rma-advance-btn" onClick={() => setDetails(cliente)}>Ver ficha</button><button className="rma-advance-btn" disabled={!cliente.user_id} onClick={() => {
                             setAccessCompanyId(cliente.user_id); setTab('assinaturas');
-                          }}>Controlar acesso</button></td>
+                          }}>Controlar acesso</button></div></td>
                         </tr>
                       ))
                     )}
                   </tbody>
                 </table>
-              </div>
+              </AdminResponsiveTable>
             </div>
           )}
 
@@ -201,7 +223,7 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
 
           {tab === 'suporte' && <AdminSupportModule companies={lojistas} />}
 
-          {tab === 'planos' && <AdminPlanRequestsModule />}
+          {tab === 'planos' && <AdminPlanRequestsModule onChanged={() => setCompaniesVersion(v => v + 1)} />}
 
           {tab === 'seguranca' && (
             <ChangePasswordSection auth={superAdminAuth} />
