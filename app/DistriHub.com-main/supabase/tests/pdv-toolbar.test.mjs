@@ -128,6 +128,13 @@ test('selecionar e remover o último produto mantém as opções da venda visív
   assertVisibleControls();
 });
 
+test('botão da câmera aparece apenas quando leitura pela câmera está ativada', async () => {
+  await act(async () => { renderer = TestRenderer.create(React.createElement(module.exports.Checkout, props)); });
+  assert.equal(renderer.root.findAllByProps({ 'aria-label': 'Ler código pela câmera' }).length, 0);
+  await act(async () => renderer.update(React.createElement(module.exports.Checkout, { ...props, cameraScannerEnabled: true })));
+  assert.equal(renderer.root.findAllByProps({ 'aria-label': 'Ler código pela câmera' }).length, 1);
+});
+
 test('checkout collects freight separately and resets it after the confirmed sale', async () => {
   let submitted;
   await act(async () => { renderer = TestRenderer.create(React.createElement(module.exports.Checkout, {...props,onCreateSale:async sale=>{submitted=sale;}})); });

@@ -339,6 +339,7 @@ export interface StorePersonalization {
   catalog?: Partial<CatalogPreferences>;
   pdv?: {
     barcode_scanner_enabled?: boolean;
+    camera_scanner_enabled?: boolean;
   };
 }
 

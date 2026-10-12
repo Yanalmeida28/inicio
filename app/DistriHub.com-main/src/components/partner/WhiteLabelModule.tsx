@@ -19,6 +19,7 @@ export function WhiteLabelModule({ settings: initialSettings, onUpdate: persist 
   const panel = panelPreferences(settings.personalization?.panel);
   const catalog = catalogPreferences(settings.personalization?.catalog);
   const barcodeScannerEnabled = settings.personalization?.pdv?.barcode_scanner_enabled !== false;
+  const cameraScannerEnabled = settings.personalization?.pdv?.camera_scanner_enabled === true;
   function updatePreference<K extends keyof StorePersonalization>(group: K, value: StorePersonalization[K]) {
     onUpdate({ personalization: { ...settings.personalization, [group]: value } });
   }
@@ -110,8 +111,18 @@ export function WhiteLabelModule({ settings: initialSettings, onUpdate: persist 
               />
               <span>Ativar leitor de código de barras no PDV</span>
             </label>
+            <p className="otp-description">Para leitor físico USB ou Bluetooth em modo teclado. O código deve estar cadastrado no SKU e o leitor deve enviar Enter.</p>
+            <label className="print-toggle-item">
+              <input
+                type="checkbox"
+                aria-label="Ativar leitura de código de barras pela câmera"
+                checked={cameraScannerEnabled}
+                onChange={e => updatePreference('pdv', { ...settings.personalization?.pdv, camera_scanner_enabled: e.target.checked })}
+              />
+              <span>Ativar leitura de código de barras pela câmera do celular</span>
+            </label>
           </div>
-          <p className="otp-description">Com a opção ativa, leia o código no campo de busca do PDV. O leitor deve funcionar como teclado e enviar Enter ao final; o código precisa estar cadastrado no SKU do produto. A leitura por câmera não está disponível.</p>
+          <p className="otp-description">As opções são independentes e podem ficar ativadas ao mesmo tempo. A câmera abre pelo botão no campo de busca do PDV, solicita permissão e usa a câmera traseira; requer acesso ao site por HTTPS. Cadastre o código no SKU do produto.</p>
         </div>
       </section>
       <section hidden={activeTab !== 'visual'} aria-label="Identidade visual">

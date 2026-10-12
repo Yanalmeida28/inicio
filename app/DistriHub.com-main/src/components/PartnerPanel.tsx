@@ -2004,6 +2004,7 @@ export function PartnerPanel({
                 key={`${pdvRevision}:${effectiveBranchId}:${activeSalesperson?.id ?? 'owner'}`}
                 hasPendingSale={Boolean(partner.pendingSale)}
                 barcodeScannerEnabled={storeSettings.personalization?.pdv?.barcode_scanner_enabled !== false}
+                cameraScannerEnabled={storeSettings.personalization?.pdv?.camera_scanner_enabled === true}
                 products={
                   filteredProducts
                 }

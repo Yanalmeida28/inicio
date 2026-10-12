@@ -2,9 +2,10 @@ import { printSale, type ReceiptDetails } from '../../lib/salePrint';
 import { SplitPaymentFields } from './SplitPaymentFields';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Search, Trash2, ShoppingCart, Check, Printer,
+  Search, Trash2, ShoppingCart, Check, Printer, Camera,
   X, Tag, Ban, Lock, ClipboardList, Wallet, Lock as LockIcon,
 } from 'lucide-react';
+import type { IScannerControls } from '@zxing/browser';
 import type { DeliveryType, PartnerProduct, PartnerCustomer, PartnerSale, SalePayment, PartnerSalesperson, SaleItem, SalespersonRole } from '../../types';
 import { SalePriceInput } from './SalePriceInput';
 import { PreSaleCheckout } from './PreSaleCheckout';
@@ -15,6 +16,78 @@ import { SessionDraftProvider, useSessionDraftScope, useSessionDraftState } from
 type PriceTable = 'varejo' | 'atacado';
 type ClientType = 'varejo' | 'atacado';
 type PdvSubTab = 'pdv' | 'pre-venda';
+
+function BarcodeCameraDialog({ onDetected, onClose }: { onDetected: (code: string) => void; onClose: () => void }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const callbacksRef = useRef({ onDetected, onClose });
+  callbacksRef.current = { onDetected, onClose };
+  const [error, setError] = useState<string | null>(null);
+  const scannerControlsRef = useRef<IScannerControls | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    let controls: IScannerControls | null = null;
+
+    async function startScanner() {
+      if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+        setError('A leitura pela câmera exige uma conexão HTTPS e um navegador com suporte à câmera.');
+        return;
+      }
+
+      try {
+        const { BrowserMultiFormatReader } = await import('@zxing/browser');
+        if (cancelled || !videoRef.current) return;
+
+        controls = await new BrowserMultiFormatReader().decodeFromConstraints(
+          { video: { facingMode: { ideal: 'environment' } } },
+          videoRef.current,
+          (result) => {
+            if (!result || cancelled) return;
+            cancelled = true;
+            controls?.stop();
+            callbacksRef.current.onDetected(result.getText());
+          },
+        );
+
+        if (cancelled) controls.stop();
+        else scannerControlsRef.current = controls;
+      } catch (cause) {
+        if (cancelled) return;
+        const name = cause && typeof cause === 'object' && 'name' in cause ? String(cause.name) : '';
+        if (name === 'NotAllowedError' || name === 'SecurityError') {
+          setError('Permita o acesso à câmera nas configurações do navegador e tente novamente.');
+        } else if (name === 'NotFoundError' || name === 'OverconstrainedError') {
+          setError('Não foi encontrada uma câmera disponível neste dispositivo.');
+        } else if (name === 'NotReadableError') {
+          setError('A câmera está em uso por outro aplicativo. Feche-o e tente novamente.');
+        } else {
+          setError('Não foi possível iniciar a câmera. Verifique a permissão e tente novamente.');
+        }
+      }
+    }
+
+    void startScanner();
+    return () => {
+      cancelled = true;
+      scannerControlsRef.current?.stop();
+      scannerControlsRef.current = null;
+      controls?.stop();
+    };
+  }, []);
+
+  return (
+    <div className="modal-overlay" onClick={() => callbacksRef.current.onClose()}>
+      <section className="modal-content pdv-camera-dialog" role="dialog" aria-modal="true" aria-labelledby="pdv-camera-title" onClick={event => event.stopPropagation()}>
+        <div className="modal-header">
+          <h3 id="pdv-camera-title">Ler código pela câmera</h3>
+          <button type="button" className="modal-close" aria-label="Fechar leitor de câmera" onClick={() => callbacksRef.current.onClose()}><X size={18} /></button>
+        </div>
+        <video ref={videoRef} className="pdv-camera-video" autoPlay muted playsInline aria-label="Visualização da câmera para leitura do código de barras" />
+        {error ? <p role="alert" className="otp-error-msg">{error}</p> : <p role="status">Aponte a câmera para o código de barras.</p>}
+      </section>
+    </div>
+  );
+}
 
 function CustomerSearchPicker({ id, customers, customerId, clientType, onSelect }: {
   id: string;
@@ -234,6 +307,7 @@ type Props = {
   credits: CustomerCredit[];
   hasPendingSale?: boolean;
   barcodeScannerEnabled?: boolean;
+  cameraScannerEnabled?: boolean;
   preSaleToCheckout?: PartnerSale | null;
   onConsumePreSale?: () => void;
   onRequestPreSale?: (sale: PartnerSale) => void;
@@ -283,7 +357,7 @@ const PRODUCT_PAGE_SIZE = 30;
 export function PdvModule({
   cashContext, onOpenCash, onConfirmCashOperator,
   products, customers, sales, credits, hasPendingSale, salespeople, segment, selectedBranchId,
-  barcodeScannerEnabled = true,
+  barcodeScannerEnabled = true, cameraScannerEnabled = false,
   preSaleToCheckout, onConsumePreSale, onRequestPreSale,
   activeSalespersonId, activeBranchName, receiptDetails, currentRole, canEditPrice, onCreateSale, onCreatePreSale, onFinalizePreSale, onCancelSale, onDeleteSale,
 }: Props) {
@@ -385,6 +459,7 @@ export function PdvModule({
           credits={credits}
           hasPendingSale={hasPendingSale}
           barcodeScannerEnabled={barcodeScannerEnabled}
+          cameraScannerEnabled={cameraScannerEnabled}
           salespeople={salespeople}
           activeSalespersonId={activeSalespersonId}
           segment={segment}
@@ -424,13 +499,14 @@ export function PdvModule({
 
 /* ============ PDV Checkout ============ */
 
-function PdvCheckout({ products, customers, credits, hasPendingSale, barcodeScannerEnabled = true, salespeople, activeSalespersonId, selectedBranchId, canCheckout, canEditPrice, receiptDetails, onCreateSale }: {
+function PdvCheckout({ products, customers, credits, hasPendingSale, barcodeScannerEnabled = true, cameraScannerEnabled = false, salespeople, activeSalespersonId, selectedBranchId, canCheckout, canEditPrice, receiptDetails, onCreateSale }: {
   products: PartnerProduct[];
   customers: PartnerCustomer[];
   credits: CustomerCredit[];
   canEditPrice: boolean;
   hasPendingSale?: boolean;
   barcodeScannerEnabled?: boolean;
+  cameraScannerEnabled?: boolean;
   salespeople: PartnerSalesperson[];
   activeSalespersonId?: string | null;
   segment: string;
@@ -442,6 +518,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, barcodeScan
   const [search, setSearch] = useSessionDraftState('checkout:product-search', '');
   const [visibleProductCount, setVisibleProductCount] = useState(PRODUCT_PAGE_SIZE);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const [cameraOpen, setCameraOpen] = useState(false);
   useEffect(() => {
     setVisibleProductCount(PRODUCT_PAGE_SIZE);
   }, [search, selectedBranchId]);
@@ -541,6 +618,23 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, barcodeScan
     setSelectionNotice(message);
     if (noticeTimeoutRef.current !== null) window.clearTimeout(noticeTimeoutRef.current);
     noticeTimeoutRef.current = window.setTimeout(() => setSelectionNotice(null), 3500);
+  }
+
+  function handleCameraCode(code: string) {
+    setCameraOpen(false);
+    const normalizedCode = code.trim().toLocaleLowerCase();
+    const matches = products.filter((product) =>
+      (!selectedBranchId || product.branch_id === selectedBranchId)
+      && product.sku?.trim().toLocaleLowerCase() === normalizedCode,
+    );
+    setSearch('');
+    if (matches.length === 1) {
+      addToCart(matches[0], true);
+    } else if (matches.length > 1) {
+      showSelectionNotice('Este código está vinculado a mais de um produto nesta filial. Corrija o SKU cadastrado.');
+    } else {
+      showSelectionNotice('Código não encontrado. Cadastre o código de barras no campo SKU do produto.');
+    }
   }
 
   function addToCart(product: PartnerProduct, fromScanner = false) {
@@ -672,11 +766,14 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, barcodeScan
 
   return (
     <>
+      {cameraOpen && cameraScannerEnabled && (
+        <BarcodeCameraDialog onDetected={handleCameraCode} onClose={() => setCameraOpen(false)} />
+      )}
       <div className="pdv-layout pdv-checkout-layout">
         <div className="pdv-left">
           <div className="pdv-search-bar">
             <Search size={18} />
-           <input
+            <input
   type="search"
   ref={searchInputRef}
   name="new-product-search"
@@ -705,7 +802,11 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, barcodeScan
   placeholder="Buscar por nome, SKU ou código de barras..."
   aria-label="Buscar produto por nome ou SKU"
 />
-
+            {cameraScannerEnabled && (
+              <button type="button" className="pdv-camera-button" aria-label="Ler código pela câmera" onClick={() => setCameraOpen(true)}>
+                <Camera size={18} />
+              </button>
+            )}
           </div>
 
           {selectionNotice && (

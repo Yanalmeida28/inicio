@@ -91,6 +91,24 @@ test('barcode reader can be disabled in PDV personalization and persists across 
   assert.equal(toggle().props.checked, false);
 });
 
+test('camera barcode reader is an independent setting disabled by default and persists when enabled', async () => {
+  let submitted;
+  await act(async () => { renderer = TestRenderer.create(React.createElement(Component, { settings, onUpdate: async value => { submitted = value; } })); });
+  await act(async () => renderer.root.findAllByType('button').find(button => button.children.includes('PDV')).props.onClick());
+  const toggle = () => renderer.root.findByProps({ 'aria-label': 'Ativar leitura de código de barras pela câmera' });
+  assert.equal(toggle().props.checked, false);
+  await act(async () => toggle().props.onChange({ target: { checked: true } }));
+  await act(async () => saveButton().props.onClick());
+  assert.equal(submitted.personalization.pdv.barcode_scanner_enabled, undefined);
+  assert.equal(submitted.personalization.pdv.camera_scanner_enabled, true);
+  await act(async () => renderer.update(React.createElement(Component, {
+    settings: { ...settings, personalization: submitted.personalization },
+    onUpdate: async () => {},
+  })));
+  assert.equal(toggle().props.checked, true);
+  assert.equal(renderer.root.findByProps({ 'aria-label': 'Ativar leitor de código de barras' }).props.checked, true);
+});
+
 test('restoring panel defaults preserves the receipt draft and invalid WhatsApp blocks saving',async()=>{
   let submitted,calls=0;
   await act(async()=>{renderer=TestRenderer.create(React.createElement(Component,{settings,onUpdate:async value=>{submitted=value;calls++;}}));});
