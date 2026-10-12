@@ -3,15 +3,13 @@ import { ArrowLeft, Lock, ShieldAlert, Eye, KeyRound, Mail, ShieldCheck, CheckCi
 import type { BusinessSegment } from './types';
 import { useAuth } from './hooks/useAuth';
 import { useSuperAdminAuth } from './hooks/useSuperAdminAuth';
-import { useCart } from './hooks/useCart';
-import { CartDrawer } from './components/CartDrawer';
 import { HubHome } from './components/HubHome';
 import { supabase } from './lib/supabase';
-import { saveB2bOrder } from './lib/b2bOrder';
 
 const PartnerPanel = lazy(() => import('./components/PartnerPanel').then((module) => ({ default: module.PartnerPanel })));
 const AuthScreen = lazy(() => import('./components/AuthScreen').then((module) => ({ default: module.AuthScreen })));
 const AdminPanel = lazy(() => import('./components/AdminPanel').then((module) => ({ default: module.AdminPanel })));
+const PublicCatalogPage = lazy(() => import('./components/PublicCatalogPage').then((module) => ({ default: module.PublicCatalogPage })));
 
 type View = 'hub' | 'partner' | 'auth' | 'admin' | 'super-admin';
 
@@ -32,21 +30,25 @@ function App() {
   const auth = useAuth();
   const superAdminAuth = useSuperAdminAuth();
 
-  const [view, setView] = useState<View>('hub');
+  const publicCatalog = typeof window !== 'undefined' && ['/catalogo', '/catalogo/'].includes(window.location?.pathname);
+  const catalogParams = publicCatalog ? new URLSearchParams(window.location.search) : null;
+  const [view, setView] = useState<View>(() => typeof window !== 'undefined' && window.location?.search?.includes('cadastro=1') ? 'auth' : 'hub');
   const [partnerInitialTab, setPartnerInitialTab] = useState<string | undefined>(undefined);
   const [superAdminUnlocked, setSuperAdminUnlocked] = useState(false);
   const [sessionAccess, setSessionAccess] = useState<{ userId: string; master: boolean; error: string | null } | null>(null);
   const [sessionRetry, setSessionRetry] = useState(0);
   const [navigationError, setNavigationError] = useState<string | null>(null);
-  const { cart, cartCount, cartTotal, incrementQuantity, decrementQuantity, removeFromCart } = useCart();
-  const [cartOpen, setCartOpen] = useState(false);
-  const [businessName, setBusinessName] = useState('');
-  const [city, setCity] = useState('');
-  const storeWhatsapp = auth.profile?.whatsapp ?? null;
   const sessionUserId = auth.user?.id ?? null;
 
   useEffect(() => {
+    if (publicCatalog) return;
     if (auth.loading) return;
+    const catalogReturn = typeof window !== 'undefined' ? window.sessionStorage?.getItem('distrihub-catalog-return') : null;
+    if (sessionUserId && catalogReturn?.startsWith('/catalogo?')) {
+      window.sessionStorage.removeItem('distrihub-catalog-return');
+      window.location.assign(catalogReturn);
+      return;
+    }
     if (auth.passwordRecovery) {
       setSuperAdminUnlocked(false);
       setView('auth');
@@ -75,15 +77,9 @@ function App() {
     }
     void restorePanel();
     return () => { cancelled = true; };
-  }, [auth.loading, auth.passwordRecovery, sessionUserId, sessionRetry]);
+  }, [auth.loading, auth.passwordRecovery, sessionUserId, sessionRetry, publicCatalog]);
 
   const segment: BusinessSegment = auth.profile?.segment ?? 'assistencia';
-
-  async function sendOrder(paymentMethod: string, deliveryMethod: string, requestId: string) {
-    return saveB2bOrder(supabase, auth.user?.id ?? null, {
-      cart, businessName, city, paymentMethod, deliveryMethod, requestId,
-    });
-  }
 
   function handlePartnerClick() {
     setPartnerInitialTab(undefined);
@@ -104,7 +100,6 @@ function App() {
     try {
       await auth.signOut();
       setPartnerInitialTab(undefined);
-      setCartOpen(false);
       setSuperAdminUnlocked(false);
       setSessionAccess(null);
       setView('auth');
@@ -145,6 +140,7 @@ function App() {
     return result;
   }
 
+  if (publicCatalog) return <Suspense fallback={<LoadingScreen label="Catálogo" />}><PublicCatalogPage slug={catalogParams?.get('loja') ?? ''} branchSlug={catalogParams?.get('filial')} userId={auth.user?.id ?? null} onSignIn={auth.signIn} /></Suspense>;
   if (auth.loading || (sessionUserId && !auth.passwordRecovery && sessionAccess?.userId !== sessionUserId)) {
     return <LoadingScreen label="Recuperando sua sessão" />;
   }
@@ -215,27 +211,7 @@ function App() {
         </Suspense>
       )}
 
-      <CartDrawer
-        key={auth.user?.id ?? 'anonymous'}
-        open={cartOpen}
-        cart={cart}
-        cartCount={cartCount}
-        cartTotal={cartTotal}
-        businessName={businessName}
-        city={city}
-        storeWhatsapp={storeWhatsapp}
-        customerWhatsapp={null}
-        onClose={() => setCartOpen(false)}
-        onIncrement={incrementQuantity}
-        onDecrement={decrementQuantity}
-        onRemove={removeFromCart}
-        onBusinessNameChange={setBusinessName}
-        onCityChange={setCity}
-        onSendOrder={sendOrder}
-        isAuthenticated={Boolean(auth.user)}
-        onLoginRequired={() => { setCartOpen(false); setView('auth'); }}
-        onExplore={() => setCartOpen(false)}
-      />
+
     </div>
   );
 }

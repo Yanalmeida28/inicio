@@ -20,6 +20,7 @@ import type { AdminCadastrosTarget } from '../../lib/cadastrosNavigation';
 import { AdminFiscalModule } from './AdminFiscalModule';
 import { AdminDataExports, AdminDeviceRegistry } from './AdminSettingsTools';
 import { financialAccounts, type PayableAccount } from '../../lib/accounts';
+import { legacyCostSalesCount } from '../../lib/reportMetrics';
 import type { PartnerInvoice } from '../../types';
 import type {
   PartnerSale, PartnerProduct, PartnerSalesperson, SalespersonRole,
@@ -238,6 +239,7 @@ function AdminModuleInner({
 
   return (
     <div className="panel-module admin-module-layout">
+      {legacyCostSalesCount(sales, products) > 0 && <p role="status" className="admin-context-note">{legacyCostSalesCount(sales, products)} venda(s) deste histórico não possuem custo original completo. Custos, lucros e margens dessas vendas são estimados pelo cadastro atual.</p>}
       <div className="module-header">
         <span className="module-icon"><Shield size={20} /></span>
         <div>
@@ -628,7 +630,7 @@ function ExecutiveDashboard({
   }, [currentSales, salespeople]);
 
   function exportCSV() {
-    const headers = ['Data', 'Cliente', 'Total', 'Custo', 'Lucro', 'Pagamento', 'Vendedor'];
+    const headers = ['Data', 'Cliente', 'Total', 'Custo', 'Lucro estimado', 'Pagamento', 'Vendedor', 'Custo histórico'];
     const rows = currentSales.map((s) => {
       const sp = salespeople.find((p) => p.id === s.salesperson_id);
       let cost = 0;
@@ -641,6 +643,7 @@ function ExecutiveDashboard({
         (s.total - cost).toFixed(2),
         salePaymentDescription(s),
         sp?.name ?? '—',
+        legacyCostSalesCount([s], products) ? 'Estimado pelo cadastro atual' : 'Registrado na venda',
       ];
     });
     const csv = buildCsv([headers, ...rows]);
@@ -663,6 +666,7 @@ function ExecutiveDashboard({
       th{background:#f0f5f9}.kpi{display:inline-block;margin:10px 20px 10px 0;padding:15px;border:1px solid #ddd;border-radius:8px}
       .kpi strong{font-size:24px;display:block}.kpi small{color:#888}</style></head>
       <body><h1>Relatório Executivo — DistriHub</h1>
+      <p>${legacyCostSalesCount(currentSales, products)} venda(s) sem custo histórico completo. Nesses casos, CMV e margem são estimativas pelo cadastro atual.</p>
       <p>Período: ${range.start.toLocaleDateString('pt-BR')} a ${range.prevEnd.toLocaleDateString('pt-BR')}</p>
       <div>
         <div class="kpi"><small>Receita Bruta</small><strong>${money.format(current.grossRevenue)}</strong></div>

@@ -1,0 +1,102 @@
+import assert from 'node:assert/strict';
+import { before, after, test } from 'node:test';
+import { readFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { PGlite } from '@electric-sql/pglite';
+const db = new PGlite();
+const sql = (query, values = []) => db.query(query, values);
+const owner = randomUUID(), other = randomUUID(), employee = randomUUID(), buyer = randomUUID(), branch = randomUUID(), otherBranch = randomUUID(), product = randomUUID(), customer = randomUUID();
+const login = id => sql("SELECT set_config('test.auth_uid',$1,false)", [id ?? '']);
+const read = file => readFile(new URL(file, import.meta.url), 'utf8');
+before(async () => {
+  await db.exec(await read('./fixtures/pdv_schema.sql'));
+  await db.exec(`
+    CREATE TABLE auth.users(id uuid PRIMARY KEY); INSERT INTO auth.users VALUES('${owner}'),('${other}'),('${employee}'),('${buyer}');
+    ALTER TABLE partner_branches ADD COLUMN is_active boolean DEFAULT true, ADD COLUMN name text, ADD COLUMN address text;
+    ALTER TABLE partner_customers ADD COLUMN name text;
+    ALTER TABLE partner_products ADD COLUMN IF NOT EXISTS sku text, ADD COLUMN IF NOT EXISTS cost_price numeric DEFAULT 10, ADD COLUMN IF NOT EXISTS sale_price numeric DEFAULT 25;
+    CREATE SCHEMA partner_subscription_private;
+    CREATE FUNCTION partner_subscription_private.require_actor(text) RETURNS void LANGUAGE plpgsql AS $$BEGIN IF auth.uid() IS NULL THEN RAISE EXCEPTION 'Não autenticado'; END IF; END$$;
+    CREATE FUNCTION partner_subscription_private.require_access(uuid,text) RETURNS void LANGUAGE plpgsql AS $$BEGIN RETURN; END$$;
+    CREATE FUNCTION public.is_super_admin() RETURNS boolean LANGUAGE sql AS $$SELECT false$$;
+    CREATE FUNCTION public.partner_has_saas_access(uuid,text) RETURNS boolean LANGUAGE sql SECURITY DEFINER SET search_path=public AS $$SELECT $1=auth.uid() OR EXISTS(SELECT 1 FROM partner_salespeople WHERE user_id=$1 AND auth_user_id=auth.uid() AND active)$$;
+    CREATE FUNCTION public.partner_employee_can_access_branch(uuid,uuid) RETURNS boolean LANGUAGE sql SECURITY DEFINER SET search_path=public AS $$SELECT EXISTS(SELECT 1 FROM partner_salespeople WHERE user_id=$1 AND branch_id=$2 AND auth_user_id=auth.uid() AND active)$$;
+    CREATE FUNCTION public.resolve_partner_operator(uuid,text,uuid) RETURNS TABLE(company_id uuid) LANGUAGE plpgsql AS $$BEGIN IF auth.uid() IS NULL THEN RAISE EXCEPTION 'Não autenticado'; END IF; RETURN QUERY SELECT auth.uid(); END$$;
+    CREATE FUNCTION public.execute_partner_stock_replenishment(uuid,text,uuid,uuid,integer,numeric,text) RETURNS jsonb LANGUAGE plpgsql SET search_path=public AS $$DECLARE value integer; BEGIN UPDATE partner_products SET stock=stock+$5 WHERE id=$3 AND user_id=auth.uid() AND branch_id=$4 RETURNING stock INTO value; IF NOT FOUND OR $5<=0 THEN RAISE EXCEPTION 'Produto não autorizado'; END IF; INSERT INTO stock_movements(user_id,product_id,branch_id,type,quantity) VALUES(auth.uid(),$3,$4,'entrada',$5);RETURN jsonb_build_object('new_stock',value);END$$;
+    CREATE TABLE service_orders(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),user_id uuid,branch_id uuid,customer_id uuid,customer_name text,service_segment text,equipment_type text,equipment_identification text,serial_number text,accessories_left text,physical_condition text,entry_damage text,entry_notes text,status text DEFAULT 'aberta',labor_total numeric DEFAULT 0,parts_total numeric DEFAULT 0,total numeric DEFAULT 0,created_at timestamptz DEFAULT now(),updated_at timestamptz DEFAULT now(), CHECK(total=labor_total+parts_total));
+    CREATE TABLE service_order_items(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),service_order_id uuid,user_id uuid,product_id uuid,branch_id uuid,product_name text,quantity integer,unit_cost numeric,unit_price numeric,created_at timestamptz DEFAULT now());
+    CREATE TABLE service_order_photos(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),service_order_id uuid,user_id uuid,branch_id uuid,photo_type text,operation_type text,label text,storage_path text,created_at timestamptz DEFAULT now());
+    ALTER TABLE service_orders ENABLE ROW LEVEL SECURITY; ALTER TABLE service_order_items ENABLE ROW LEVEL SECURITY; ALTER TABLE service_order_photos ENABLE ROW LEVEL SECURITY;
+    CREATE POLICY os_read ON service_orders FOR SELECT TO authenticated USING(true);
+    CREATE POLICY os_items_read ON service_order_items FOR SELECT TO authenticated USING(true);
+    CREATE POLICY os_photos_read ON service_order_photos FOR SELECT TO authenticated USING(true);
+    GRANT SELECT ON service_orders,service_order_items,service_order_photos TO authenticated;
+    CREATE SCHEMA storage; CREATE TABLE storage.objects(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),bucket_id text,name text); ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
+    GRANT USAGE ON SCHEMA storage,auth TO authenticated; GRANT SELECT,INSERT,UPDATE ON storage.objects TO authenticated;
+    CREATE TABLE b2b_orders(id uuid PRIMARY KEY,user_id uuid); GRANT SELECT,INSERT,UPDATE,DELETE ON b2b_orders TO authenticated;
+    CREATE TABLE store_settings_v2(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),user_id uuid,catalog_slug text,catalog_enabled boolean);
+    CREATE FUNCTION public.read_public_store_catalog(text,text) RETURNS jsonb LANGUAGE sql AS $$SELECT NULL::jsonb$$;
+    CREATE TABLE support_messages(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),user_id uuid,sender_role text,message text,created_at timestamptz DEFAULT now());
+    CREATE TABLE admin_support_states(user_id uuid PRIMARY KEY,priority text,closed_at timestamptz);
+    INSERT INTO partner_profiles(id,business_name) VALUES('${owner}','Loja A'),('${other}','Loja B');
+    INSERT INTO partner_branches(id,user_id,name) VALUES('${branch}','${owner}','Centro'),('${otherBranch}','${other}','Outra');
+    INSERT INTO partner_customers(id,user_id,branch_id,name) VALUES('${customer}','${owner}','${branch}','Cliente');
+    INSERT INTO partner_products(id,user_id,branch_id,name,stock,cost_price,sale_price,is_service) VALUES('${product}','${owner}','${branch}','Peça',100,10,25,false);
+    INSERT INTO partner_salespeople(id,user_id,auth_user_id,branch_id,role,active) VALUES(gen_random_uuid(),'${owner}','${employee}','${branch}','gerente',true);
+    INSERT INTO store_settings_v2(user_id,catalog_slug,catalog_enabled) VALUES('${owner}','loja-a',true),('${other}','loja-b',true);
+  `);
+  await db.exec(await read('../migrations/20261012195624_fix_audited_operations.sql'));
+  await db.exec(await read('../migrations/20261012201545_close_legacy_operation_paths.sql'));
+});
+after(() => db.close());
+test('reposição: mesma tentativa soma uma vez; tentativa diferente é uma nova entrada; outros dados são rejeitados', async () => {
+  await login(owner); const request = randomUUID();
+  const replenish = (id, qty) => sql('SELECT execute_partner_stock_replenishment_once($1,NULL,NULL,$2,$3,$4,NULL,NULL) result', [id, product, branch, qty]);
+  const initial = Number((await sql('SELECT stock FROM partner_products WHERE id=$1', [product])).rows[0].stock);
+  await replenish(request, 10); await replenish(request, 10);
+  assert.equal(Number((await sql('SELECT stock FROM partner_products WHERE id=$1', [product])).rows[0].stock), initial + 10);
+  await assert.rejects(replenish(request, 20), /outra reposição/);
+  await replenish(randomUUID(), 10);
+  assert.equal(Number((await sql('SELECT stock FROM partner_products WHERE id=$1', [product])).rows[0].stock), initial + 20);
+});
+const osPayload = () => ({ branch_id: branch, customer_id: customer, equipment_type: 'Celular', identification: 'Teste', serial: '', segment: 'assistencia', accessories: '', condition: '', damage: '', notes: 'Vistoria', labor_total: 30, items: [{ product_id: product, quantity: 2, unit_price: 25 }] });
+test('OS: colaborador autorizado cria uma vez, baixa peças uma vez e uma repetição com dados diferentes é rejeitada', async () => {
+  await login(employee); const request = randomUUID(); const payload = osPayload();
+  const initial = Number((await sql('SELECT stock FROM partner_products WHERE id=$1', [product])).rows[0].stock);
+  for (let i = 0; i < 2; i++) await sql('SELECT create_service_order_once($1,$2::jsonb)', [request, JSON.stringify(payload)]);
+  assert.equal(Number((await sql('SELECT stock FROM partner_products WHERE id=$1', [product])).rows[0].stock), initial - 2);
+  assert.equal((await sql('SELECT count(*)::int n FROM service_orders WHERE id=$1', [request])).rows[0].n, 1);
+  assert.equal(Number((await sql('SELECT total FROM service_orders WHERE id=$1', [request])).rows[0].total), 80);
+  await assert.rejects(sql('SELECT create_service_order_once($1,$2::jsonb)', [request, JSON.stringify({ ...payload, labor_total: 40 })]), /outra OS/);
+  await login(other); await assert.rejects(sql('SELECT create_service_order_once($1,$2::jsonb)', [randomUUID(), JSON.stringify(payload)]), /Filial não autorizada/);
+});
+test('OS: cancelamento devolve peças uma vez; cobrança gera uma única fatura e não aceita cancelamento com recebimento', async () => {
+  await login(owner); const canceled = randomUUID(); const billed = randomUUID();
+  await sql('SELECT create_service_order_once($1,$2::jsonb)', [canceled, JSON.stringify(osPayload())]);
+  const beforeCancel = Number((await sql('SELECT stock FROM partner_products WHERE id=$1', [product])).rows[0].stock);
+  for (let i = 0; i < 2; i++) await sql("SELECT update_service_order_workflow($1,'cancelada','','aguardando_aprovacao','Cliente desistiu',$2)", [canceled, customer]);
+  assert.equal(Number((await sql('SELECT stock FROM partner_products WHERE id=$1', [product])).rows[0].stock), beforeCancel + 2);
+  await sql('SELECT create_service_order_once($1,$2::jsonb)', [billed, JSON.stringify(osPayload())]);
+  await sql("SELECT update_service_order_workflow($1,'pronta','Técnico','aprovado','Concluído',$2)", [billed, customer]);
+  for (let i = 0; i < 2; i++) await sql("SELECT bill_service_order_once($1,'2026-10-30')", [billed]);
+  assert.equal((await sql('SELECT count(*)::int n FROM partner_invoices WHERE service_order_id=$1', [billed])).rows[0].n, 1);
+  await sql("UPDATE partner_invoices SET paid_amount=10,status='parcial' WHERE service_order_id=$1", [billed]);
+  await assert.rejects(sql("SELECT update_service_order_workflow($1,'cancelada','Técnico','aprovado','Cliente desistiu',$2)", [billed, customer]), /recebimentos/);
+});
+test('catálogo: preço é calculado no servidor, retentativa não duplica e preço do navegador é ignorado', async () => {
+  await login(buyer); const id = randomUUID(); const items = JSON.stringify([{ id: product, quantity: 2, price: 0 }]);
+  const place = () => sql("SELECT place_catalog_order($1,'loja-a',$2,$3::jsonb,'Comprador','11999999999','','pix','balcao') result", [id, branch, items]);
+  const first = (await place()).rows[0].result; const replay = (await place()).rows[0].result;
+  assert.equal(Number(first.total), 50); assert.equal(first.id, replay.id);
+  assert.equal((await sql('SELECT count(*)::int n FROM catalog_orders WHERE id=$1', [id])).rows[0].n, 1);
+  await login(other); await assert.rejects(sql("SELECT update_catalog_order_status($1,'confirmado')", [id]), /Filial não autorizada/);
+  await login(owner); await sql("SELECT update_catalog_order_status($1,'confirmado')", [id]);
+});
+test('RLS: outra empresa não lê OS ou pedidos; escrita direta dos totais B2B fica bloqueada', async () => {
+  await login(other); await db.exec('SET ROLE authenticated');
+  try {
+    assert.equal((await sql('SELECT id FROM service_orders')).rows.length, 0);
+    assert.equal((await sql('SELECT id FROM catalog_orders')).rows.length, 0);
+    await assert.rejects(sql('INSERT INTO b2b_orders(id,user_id) VALUES($1,$2)', [randomUUID(), other]), /permission denied/);
+  } finally { await db.exec('RESET ROLE'); }
+});

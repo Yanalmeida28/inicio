@@ -63,7 +63,6 @@ const planLabels: Record<string, string> = {
 export function SettingsModule({ user, profile, onProfileUpdate, branchManagement, onSubscriptionChanged }: Props) {
   const saas = useSaasSubscription(profile?.id);
   const [accountName, setAccountName] = useState(profile?.account_name ?? '');
-  const [email, setEmail] = useState(user?.email ?? '');
   const [whatsapp, setWhatsapp] = useState(profile?.whatsapp ?? '');
   const [document, setDocument] = useState(profile?.document ?? '');
   const [saving, setSaving] = useState(false);
@@ -157,7 +156,8 @@ export function SettingsModule({ user, profile, onProfileUpdate, branchManagemen
           </label>
           <label>
             <span className="social-label"><Mail size={14} /> E-mail da Conta</span>
-            <input value={email} onChange={(e) => setEmail(e.target.value)}  />
+            <input value={user?.email ?? ''} readOnly aria-readonly="true" />
+            <small>Este é o e-mail usado para entrar na conta.</small>
           </label>
           <label>
             <span className="social-label"><Phone size={14} /> Telefone / WhatsApp</span>

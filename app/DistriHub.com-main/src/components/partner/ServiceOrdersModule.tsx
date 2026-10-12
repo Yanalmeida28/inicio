@@ -20,9 +20,14 @@ import type {
 
 import { supabase } from '../../lib/supabase';
 import { useSessionDraftState } from '../../hooks/useSessionDraft';
+import { OperationAttempts, pendingPhotos, type OperationAttempt } from '../../lib/operationAttempts';
+import { ServiceOrderRejected, createServiceOrder, uploadServicePhotos, type ServiceOrderPayload } from '../../lib/serviceOrders';
+import { ServiceOrderDetails } from './ServiceOrderDetails';
 
 type Props = {
   userId?: string;
+  authUserId?: string;
+  onChanged?: () => void;
   segment: BusinessSegment;
   branches: PartnerBranch[];
   customers: PartnerCustomer[];
@@ -78,6 +83,8 @@ const labelDarkStyle: React.CSSProperties = {
 
 export function ServiceOrdersModule({
   userId,
+  authUserId,
+  onChanged,
   segment,
   branches,
   customers,
@@ -90,6 +97,11 @@ export function ServiceOrdersModule({
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const saveLock = useRef(false);
+  const [pendingAttempt, setPendingAttempt] = useState<OperationAttempt<ServiceOrderPayload> | null>(null);
+  const [details, setDetails] = useState<ServiceOrder | null>(null);
+  const attemptScope = (authUserId ?? userId) + ':' + userId + ':' + selectedBranchId;
+  const scopeRef = useRef(attemptScope); scopeRef.current = attemptScope;
 
   const [customerId, setCustomerId] = useSessionDraftState('service-order:customer-id', '');
   const [equipmentType, setEquipmentType] = useSessionDraftState('service-order:equipment-type', '');
@@ -118,10 +130,6 @@ export function ServiceOrdersModule({
     (item) => item.id === selectedBranchId
   );
 
-  const customer = customers.find(
-    (item) => item.id === customerId
-  );
-
   const availableProducts = useMemo(() => {
     const term = productSearch.trim().toLowerCase();
 
@@ -148,7 +156,37 @@ export function ServiceOrdersModule({
   const laborTotal = Number(labor) || 0;
 
   const total = partsTotal + laborTotal;
+  const checklistLabels = /celular|smartphone|tablet|iphone/i.test(equipmentType)
+    ? [['screen', 'Tela acende'], ['touch', 'Touch responde'], ['camera', 'Câmera frontal']] as const
+    : [['screen', 'Equipamento identificado'], ['touch', 'Estado externo registrado'], ['camera', 'Acessórios conferidos']] as const;
   const checklistComplete = Object.values(preRepairChecklist).every(Boolean);
+  function restorePayload(payload: ServiceOrderPayload) {
+    setCustomerId(payload.customer_id ?? ''); setEquipmentType(payload.equipment_type); setIdentification(payload.identification);
+    setSerial(payload.serial); setAccessories(payload.accessories); setCondition(payload.condition); setDamage(payload.damage);
+    setNotes(payload.draft_notes ?? payload.notes); setLabor(String(payload.labor_total));
+    setItems(payload.items.map(item => ({ ...item, name: products.find(p => p.id === item.product_id)?.name ?? 'Peça', stock: products.find(p => p.id === item.product_id)?.stock ?? 0, is_service: Boolean(products.find(p => p.id === item.product_id)?.is_service) })));
+    setPreRepairChecklist({ screen: true, touch: true, camera: true }); setCustomerAcknowledged(true); setOpen(true);
+  }
+  useEffect(() => {
+    let active = true;
+    setPendingAttempt(null);
+    if (!userId || !selectedBranchId || typeof window === 'undefined') return;
+    try {
+      const previous = new OperationAttempts(window.localStorage).pending<ServiceOrderPayload>(attemptScope, 'service-order');
+      if (previous) {
+        setPendingAttempt(previous);
+        restorePayload(previous.payload);
+        void pendingPhotos(attemptScope + ':' + previous.id).then(files => {
+          if (!active) return;
+          const photos = files.map(photo => ({ ...photo, preview: URL.createObjectURL(photo.file) }));
+          setEntryPhotos(photos.filter(p => p.type === 'entry')); setExitPhotos(photos.filter(p => p.type === 'exit'));
+        }).catch(() => { if (active) setSaveError('A tentativa foi preservada, mas as fotos precisam ser selecionadas novamente.'); });
+      }
+    } catch (cause) { setSaveError(cause instanceof Error ? cause.message : 'Não foi possível recuperar a OS pendente.'); }
+    return () => { active = false; };
+    // Recovery runs only when the authenticated company/branch changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [attemptScope]);
   const possibleRecurrence = Boolean((serial.trim() || identification.trim()) && orders.some((order) => (
     (serial.trim() && order.serial_number?.trim() === serial.trim()) ||
     (identification.trim() && order.equipment_identification?.trim() === identification.trim())
@@ -339,7 +377,7 @@ export function ServiceOrdersModule({
     }
     const newPhotos: Photo[] = compressedFiles.map(
       (file, index) => ({
-        id: crypto.randomUUID(),
+        id: pendingAttempt?.payload.photo_ids?.filter(meta => meta.type === type && !photos.some(photo => photo.id === meta.id))[index]?.id ?? crypto.randomUUID(),
         file,
         type,
         label:
@@ -354,168 +392,46 @@ export function ServiceOrdersModule({
   }
 
   async function saveOrder() {
-    if (!supabase || !userId) {
-      const error = 'Não foi possível salvar a OS: sessão ou Supabase não configurado.';
-      console.error(error, { hasSupabase: Boolean(supabase), userId });
-      setSaveError(error);
-      return;
-    }
-
-    if (!selectedBranchId) {
-      setSaveError('Selecione uma filial antes de salvar a OS.');
-      return;
-    }
-
-    if (!checklistComplete) {
-      setSaveError('Complete o checklist pré-reparo antes de salvar a OS.');
-      return;
-    }
-
-    if (!customerAcknowledged) {
-      setSaveError('Confirme que o cliente foi informado sobre as condições de entrada.');
-      return;
-    }
-
-    if (
-      !equipmentType &&
-      !identification &&
-      !serial
-    ) {
-      alert(
-        'Informe o equipamento, identificação ou número de série.'
-      );
-      return;
-    }
-
-    setSaving(true);
-
+    if (saveLock.current) return;
+    if (!supabase || !userId || !selectedBranchId) { setSaveError('Selecione uma filial e entre na conta.'); return; }
+    if (!checklistComplete || !customerAcknowledged) { setSaveError('Complete a vistoria e confirme as condições de entrada.'); return; }
+    if (!equipmentType.trim() && !identification.trim() && !serial.trim()) { setSaveError('Informe o equipamento ou identificação.'); return; }
+    if (!Number.isFinite(Number(labor || 0)) || Number(labor || 0) < 0) { setSaveError('Informe um valor de mão de obra válido.'); return; }
+    saveLock.current = true; setSaving(true); setSaveError(null);
+    const currentScope = attemptScope;
+    const attempts = new OperationAttempts(window.localStorage);
+    let startedCreation = false;
+    let wasPending = false;
     try {
-      const { data, error } = await supabase.rpc(
-        'create_service_order',
-        {
-          p_branch_id: selectedBranchId,
-          p_customer_id: customerId || null,
-          p_customer_name: customer?.name ?? '',
-          p_service_segment: segment,
-          p_equipment_type: equipmentType,
-          p_equipment_identification: identification,
-          p_serial_number: serial,
-          p_accessories_left: accessories,
-          p_physical_condition: condition,
-          p_entry_damage: damage,
-          p_entry_notes: `${notes.trim()}\n\nChecklist pré-reparo: tela acende; touch; câmera frontal.\nCliente ciente das condições de entrada: sim.`,
-          p_labor_total: laborTotal,
-          p_items: items.map((item) => ({
-            product_id: item.product_id,
-            quantity: item.quantity,
-            unit_price: item.unit_price,
-          })),
-        }
-      );
-
-      if (error || !data) {
-        throw new Error(
-          error?.message ??
-            'Não foi possível criar a Ordem de Serviço.'
-        );
-      }
-
-      const orderId = data as string;
-
-      for (const photo of photos) {
-        const extension =
-          photo.file.name.split('.').pop() || 'jpg';
-
-        const storagePath = `${selectedBranchId}/${orderId}/${photo.type}/${photo.id}.${extension}`;
-        const branchId = selectedBranchId;
-
-        if (!branchId) {
-          throw new Error('Filial da operação ausente.');
-        }
-
-        const upload = await supabase.storage
-          .from('service-order-photos')
-          .upload(storagePath, photo.file);
-
-        if (upload.error) {
-          console.error(
-            'Erro ao enviar foto:',
-            upload.error
-          );
-          continue;
-        }
-
-        await supabase
-          .from('service_order_photos')
-          .insert({
-            service_order_id: orderId,
-            user_id: userId,
-            branch_id: branchId,
-            photo_type: photo.type,
-            operation_type: 'service_order',
-            label: photo.label,
-            storage_path: storagePath,
-          });
-      }
-
-      const createdOrder: ServiceOrder = {
-        id: orderId,
-        user_id: userId,
-        branch_id: selectedBranchId,
-        customer_id: customerId || null,
-        customer_name: customer?.name ?? '',
-        service_segment: segment,
-        os_number: null,
-        equipment_type: equipmentType,
-        equipment_brand: null,
-        equipment_model: null,
-        equipment_identification: identification,
-        serial_number: serial,
-        imei: null,
-        reported_issue: null,
-        observations: notes,
-        technician_name: null,
-        entry_date: new Date().toISOString(),
-        forecast_delivery: null,
-        accessories_left: accessories,
-        physical_condition: condition,
-        entry_damage: damage,
-        entry_notes: notes,
-        screen_condition: null,
-        shell_condition: null,
-        side_condition: null,
-        rear_condition: null,
-        connectors_condition: null,
-        buttons_condition: null,
-        other_damage: null,
-        inspection_notes: null,
-        status: 'aberta',
-        approval_status: 'aguardando_aprovacao',
-        approval_notes: null,
-        labor_total: laborTotal,
-        parts_total: partsTotal,
-        discount_total: 0,
-        total,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+      wasPending = !!attempts.pending(currentScope, 'service-order');
+      const payload: ServiceOrderPayload = {
+        branch_id: selectedBranchId, customer_id: customerId || null, segment, equipment_type: equipmentType,
+        identification, serial, accessories, condition, damage,
+        draft_notes: notes,
+        notes: pendingAttempt?.payload.notes ?? notes.trim() + String.fromCharCode(10, 10) + 'Checklist pré-reparo: ' + checklistLabels.map(([, label]) => label).join('; ') + '.' + String.fromCharCode(10) + 'Cliente ciente das condições de entrada: sim.',
+        labor_total: Math.round(Number(labor || 0) * 100) / 100,
+        items: items.map(item => ({ product_id: item.product_id, quantity: item.quantity, unit_price: item.unit_price })),
+        photo_ids: pendingAttempt?.payload.photo_ids ?? photos.map(p => ({ id: p.id, type: p.type, label: p.label })),
       };
-
-      setOrders((current) => [
-        createdOrder,
-        ...current,
-      ]);
-
-      setSaveError(null);
-      alert('Ordem de Serviço criada com sucesso!\n\nAs peças foram baixadas do estoque da filial selecionada.');
-
-      resetForm();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Erro ao criar a Ordem de Serviço.';
-      console.error('Falha ao salvar Ordem de Serviço.', error);
-      setSaveError(message);
-    } finally {
-      setSaving(false);
-    }
+      const attempt = attempts.get(currentScope, 'service-order', payload);
+      setPendingAttempt(attempt);
+      if ((attempt.payload.photo_ids?.length ?? 0) !== photos.length || attempt.payload.photo_ids?.some(meta => !photos.some(photo => photo.id === meta.id))) throw new Error('Selecione novamente as fotos pendentes para recuperar esta OS.');
+      await pendingPhotos(currentScope + ':' + attempt.id, photos.map(({ id, file, type, label }) => ({ id, file, type, label })));
+      startedCreation = true;
+      const orderId = await createServiceOrder(supabase, attempt.id, attempt.payload);
+      const { data: saved, error: readError } = await supabase.from('service_orders').select('*').eq('id', orderId).single();
+      if (readError || !saved) throw new Error('OS criada, mas sua confirmação não pôde ser carregada. Recupere a mesma tentativa.');
+      await uploadServicePhotos(supabase, userId, orderId, photos);
+      attempts.confirm(currentScope, 'service-order');
+      try { await pendingPhotos(currentScope + ':' + attempt.id, null); } catch { /* Saved files can be cleared on the next successful attempt. */ }
+      if (scopeRef.current === currentScope) {
+        setOrders(current => [saved as ServiceOrder, ...current.filter(order => order.id !== orderId)]);
+        setPendingAttempt(null); resetForm(); setDetails(saved as ServiceOrder); onChanged?.();
+      }
+    } catch (cause) {
+      if ((!startedCreation || cause instanceof ServiceOrderRejected) && !wasPending) { attempts.confirm(currentScope, 'service-order'); setPendingAttempt(null); }
+      if (scopeRef.current === currentScope) setSaveError(cause instanceof Error ? cause.message : 'Não foi possível confirmar a OS. Recupere a mesma tentativa.');
+    } finally { saveLock.current = false; setSaving(false); }
   }
 
   return (
@@ -588,6 +504,8 @@ export function ServiceOrdersModule({
         </div>
       )}
 
+      {pendingAttempt && <div className="module-card"><p>Existe uma OS aguardando confirmação. Recupere esta tentativa antes de cadastrar outra.</p><button type="button" disabled={saving} onClick={() => restorePayload(pendingAttempt.payload)}>Restaurar dados enviados</button></div>}
+      {details && <ServiceOrderDetails order={details} customers={customers} onClose={() => setDetails(null)} onChanged={order => { setDetails(order); setOrders(current => current.map(existing => existing.id === order.id ? order : existing)); onChanged?.(); }} />}
       {open && (
         <div
           className="partner-card service-order-form"
@@ -613,12 +531,13 @@ export function ServiceOrdersModule({
                 Filial: {branch?.name ?? 'Não selecionada'}
               </small>
               <p role="note" style={{ margin: '8px 0 0', color: '#adc2d6', fontSize: 12 }}>
-                O rascunho é salvo nesta sessão para este usuário e filial. Fotos precisam ser selecionadas novamente após atualizar a página.
+                Ao salvar, os dados e anexos da tentativa são preservados neste navegador até a confirmação.
               </p>
             </div>
 
             <button
               className="partner-icon-btn"
+              disabled={saving || !!pendingAttempt}
               onClick={resetForm}
             >
               <X size={20} />
@@ -753,7 +672,7 @@ export function ServiceOrdersModule({
               </span>
             </div>
             <div className="service-order-fields" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))', gap: 10, marginTop: 14 }}>
-              {([['screen', 'Tela acende'], ['touch', 'Touch responde'], ['camera', 'Câmera frontal']] as const).map(([key, label]) => (
+              {checklistLabels.map(([key, label]) => (
                 <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 11, border: '1px solid #29465f', borderRadius: 9, color: '#edf5fc', fontSize: 13, cursor: 'pointer' }}>
                   <input type="checkbox" checked={preRepairChecklist[key]} onChange={(event) => setPreRepairChecklist((current) => ({ ...current, [key]: event.target.checked }))} />
                   {label}
@@ -1175,7 +1094,7 @@ export function ServiceOrdersModule({
             >
               {saving
                 ? 'Salvando...'
-                : 'Salvar'}
+                : pendingAttempt ? 'Recuperar OS e anexos' : 'Salvar'}
             </button>
           </div>
         </div>
@@ -1245,7 +1164,7 @@ export function ServiceOrdersModule({
                 </small>
               </span>
 
-              <b>{money(order.total)}</b>
+              <div><b>{money(order.total)}</b><p>{order.status}</p><button type="button" className="rma-advance-btn" onClick={() => setDetails(order)}>Abrir OS</button></div>
             </div>
           ))
         ) : (

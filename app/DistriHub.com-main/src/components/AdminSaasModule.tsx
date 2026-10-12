@@ -26,6 +26,7 @@ export function AdminSaasModule({ view, initialCompanyId, onChanged, onNavigate 
   const [message, setMessage] = useState<string | null>(null);
   const openedCompany = useRef<string | null>(null);
   const mutationPending = useRef(false);
+  const [summaryVersion, setSummaryVersion] = useState(0);
   const refresh = useCallback(async () => {
     if (!supabase) { setError('Supabase não configurado.'); setLoading(false); return; }
     setLoading(true); setError(null);
@@ -33,6 +34,7 @@ export function AdminSaasModule({ view, initialCompanyId, onChanged, onNavigate 
       const { data: overview, error: rpcError } = await supabase.rpc('get_saas_admin_overview');
       if (rpcError) throw rpcError;
       setData(overview as SaasOverview);
+      setSummaryVersion(version => version + 1);
     } catch (failure) { setError(saasAdminError(failure)); }
     finally { setLoading(false); }
   }, []);
@@ -99,7 +101,7 @@ export function AdminSaasModule({ view, initialCompanyId, onChanged, onNavigate 
         ['Cobranças pendentes', invoices.filter(i => i.status === 'pending').length], ['Receita recorrente prevista', money.format(recurringRevenue(subscriptions))],
       ].map(([label, value]) => <div className="admin-financial-kpi" key={label}><small>{label}</small><strong>{value}</strong></div>)}</div>
       <div className="subscription-actions admin-overview-actions"><button className="rma-advance-btn" onClick={() => onNavigate?.('assinaturas')}>Gerenciar acessos</button><button className="rma-advance-btn" onClick={() => onNavigate?.('faturas')}>Consultar cobranças</button><button className="rma-advance-btn" onClick={() => onNavigate?.('suporte')}>Abrir suporte</button><button className="rma-advance-btn" onClick={() => onNavigate?.('planos')}>Solicitações de plano</button></div>
-      <AdminPendingSummary />
+      <AdminPendingSummary version={summaryVersion} />
       <h4>Acessos que vencem nos próximos 7 dias</h4>
       <div className="admin-overview-list">{expiring.map(s => <div className="module-card" key={s.company_id}><strong>{s.company_name}</strong><p>{accessExplanation(s)} · até {date(accessDeadline(s))}</p><button className="rma-advance-btn" disabled={busy || loading} onClick={() => edit(s)}>Gerenciar</button></div>)}</div>
       {!expiring.length && <p>Nenhum vencimento nos próximos 7 dias.</p>}

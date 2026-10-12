@@ -326,6 +326,7 @@ export function WhiteLabelModule({ settings: initialSettings, onUpdate: persist 
 
       </section>
       <section hidden={activeTab !== 'catalogo'} aria-label="Personalização do catálogo">
+        <div className="module-card"><h4>Link e disponibilidade do catálogo</h4><label className="print-toggle-item"><input type="checkbox" checked={settings.catalog_enabled} onChange={e => onUpdate({ catalog_enabled: e.target.checked })} /> Ativar catálogo público</label><label className="personalization-text-field">Nome no link<input maxLength={40} value={settings.catalog_slug ?? ''} onChange={e => onUpdate({ catalog_slug: e.target.value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9-]/g, '') || null })} /></label>{settings.catalog_slug && <a href={`/catalogo?loja=${encodeURIComponent(settings.catalog_slug)}`} target="_blank" rel="noopener noreferrer">Abrir catálogo da loja</a>}<p>Salve as alterações antes de compartilhar o link.</p></div>
         <div className="module-card">
           <div className="module-card-title">Apresentação do catálogo público</div>
           <label className="personalization-text-field">Mensagem de boas-vindas<textarea className="notice-input" aria-label="Mensagem de boas-vindas do catálogo" maxLength={400} rows={3} value={catalog.welcome_message} onChange={e => updatePreference('catalog', { ...catalog, welcome_message: e.target.value })} placeholder="Apresente sua loja e convide o cliente a conhecer os produtos." /></label>

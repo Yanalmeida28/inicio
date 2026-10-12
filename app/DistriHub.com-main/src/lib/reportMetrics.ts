@@ -95,6 +95,11 @@ export function getCostOfGoodsSold(sales: PartnerSale[], products: PartnerProduc
   }, 0), 0);
 }
 
+export function legacyCostSalesCount(sales: PartnerSale[], products: PartnerProduct[]): number {
+  const productById = new Map(products.map(product => [product.id, product]));
+  return sales.filter(sale => sale.status === 'concluida' && (Array.isArray(sale.items) ? sale.items : []).some(item => !productById.get(item.product_id)?.is_service && sale.cost_snapshot?.[item.product_id] == null)).length;
+}
+
 export function birthdayMonth(birthday: string | null | undefined): number | null {
   if (!birthday) return null;
   const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(birthday);

@@ -2613,14 +2613,14 @@ function ReplenishmentSubTab({ products, sales, selectedBranchId, onReplenishSto
       .map(([id, s]) => ({ id, ...s }))
       .sort((a, b) => b.revenue - a.revenue);
 
-    const totalRevenue = ranked.reduce((sum, r) => sum + r.revenue, 0) || 1;
+    const totalRevenue = ranked.reduce((sum, r) => sum + r.revenue, 0);
     let cumulative = 0;
     const withClass = ranked.map((r) => {
+      const previousPct = totalRevenue > 0 ? (cumulative / totalRevenue) * 100 : 0;
+      let abcClass: 'A' | 'B' | 'C' | 'N' = 'N';
+      if (r.revenue > 0) abcClass = previousPct < 70 ? 'A' : previousPct < 90 ? 'B' : 'C';
       cumulative += r.revenue;
-      const pct = (cumulative / totalRevenue) * 100;
-      let abcClass: 'A' | 'B' | 'C' = 'C';
-      if (pct <= 70) abcClass = 'A';
-      else if (pct <= 90) abcClass = 'B';
+      const pct = totalRevenue > 0 ? (cumulative / totalRevenue) * 100 : 0;
       return { ...r, abcClass, cumulativePct: pct };
     });
 
@@ -2636,11 +2636,14 @@ function ReplenishmentSubTab({ products, sales, selectedBranchId, onReplenishSto
   const classA = abcAnalysis.filter((p) => p.abcClass === 'A');
   const classB = abcAnalysis.filter((p) => p.abcClass === 'B');
   const classC = abcAnalysis.filter((p) => p.abcClass === 'C');
+  const classUnclassified = abcAnalysis.filter((p) => p.abcClass === 'N');
 
 
 
+  const replenishLock = useRef(false);
   async function handleReplenish(e: React.FormEvent) {
     e.preventDefault();
+    if (replenishLock.current) return;
     if (!selectedProduct || !selectedBranchId) {
       setError('Selecione uma filial e um produto válidos.');
       return;
@@ -2655,6 +2658,7 @@ function ReplenishmentSubTab({ products, sales, selectedBranchId, onReplenishSto
       setError('Informe um custo unitário válido.');
       return;
     }
+    replenishLock.current = true;
     setSaving(true);
     setError(null);
     try {
@@ -2668,6 +2672,7 @@ function ReplenishmentSubTab({ products, sales, selectedBranchId, onReplenishSto
         ? String(saveError.message)
         : 'Não foi possível salvar a reposição.');
     } finally {
+      replenishLock.current = false;
       setSaving(false);
     }
   }
@@ -2789,10 +2794,11 @@ function ReplenishmentSubTab({ products, sales, selectedBranchId, onReplenishSto
             { label: 'A', description: 'Alto Giro', items: classA },
             { label: 'B', description: 'Médio Giro', items: classB },
             { label: 'C', description: 'Baixo Giro', items: classC },
+            { label: 'N', description: 'Sem receita registrada', items: classUnclassified },
           ] as const).map(({ label, description, items }) => (
             <section key={label} className={`replenishment-class-card replenishment-class-${label.toLowerCase()}`} aria-label={`Produtos Classe ${label}`}>
               <div className="replenishment-class-header">
-                <div><h5>Classe {label}</h5><span>{description}</span></div>
+                <div><h5>{label === 'N' ? 'Sem classificação' : `Classe ${label}`}</h5><span>{description}</span></div>
                 <span className="replenishment-class-count">{items.length} {items.length === 1 ? 'produto' : 'produtos'}</span>
               </div>
               {items.length === 0 ? <p className="admin-empty-hint">Nenhum produto nesta classe.</p> : (
@@ -2838,7 +2844,7 @@ function ReplenishmentSubTab({ products, sales, selectedBranchId, onReplenishSto
                   <td>{p.sku ?? '—'}</td>
                   <td>
                     <span className={`rma-status-badge status-${p.abcClass === 'A' ? 'success' : p.abcClass === 'B' ? 'warning' : 'info'}`}>
-                      {p.abcClass}
+                      {p.abcClass === 'N' ? 'Sem receita' : p.abcClass}
                     </span>
                   </td>
                   <td>{p.totalSold}</td>

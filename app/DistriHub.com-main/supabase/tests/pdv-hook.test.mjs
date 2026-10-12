@@ -15,6 +15,8 @@ const syncSource = await readFile(new URL('../../src/lib/partnerSync.ts',import.
 const compile = source => ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText;
 const invoiceModule={exports:{}};
 vm.runInNewContext(compile(await readFile(new URL('../../src/lib/invoicePayments.ts',import.meta.url),'utf8')),{exports:invoiceModule.exports});
+const operationModule={exports:{}};
+vm.runInNewContext(compile(await readFile(new URL('../../src/lib/operationAttempts.ts',import.meta.url),'utf8')),{exports:operationModule.exports,crypto:{randomUUID},Error});
 let renderer;
 afterEach(async()=>{if(renderer) await act(async()=>renderer.unmount());renderer=null;});
 async function harness({initialSales=[],initialInvoices=[],initialCustomers=[],rpc,values=new Map(),readResult,branchId=null,identity: suppliedIdentity}={}) {
@@ -45,6 +47,7 @@ async function harness({initialSales=[],initialInvoices=[],initialCustomers=[],r
       if(name==='react')return React;
       if(name==='../lib/supabase')return {supabase:client,isSupabaseConfigured:true};
       if(name==='../lib/invoicePayments')return invoiceModule.exports;
+      if(name==='../lib/operationAttempts')return operationModule.exports;
       if(name==='../lib/pdv')return helperModule.exports;
       if(name==='../lib/partnerSync')return syncModule.exports;
       throw new Error('Unexpected import '+name);

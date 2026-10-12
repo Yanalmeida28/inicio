@@ -1,0 +1,29 @@
+{
+  "abcDominantProduct": [
+    {
+      "product": "dominant",
+      "revenue": 950,
+      "classification": "C"
+    },
+    {
+      "product": "other",
+      "revenue": 50,
+      "classification": "C"
+    }
+  ],
+  "abcWithoutSales": [
+    {
+      "product": "no-sales",
+      "sold": 0,
+      "classification": "A"
+    }
+  ],
+  "legacySaleCost": {
+    "beforeProductEdit": 30,
+    "afterProductEdit": 300
+  },
+  "syntheticB2bPayload": {
+    "acceptedClientPrice": 0,
+    "total": 0
+  }
+}

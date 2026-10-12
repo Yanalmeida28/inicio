@@ -8,7 +8,7 @@ import { useSuperAdminAuth } from '../hooks/useSuperAdminAuth';
 import type { AdminCompany, AdminLojista } from '../types';
 import { money } from '../utils';
 import { AdminSaasModule } from './AdminSaasModule';
-import { AdminSupportModule } from './AdminSupportModule';
+import { AdminSupportInbox } from './AdminSupportInbox';
 import { AdminPlanRequestsModule } from './AdminPlanRequestsModule';
 import { AdminResponsiveTable } from './AdminResponsiveTable';
 
@@ -221,7 +221,7 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
           {tab === 'faturas' && <AdminSaasModule view="invoices" />}
           {tab === 'assinaturas' && <AdminSaasModule view="subscriptions" initialCompanyId={accessCompanyId} onChanged={() => setCompaniesVersion(version => version + 1)} />}
 
-          {tab === 'suporte' && <AdminSupportModule companies={lojistas} />}
+          {tab === 'suporte' && <AdminSupportInbox companies={lojistas} />}
 
           {tab === 'planos' && <AdminPlanRequestsModule onChanged={() => setCompaniesVersion(v => v + 1)} />}
 

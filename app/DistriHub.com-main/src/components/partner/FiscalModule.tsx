@@ -518,10 +518,10 @@ export function FiscalModule({ products, sales, customers, profile, currentRole,
             {canEmit ? (
               <>
                 <button className="module-submit-btn fiscal-emit-btn" onClick={() => openEmitModal('nfce')}>
-                  <Receipt size={18} /> Emitir NFC-e (Cupom Fiscal)
+                  <Receipt size={18} /> Preparar NFC-e (Cupom Fiscal)
                 </button>
                 <button className="module-submit-btn fiscal-emit-btn nfe" onClick={() => openEmitModal('nfe')}>
-                  <FileCheck size={18} /> Emitir NF-e (Nota Grande)
+                  <FileCheck size={18} /> Preparar NF-e (Nota Fiscal)
                 </button>
               </>
             ) : (

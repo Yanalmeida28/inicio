@@ -59,6 +59,7 @@ const SalesHistoryModule = lazy(() => import('./partner/SalesHistoryModule').the
 const OrderHistoryModule = lazy(() => import('./partner/OrderHistoryModule').then((module) => ({ default: module.OrderHistoryModule })));
 const SupportChatModule = lazy(() => import('./partner/SupportChatModule').then((module) => ({ default: module.SupportChatModule })));
 const ServiceOrdersModule = lazy(() => import('./partner/ServiceOrdersModule').then((module) => ({ default: module.ServiceOrdersModule })));
+const CatalogOrdersModule = lazy(() => import('./partner/CatalogOrdersModule').then(module => ({ default: module.CatalogOrdersModule })));
 
 import type {
   StoreSettings,
@@ -1576,10 +1577,10 @@ export function PartnerPanel({
     setSidebarOpen(false);
   }
 
-  function renderTab(tab: Tab, content: ReactNode) {
+  function renderTab(tab: Tab, content: ReactNode, instance = '') {
     if (!visitedTabs.has(tab) || blockedTabs.includes(tab) || !canUseSaasFeature(saas.subscription, tab)) return null;
     return (
-      <div key={tab} hidden={activeTab !== tab}>
+      <div key={tab + instance} hidden={activeTab !== tab}>
         <Suspense fallback={<div className="partner-loading" role="status">Carregando módulo...</div>}>
           {content}
         </Suspense>
@@ -2072,6 +2073,7 @@ export function PartnerPanel({
 
             {visitedTabs.has('pedidos') && (
               <div hidden={activeTab !== 'pedidos'}>
+              {renderTab('pedidos', <CatalogOrdersModule companyId={identity?.companyUserId ?? null} branchId={effectiveBranchId} />, ':catalog')}
               {renderTab('pedidos',
               <OpenOrdersModule
                 onPullToPdv={(sale) => {
@@ -2121,6 +2123,8 @@ export function PartnerPanel({
               <div hidden={activeTab !== 'os'}>
               {renderTab('os',
               <ServiceOrdersModule
+                authUserId={user?.id}
+                onChanged={() => { void partner.load(); }}
                 userId={
                   identity?.companyUserId
                 }

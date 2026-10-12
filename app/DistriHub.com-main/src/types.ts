@@ -67,6 +67,9 @@ export type RmaStatus =
 
 export type ServiceOrderStatus =
   | 'aberta'
+  | 'em_andamento'
+  | 'aguardando_cliente'
+  | 'finalizada'
   | 'em_analise'
   | 'aguardando_aprovacao'
   | 'aprovada'
@@ -555,6 +558,7 @@ export interface AuditLog {
 }
 
 export interface ServiceOrder {
+  status_history?: { status: string; approval?: string; actor: string; at: string; reason?: string }[];
   id: string;
   user_id: string;
   branch_id: string;

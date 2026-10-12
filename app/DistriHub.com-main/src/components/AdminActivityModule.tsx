@@ -37,7 +37,7 @@ export function AdminActivityModule({ subscriptions }: { subscriptions: SaasSubs
   </>;
 }
 
-export function AdminPendingSummary() {
+export function AdminPendingSummary({ version = 0 }: { version?: number }) {
   const [summary, setSummary] = useState<{ support: number; plans: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
@@ -45,9 +45,9 @@ export function AdminPendingSummary() {
     if (!supabase) return;
     void supabase.rpc('get_super_admin_pending_summary').then(({ data, error: failure }) => {
       if (!active) return;
-      if (failure) setError(saasAdminError(failure)); else setSummary(data);
+      if (failure) setError(saasAdminError(failure)); else { setError(null); setSummary(data); }
     });
     return () => { active = false; };
-  }, []);
+  }, [version]);
   return error ? <p role="alert" className="admin-feedback admin-feedback-error">Pendências: {error}</p> : <div className="admin-financial-kpis"><div className="admin-financial-kpi"><small>Atendimentos aguardando resposta</small><strong>{summary?.support ?? '…'}</strong></div><div className="admin-financial-kpi"><small>Solicitações de plano pendentes</small><strong>{summary?.plans ?? '…'}</strong></div></div>;
 }

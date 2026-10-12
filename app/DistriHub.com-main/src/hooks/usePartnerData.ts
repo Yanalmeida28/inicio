@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PostgrestError } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { InvoicePaymentAttempts } from '../lib/invoicePayments';
+import { OperationAttempts } from '../lib/operationAttempts';
 import { mergePartnerChange, PartnerDataVersions } from '../lib/partnerSync';
 import { splitPaymentError, billedSaleError, saleChargeTotal, validSalePrice, isDefinitiveSaleRejection, PdvSaleAttemptStore, pdvErrorMessage, type CustomerCredit } from '../lib/pdv';
 import type {
@@ -2263,10 +2264,15 @@ fetchAllPages((from, to) => client
       let newStock = product.stock + quantity;
 
       if (isSupabaseConfigured && supabase) {
+        const attempts = new OperationAttempts(window.localStorage);
+        const scope = `${currentIdentity.authUserId}:${branchId}:${productId}`;
+        const wasPending = !!attempts.pending(scope, 'replenishment');
+        const attempt = attempts.get(scope, 'replenishment', { productId, branchId, quantity, unitCost: unitCost ?? null, reason: reason?.trim() ?? '', operatorId: effectiveOperatorId });
         const { data: replenishment, error: rpcError } =
           await supabase.rpc(
-            'execute_partner_stock_replenishment',
+            'execute_partner_stock_replenishment_once',
             {
+              p_request_id: attempt.id,
               p_salesperson_id: effectiveOperatorId,
               p_pin: effectiveOperatorPin,
               p_product_id: productId,
@@ -2278,6 +2284,7 @@ fetchAllPages((from, to) => client
           );
 
         if (rpcError) {
+          if (!wasPending && ['P0001','22023','23514'].includes(rpcError.code)) attempts.confirm(scope, 'replenishment');
           throw rpcError;
         }
 
@@ -2290,7 +2297,13 @@ fetchAllPages((from, to) => client
 
         if (typeof serverNewStock === 'number') {
           newStock = serverNewStock;
+        } else {
+          throw new Error('Reposição não confirmada pelo servidor. Recupere a mesma tentativa.');
         }
+        attempts.confirm(scope, 'replenishment');
+        dataRevisionRef.current.invalidate(['products', 'movements']);
+        try { await loadData(); } catch { console.warn('Reposição confirmada; atualização do estoque pendente.'); }
+        return { newStock };
       }
 
       dataRevisionRef.current.invalidate(["products","movements"]);
@@ -2326,7 +2339,7 @@ fetchAllPages((from, to) => client
 
       return { newStock };
     },
-    [data.products, requireIdentity],
+    [data.products, requireIdentity, loadData],
   );
 
   const payInvoice = useCallback(

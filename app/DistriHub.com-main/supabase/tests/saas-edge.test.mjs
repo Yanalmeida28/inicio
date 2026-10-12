@@ -120,3 +120,21 @@ test('worker exige segredo, cancela assinatura uma vez e não cancela pagamento 
   assert.equal(finishes[0].args.p_success, true); assert.equal(finishes[1].args.p_success, false);
   assert.match(finishes[1].args.p_error, /Pagamento recebido/);
 });
+
+test('scheduler authentication rejects an invalid token before claiming jobs and accepts only a positive server check', async () => {
+  const denied = handler('saas-provider-jobs');
+  denied.client.rpc = async name => { assert.equal(name, 'authorize_saas_scheduler'); return { data: false, error: null }; };
+  assert.equal((await denied.serve(request({}, { 'x-distrihub-scheduler': 'invalid' }))).status, 401);
+  const accepted = handler('saas-provider-jobs'); const names = [];
+  accepted.client.rpc = async name => { names.push(name); return { data: name === 'authorize_saas_scheduler' ? true : [], error: null }; };
+  const response = await accepted.serve(request({}, { 'x-distrihub-scheduler': 'valid' }));
+  assert.equal(response.status, 200); assert.deepEqual(names, ['authorize_saas_scheduler', 'claim_saas_provider_jobs']);
+  assert.deepEqual(await response.json(), { completed: 0, claimed: 0 });
+});
+
+test('missing gateway credential preserves jobs without claiming them and returns a configuration error', async () => {
+  const h = handler('saas-provider-jobs', { env: name => { if(name === 'MERCADO_PAGO_ACCESS_TOKEN') throw new Error('missing'); return 'secret'; } });
+  const response = await h.serve(request({}, { 'x-saas-job-secret': 'secret' }));
+  assert.equal(response.status, 503); assert.match((await response.json()).error, /MERCADO_PAGO_ACCESS_TOKEN/);
+  assert.equal(h.calls.length, 0);
+});

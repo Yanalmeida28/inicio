@@ -1,0 +1,77 @@
+{
+  "results": [
+    {
+      "width": 320,
+      "mode": "catalog",
+      "overflow": false,
+      "body": "Loja de teste\nCatálogo público\nAtendimento conforme disponibilidade da loja\nSeu pedido (1)\nIdentidade da loja\nCatálogo p"
+    },
+    {
+      "width": 320,
+      "mode": "os",
+      "overflow": false,
+      "body": "Ordens de Serviço\n\nOS multi-segmento, vistoria de entrada e controle de peças por filial.\n\nNova OS\nNova Ordem de Serviço"
+    },
+    {
+      "width": 320,
+      "mode": "details",
+      "overflow": false,
+      "body": "OS #order\n\nEquipamento · Notebook\n\nFechar detalhes\n\nCliente: Cliente de teste · Total: R$ 50,00\n\nVistoria conferida\n\nCli"
+    },
+    {
+      "width": 390,
+      "mode": "catalog",
+      "overflow": false,
+      "body": "Loja de teste\nCatálogo público\nAtendimento conforme disponibilidade da loja\nSeu pedido (1)\nIdentidade da loja\nCatálogo p"
+    },
+    {
+      "width": 390,
+      "mode": "os",
+      "overflow": false,
+      "body": "Ordens de Serviço\n\nOS multi-segmento, vistoria de entrada e controle de peças por filial.\n\nNova OS\nNova Ordem de Serviço"
+    },
+    {
+      "width": 390,
+      "mode": "details",
+      "overflow": false,
+      "body": "OS #order\n\nEquipamento · Notebook\n\nFechar detalhes\n\nCliente: Cliente de teste · Total: R$ 50,00\n\nVistoria conferida\n\nCli"
+    },
+    {
+      "width": 768,
+      "mode": "catalog",
+      "overflow": false,
+      "body": "Loja de teste\nCatálogo público\nAtendimento conforme disponibilidade da loja\nSeu pedido (1)\nIdentidade da loja\nCatálogo p"
+    },
+    {
+      "width": 768,
+      "mode": "os",
+      "overflow": false,
+      "body": "Ordens de Serviço\n\nOS multi-segmento, vistoria de entrada e controle de peças por filial.\n\nNova OS\nNova Ordem de Serviço"
+    },
+    {
+      "width": 768,
+      "mode": "details",
+      "overflow": false,
+      "body": "OS #order\n\nEquipamento · Notebook\n\nFechar detalhes\n\nCliente: Cliente de teste · Total: R$ 50,00\n\nVistoria conferida\n\nCli"
+    },
+    {
+      "width": 1366,
+      "mode": "catalog",
+      "overflow": false,
+      "body": "Loja de teste\nCatálogo público\nAtendimento conforme disponibilidade da loja\nSeu pedido (1)\nIdentidade da loja\nCatálogo p"
+    },
+    {
+      "width": 1366,
+      "mode": "os",
+      "overflow": false,
+      "body": "Ordens de Serviço\n\nOS multi-segmento, vistoria de entrada e controle de peças por filial.\n\nNova OS\nNova Ordem de Serviço"
+    },
+    {
+      "width": 1366,
+      "mode": "details",
+      "overflow": false,
+      "body": "OS #order\n\nEquipamento · Notebook\n\nFechar detalhes\n\nCliente: Cliente de teste · Total: R$ 50,00\n\nVistoria conferida\n\nCli"
+    }
+  ],
+  "errors": []
+}

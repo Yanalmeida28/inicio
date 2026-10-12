@@ -12,6 +12,7 @@ import {
   completedSalesOnly,
   filterReportSales,
   getCostOfGoodsSold,
+  legacyCostSalesCount,
   getItemRevenueByType,
   isServiceProductId,
   type SalesRange,
@@ -422,6 +423,7 @@ function FinancialReport({ sales, allSales, products }: { sales: PartnerSale[]; 
   const totalRevenue = sales.reduce((s, x) => s + x.total, 0);
   const freightTotal = sales.reduce((sum, sale) => sum + (sale.freight_fee ?? 0), 0);
   const costOfGoodsSold = getCostOfGoodsSold(sales, products);
+  const legacySales = legacyCostSalesCount(sales, products);
   const grossProfit = totalRevenue - costOfGoodsSold;
   const financialRows: CsvValue[][] = [
     ['Indicador', 'Valor', 'Percentual'],
@@ -434,7 +436,8 @@ function FinancialReport({ sales, allSales, products }: { sales: PartnerSale[]; 
       return [`Pagamento - ${label}`, amount.toFixed(2), totalRevenue > 0 ? `${((amount / totalRevenue) * 100).toFixed(1)}%` : '0.0%'];
     }),
     ['Receita bruta do período selecionado', totalRevenue.toFixed(2), ''],
-    ['Custo dos produtos vendidos (CMV)', costOfGoodsSold.toFixed(2), ''],
+    [legacySales ? 'CMV estimado (há vendas sem custo histórico)' : 'Custo dos produtos vendidos (CMV)', costOfGoodsSold.toFixed(2), ''],
+    ['Vendas com custo histórico incompleto', legacySales, ''],
     ['Lucro bruto estimado', grossProfit.toFixed(2), ''],
     ['Fretes terceirizados (fora do faturamento)', freightTotal.toFixed(2), ''],
   ];
@@ -501,6 +504,7 @@ function FinancialReport({ sales, allSales, products }: { sales: PartnerSale[]; 
 
       <h4 className="report-section-title">Resultado simplificado do período</h4>
       <p>Estimativa antes de despesas operacionais e impostos; o custo considera apenas produtos com custo cadastrado.</p>
+      {legacySales > 0 && <p role="status" className="admin-context-note">{legacySales} venda(s) sem custo histórico completo: o CMV e a margem dessas vendas usam o cadastro atual e são estimados.</p>}
       <div className="stock-table-wrap">
         <table className="rma-table">
           <thead><tr><th>Item</th><th>Valor</th></tr></thead>

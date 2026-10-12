@@ -20,6 +20,7 @@ function component(rpc){
     if(name==='../lib/supabase')return {supabase:{rpc},isSupabaseConfigured:true};
     if(name==='../lib/personalization')return personalizationHelpers;
     if(name==='../lib/storeTheme')return theme;
+    if(name==='./PublicCatalogCheckout')return {PublicCatalogCheckout:()=>null};
     return require(name);
   }});
   return exports.PublicCatalogPage;
@@ -28,16 +29,16 @@ test('catalog personalization controls welcome text, stock, SKU and contact with
   const calls=[];
   const Component=component(async(name,args)=>{calls.push({name,args});return {error:null,data:{
     settings:{catalog_enabled:true,catalog_slug:'loja',primary_color:'#2563eb',nav_color:'#0f2747',catalog_preferences:{welcome_message:'Bem-vindo à loja!',show_stock:false,show_sku:false,whatsapp_phone:'11999999999'}},
-    profile:{business_name:'Loja'},branch:{id:'branch',name:'Centro'},products:[{id:'p',name:'Produto',sale_price:100,stock:10,sku:'ABC123'}],
+    profile:{business_name:'Loja'},branch:{id:'branch',name:'Centro'},products:[{id:'p',branch_id:'branch',name:'Produto',sale_price:100,stock:10,sku:'ABC123'}],
   }};});
   await act(async()=>{renderer=TestRenderer.create(React.createElement(Component,{slug:'loja',branchSlug:'Centro'}));});
   const output=JSON.stringify(renderer.toJSON());
   assert.ok(output.includes('Bem-vindo à loja!'));
   assert.ok(!output.includes('10 em estoque'));
   assert.ok(!output.includes('ABC123'));
-  assert.equal(renderer.root.findByType('a').props.href,'https://wa.me/5511999999999');
+  assert.ok(renderer.root.findAllByType('a').some(link=>link.props.href==='https://wa.me/5511999999999'));
   assert.equal(calls.length,1);
-  assert.equal(calls[0].name,'read_public_store_catalog');
+  assert.equal(calls[0].name,'read_public_catalog_v2');
   assert.equal(calls[0].args.p_branch_slug,'Centro');
 });
 test('a disabled or unknown catalog displays an unavailable message',async()=>{

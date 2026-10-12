@@ -18,7 +18,9 @@ async function load(path, dependencies = {}, globals = {}, extra = '') {
   return exports;
 }
 const safety = await load('lib/exportSafety.ts');
-const b2b = await load('lib/b2bOrder.ts');
+const catalog = await load('lib/catalogOrders.ts');
+const metrics = await load('lib/reportMetrics.ts', { './pdv': { salePaymentDescription: () => 'PIX' } });
+const b2b = await load('lib/b2bOrder.ts', { './catalogOrders': catalog });
 const { saveB2bOrder } = b2b;
 const money = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 const shared = [];
@@ -70,20 +72,16 @@ test('B2B credit does not show a fake verification or accept a credit checkout',
   await act(async () => renderer.unmount());
 });
 
-const input = { requestId: 'id', cart: [item], businessName: ' Loja ', city: 'São Paulo', paymentMethod: 'pix', deliveryMethod: 'motoboy' };
-function database({ writeError = null, readError = null, mismatch = false } = {}) {
-  let stored;
-  return { client: { from() { return { async upsert(payload, options) { assert.equal(options.ignoreDuplicates, true); stored ??= JSON.parse(JSON.stringify(payload)); return { error: writeError }; },
-    select() { return { eq() { return this; }, async single() { return { data: mismatch ? { ...stored, total: 0 } : stored, error: readError }; } }; } }; } }, get stored() { return stored; } };
-}
-test('B2B service rejects persistence errors and confirms freight with the persisted order', async () => {
-  await assert.rejects(saveB2bOrder(database({ writeError: { message: 'RLS denied' } }).client, 'owner', input), /RLS denied/);
-  await assert.rejects(saveB2bOrder(database({ readError: {} }).client, 'owner', input), /confirmar/);
-  await assert.rejects(saveB2bOrder(database({ mismatch: true }).client, 'owner', input), /divergem/);
-  const db = database(); const saved = await saveB2bOrder(db.client, 'owner', input);
-  assert.equal(saved.id, 'id'); assert.equal(saved.total, 39.68); assert.equal(db.stored.status, 'pendente');
-  await saveB2bOrder(db.client, 'owner', input); assert.equal(db.stored.total, 39.68);
-  await assert.rejects(saveB2bOrder(db.client, 'owner', { ...input, paymentMethod: 'rma' }), /autorização/);
+const input = { requestId: 'id', catalogSlug: 'loja', branchId: 'branch', cart: [{ ...item, id: 'product' }], businessName: ' Loja ', contact: '11999999999', deliveryAddress: '', paymentMethod: 'pix', deliveryMethod: 'balcao' };
+test('catalogue service sends only product identities and quantities and requires server confirmation', async () => {
+  let payload;
+  const client = { async rpc(name, args) { assert.equal(name, 'place_catalog_order'); payload = args; return { data: { id: 'id', total: 30 }, error: null }; } };
+  assert.equal((await saveB2bOrder(client, 'buyer', input)).total, 30);
+  assert.deepEqual(JSON.parse(JSON.stringify(payload.p_items)), [{ id: 'product', quantity: 2 }]);
+  await assert.rejects(saveB2bOrder({ rpc: async () => ({ error: { message: 'RLS denied' } }) }, 'buyer', input), /RLS denied/);
+  await assert.rejects(saveB2bOrder({ rpc: async () => ({ data: { id: 'other', total: 30 } }) }, 'buyer', input), /confirmou/);
+  await assert.rejects(saveB2bOrder(client, null, input), /Entre/);
+  await assert.rejects(saveB2bOrder(client, 'buyer', { ...input, paymentMethod: 'rma' }), /Forma de pagamento/);
 });
 
 test('product/customer PDF and CSV exports treat malicious fields as text; Excel writes real string cells', async () => {
@@ -179,7 +177,7 @@ test('executive PDF escapes names, SKU and category; executive CSV protects form
   const output = [], blobs = [];
   const { ExecutiveDashboard } = await load('components/partner/AdminModule.tsx', {
     '../../lib/pdv': { saleRevenuePayments: sale => [{ method: 'pix', amount: sale.total }], salePaymentDescription: () => 'PIX' },
-    '../../lib/exportSafety': safety, '../../utils': { money }, './ReportsModule': {},
+    '../../lib/exportSafety': safety, '../../lib/reportMetrics': metrics, '../../utils': { money }, './ReportsModule': {},
     '../../hooks/useStagnantStock': { useStagnantStock: () => ({}) }, '../../hooks/usePayables': {}, './AccountsModule': {},
     './CustomerAccountsModule': {}, './FinancialFlowModule': {}, './AdminFiscalModule': {}, './AdminSettingsTools': {}, '../../lib/accounts': {},
   }, { Blob, window: { open: () => ({ document: { write: html => output.push(html), close() {} }, print() {} }) },
@@ -197,5 +195,30 @@ test('executive PDF escapes names, SKU and category; executive CSV protects form
   await act(async () => exports[1].props.onClick());
   assert.ok(!output[0].includes(marker)); assert.match(output[0], /&lt;img/);
   assert.match(await blobs[0].text(), /"'=1\+1;Cliente"/);
+  await act(async () => renderer.unmount());
+});
+
+test('support loads the latest 50 messages and retrieves older messages without duplicates', async () => {
+  const history = Array.from({ length: 120 }, (_, index) => ({ id: 'id-' + index, user_id: 'owner', sender_role: 'cliente', message: 'Message ' + index, created_at: new Date(Date.UTC(2026, 9, 12, 0, index)).toISOString() }));
+  const limits = [];
+  const client = { from() { let cutoff = null; return { select(){ return this; }, eq(){ return this; }, order(){ return this; }, or(value){ cutoff = value.split('created_at.lt.')[1].split(',and')[0]; return this; }, async limit(amount){ limits.push(amount); return { data: history.filter(item => !cutoff || item.created_at < cutoff).slice(-amount).reverse(), error: null }; } }; }, channel: () => ({ on(){ return this; }, subscribe(){ return this; } }), removeChannel(){} };
+  const { SupportChatModule } = await load('components/partner/SupportChatModule.tsx', { '../../lib/supabase': { supabase: client } }, { window: { setInterval: () => 1, clearInterval(){} } });
+  let renderer; await act(async () => { renderer = TestRenderer.create(React.createElement(SupportChatModule, { user: { id: 'owner' } })); });
+  const count = () => renderer.root.findAllByProps({ className: 'support-message cliente' }).length;
+  assert.equal(count(), 50);
+  for (const expected of [100, 120]) { await act(async () => renderer.root.findAllByType('button').find(button => button.children.includes('Carregar mensagens anteriores')).props.onClick()); assert.equal(count(), expected); }
+  assert.deepEqual(limits, [50, 50, 50]);
+  assert.equal(renderer.root.findAllByType('button').some(button => button.children.includes('Carregar mensagens anteriores')), false);
+  await act(async () => renderer.unmount());
+});
+
+test('Super Admin refresh updates the pending summary and clears a recovered error', async () => {
+  let calls = 0; const client = { rpc: async () => { calls++; return calls === 1 ? { error: { message: 'Unavailable' } } : { data: { support: 3, plans: 2 }, error: null }; } };
+  const { AdminPendingSummary } = await load('components/AdminActivityModule.tsx', { '../lib/supabase': { supabase: client }, '../lib/saasAdminControls': { saasAdminError: error => error.message }, '../lib/adminOverview': {} });
+  let renderer; await act(async () => { renderer = TestRenderer.create(React.createElement(AdminPendingSummary, { version: 0 })); });
+  assert.match(text(renderer), /Unavailable/);
+  await act(async () => renderer.update(React.createElement(AdminPendingSummary, { version: 1 })));
+  assert.equal(calls, 2); assert.doesNotMatch(text(renderer), /Unavailable/);
+  assert.deepEqual(renderer.root.findAllByType('strong').map(node => node.children[0]), ['3', '2']);
   await act(async () => renderer.unmount());
 });

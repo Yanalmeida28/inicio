@@ -4,9 +4,15 @@ type Job = { id: string; lease_token: string; kind: string; provider_id: string 
 Deno.serve(async (request: Request) => {
   if (request.method !== 'POST') return json({ error: 'Método não permitido.' }, 405);
   try {
-    if (request.headers.get('x-saas-job-secret') !== env('SAAS_JOB_SECRET')) return json({ error: 'Não autorizado.' }, 401);
-    env('MERCADO_PAGO_ACCESS_TOKEN');
-    const admin = adminClient();
+    const schedulerToken = request.headers.get('x-distrihub-scheduler');
+    let schedulerClient: ReturnType<typeof adminClient> | null = null;
+    if (schedulerToken) {
+      schedulerClient = adminClient();
+      const { data, error } = await schedulerClient.rpc('authorize_saas_scheduler', { p_token: schedulerToken });
+      if (error || data !== true) return json({ error: 'Não autorizado.' }, 401);
+    } else if (!request.headers.get('x-saas-job-secret') || request.headers.get('x-saas-job-secret') !== env('SAAS_JOB_SECRET')) return json({ error: 'Não autorizado.' }, 401);
+    try { env('MERCADO_PAGO_ACCESS_TOKEN'); } catch { return json({ error: 'Configure MERCADO_PAGO_ACCESS_TOKEN no Supabase para processar pendencias do gateway.' }, 503); }
+    const admin = schedulerClient ?? adminClient();
     const { data: jobs, error } = await admin.rpc('claim_saas_provider_jobs', { p_limit: 3 });
     if (error) throw error;
     let completed = 0;

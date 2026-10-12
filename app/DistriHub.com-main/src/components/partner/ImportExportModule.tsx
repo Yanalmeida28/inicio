@@ -813,7 +813,7 @@ export function ImportExportModule({ products, customers, selectedBranchId, onAd
           <input
             ref={fileRef}
             type="file"
-            accept=".csv,.xlsx,.xls,.xml,.pdf,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/xml,application/pdf"
+            accept=".csv,.xlsx,.xls,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             onChange={handleFile}
             style={{ padding: '8px' }}
           />

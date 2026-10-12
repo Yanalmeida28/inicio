@@ -19,6 +19,12 @@ export function SupportChatModule({ user, conversationUserId, admin = false }: {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
+  const [hasOlder, setHasOlder] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const olderLock = useRef(false);
+  const scope = `${user?.id}:${userId}:${admin}`;
+  const scopeRef = useRef(scope); scopeRef.current = scope;
+  const latestMessageId = messages[messages.length - 1]?.id;
 
   const quickMessages = [
     'Preciso de ajuda com o cadastro de clientes.',
@@ -28,24 +34,27 @@ export function SupportChatModule({ user, conversationUserId, admin = false }: {
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, loading]);
+  }, [latestMessageId, loading]);
 
   useEffect(() => {
     if (!supabase || !user || !userId) return;
     const client = supabase;
     let active = true;
     setMessages([]);
+    setHasOlder(false); setLoadingOlder(false); olderLock.current = false;
     setLoading(true);
     setError(null);
-    const loadMessages = () => client.from('support_messages').select('*').eq('user_id', userId).order('created_at').then(({ data, error: loadError }) => {
+    let initial = true;
+    const loadMessages = () => client.from('support_messages').select('*').eq('user_id', userId).order('created_at', { ascending: false }).order('id', { ascending: false }).limit(50).then(({ data, error: loadError }) => {
       if (active) {
         if (loadError) setError('Não foi possível carregar a conversa. Tente novamente.');
         else {
           setError(null);
+          if (initial) { setHasOlder((data?.length ?? 0) === 50); initial = false; }
           setMessages((current) => {
             const merged = new Map(current.map((item) => [item.id, item]));
             for (const item of (data ?? []) as SupportMessage[]) merged.set(item.id, item);
-            return [...merged.values()].sort((a, b) => a.created_at.localeCompare(b.created_at));
+            return [...merged.values()].sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id));
           });
         }
         setLoading(false);
@@ -58,6 +67,22 @@ export function SupportChatModule({ user, conversationUserId, admin = false }: {
     const interval = window.setInterval(() => { void loadMessages(); }, 10000);
     return () => { active = false; window.clearInterval(interval); void client.removeChannel(channel); };
   }, [user, userId, admin]);
+
+  async function loadOlder() {
+    if (!supabase || !userId || !messages[0] || olderLock.current) return;
+    const oldest = messages[0]; const currentScope = scope;
+    olderLock.current = true; setLoadingOlder(true);
+    try {
+      const { data, error } = await supabase.from('support_messages').select('*').eq('user_id', userId)
+        .or(`created_at.lt.${oldest.created_at},and(created_at.eq.${oldest.created_at},id.lt.${oldest.id})`)
+        .order('created_at', { ascending: false }).order('id', { ascending: false }).limit(50);
+      if (error) throw error;
+      if (scopeRef.current !== currentScope) return;
+      setHasOlder((data?.length ?? 0) === 50);
+      setMessages(previous => { const merged = new Map(previous.map(item => [item.id, item])); for (const item of (data ?? []) as SupportMessage[]) merged.set(item.id, item); return [...merged.values()].sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id)); });
+    } catch { if (scopeRef.current === currentScope) setError('Não foi possível carregar as mensagens anteriores. Tente novamente.'); }
+    finally { olderLock.current = false; if (scopeRef.current === currentScope) setLoadingOlder(false); }
+  }
 
   async function sendMessage(e: React.FormEvent) {
     e.preventDefault();
@@ -109,6 +134,7 @@ export function SupportChatModule({ user, conversationUserId, admin = false }: {
       ) : (
         <>
           {error && <p role="alert" className="admin-load-error">{error}</p>}
+          {hasOlder && <button type="button" className="rma-advance-btn" disabled={loadingOlder} onClick={() => void loadOlder()}>{loadingOlder ? 'Carregando...' : 'Carregar mensagens anteriores'}</button>}
           <div className="support-chat-messages">
             {loading ? <p className="empty-row">Carregando conversa...</p> : messages.length === 0 ? <p className="empty-row">Envie uma mensagem para iniciar o atendimento.</p> : messages.map((item) => (
               <div key={item.id} className={`support-message ${item.sender_role}`}>
