@@ -1,0 +1,602 @@
+[
+  {
+    "schemaname": "public",
+    "tablename": "fiscal_documents",
+    "policyname": "fiscal_documents_select_own",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "(user_id = ( SELECT auth.uid() AS uid))",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "fiscal_documents",
+    "policyname": "saas_entitlement",
+    "permissive": "RESTRICTIVE",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "partner_has_saas_access(user_id, 'fiscal'::text)",
+    "with_check": "partner_has_saas_access(user_id, 'fiscal'::text)"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "fiscal_documents",
+    "policyname": "select_company_branch_fiscal_documents",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "((auth.uid() = user_id) OR (EXISTS ( SELECT 1\n   FROM partner_salespeople sp\n  WHERE ((sp.auth_user_id = auth.uid()) AND (sp.user_id = fiscal_documents.user_id) AND (sp.active = true) AND ((sp.role = 'administrador'::text) OR (sp.branch_id = fiscal_documents.branch_id))))))",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "fiscal_inutilizations",
+    "policyname": "select_company_branch_fiscal_inutilizations",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "((auth.uid() = user_id) OR (EXISTS ( SELECT 1\n   FROM partner_salespeople sp\n  WHERE ((sp.auth_user_id = auth.uid()) AND (sp.user_id = fiscal_inutilizations.user_id) AND (sp.active = true) AND ((sp.role = 'administrador'::text) OR (sp.branch_id = fiscal_inutilizations.branch_id))))))",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "fiscal_tax_rules",
+    "policyname": "saas_entitlement",
+    "permissive": "RESTRICTIVE",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "partner_has_saas_access(user_id, 'fiscal'::text)",
+    "with_check": "partner_has_saas_access(user_id, 'fiscal'::text)"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "fiscal_tax_rules",
+    "policyname": "select_company_branch_fiscal_tax_rules",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "((auth.uid() = user_id) OR (EXISTS ( SELECT 1\n   FROM partner_salespeople sp\n  WHERE ((sp.auth_user_id = auth.uid()) AND (sp.user_id = fiscal_tax_rules.user_id) AND (sp.active = true) AND ((sp.role = 'administrador'::text) OR (sp.branch_id = fiscal_tax_rules.branch_id))))))",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "partner_categories",
+    "policyname": "delete_own_categories",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "DELETE",
+    "qual": "(( SELECT auth.uid() AS uid) = user_id)",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "partner_categories",
+    "policyname": "insert_own_categories",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "(( SELECT auth.uid() AS uid) = user_id)"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "partner_categories",
+    "policyname": "saas_entitlement",
+    "permissive": "RESTRICTIVE",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "partner_has_saas_access(user_id, 'cadastros'::text)",
+    "with_check": "partner_has_saas_access(user_id, 'cadastros'::text)"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "partner_categories",
+    "policyname": "select_own_categories",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "((user_id = auth.uid()) OR partner_rma_company_access(user_id))",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "partner_categories",
+    "policyname": "update_own_categories",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "UPDATE",
+    "qual": "(( SELECT auth.uid() AS uid) = user_id)",
+    "with_check": "(( SELECT auth.uid() AS uid) = user_id)"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "partner_combos",
+    "policyname": "delete_own_combos",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "DELETE",
+    "qual": "(( SELECT auth.uid() AS uid) = user_id)",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "partner_combos",
+    "policyname": "insert_own_combos",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "(( SELECT auth.uid() AS uid) = user_id)"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "partner_combos",
+    "policyname": "saas_entitlement",
+    "permissive": "RESTRICTIVE",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "partner_has_saas_access(user_id, 'cadastros'::text)",
+    "with_check": "partner_has_saas_access(user_id, 'cadastros'::text)"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "partner_combos",
+    "policyname": "select_own_combos",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "((user_id = auth.uid()) OR partner_rma_company_access(user_id))",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "partner_combos",
+    "policyname": "update_own_combos",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "UPDATE",
+    "qual": "(( SELECT auth.uid() AS uid) = user_id)",
+    "with_check": "(( SELECT auth.uid() AS uid) = user_id)"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "partner_crm_tasks",
+    "policyname": "crm_tasks_insert",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "(partner_has_saas_access(user_id, 'relatorios'::text) AND ((user_id = auth.uid()) OR partner_employee_can_access_branch(user_id, branch_id)) AND (EXISTS ( SELECT 1\n   FROM partner_customers c\n  WHERE ((c.id = partner_crm_tasks.customer_id) AND (c.user_id = partner_crm_tasks.user_id)))) AND (EXISTS ( SELECT 1\n   FROM partner_branches b\n  WHERE ((b.id = partner_crm_tasks.branch_id) AND (b.user_id = partner_crm_tasks.user_id)))) AND ((responsible_id IS NULL) OR (EXISTS ( SELECT 1\n   FROM partner_salespeople s\n  WHERE ((s.id = partner_crm_tasks.responsible_id) AND (s.user_id = partner_crm_tasks.user_id) AND ((s.branch_id IS NULL) OR (s.branch_id = partner_crm_tasks.branch_id)))))))"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "partner_crm_tasks",
+    "policyname": "crm_tasks_select",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "(partner_has_saas_access(user_id, 'relatorios'::text) AND ((user_id = auth.uid()) OR partner_employee_can_access_branch(user_id, branch_id)))",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "partner_crm_tasks",
+    "policyname": "crm_tasks_update",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "UPDATE",
+    "qual": "(partner_has_saas_access(user_id, 'relatorios'::text) AND ((user_id = auth.uid()) OR partner_employee_can_access_branch(user_id, branch_id)))",
+    "with_check": "(partner_has_saas_access(user_id, 'relatorios'::text) AND ((user_id = auth.uid()) OR partner_employee_can_access_branch(user_id, branch_id)))"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "partner_customers",
+    "policyname": "delete_partner_customers",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "DELETE",
+    "qual": "((user_id = ( SELECT auth.uid() AS uid)) OR ((branch_id IS NOT NULL) AND partner_employee_can_access_branch(user_id, branch_id)))",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "partner_customers",
+    "policyname": "insert_partner_customers",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "((user_id = ( SELECT auth.uid() AS uid)) OR ((branch_id IS NOT NULL) AND partner_employee_can_access_branch(user_id, branch_id)))"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "partner_customers",
+    "policyname": "partner_customers_select",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "((user_id = auth.uid()) OR ((user_id IS NOT NULL) AND ((branch_id IS NULL) OR partner_employee_can_access_branch(user_id, branch_id))))",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "partner_customers",
+    "policyname": "partner_customers_update",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "UPDATE",
+    "qual": "((user_id = ( SELECT auth.uid() AS uid)) OR ((branch_id IS NOT NULL) AND partner_employee_can_access_branch(user_id, branch_id)))",
+    "with_check": "((user_id = ( SELECT auth.uid() AS uid)) OR ((branch_id IS NOT NULL) AND partner_employee_can_access_branch(user_id, branch_id)))"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "partner_customers",
+    "policyname": "saas_entitlement",
+    "permissive": "RESTRICTIVE",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "partner_has_saas_access(user_id, 'cadastros'::text)",
+    "with_check": "partner_has_saas_access(user_id, 'cadastros'::text)"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "partner_modifiers",
+    "policyname": "delete_own_modifiers",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "DELETE",
+    "qual": "(( SELECT auth.uid() AS uid) = user_id)",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "partner_modifiers",
+    "policyname": "insert_own_modifiers",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "(( SELECT auth.uid() AS uid) = user_id)"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "partner_modifiers",
+    "policyname": "saas_entitlement",
+    "permissive": "RESTRICTIVE",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "partner_has_saas_access(user_id, 'cadastros'::text)",
+    "with_check": "partner_has_saas_access(user_id, 'cadastros'::text)"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "partner_modifiers",
+    "policyname": "select_own_modifiers",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "((user_id = auth.uid()) OR partner_rma_company_access(user_id))",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "partner_modifiers",
+    "policyname": "update_own_modifiers",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "UPDATE",
+    "qual": "(( SELECT auth.uid() AS uid) = user_id)",
+    "with_check": "(( SELECT auth.uid() AS uid) = user_id)"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "partner_plan_change_requests",
+    "policyname": "select_own_plan_change_requests",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "(auth.uid() = user_id)",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "partner_salespeople",
+    "policyname": "delete_partner_salespeople",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "DELETE",
+    "qual": "(user_id = ( SELECT auth.uid() AS uid))",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "partner_salespeople",
+    "policyname": "insert_partner_salespeople",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "(user_id = ( SELECT auth.uid() AS uid))"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "partner_salespeople",
+    "policyname": "partner_salespeople_select",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "((user_id = auth.uid()) OR partner_rma_company_access(user_id))",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "partner_salespeople",
+    "policyname": "partner_salespeople_update",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "UPDATE",
+    "qual": "(user_id = ( SELECT auth.uid() AS uid))",
+    "with_check": "(user_id = ( SELECT auth.uid() AS uid))"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "partner_salespeople",
+    "policyname": "saas_entitlement",
+    "permissive": "RESTRICTIVE",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "partner_has_saas_access(user_id, 'cadastros'::text)",
+    "with_check": "partner_has_saas_access(user_id, 'cadastros'::text)"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "partner_suppliers",
+    "policyname": "deny_direct_delete_suppliers",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "DELETE",
+    "qual": "false",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "partner_suppliers",
+    "policyname": "deny_direct_insert_suppliers",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "false"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "partner_suppliers",
+    "policyname": "deny_direct_update_suppliers",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "UPDATE",
+    "qual": "false",
+    "with_check": "false"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "partner_suppliers",
+    "policyname": "saas_entitlement",
+    "permissive": "RESTRICTIVE",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "partner_has_saas_access(user_id, 'cadastros'::text)",
+    "with_check": "partner_has_saas_access(user_id, 'cadastros'::text)"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "partner_suppliers",
+    "policyname": "select_own_suppliers",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "((user_id = auth.uid()) OR partner_rma_company_access(user_id))",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "service_order_items",
+    "policyname": "os_items_branch_gate",
+    "permissive": "RESTRICTIVE",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "(partner_has_saas_access(user_id, 'os'::text) AND ((user_id = auth.uid()) OR partner_employee_can_access_branch(user_id, branch_id) OR is_super_admin()))",
+    "with_check": "(partner_has_saas_access(user_id, 'os'::text) AND ((user_id = auth.uid()) OR partner_employee_can_access_branch(user_id, branch_id) OR is_super_admin()))"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "service_order_items",
+    "policyname": "saas_entitlement",
+    "permissive": "RESTRICTIVE",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "partner_has_saas_access(user_id, 'os'::text)",
+    "with_check": "partner_has_saas_access(user_id, 'os'::text)"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "service_order_items",
+    "policyname": "service_order_items_delete",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "DELETE",
+    "qual": "((user_id = ( SELECT auth.uid() AS uid)) AND (EXISTS ( SELECT 1\n   FROM service_orders o\n  WHERE ((o.id = service_order_items.service_order_id) AND (o.user_id = service_order_items.user_id) AND (o.branch_id = service_order_items.branch_id)))))",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "service_order_items",
+    "policyname": "service_order_items_insert",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "((user_id = ( SELECT auth.uid() AS uid)) AND (EXISTS ( SELECT 1\n   FROM service_orders o\n  WHERE ((o.id = service_order_items.service_order_id) AND (o.user_id = service_order_items.user_id) AND (o.branch_id = service_order_items.branch_id)))) AND (EXISTS ( SELECT 1\n   FROM partner_products p\n  WHERE ((p.id = service_order_items.product_id) AND (p.user_id = service_order_items.user_id) AND (p.branch_id = service_order_items.branch_id)))))"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "service_order_items",
+    "policyname": "service_order_items_select",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "(EXISTS ( SELECT 1\n   FROM service_orders so\n  WHERE ((so.id = service_order_items.service_order_id) AND ((so.user_id = auth.uid()) OR ((so.branch_id IS NOT NULL) AND partner_employee_can_access_branch(so.user_id, so.branch_id))))))",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "service_order_photos",
+    "policyname": "os_photos_branch_gate",
+    "permissive": "RESTRICTIVE",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "(partner_has_saas_access(user_id, 'os'::text) AND ((user_id = auth.uid()) OR partner_employee_can_access_branch(user_id, branch_id) OR is_super_admin()))",
+    "with_check": "(partner_has_saas_access(user_id, 'os'::text) AND ((user_id = auth.uid()) OR partner_employee_can_access_branch(user_id, branch_id) OR is_super_admin()))"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "service_order_photos",
+    "policyname": "saas_entitlement",
+    "permissive": "RESTRICTIVE",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "partner_has_saas_access(user_id, 'os'::text)",
+    "with_check": "partner_has_saas_access(user_id, 'os'::text)"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "service_order_photos",
+    "policyname": "service_order_photos_delete_own",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "DELETE",
+    "qual": "((user_id = ( SELECT auth.uid() AS uid)) AND (EXISTS ( SELECT 1\n   FROM service_orders o\n  WHERE ((o.id = service_order_photos.service_order_id) AND (o.user_id = ( SELECT auth.uid() AS uid)) AND (o.branch_id = service_order_photos.branch_id)))))",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "service_order_photos",
+    "policyname": "service_order_photos_insert_own",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "((user_id = ( SELECT auth.uid() AS uid)) AND (EXISTS ( SELECT 1\n   FROM (service_orders o\n     JOIN partner_branches b ON ((b.id = o.branch_id)))\n  WHERE ((o.id = service_order_photos.service_order_id) AND (o.user_id = ( SELECT auth.uid() AS uid)) AND (o.branch_id = service_order_photos.branch_id) AND (b.user_id = ( SELECT auth.uid() AS uid)) AND (b.is_active = true)))))"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "service_order_photos",
+    "policyname": "service_order_photos_select_own",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "(EXISTS ( SELECT 1\n   FROM service_orders so\n  WHERE ((so.id = service_order_photos.service_order_id) AND ((so.user_id = auth.uid()) OR ((so.branch_id IS NOT NULL) AND partner_employee_can_access_branch(so.user_id, so.branch_id))))))",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "service_orders",
+    "policyname": "os_branch_gate",
+    "permissive": "RESTRICTIVE",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "(partner_has_saas_access(user_id, 'os'::text) AND ((user_id = auth.uid()) OR partner_employee_can_access_branch(user_id, branch_id) OR is_super_admin()))",
+    "with_check": "(partner_has_saas_access(user_id, 'os'::text) AND ((user_id = auth.uid()) OR partner_employee_can_access_branch(user_id, branch_id) OR is_super_admin()))"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "service_orders",
+    "policyname": "saas_entitlement",
+    "permissive": "RESTRICTIVE",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "partner_has_saas_access(user_id, 'os'::text)",
+    "with_check": "partner_has_saas_access(user_id, 'os'::text)"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "service_orders",
+    "policyname": "service_orders_delete",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "DELETE",
+    "qual": "((user_id = ( SELECT auth.uid() AS uid)) OR ((branch_id IS NOT NULL) AND partner_employee_can_access_branch(user_id, branch_id)))",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "service_orders",
+    "policyname": "service_orders_insert",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "((user_id = ( SELECT auth.uid() AS uid)) AND (branch_id IS NOT NULL) AND ((EXISTS ( SELECT 1\n   FROM partner_branches b\n  WHERE ((b.id = service_orders.branch_id) AND (b.user_id = ( SELECT auth.uid() AS uid)) AND (b.is_active = true)))) OR partner_employee_can_access_branch(user_id, branch_id)) AND ((customer_id IS NULL) OR (EXISTS ( SELECT 1\n   FROM partner_customers c\n  WHERE ((c.id = service_orders.customer_id) AND (c.user_id = service_orders.user_id) AND ((c.branch_id IS NULL) OR (c.branch_id = service_orders.branch_id)))))))"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "service_orders",
+    "policyname": "service_orders_select",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "((user_id = ( SELECT auth.uid() AS uid)) OR ((branch_id IS NOT NULL) AND partner_employee_can_access_branch(user_id, branch_id)))",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "service_orders",
+    "policyname": "service_orders_update",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "UPDATE",
+    "qual": "((user_id = ( SELECT auth.uid() AS uid)) OR ((branch_id IS NOT NULL) AND partner_employee_can_access_branch(user_id, branch_id)))",
+    "with_check": "((user_id = ( SELECT auth.uid() AS uid)) AND (branch_id IS NOT NULL) AND ((EXISTS ( SELECT 1\n   FROM partner_branches b\n  WHERE ((b.id = service_orders.branch_id) AND (b.user_id = ( SELECT auth.uid() AS uid)) AND (b.is_active = true)))) OR partner_employee_can_access_branch(user_id, branch_id)))"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "support_messages",
+    "policyname": "clients_read_own_support_messages",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "(( SELECT auth.uid() AS uid) = user_id)",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "support_messages",
+    "policyname": "clients_send_support_messages",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "((( SELECT auth.uid() AS uid) = user_id) AND (sender_role = 'cliente'::text))"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "support_messages",
+    "policyname": "super_admin_read_support_messages",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "( SELECT is_super_admin() AS is_super_admin)",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "support_messages",
+    "policyname": "super_admin_reply_support_messages",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "(( SELECT is_super_admin() AS is_super_admin) AND (sender_role = 'suporte'::text))"
+  }
+]
