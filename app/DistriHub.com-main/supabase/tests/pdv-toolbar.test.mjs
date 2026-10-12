@@ -86,6 +86,24 @@ test('pesquisa fica à esquerda e carrinho acima das opções à direita', async
   assert.equal(layout.children[1].props['aria-label'], 'Opções da venda');
   assert.equal(layout.children[1].children[0].props['aria-label'], 'Carrinho');
 });
+test('leitor de código adiciona o produto pelo SKU e leituras repetidas aumentam a quantidade', async () => {
+  await act(async () => {
+    renderer = TestRenderer.create(React.createElement(module.exports.Checkout, {
+      ...props,
+      products: [{ ...props.products[0], sku: '0789012345678' }],
+    }));
+  });
+  const searchInput = renderer.root.findByProps({ 'aria-label': 'Buscar produto por nome ou SKU' });
+  const scan = async () => {
+    await act(async () => searchInput.props.onChange({ target: { value: '0789012345678' } }));
+    let prevented = false;
+    await act(async () => searchInput.props.onKeyDown({ key: 'Enter', preventDefault: () => { prevented = true; } }));
+    assert.equal(prevented, true);
+  };
+  await scan();
+  await scan();
+  assert.equal(renderer.root.findByProps({ 'aria-label': 'Carrinho' }).findByType('b').children[0], '2');
+});
 test('selecionar e remover o último produto mantém as opções da venda visíveis', async () => {
   await act(async () => { renderer = TestRenderer.create(React.createElement(module.exports.Checkout, props)); });
   await act(async () => renderer.root.findByProps({ 'aria-label': 'Buscar produto por nome ou SKU' }).props.onChange({ target: { value: 'Produto' } }));
