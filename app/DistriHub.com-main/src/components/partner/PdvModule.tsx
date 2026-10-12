@@ -536,11 +536,13 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
     noticeTimeoutRef.current = window.setTimeout(() => setSelectionNotice(null), 3500);
   }
 
-  function addToCart(product: PartnerProduct) {
+  function addToCart(product: PartnerProduct, fromScanner = false) {
     // Ignora disparo duplicado do mesmo toque/clique (ex.: double-tap acidental no mobile).
     const now = Date.now();
-    if (lastClickRef.current.id === product.id && now - lastClickRef.current.time < 350) return;
-    lastClickRef.current = { id: product.id, time: now };
+    if (!fromScanner) {
+      if (lastClickRef.current.id === product.id && now - lastClickRef.current.time < 350) return;
+      lastClickRef.current = { id: product.id, time: now };
+    }
 
     if (!product.is_service) {
       const inCart = cart.find((i) => i.product_id === product.id)?.quantity ?? 0;
@@ -663,7 +665,20 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
   data-1p-ignore="true"
   value={search}
   onChange={(e) => setSearch(e.target.value)}
-  placeholder="Buscar produto por nome ou SKU..."
+  onKeyDown={(event) => {
+    if (event.key !== 'Enter' || !search.trim()) return;
+    event.preventDefault();
+    const code = search.trim().toLocaleLowerCase();
+    const matches = filtered.filter((product) => product.sku?.trim().toLocaleLowerCase() === code);
+    if (matches.length === 1) {
+      addToCart(matches[0], true);
+    } else if (matches.length > 1) {
+      showSelectionNotice('Este código está vinculado a mais de um produto nesta filial. Corrija o SKU cadastrado.');
+    } else {
+      showSelectionNotice('Código não encontrado. Cadastre o código de barras no campo SKU do produto.');
+    }
+  }}
+  placeholder="Buscar por nome, SKU ou código de barras..."
   aria-label="Buscar produto por nome ou SKU"
 />
 
