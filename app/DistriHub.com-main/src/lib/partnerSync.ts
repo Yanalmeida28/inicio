@@ -15,6 +15,7 @@ const moduleCollections: Record<string, PartnerCollection[]> = {
   pdv: ['products', 'customers', 'categories', 'combos', 'modifiers'],
   pedidos: ['products', 'customers', 'sales', 'invoices', 'rmas'],
   caixa: ['customers'], os: ['products', 'customers'],
+  rma: ['products', 'customers', 'sales', 'rmas'],
   historico: ['customers', 'orders'],
   suporte: [], 'white-label': [], configuracoes: [],
   entregas: ['sales', 'customers'], fiscal: ['sales', 'products', 'customers'],

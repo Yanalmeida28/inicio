@@ -397,6 +397,12 @@ export interface DeliveryDetails { scheduled_date?: string; failure_reason?: str
 export interface RmaAttachment { kind: 'before' | 'after' | 'defect'; name: string; path: string; }
 
 export interface RmaRequest {
+  refund_amount?: number;
+  refund_request_id?: string | null;
+  refund_method?: 'dinheiro' | 'pix' | 'cartao' | null;
+  refund_reason?: string | null;
+  refunded_at?: string | null;
+  destination?: 'avaliacao' | 'avaria' | 'fornecedor' | 'estoque';
   attachments?: RmaAttachment[];
   id: string;
   user_id: string;
@@ -433,6 +439,11 @@ export type RmaPayload =
     | 'credit_amount'
     | 'credit_used_amount'
     | 'credited_at'
+    | 'refund_amount'
+    | 'refund_request_id'
+    | 'refund_method'
+    | 'refund_reason'
+    | 'refunded_at'
     | 'branch_id'
     | 'customer_name'
   > & {

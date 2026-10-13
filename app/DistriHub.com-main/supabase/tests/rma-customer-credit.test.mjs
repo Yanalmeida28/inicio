@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import { rmaControlExports } from './fixtures/rma-control.mjs';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { PGlite } from '@electric-sql/pglite';
@@ -90,6 +91,72 @@ test('RMA customer credit is bounded, atomic, idempotent and settles invoices wi
   assert.equal((await one('SELECT count(*)::int n FROM partner_rma_credit_applications')).n,0);
   await db.exec('RESET ROLE; SET ROLE anon');
   await assert.rejects(db.query('SELECT grant_partner_rma_credit($1,40)',[rma.id]),/permission denied/);
+  await db.exec(`RESET ROLE; SET test.actor='${owner}'`);
+  await db.exec(await readFile(new URL('../migrations/20261013190034_separate_rma_destination_and_credit.sql',import.meta.url),'utf8'));
+  assert.equal((await one('SELECT stock FROM partner_products')).stock,6,'migration must not replay stock');
+  const next=await one(`INSERT INTO rma_requests_v2(user_id,branch_id,sale_id,sale_item_index,product_id,customer_id,quantity,product_name,product_sku,batch_or_order) VALUES($1,$2,$3,0,$4,$5,1,'Peca','SKU','Venda') RETURNING id,destination`,[owner,branch,sale,product,customer]);
+  assert.equal(next.destination,'avaliacao');
+  await db.query("UPDATE rma_requests_v2 SET destination='fornecedor' WHERE id=$1",[next.id]);
+  assert.equal((await one('SELECT stock FROM partner_products')).stock,6);
+  await db.query('SELECT grant_partner_rma_credit($1,20)',[next.id]);
+  assert.equal((await one('SELECT destination FROM rma_requests_v2 WHERE id=$1',[next.id])).destination,'fornecedor');
+  assert.equal((await one('SELECT stock FROM partner_products')).stock,6,'credit does not return defective goods to stock');
+  await db.query("UPDATE rma_requests_v2 SET destination='estoque' WHERE id=$1",[next.id]);
+  await db.query("UPDATE rma_requests_v2 SET destination='estoque' WHERE id=$1",[next.id]);
+  assert.equal((await one('SELECT stock FROM partner_products')).stock,7,'destination retry restores stock once');
+  assert.equal((await one('SELECT credit_amount FROM rma_requests_v2 WHERE id=$1',[next.id])).credit_amount,'20.00');
+  await assert.rejects(db.query("UPDATE rma_requests_v2 SET destination='fornecedor' WHERE id=$1",[next.id]),/ja reintegrada/);
+  await db.exec(`SET test.actor='${foreign}'`);
+  await assert.rejects(db.query("UPDATE rma_requests_v2 SET destination='estoque' WHERE id=$1",[next.id]),/Empresa ou filial/);
+  await db.exec(`SET test.actor='${owner}';
+   ALTER TABLE partner_sales ADD COLUMN freight_fee numeric DEFAULT 0;
+   CREATE FUNCTION partner_subscription_private.require_operator_module(text,uuid) RETURNS void LANGUAGE sql AS $$ SELECT $$;
+   CREATE TABLE partner_cash_sessions(id uuid PRIMARY KEY,user_id uuid,branch_id uuid,actor_key uuid,closed_at timestamptz);
+   CREATE TABLE partner_cash_movements(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),session_id uuid,kind text,payment_method text,amount numeric,reason text,sale_id uuid,request_id uuid UNIQUE,authorized_by uuid);
+  `);
+  await db.exec(await readFile(new URL('../migrations/20261013190858_rma_customer_refunds.sql',import.meta.url),'utf8'));
+  const refundSale='00000000-0000-0000-0000-000000000021';
+  const session='00000000-0000-0000-0000-000000000022';
+  const refundId='00000000-0000-0000-0000-000000000023';
+  await db.query(`INSERT INTO partner_sales SELECT $1,user_id,branch_id,customer_id,customer_name,items,status,total,freight_fee FROM partner_sales WHERE id=$2`,[refundSale,sale]);
+  await db.query('INSERT INTO partner_cash_sessions VALUES($1,$2,$3,$2,NULL)',[session,owner,branch]);
+  await db.query("INSERT INTO partner_cash_movements(session_id,kind,payment_method,amount,sale_id) VALUES($1,'venda','pix',60,$2)",[session,refundSale]);
+  const returned=await one(`INSERT INTO rma_requests_v2(user_id,branch_id,sale_id,sale_item_index,product_id,customer_id,quantity,product_name,product_sku,batch_or_order) VALUES($1,$2,$3,0,$4,$5,1,'Peca','SKU','Venda') RETURNING id`,[owner,branch,refundSale,product,customer]);
+  await db.query("UPDATE rma_requests_v2 SET destination='fornecedor' WHERE id=$1",[returned.id]);
+  const refund=async(amount=20,method='pix',request=refundId)=>db.query("SELECT record_partner_rma_refund($1,$2,$3,'Defeito de fabrica',$4)",[returned.id,amount,method,request]);
+  await assert.rejects(refund(21),/excede/);
+  await assert.rejects(refund(20,'dinheiro'),/recebimento eleg/);
+  await db.exec("SET test.operator_role='vendedor'");
+  await assert.rejects(refund(),/permissao/);
+  await db.exec("SET test.operator_role='administrador'");
+  await db.query('UPDATE partner_cash_sessions SET closed_at=now() WHERE id=$1',[session]);
+  await assert.rejects(refund(),/Abra o caixa/);
+  await db.query('UPDATE partner_cash_sessions SET closed_at=NULL WHERE id=$1',[session]);
+  await refund();
+  await db.query('UPDATE partner_cash_sessions SET closed_at=now() WHERE id=$1',[session]);
+  await refund();
+  assert.equal((await one("SELECT count(*)::int n FROM partner_cash_movements WHERE kind='devolucao'")).n,1);
+  assert.equal((await one('SELECT refund_amount,destination FROM rma_requests_v2 WHERE id=$1',[returned.id])).refund_amount,'20.00');
+  assert.equal((await one('SELECT destination FROM rma_requests_v2 WHERE id=$1',[returned.id])).destination,'fornecedor');
+  assert.equal((await one('SELECT stock FROM partner_products')).stock,7,'refund must never return stock');
+  await assert.rejects(refund(19),/outra operacao/);
+  await assert.rejects(db.query('SELECT grant_partner_rma_credit($1,20)',[returned.id]),/reembolsada/);
+  await assert.rejects(db.query('UPDATE rma_requests_v2 SET refund_amount=1 WHERE id=$1',[returned.id]),/imutavel/);
+  await db.exec(`SET test.actor='${foreign}'`);
+  await assert.rejects(refund(),/permissao/);
+  await db.exec(`SET test.actor='${owner}'`);
+  await db.query('UPDATE partner_cash_sessions SET closed_at=NULL WHERE id=$1',[session]);
+  const secondReturn=await one(`INSERT INTO rma_requests_v2(user_id,branch_id,sale_id,sale_item_index,product_id,customer_id,quantity,product_name,product_sku,batch_or_order) VALUES($1,$2,$3,0,$4,$5,1,'Peca','SKU','Venda') RETURNING id`,[owner,branch,refundSale,product,customer]);
+  await db.exec(`CREATE FUNCTION fail_refund_confirmation() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.refund_amount>0 THEN RAISE EXCEPTION 'Confirmacao indisponivel'; END IF; RETURN NEW; END $$;
+   CREATE TRIGGER zzzz_fail_refund BEFORE UPDATE ON rma_requests_v2 FOR EACH ROW EXECUTE FUNCTION fail_refund_confirmation()`);
+  await assert.rejects(db.query("SELECT record_partner_rma_refund($1,20,'pix','Defeito',gen_random_uuid())",[secondReturn.id]),/Confirmacao indisponivel/);
+  assert.equal((await one("SELECT count(*)::int n FROM partner_cash_movements WHERE kind='devolucao'")).n,1,'cash debit rolls back when RMA confirmation fails');
+  assert.equal((await one('SELECT refund_amount FROM rma_requests_v2 WHERE id=$1',[secondReturn.id])).refund_amount,'0.00');
+  await db.exec('DROP TRIGGER zzzz_fail_refund ON rma_requests_v2');
+  await db.query("INSERT INTO partner_cash_movements(session_id,kind,payment_method,amount,sale_id) VALUES($1,'devolucao','pix',30,$2)",[session,refundSale]);
+  await assert.rejects(db.query('SELECT grant_partner_rma_credit($1,20)',[secondReturn.id]),/excedem o saldo/);
+  assert.equal((await one('SELECT credit_amount FROM rma_requests_v2 WHERE id=$1',[secondReturn.id])).credit_amount,'0.00');
+
  } finally { await db.close(); }
 });
 
@@ -101,11 +168,13 @@ async function component(file, name) {
    if(dependency==='../../lib/supabase') return {supabase:null};
    if(dependency==='../../lib/accounts') return {isOverdue:()=>false};
    if(dependency==='./InvoiceReceipts') return {InvoiceReceipts:()=>null};
+   if(dependency==='./RmaRefundForm') return {RmaRefundForm:()=>null};
    if(dependency==='react') return React;
    if(dependency==='react/jsx-runtime') return jsx;
    if(dependency==='lucide-react') return new Proxy({},{get:()=>()=>null});
    if(dependency==='../../utils') return {money:{format:value=>`R$ ${Number(value).toFixed(2)}`}};
    if(dependency==='../../lib/saleReturns') return {returnedQuantity:()=>0};
+   if(dependency==='../../lib/rmaControl') return rmaControlExports;
    if(dependency==='../../data') return {rmaStatusFlow:['aguardando_troca','retornou_fornecedor','reintegrado_estoque','credito_gerado'],rmaStatusLabels:{reintegrado_estoque:'Reintegrado'},rmaStatusColors:{}};
    throw new Error(dependency);
   },
@@ -113,13 +182,32 @@ async function component(file, name) {
  return module.exports[name];
 }
 
+test('RMA lets the operator choose the destination and keeps a failed choice without generating credit', async () => {
+ const RmaModule=await component('RmaModule','RmaModule');
+ let view; const calls=[]; let fail=true;
+ const rma={id:'destination-rma',product_id:product,product_name:'Peca',status:'aguardando_troca',destination:'avaliacao',quantity:1};
+ act(()=>{view=TestRenderer.create(React.createElement(RmaModule,{rmaRequests:[rma],customers:[],products:[],sales:[],currentRole:'administrador',warrantyTerms:'',onUpdateStatus:async(...args)=>{calls.push(args);if(fail)throw new Error('Falha temporaria');}}));});
+ try {
+  act(()=>view.root.findByProps({title:'Escolher destino'}).props.onClick());
+  const select=()=>view.root.findByProps({'aria-label':'Destino da peça'});
+  assert.deepEqual(select().findAllByType('option').map(node=>node.props.value),['avaliacao','avaria','fornecedor','estoque']);
+  act(()=>select().props.onChange({target:{value:'fornecedor'}}));
+  await act(async()=>view.root.findByType('form').props.onSubmit({preventDefault(){}}));
+  assert.equal(select().props.value,'fornecedor');
+  fail=false;
+  await act(async()=>view.root.findByType('form').props.onSubmit({preventDefault(){}}));
+  assert.deepEqual(calls,[['destination-rma','aguardando_troca','fornecedor'],['destination-rma','aguardando_troca','fornecedor']]);
+  assert.equal(view.root.findAllByType('form').length,0);
+ } finally {act(()=>view.unmount());}
+});
+
 test('RMA asks for a credit value, preserves a failed value and submits the linked return', async () => {
  const RmaModule=await component('RmaModule','RmaModule');
  let view; const calls=[];
  const rma={id:'rma',customer_name:'Cliente',customer_id:customer,sale_id:sale,sale_item_index:0,quantity:2,product_name:'Peca',status:'reintegrado_estoque',created_at:'2026-10-10',credit_amount:0,credit_used_amount:0};
  act(()=>{view=TestRenderer.create(React.createElement(RmaModule,{rmaRequests:[rma],customers:[],products:[],sales:[{id:sale,items:[{unit_price:20}]}],currentRole:'administrador',warrantyTerms:'',onGrantCredit:async(id,value)=>{calls.push([id,value]);if(calls.length===1)throw {message:'Falha temporária'};},onUpdateStatus:async()=>{throw new Error('status-only credit must not be sent');}}));});
  try {
-  await act(async()=>{await view.root.findAllByType('button').find(button=>button.props.title==='Avançar Status').props.onClick();});
+  await act(async()=>{await view.root.findAllByType('button').find(button=>button.children.includes('Gerar crédito')).props.onClick();});
   assert.equal(view.root.findByProps({'aria-label':'Valor do crédito'}).props.value,'40.00');
   await act(async()=>{await view.root.findByType('form').props.onSubmit({preventDefault(){}});});
   assert.equal(view.root.findByProps({role:'alert'}).children.join(''),'Falha temporária');

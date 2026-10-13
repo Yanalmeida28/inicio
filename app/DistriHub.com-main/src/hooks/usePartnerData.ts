@@ -2623,6 +2623,7 @@ read('sales', () => fetchAllPages((from, to) => client
     async (
       id: string,
       status: RmaStatus,
+      destination?: RmaRequest['destination'],
     ) => {
       const currentIdentity = requireIdentity();
 
@@ -2650,6 +2651,7 @@ read('sales', () => fetchAllPages((from, to) => client
           .from('rma_requests_v2')
           .update({
             status,
+            ...(destination ? { destination } : {}),
             updated_at:
               new Date().toISOString(),
           })
@@ -2676,7 +2678,7 @@ read('sales', () => fetchAllPages((from, to) => client
         ),
       }));
 
-      if (status === 'reintegrado_estoque' && existing.branch_id) {
+      if ((status === 'reintegrado_estoque' || destination === 'estoque') && existing.branch_id) {
         await syncConfirmedSale(existing.branch_id);
       }
       return updated as RmaRequest;
@@ -2691,6 +2693,22 @@ read('sales', () => fetchAllPages((from, to) => client
     if (error) throw error;
     await loadData();
   }, [requireIdentity, loadData]);
+
+  const refundRma = useCallback(async (id: string, amount: number, method: 'dinheiro' | 'pix' | 'cartao', reason: string, requestId: string, operatorId: string | null, operatorPin: string | null) => {
+    requireIdentity();
+    if (!supabase) throw new Error('Supabase não configurado.');
+    const { data: confirmed, error } = await supabase.rpc('record_partner_rma_refund', {
+      p_rma_id: id, p_amount: amount, p_method: method, p_reason: reason, p_request_id: requestId,
+      p_salesperson_id: operatorId, p_pin: operatorPin,
+    });
+    if (error) throw error;
+    if (confirmed !== requestId) throw new Error('Reembolso sem confirmação. Recupere a tentativa antes de registrar outro.');
+    dataRevisionRef.current.invalidate(['rmas']);
+    setData(previous => ({ ...previous, rmas: previous.rmas.map(rma => rma.id === id ? {
+      ...rma, refund_amount: amount, refund_request_id: requestId, refund_method: method,
+      refund_reason: reason, refunded_at: new Date().toISOString(),
+    } : rma) }));
+  }, [requireIdentity]);
 
   const applyRmaCredit = useCallback(async (rmaId: string, invoiceId: string, amount: number, applicationId: string) => {
     requireIdentity();
@@ -4071,6 +4089,7 @@ read('sales', () => fetchAllPages((from, to) => client
     createRma,
     updateRmaStatus,
     grantRmaCredit,
+    refundRma,
     applyRmaCredit,
     deleteRma,
 

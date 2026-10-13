@@ -2404,6 +2404,10 @@ export function PartnerPanel({
               <div hidden={activeTab !== 'rma'}>
               {renderTab('rma',
               <RmaModule
+                onRefund={async (id, amount, method, reason, requestId) => {
+                  const { operatorId, operatorPin } = getOperatorContext();
+                  await partner.refundRma(id, amount, method, reason, requestId, operatorId, operatorPin);
+                }}
                 onGrantCredit={partner.grantRmaCredit}
                 rmaRequests={
                   filteredRmaRequests

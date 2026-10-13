@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import { rmaControlExports } from './fixtures/rma-control.mjs';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
@@ -104,13 +105,18 @@ test('customer history identifies partial and complete returns without matching 
 
 test('return form submits the item identity and quantity, bounds remaining units and retains a failed draft', async () => {
   const component = { exports:{} };
+  const printedLines = []; let prints = 0;
+  const popup = { opener: {}, focus() {}, print() { prints++; }, document: {
+    createElement: () => ({}), head: { append() {} }, body: { append(node) { printedLines.push(node.textContent); } },
+  } };
   vm.runInNewContext(ts.transpileModule(await readFile(new URL('../../src/components/partner/RmaModule.tsx',import.meta.url),'utf8'), {
     compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,target:ts.ScriptTarget.ES2020},
-  }).outputText, { crypto:{randomUUID:()=>'rma-attempt'}, exports:component.exports, require(name) {
+  }).outputText, { window: { open: () => popup, print() { throw new Error('Must not print the application page'); } }, crypto:{randomUUID:()=>'rma-attempt'}, exports:component.exports, require(name) {
     if(name==='react') return React;
     if(name==='react/jsx-runtime') return jsx;
     if(name==='lucide-react') return new Proxy({}, {get:()=>()=>null});
     if(name==='../../lib/saleReturns') return helperModule.exports;
+    if(name==='../../lib/rmaControl') return rmaControlExports;
     if(name==='../../utils') return {money:{format:String}};
     if(name==='../../data') return {rmaStatusLabels:{aguardando_troca:'Aguardando Troca'},rmaStatusColors:{},rmaStatusFlow:['aguardando_troca','retornou_fornecedor','reintegrado_estoque','credito_gerado']};
     return {};
@@ -150,5 +156,12 @@ test('return form submits the item identity and quantity, bounds remaining units
     fail=false;
     await act(async()=>view.root.findByType('form').props.onSubmit({preventDefault(){}}));
     assert.equal(view.root.findAllByType('form').length,0);
+    assert.equal(view.root.findAllByProps({title:'Editar'}).length,0);
+    act(()=>view.root.findByProps({title:'Imprimir Etiqueta'}).props.onClick());
+    act(()=>view.root.findAllByProps({className:'module-submit-btn'}).find(node=>node.type==='button').props.onClick());
+    assert.equal(prints,1);
+    assert.equal(popup.opener,null);
+    assert.ok(printedLines.includes(`RMA: ${legacy}`));
+    assert.ok(printedLines.includes('Quantidade: 1'));
   } finally {act(()=>view.unmount());}
 });

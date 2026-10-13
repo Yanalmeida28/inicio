@@ -20,7 +20,7 @@ async function request(path: string, body?: unknown) {
     if (!response.ok) throw new Error(result.error ?? 'O conector recusou a impressão.');
     return result;
   } catch (error) {
-    if (error instanceof TypeError) throw new Error('Abra o Conector DistriHub no Windows e permita o acesso à rede local se o navegador solicitar.');
+    if (error instanceof TypeError) throw new Error(body ? 'A confirmação da impressão não chegou. Confira a impressora antes de reimprimir para evitar dois cupons. Verifique também se o Conector DistriHub está aberto e se o navegador permite acesso à rede local.' : 'Abra o Conector DistriHub no Windows e permita o acesso à rede local se o navegador solicitar.');
     if (error instanceof Error && error.name === 'AbortError') throw new Error(body ? 'A confirmação da impressão não chegou. Confira a impressora antes de reimprimir para evitar dois cupons.' : 'O conector não respondeu. Abra o Conector DistriHub no Windows.');
     throw error;
   } finally { clearTimeout(timer); }

@@ -1,13 +1,15 @@
 import { useMemo, useRef, useState } from 'react';
 import {
   ArrowRightCircle, Camera, FileText, Package, Printer, QrCode, Upload,
-  Wallet, X, Pencil, Trash2, AlertCircle,
+  Wallet, X, Trash2, AlertCircle,
 } from 'lucide-react';
 import type { PartnerCustomer, PartnerProduct, PartnerSale, RmaPayload, RmaRequest, RmaStatus, SalespersonRole } from '../../types';
-import { rmaStatusLabels, rmaStatusColors, rmaStatusFlow } from '../../data';
+import { rmaStatusLabels, rmaStatusColors } from '../../data';
 import { money } from '../../utils';
 import { supabase } from '../../lib/supabase';
 import { returnedQuantity } from '../../lib/saleReturns';
+import { RmaRefundForm, type RmaRefundHandler } from './RmaRefundForm';
+import { filterRmas, rmaControl, rmaDestination, rmaDestinations, type RmaFilters } from '../../lib/rmaControl';
 
 type RmaModuleProps = {
   rmaRequests: RmaRequest[];
@@ -17,8 +19,9 @@ type RmaModuleProps = {
   warrantyTerms: string;
   currentRole: SalespersonRole;
   onCreate: (rma: RmaPayload) => Promise<void>;
-  onUpdateStatus: (id: string, status: RmaStatus) => Promise<unknown>;
+  onUpdateStatus: (id: string, status: RmaStatus, destination?: RmaRequest['destination']) => Promise<unknown>;
   onGrantCredit?: (id: string, amount: number) => Promise<void>;
+  onRefund?: RmaRefundHandler;
   onDelete: (id: string) => Promise<void>;
 };
 
@@ -30,7 +33,7 @@ function errorMessage(error: unknown, fallback: string) {
 }
 
 export function RmaModule({
-  rmaRequests, customers, products, sales, warrantyTerms, currentRole, onCreate, onUpdateStatus, onGrantCredit, onDelete,
+  rmaRequests, customers, products, sales, warrantyTerms, currentRole, onCreate, onUpdateStatus, onGrantCredit, onRefund, onDelete,
 }: RmaModuleProps) {
   const [showForm, setShowForm] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -56,16 +59,18 @@ export function RmaModule({
   const [beforePhoto, setBeforePhoto] = useState<string | null>(null);
   const [afterPhoto, setAfterPhoto] = useState<string | null>(null);
   const [labelRmaId, setLabelRmaId] = useState<string | null>(null);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editProductName, setEditProductName] = useState('');
-  const [editProductSku, setEditProductSku] = useState('');
-  const [editBatchOrOrder, setEditBatchOrOrder] = useState('');
-  const [, setEditDefect] = useState('');
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | RmaStatus>('all');
+  const [controlFilters, setControlFilters] = useState<RmaFilters>({ search: '', from: '', to: '', destination: 'all', settlement: 'all', dateBasis: 'solicitacao' });
   const [creditRma, setCreditRma] = useState<RmaRequest | null>(null);
+  const [refundRma, setRefundRma] = useState<RmaRequest | null>(null);
   const [creditAmount, setCreditAmount] = useState('');
   const [creditError, setCreditError] = useState<string | null>(null);
+  const [destinationRma, setDestinationRma] = useState<RmaRequest | null>(null);
+  const [destination, setDestination] = useState<NonNullable<RmaRequest['destination']>>('avaliacao');
+  const actionLock = useRef(false);
+  const destinationLabels = rmaDestinations;
+  const currentDestination = rmaDestination;
   const creditBalanceKnown = rmaRequests.every(rma => !Number(rma.credit_amount) || rma.credit_used_amount != null);
   const walletBalance = rmaRequests.reduce((sum, rma) => sum + Math.max(0, Math.round(Number(rma.credit_amount ?? 0) * 100) - Math.round(Number(rma.credit_used_amount ?? 0) * 100)), 0) / 100;
 
@@ -111,18 +116,11 @@ export function RmaModule({
   const remainingQuantity = selectedSale && selectedSaleItem
     ? selectedSaleItem.quantity - returnedQuantity(selectedSale, Number(saleItemIndex), rmaRequests) : 0;
 
-  const statusSummary = useMemo(() => ({
-    total: rmaRequests.length,
-    aguardando_troca: rmaRequests.filter((r) => r.status === 'aguardando_troca').length,
-    retornou_fornecedor: rmaRequests.filter((r) => r.status === 'retornou_fornecedor').length,
-    reintegrado_estoque: rmaRequests.filter((r) => r.status === 'reintegrado_estoque').length,
-    credito_gerado: rmaRequests.filter((r) => r.status === 'credito_gerado').length,
-  }), [rmaRequests]);
-
   const visibleRequests = useMemo(() => {
-    if (filter === 'all') return rmaRequests;
-    return rmaRequests.filter((request) => request.status === filter);
-  }, [filter, rmaRequests]);
+    const rows = filterRmas(rmaRequests, controlFilters);
+    return filter === 'all' ? rows : rows.filter(request => request.status === filter);
+  }, [filter, rmaRequests, controlFilters]);
+  const control = useMemo(() => rmaControl(visibleRequests, products, sales), [visibleRequests, products, sales]);
 
   function selectCustomer(customer: PartnerCustomer) {
     setCustomerId(customer.id);
@@ -240,33 +238,15 @@ export function RmaModule({
     reader.readAsDataURL(file);
   }
 
-  async function advanceStatus(rma: RmaRequest) {
-    if (busy) return;
-    const idx = rmaStatusFlow.indexOf(rma.status);
-    if (idx < 0 || idx >= rmaStatusFlow.length - 1) return;
-    if (rmaStatusFlow[idx + 1] === 'credito_gerado') { openCredit(rma); return; }
+  async function confirmDestination(event: React.FormEvent) {
+    event.preventDefault();
+    if (busy || actionLock.current || !destinationRma) return;
+    actionLock.current = true;
     setBusy(true);
     setActionError(null);
-    try { await onUpdateStatus(rma.id, rmaStatusFlow[idx + 1]); }
+    try { await onUpdateStatus(destinationRma.id, destinationRma.status, destination); setDestinationRma(null); }
     catch (error) { setActionError(errorMessage(error, 'Não foi possível atualizar o status.')); }
-    finally { setBusy(false); }
-  }
-
-  function startEdit(rma: RmaRequest) {
-    setEditingId(rma.id);
-    setEditProductName(rma.product_name);
-    setEditProductSku(rma.product_sku);
-    setEditBatchOrOrder(rma.batch_or_order);
-    setEditDefect(rma.defect_description);
-  }
-
-  function cancelEdit() {
-    setEditingId(null);
-  }
-
-  function saveEdit(id: string) {
-    onUpdateStatus(id, rmaRequests.find((r) => r.id === id)?.status ?? 'aguardando_troca');
-    setEditingId(null);
+    finally { actionLock.current = false; setBusy(false); }
   }
 
   async function confirmDelete(id: string) {
@@ -280,12 +260,31 @@ export function RmaModule({
 
   const labelRma = rmaRequests.find((r) => r.id === labelRmaId);
 
+  function printLabel() {
+    if (!labelRma) return;
+    const popup = window.open('', '_blank', 'width=420,height=600');
+    if (!popup) { setActionError('Permita abrir uma nova janela para imprimir a etiqueta.'); return; }
+    popup.opener = null;
+    const doc = popup.document;
+    doc.title = 'Etiqueta de devolução';
+    const style = doc.createElement('style');
+    style.textContent = '@page{size:58mm auto;margin:3mm}body{font:12px Arial;color:#000;width:52mm;margin:0}p{margin:4px 0;overflow-wrap:anywhere}button{margin:12px 0}@media print{button{display:none}}';
+    doc.head.append(style);
+    for (const text of ['RMA / DEVOLUÇÃO', labelRma.product_name, `SKU: ${labelRma.product_sku}`, `Origem: ${labelRma.batch_or_order}`, `RMA: ${labelRma.id}`, `Quantidade: ${labelRma.quantity ?? 1}`, labelRma.customer_name ? `Cliente: ${labelRma.customer_name}` : '']) {
+      if (!text) continue;
+      const line = doc.createElement('p'); line.textContent = text; doc.body.append(line);
+    }
+    const button = doc.createElement('button'); button.textContent = 'Imprimir etiqueta';
+    button.onclick = () => { popup.focus(); popup.print(); }; doc.body.append(button);
+    popup.focus(); popup.print();
+  }
+
   return (
     <div className="panel-module">
       <div className="module-header">
         <span className="module-icon"><Package size={20} /></span>
         <div>
-          <h3>RMA / Devoluções & Ordens de Serviço</h3>
+          <h3>RMA / Devoluções</h3>
           <p>Registre itens defeituosos, acompanhe status e imprima etiquetas</p>
         </div>
       </div>
@@ -312,24 +311,50 @@ export function RmaModule({
           </div>
         </form>
       </div>}
+      {refundRma && onRefund && <RmaRefundForm key={refundRma.id} rma={refundRma} onConfirm={onRefund} onClose={() => setRefundRma(null)} />}
 
-      <div className="orders-summary" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px', margin: '18px 0' }}>
-        <div className="orders-summary-card" style={{ padding: '14px 16px', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', background: '#0f1f2c' }}>
-          <small style={{ color: '#8ba3b5' }}>Total de RMAs</small>
-          <strong style={{ display: 'block', fontSize: '22px', marginTop: '6px' }}>{statusSummary.total}</strong>
+      {destinationRma && <div className="modal-overlay">
+        <form className="modal-card rma-form" onSubmit={confirmDestination}>
+          <h4>Destino da peça devolvida</h4>
+          <p>{destinationRma.product_name} · {destinationRma.quantity ?? 1} unidade(s)</p>
+          <label>Destino<select aria-label="Destino da peça" value={destination} disabled={busy} onChange={event => setDestination(event.target.value as NonNullable<RmaRequest['destination']>)}>
+            <option value="avaliacao">Separada para avaliação</option>
+            <option value="avaria">Avaria / defeito de fabricação</option>
+            <option value="fornecedor">Enviar ao fornecedor</option>
+            <option value="estoque" disabled={!destinationRma.product_id}>Reintegrar ao estoque disponível</option>
+          </select></label>
+          <p>{destination === 'estoque' ? 'Confirme apenas se a peça está apta para venda. A quantidade será adicionada ao estoque uma única vez.' : 'A peça permanece fora do estoque disponível para venda.'} Esta escolha não gera crédito nem reembolso.</p>
+          {actionError && <p role="alert" className="form-error-msg">{actionError}</p>}
+          <div className="pix-actions">
+            <button type="submit" className="module-submit-btn" disabled={busy}>{busy ? 'Salvando...' : 'Confirmar destino'}</button>
+            <button type="button" className="rma-advance-btn" disabled={busy} onClick={() => setDestinationRma(null)}>Cancelar</button>
+          </div>
+        </form>
+      </div>}
+
+      <div className="module-card rma-form">
+        <h4>Controle de devoluções</h4>
+        <div className="form-row">
+          <label>Buscar<input aria-label="Buscar devoluções" placeholder="Cliente, produto, SKU ou pedido" value={controlFilters.search} onChange={event => setControlFilters(previous => ({ ...previous, search: event.target.value }))} /></label>
+          <label>Data considerada<select value={controlFilters.dateBasis} onChange={event => setControlFilters(previous => ({ ...previous, dateBasis: event.target.value as RmaFilters['dateBasis'] }))}><option value="solicitacao">Solicitação</option><option value="reembolso">Reembolso</option><option value="credito">Geração do crédito</option></select></label>
+          <label>De<input type="date" aria-label="Início do período RMA" value={controlFilters.from} onChange={event => setControlFilters(previous => ({ ...previous, from: event.target.value }))} /></label>
+          <label>Até<input type="date" aria-label="Fim do período RMA" value={controlFilters.to} onChange={event => setControlFilters(previous => ({ ...previous, to: event.target.value }))} /></label>
         </div>
-        <div className="orders-summary-card" style={{ padding: '14px 16px', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', background: '#0f1f2c' }}>
-          <small style={{ color: '#8ba3b5' }}>Aguardando troca</small>
-          <strong style={{ display: 'block', fontSize: '22px', marginTop: '6px' }}>{statusSummary.aguardando_troca}</strong>
+        <div className="form-row">
+          <label>Destino<select aria-label="Filtrar destino RMA" value={controlFilters.destination} onChange={event => setControlFilters(previous => ({ ...previous, destination: event.target.value }))}><option value="all">Todos os destinos</option>{Object.entries(rmaDestinations).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
+          <label>Solução financeira<select aria-label="Filtrar solução RMA" value={controlFilters.settlement} onChange={event => setControlFilters(previous => ({ ...previous, settlement: event.target.value }))}><option value="all">Todas</option><option value="pendente">Sem crédito ou reembolso</option><option value="credito">Crédito gerado</option><option value="reembolso">Reembolsado</option></select></label>
+          <button type="button" className="rma-advance-btn" onClick={() => { setControlFilters({ search: '', from: '', to: '', destination: 'all', settlement: 'all', dateBasis: 'solicitacao' }); setFilter('all'); }}>Limpar filtros</button>
         </div>
-        <div className="orders-summary-card" style={{ padding: '14px 16px', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', background: '#0f1f2c' }}>
-          <small style={{ color: '#8ba3b5' }}>Retorno ao fornecedor</small>
-          <strong style={{ display: 'block', fontSize: '22px', marginTop: '6px' }}>{statusSummary.retornou_fornecedor}</strong>
+        <p>{visibleRequests.length} solicitação(ões). Resumo e lista consideram os mesmos filtros e a filial selecionada. Datas no horário de São Paulo.</p>
+        <div className="orders-summary" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
+          {Object.entries(control.groups).map(([key, group]) => <div className="orders-summary-card" key={key}>
+            <small>{rmaDestinations[key as keyof typeof rmaDestinations]}</small><strong>{group.quantity} peça(s)</strong>
+            {canDelete && <><p>Custo: {money.format(group.cost / 100)}{group.estimated ? ' (estimado em parte)' : ''}</p>{group.unknown > 0 && <small>{group.unknown} peça(s) sem custo disponível</small>}</>}
+          </div>)}
+          <div className="orders-summary-card"><small>Créditos gerados</small><strong>{money.format(control.credits)}</strong><p>Utilizados: {money.format(control.used)}</p><small>Disponíveis: {control.available === null ? 'Saldo indisponível' : money.format(control.available)}</small></div>
+          <div className="orders-summary-card"><small>Reembolsado aos clientes</small><strong>{money.format(control.refunded)}</strong><p>Dinheiro: {money.format(control.refunds.dinheiro ?? 0)}<br />PIX: {money.format(control.refunds.pix ?? 0)}<br />Cartão: {money.format(control.refunds.cartao ?? 0)}</p></div>
         </div>
-        <div className="orders-summary-card" style={{ padding: '14px 16px', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', background: '#0f1f2c' }}>
-          <small style={{ color: '#8ba3b5' }}>Crédito gerado</small>
-          <strong style={{ display: 'block', fontSize: '22px', marginTop: '6px' }}>{statusSummary.credito_gerado}</strong>
-        </div>
+        {canDelete && <p>Custos usam o histórico da venda quando disponível; o custo atual é uma estimativa. Peças sem custo não entram no total monetário. No fornecedor indica peças cujo retorno ainda está pendente.</p>}
       </div>
 
       {warrantyTerms && (
@@ -537,33 +562,6 @@ export function RmaModule({
             ) : (
               visibleRequests.map((rma) => (
                 <tr key={rma.id}>
-                  {editingId === rma.id ? (
-                    <>
-                      <td>
-                        <input className="rma-edit-input" value={editProductName} onChange={(e) => setEditProductName(e.target.value)} placeholder="Produto" style={{ width: '100%' }} />
-                        <input className="rma-edit-input" value={editProductSku} onChange={(e) => setEditProductSku(e.target.value)} placeholder="SKU" style={{ width: '100%', marginTop: '4px' }} />
-                      </td>
-                      <td>
-                        <input className="rma-edit-input" value={editBatchOrOrder} onChange={(e) => setEditBatchOrOrder(e.target.value)} placeholder="Lote/Pedido" style={{ width: '100%' }} />
-                      </td>
-                      <td>
-                        <span className="rma-status-badge" style={{ color: rmaStatusColors[rma.status], borderColor: rmaStatusColors[rma.status] }}>
-                          {rmaStatusLabels[rma.status]}
-                        </span>
-                      </td>
-                      <td>—</td>
-                      <td>
-                        <div className="row-action-group">
-                          <button className="rma-advance-btn" onClick={() => saveEdit(rma.id)} title="Salvar">
-                            <FileText size={14} /> Salvar
-                          </button>
-                          <button className="rma-advance-btn" onClick={cancelEdit} title="Cancelar">
-                            <X size={14} />
-                          </button>
-                        </div>
-                      </td>
-                    </>
-                  ) : (
                     <>
                       <td>
                         <strong>{rma.product_name}</strong>
@@ -571,6 +569,7 @@ export function RmaModule({
                         <small>{rma.defect_description}</small>
                         {(rma.attachments ?? []).map(file => <button type="button" key={file.path} className="rma-advance-btn" onClick={() => void openAttachment(file.path)}>{file.kind === 'before' ? 'Antes' : file.kind === 'after' ? 'Depois' : 'Defeito'}: {file.name}</button>)}
                         <small>Quantidade: {rma.quantity ?? 1}{rma.stock_restored_at ? ' · Entrada no estoque registrada' : ''}</small>
+                        <small>Destino: {destinationLabels[currentDestination(rma)]}</small>
                       </td>
                       <td>{rma.batch_or_order}</td>
                       <td>
@@ -585,19 +584,18 @@ export function RmaModule({
                       </td>
                       <td>
                         <div className="row-action-group">
-                          {rma.status !== 'credito_gerado' && (
-                            <button className="rma-advance-btn" disabled={busy || (rma.status === 'reintegrado_estoque' && (!canDelete || !rma.customer_id || !rma.sale_id))} onClick={() => advanceStatus(rma)} title="Avançar Status">
-                              <ArrowRightCircle size={13} /> Avançar
+                          {currentDestination(rma) !== 'estoque' && (
+                            <button className="rma-advance-btn" disabled={busy} onClick={() => { setDestinationRma(rma); setDestination(currentDestination(rma)); setActionError(null); }} title="Escolher destino">
+                              <ArrowRightCircle size={13} /> Escolher destino
                             </button>
                           )}
-                          {rma.status === 'credito_gerado' && !Number(rma.credit_amount) && canDelete && (
-                            <button className="rma-advance-btn" disabled={busy || !rma.customer_id || !rma.sale_id} onClick={() => openCredit(rma)}>Registrar crédito</button>
+                          {!Number(rma.credit_amount) && !Number(rma.refund_amount) && canDelete && onGrantCredit && (
+                            <button className="rma-advance-btn" disabled={busy || !rma.customer_id || !rma.sale_id} onClick={() => openCredit(rma)}>Gerar crédito</button>
                           )}
+                          {!Number(rma.credit_amount) && !Number(rma.refund_amount) && canDelete && onRefund && <button type="button" className="rma-advance-btn" disabled={busy || !rma.customer_id || !rma.sale_id} onClick={() => setRefundRma(rma)}>Reembolsar cliente</button>}
+                          {Number(rma.refund_amount) > 0 && <small>Reembolsado: {money.format(Number(rma.refund_amount))} · {rma.refund_method === 'dinheiro' ? 'Dinheiro' : rma.refund_method === 'pix' ? 'PIX' : 'Cartão'}{rma.refunded_at ? ` · ${new Date(rma.refunded_at).toLocaleDateString('pt-BR')}` : ''}</small>}
                           {Number(rma.credit_amount) > 0 && <small>Crédito: {money.format(Number(rma.credit_amount))} · Saldo: {rma.credit_used_amount == null ? 'indisponível' : money.format(Number(rma.credit_amount) - Number(rma.credit_used_amount))}</small>}
                           {!rma.customer_id && (rma.status === 'reintegrado_estoque' || rma.status === 'credito_gerado') && <small>Crédito exige uma devolução vinculada à venda do cliente.</small>}
-                          <button className="rma-advance-btn" onClick={() => startEdit(rma)} title="Editar">
-                            <Pencil size={14} />
-                          </button>
                           {canDelete && !rma.sale_id && !rma.stock_restored_at && (
                             <>
                               {deleteConfirmId === rma.id ? (
@@ -619,7 +617,7 @@ export function RmaModule({
                         </div>
                       </td>
                     </>
-                  )}
+
                 </tr>
               ))
             )}
@@ -638,7 +636,7 @@ export function RmaModule({
         <div className="modal-backdrop" onClick={() => setLabelRmaId(null)}>
           <div className="modal-content thermal-label-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>Imprimir Etiqueta de O.S.</h3>
+              <h3>Imprimir etiqueta de devolução</h3>
               <button onClick={() => setLabelRmaId(null)}><X size={18} /></button>
             </div>
             <div className="thermal-label-preview size-58">
@@ -649,11 +647,11 @@ export function RmaModule({
                 <div className="thermal-label-info">
                   <strong>{labelRma.product_name}</strong>
                   <small>SKU: {labelRma.product_sku}</small>
-                  <small>O.S.: {labelRma.batch_or_order}</small>
+                  <small>Origem: {labelRma.batch_or_order}</small>
                 </div>
               </div>
             </div>
-            <button className="module-submit-btn" onClick={() => window.print()}>
+            <button className="module-submit-btn" onClick={printLabel}>
               <Printer size={16} /> Imprimir
             </button>
           </div>

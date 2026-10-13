@@ -117,6 +117,15 @@ export function FinancialModule({ invoices, creditLimit, creditUsed, onPayInvoic
 
   return (
     <div className="panel-module">
+      {rmaRequests.some(rma => Number(rma.refund_amount) > 0) && <details className="module-card">
+        <summary>Reembolsos de devoluções · {money.format(rmaRequests.reduce((sum, rma) => sum + Math.round(Number(rma.refund_amount ?? 0) * 100), 0) / 100)}</summary>
+        <p>Saídas registradas no Caixa. Estes valores não são créditos disponíveis nem novos recebimentos.</p>
+        {rmaRequests.filter(rma => Number(rma.refund_amount) > 0).map(rma => <p key={rma.id}>
+          <strong>{rma.customer_name} · {money.format(Number(rma.refund_amount))}</strong><br />
+          {rma.product_name} · {rma.refund_method === 'pix' ? 'PIX' : rma.refund_method === 'cartao' ? 'Cartão' : 'Dinheiro'} · {rma.refunded_at ? new Date(rma.refunded_at).toLocaleDateString('pt-BR') : ''}<br />
+          {rma.refund_reason}
+        </p>)}
+      </details>}
       <div className="module-header">
         <span className="module-icon"><Wallet size={20} /></span>
         <div>
