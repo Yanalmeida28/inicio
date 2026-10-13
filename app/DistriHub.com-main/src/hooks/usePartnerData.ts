@@ -380,14 +380,7 @@ export function usePartnerData(identity: PartnerIdentity | null, syncBranchId: s
 
       // Consultas essenciais: qualquer falha bloqueia o carregamento,
       // pois o painel não funciona sem elas.
-      const [
-        profileResult,
-        branchesResult,
-        customersResult,
-        productsResult,
-        salespeopleResult,
-        salesResult,
-      ] = await Promise.all([
+      const essentialReads = Promise.all([
         read('profile', () => client
   .from('partner_profiles')
   .select('*')
@@ -429,41 +422,9 @@ read('sales', () => fetchAllPages((from, to) => client
   .range(from, to))),
       ]);
 
-      const essentialResults = [
-        ['partner_profiles', profileResult],
-        ['partner_branches', branchesResult],
-        ['partner_customers', customersResult],
-        ['partner_products', productsResult],
-        ['partner_salespeople', salespeopleResult],
-        ['partner_sales', salesResult],
-      ] as const;
-
-      const essentialError = essentialResults.find(
-        ([, result]) => result.error,
-      );
-
-      if (essentialError?.[1].error) {
-        throw essentialError[1].error;
-      }
-
       // Consultas secundárias: falham individualmente sem derrubar o
       // carregamento; cada uma assume fallback seguro ([], null).
-      const [
-        suppliersResult,
-        categoriesResult,
-        movementsResult,
-        settingsResult,
-        rmasResult,
-        combosResult,
-        modifiersResult,
-        invoicesResult,
-        ordersResult,
-        auditLogsResult,
-        serviceOrdersResult,
-        serviceOrderItemsResult,
-        serviceOrderPhotosResult,
-        rmaCreditApplicationsResult,
-      ] = await Promise.all([
+      const secondaryReads = Promise.all([
         read('suppliers', () => fetchAllPages((from, to) => client
           .from('partner_suppliers')
           .select('*')
@@ -564,6 +525,48 @@ read('sales', () => fetchAllPages((from, to) => client
           .eq('user_id', companyUserId)
           .order('id').range(from, to)), 'rmaCreditApplications'),
       ]);
+
+      const [essentialData, secondaryData] = await Promise.all([essentialReads, secondaryReads]);
+      const [
+        profileResult,
+        branchesResult,
+        customersResult,
+        productsResult,
+        salespeopleResult,
+        salesResult,
+      ] = essentialData;
+      const [
+        suppliersResult,
+        categoriesResult,
+        movementsResult,
+        settingsResult,
+        rmasResult,
+        combosResult,
+        modifiersResult,
+        invoicesResult,
+        ordersResult,
+        auditLogsResult,
+        serviceOrdersResult,
+        serviceOrderItemsResult,
+        serviceOrderPhotosResult,
+        rmaCreditApplicationsResult,
+      ] = secondaryData;
+      const essentialResults = [
+        ['partner_profiles', profileResult],
+        ['partner_branches', branchesResult],
+        ['partner_customers', customersResult],
+        ['partner_products', productsResult],
+        ['partner_salespeople', salespeopleResult],
+        ['partner_sales', salesResult],
+      ] as const;
+
+      const essentialError = essentialResults.find(
+        ([, result]) => result.error,
+      );
+
+      if (essentialError?.[1].error) {
+        throw essentialError[1].error;
+      }
 
       // Diagnóstico técnico de falhas secundárias — sem PIN, tokens
       // ou dados de linhas; apenas nome da consulta e mensagem de erro.

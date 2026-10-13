@@ -31,6 +31,8 @@ async function fixture() {
  INSERT INTO rma_requests_v2(user_id,sale_id,sale_item_index,quantity) SELECT '${ids.owner}',id,0,1 FROM partner_sales WHERE user_id='${ids.owner}' AND branch_id='${ids.branch}' AND status='concluida' ORDER BY id DESC LIMIT 1;
  `);
  await db.exec(migration);
+ await db.exec("CREATE VIEW public.partner_stock_movements AS SELECT * FROM public.stock_movements");
+ await db.exec(await readFile(new URL('../migrations/20261013160000_history_sale_completion_date.sql',import.meta.url),'utf8'));
  return db;
 }
 async function login(db,id) { await db.query("SELECT set_config('test.auth_uid',$1,false)",[id??'']); }
@@ -78,5 +80,17 @@ test('Brazilian day boundaries are preserved and invalid filters are rejected',a
   assert.equal((await page(db,{start:'2026-10-11',end:'2026-10-11'})).total,1);
   await assert.rejects(page(db,{number:-1}),/Filtros/);await assert.rejects(page(db,{status:'forged'}),/Filtros/);
   await assert.rejects(page(db,{start:'2026-10-13',end:'2026-10-12'}),/Filtros/);
+ }finally{await db.close();}
+});
+
+test('history includes a previous-day presale completed today, isolates movements and counts the sale once',async()=>{
+ const db=await fixture();try{
+  await login(db,ids.owner);const sale=randomUUID();
+  await db.query("INSERT INTO partner_sales(id,user_id,branch_id,items,total,status,created_at) VALUES($1,$2,$3,'[]',90,'concluida','2026-10-09T20:10:34Z')",[sale,ids.owner,ids.branch]);
+  for(const [company,branch,at] of [[ids.other,ids.branch,'2026-10-10T12:00:00Z'],[ids.owner,ids.secondBranch,'2026-10-11T12:00:00Z'],[ids.owner,ids.branch,'2026-10-13T14:53:30Z'],[ids.owner,ids.branch,'2026-10-13T14:53:31Z']]) await db.query("INSERT INTO partner_stock_movements(user_id,branch_id,type,quantity,reason,created_at) VALUES($1,$2,'saida',1,$3,$4)",[company,branch,'Saida por venda '+sale,at]);
+  const today=await page(db,{start:'2026-10-13',end:'2026-10-13'});
+  assert.equal(today.total,1);assert.equal(Number(today.completed_total),90);assert.equal(today.sales[0].id,sale);
+  assert.equal(new Date(today.sales[0].completed_at).toISOString(),'2026-10-13T14:53:30.000Z');
+  assert.equal((await page(db,{start:'2026-10-09',end:'2026-10-09'})).total,0);
  }finally{await db.close();}
 });

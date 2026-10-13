@@ -42,24 +42,42 @@ import { useCheckoutCash } from '../hooks/useCheckoutCash';
 import { SessionDraftProvider, useSessionDraftState } from '../hooks/useSessionDraft';
 import { OperatorSelectionStore } from '../lib/checkoutCash';
 
-const CadastrosModule = lazy(() => import('./partner/CadastrosModule').then((module) => ({ default: module.CadastrosModule })));
-const PdvModule = lazy(() => import('./partner/PdvModule').then((module) => ({ default: module.PdvModule })));
-const CashRegisterModule = lazy(() => import('./partner/CashRegisterModule').then((module) => ({ default: module.CashRegisterModule })));
-const FinancialModule = lazy(() => import('./partner/FinancialModule').then((module) => ({ default: module.FinancialModule })));
-const RmaModule = lazy(() => import('./partner/RmaModule').then((module) => ({ default: module.RmaModule })));
-const ReportsModule = lazy(() => import('./partner/ReportsModule').then((module) => ({ default: module.ReportsModule })));
-const WhiteLabelModule = lazy(() => import('./partner/WhiteLabelModule').then((module) => ({ default: module.WhiteLabelModule })));
-const MultiStoreModule = lazy(() => import('./partner/MultiStoreModule').then((module) => ({ default: module.MultiStoreModule })));
-const DeliveryModule = lazy(() => import('./partner/DeliveryModule').then((module) => ({ default: module.DeliveryModule })));
-const SettingsModule = lazy(() => import('./partner/SettingsModule').then((module) => ({ default: module.SettingsModule })));
-const OpenOrdersModule = lazy(() => import('./partner/OpenOrdersModule').then((module) => ({ default: module.OpenOrdersModule })));
-const FiscalModule = lazy(() => import('./partner/FiscalModule').then((module) => ({ default: module.FiscalModule })));
-const AdminModule = lazy(() => import('./partner/AdminModule').then((module) => ({ default: module.AdminModule })));
-const SalesHistoryModule = lazy(() => import('./partner/SalesHistoryModule').then((module) => ({ default: module.SalesHistoryModule })));
-const OrderHistoryModule = lazy(() => import('./partner/OrderHistoryModule').then((module) => ({ default: module.OrderHistoryModule })));
-const SupportChatModule = lazy(() => import('./partner/SupportChatModule').then((module) => ({ default: module.SupportChatModule })));
-const ServiceOrdersModule = lazy(() => import('./partner/ServiceOrdersModule').then((module) => ({ default: module.ServiceOrdersModule })));
-const CatalogOrdersModule = lazy(() => import('./partner/CatalogOrdersModule').then(module => ({ default: module.CatalogOrdersModule })));
+const loadCadastrosModule = () => import('./partner/CadastrosModule').then((module) => ({ default: module.CadastrosModule }));
+const CadastrosModule = lazy(loadCadastrosModule);
+const loadPdvModule = () => import('./partner/PdvModule').then((module) => ({ default: module.PdvModule }));
+const PdvModule = lazy(loadPdvModule);
+const loadCashRegisterModule = () => import('./partner/CashRegisterModule').then((module) => ({ default: module.CashRegisterModule }));
+const CashRegisterModule = lazy(loadCashRegisterModule);
+const loadFinancialModule = () => import('./partner/FinancialModule').then((module) => ({ default: module.FinancialModule }));
+const FinancialModule = lazy(loadFinancialModule);
+const loadRmaModule = () => import('./partner/RmaModule').then((module) => ({ default: module.RmaModule }));
+const RmaModule = lazy(loadRmaModule);
+const loadReportsModule = () => import('./partner/ReportsModule').then((module) => ({ default: module.ReportsModule }));
+const ReportsModule = lazy(loadReportsModule);
+const loadWhiteLabelModule = () => import('./partner/WhiteLabelModule').then((module) => ({ default: module.WhiteLabelModule }));
+const WhiteLabelModule = lazy(loadWhiteLabelModule);
+const loadMultiStoreModule = () => import('./partner/MultiStoreModule').then((module) => ({ default: module.MultiStoreModule }));
+const MultiStoreModule = lazy(loadMultiStoreModule);
+const loadDeliveryModule = () => import('./partner/DeliveryModule').then((module) => ({ default: module.DeliveryModule }));
+const DeliveryModule = lazy(loadDeliveryModule);
+const loadSettingsModule = () => import('./partner/SettingsModule').then((module) => ({ default: module.SettingsModule }));
+const SettingsModule = lazy(loadSettingsModule);
+const loadOpenOrdersModule = () => import('./partner/OpenOrdersModule').then((module) => ({ default: module.OpenOrdersModule }));
+const OpenOrdersModule = lazy(loadOpenOrdersModule);
+const loadFiscalModule = () => import('./partner/FiscalModule').then((module) => ({ default: module.FiscalModule }));
+const FiscalModule = lazy(loadFiscalModule);
+const loadAdminModule = () => import('./partner/AdminModule').then((module) => ({ default: module.AdminModule }));
+const AdminModule = lazy(loadAdminModule);
+const loadSalesHistoryModule = () => import('./partner/SalesHistoryModule').then((module) => ({ default: module.SalesHistoryModule }));
+const SalesHistoryModule = lazy(loadSalesHistoryModule);
+const loadOrderHistoryModule = () => import('./partner/OrderHistoryModule').then((module) => ({ default: module.OrderHistoryModule }));
+const OrderHistoryModule = lazy(loadOrderHistoryModule);
+const loadSupportChatModule = () => import('./partner/SupportChatModule').then((module) => ({ default: module.SupportChatModule }));
+const SupportChatModule = lazy(loadSupportChatModule);
+const loadServiceOrdersModule = () => import('./partner/ServiceOrdersModule').then((module) => ({ default: module.ServiceOrdersModule }));
+const ServiceOrdersModule = lazy(loadServiceOrdersModule);
+const loadCatalogOrdersModule = () => import('./partner/CatalogOrdersModule').then(module => ({ default: module.CatalogOrdersModule }));
+const CatalogOrdersModule = lazy(loadCatalogOrdersModule);
 
 import type {
   StoreSettings,
@@ -102,6 +120,24 @@ type Tab =
   | 'white-label'
   | 'configuracoes'
   | 'entregas';
+
+const tabCodeLoaders: Record<Tab, () => Promise<unknown>> = {
+  'cadastros': loadCadastrosModule,
+  'pdv': loadPdvModule,
+  'caixa': loadCashRegisterModule,
+  'pedidos': loadOpenOrdersModule,
+  'os': loadServiceOrdersModule,
+  'historico': loadSalesHistoryModule,
+  'suporte': loadSupportChatModule,
+  'fiscal': loadFiscalModule,
+  'administrativo': loadAdminModule,
+  'financeiro': loadFinancialModule,
+  'rma': loadRmaModule,
+  'relatorios': loadReportsModule,
+  'white-label': loadWhiteLabelModule,
+  'configuracoes': loadSettingsModule,
+  'entregas': loadDeliveryModule,
+};
 
 const allTabs: {
   id: Tab;
@@ -1571,6 +1607,13 @@ export function PartnerPanel({
     );
   }
 
+  function preloadTab(tab: Tab) {
+    if (blockedTabs.includes(tab) || !canUseSaasFeature(saas.subscription, tab)) return;
+    void tabCodeLoaders[tab]().catch(() => {});
+    if (tab === 'historico') void loadOrderHistoryModule().catch(() => {});
+    if (tab === 'pedidos') void loadCatalogOrdersModule().catch(() => {});
+  }
+
   function handleTabClick(tab: Tab) {
     if (blockedTabs.includes(tab)) return;
     setVisitedTabs((current) => current.has(tab) ? current : new Set(current).add(tab));
@@ -1906,6 +1949,9 @@ export function PartnerPanel({
               <button
                 key={id}
                 title={label}
+                onPointerEnter={() => preloadTab(id)}
+                onFocus={() => preloadTab(id)}
+                onTouchStart={() => preloadTab(id)}
                 aria-label={label}
                 className={`sidebar-nav-item ${
                   activeTab === id

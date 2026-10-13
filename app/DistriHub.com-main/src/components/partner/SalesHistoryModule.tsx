@@ -72,11 +72,11 @@ export function SalesHistoryModule({ companyId, branchId = null, isActive = true
     const normalize = (text: string) => text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
     const term = normalize(search.trim());
     return sales.filter(sale => {
-      const date = localDate(sale.created_at);
+      const date = localDate(sale.completed_at ?? sale.created_at);
       return sale.status !== 'pre_venda' && (!startDate || date >= startDate) && (!endDate || date <= endDate)
         && (status === 'all' || (status === 'devolucao' ? !!saleReturnLabel(sale, rmaRequests) || sale.status === status : sale.status === status && !saleReturnLabel(sale, rmaRequests)))
         && (!term || normalize([sale.id, sale.customer_name, sale.imei, sale.serial_number].join(' ')).includes(term));
-    }).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    }).sort((a, b) => new Date(b.completed_at ?? b.created_at).getTime() - new Date(a.completed_at ?? a.created_at).getTime());
   }, [serverMode, sales, rmaRequests, search, startDate, endDate, status]);
   const displayedSales = serverMode ? currentHistory?.sales ?? [] : filteredSales;
   const [printError, setPrintError] = useState<string | null>(null);
@@ -206,7 +206,7 @@ export function SalesHistoryModule({ companyId, branchId = null, isActive = true
                         <span className={`rma-status-badge ${saleReturnLabel(s, historyRmas) || s.status === 'devolucao' ? 'history-status-returned' : s.status === 'concluida' ? 'history-status-completed' : 'history-status-open'}`}>{saleReturnLabel(s, historyRmas) || (s.status === 'concluida' ? 'Concluída' : s.status === 'aberta' ? 'Aberta' : 'Devolução')}</span>
                       )}
                     </td>
-                    <td data-label="Data">{new Date(s.created_at).toLocaleString('pt-BR')}</td>
+                    <td data-label="Data">{new Date(s.completed_at ?? s.created_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}</td>
                     <td className="sales-history-actions" data-label="Ações">
                       {s.status !== 'cancelada' && (
                         <SaleActionsMenu
