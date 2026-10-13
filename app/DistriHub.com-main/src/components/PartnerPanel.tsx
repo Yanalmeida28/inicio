@@ -1610,6 +1610,7 @@ export function PartnerPanel({
   function preloadTab(tab: Tab) {
     if (blockedTabs.includes(tab) || !canUseSaasFeature(saas.subscription, tab)) return;
     void tabCodeLoaders[tab]().catch(() => {});
+    void partner.prefetchModule(tab === 'cadastros' ? 'cadastros:' + cadastroDataScope : tab);
     if (tab === 'historico') void loadOrderHistoryModule().catch(() => {});
     if (tab === 'pedidos') void loadCatalogOrdersModule().catch(() => {});
   }

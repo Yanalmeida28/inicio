@@ -247,6 +247,7 @@ export function usePartnerData(identity: PartnerIdentity | null, syncBranchId: s
   const resourceScopeRef = useRef(resourceScope); resourceScopeRef.current = resourceScope;
   const requestedResourcesRef = useRef(partnerResources(resourceScope)); requestedResourcesRef.current = partnerResources(resourceScope);
   const loadCacheRef = useRef(new PartnerLoadCache());
+  const prefetchInFlightRef = useRef(false);
   const authorizedPdvScopeRef = useRef('');
   const dataSnapshotRef = useRef(data);
   dataSnapshotRef.current = data;
@@ -753,7 +754,8 @@ read('sales', () => fetchAllPages((from, to) => client
   useEffect(() => {
     const requests = requestIdRef;
     const revisions = dataRevisionRef;
-    void loadData(false, undefined, false);
+    const alreadyLoaded = requestedResourcesRef.current.every(key => loadCacheRef.current.has(key));
+    void loadData(alreadyLoaded, undefined, false);
     return () => { ++requests.current; revisions.current.invalidate(); };
   }, [loadData, resourceScope]);
 
@@ -3979,6 +3981,16 @@ read('sales', () => fetchAllPages((from, to) => client
     [data.profile?.name, data.salespeople, requireIdentity],
   );
 
+  const prefetchModule = useCallback(async (scope: string) => {
+    if (!identity || loading || prefetchInFlightRef.current || scope === resourceScopeRef.current) return;
+    if (!requestedResourcesRef.current.every(key => loadCacheRef.current.has(key))) return;
+    const collections = partnerResources(scope);
+    if (!collections.some(key => loadCacheRef.current.needs(key))) return;
+    prefetchInFlightRef.current = true;
+    try { await loadData(true, collections, false); }
+    finally { prefetchInFlightRef.current = false; }
+  }, [identity, loading, loadData]);
+
   const mergeHistorySales = useCallback((rows: PartnerSale[]) => {
     const current = requireIdentity();
     dataRevisionRef.current.invalidate(['sales']);
@@ -4004,6 +4016,7 @@ read('sales', () => fetchAllPages((from, to) => client
     load,
     loadData,
     mergeHistorySales,
+    prefetchModule,
     resourcesReady: requestedResourcesRef.current.every(key => loadCacheRef.current.has(key)),
     refreshCollections: (keys: PartnerCollection[]) => loadData(true, keys.filter(key => loadCacheRef.current.has(key) || requestedResourcesRef.current.includes(key))),
     synchronize,

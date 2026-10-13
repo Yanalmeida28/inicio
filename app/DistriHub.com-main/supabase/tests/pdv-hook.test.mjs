@@ -39,7 +39,7 @@ async function harness({initialSales=[],initialInvoices=[],initialCustomers=[],r
   const helperModule={exports:{}};
   vm.runInNewContext(compile(helperSource),{exports:helperModule.exports,require});
   const syncModule={exports:{}};
-  vm.runInNewContext(compile(syncSource),{exports:syncModule.exports});
+  vm.runInNewContext(compile(syncSource),{exports:syncModule.exports,Date});
   const hookModule={exports:{}};
   vm.runInNewContext(compile(source),{
     exports:hookModule.exports,sessionStorage:storage,crypto:{randomUUID},console,
@@ -472,3 +472,25 @@ test('collection cache deduplicates in-flight reads and never shares them betwee
   cache.mark('products');assert.equal(cache.needs('products'),false);assert.equal(cache.needs('products',Date.now()+31000),true);
   cache.reset('third');assert.equal(cache.has('products'),false);
 });
+
+ test('returning to an expired cached module preserves its data without blocking navigation',async()=>{
+  let pending=false,resolveRead;
+  const h=await harness({resourceScope:'cadastros:produtos',rpc:async()=>({data:null,error:null}),readResult:(table,fallback)=>table==='partner_products'?(pending?new Promise(resolve=>{resolveRead=resolve;}):{data:[{id:'product',user_id:'owner',stock:1}],error:null}):fallback});
+  await h.setScope('suporte');
+  // Explicit invalidation mimics the thirty-second cache expiry without a real delay.
+  // The production cache class and hook share the VM Date implementation.
+  const originalNow=Date.now;const now=Date.now();Date.now=()=>now+31000;
+  try{
+   pending=true;await h.setScope('cadastros:produtos');
+   assert.equal(h.current.loading,false);assert.equal(h.current.resourcesReady,true);assert.equal(h.current.products[0].stock,1);
+   await act(async()=>resolveRead({data:[{id:'product',user_id:'owner',stock:2}],error:null}));
+   assert.equal(h.current.products[0].stock,2);
+  }finally{Date.now=originalNow;}
+ });
+ test('menu prefetch loads only the destination resources and the subsequent tab uses them without another query',async()=>{
+  const h=await harness({resourceScope:'cadastros:produtos',initialCustomers:[{id:'customer',user_id:'owner',name:'Customer'}],rpc:async()=>({data:null,error:null})});
+  await act(async()=>h.current.prefetchModule('caixa'));
+  assert.equal(h.current.loading,false);assert.equal(h.current.customers.length,1);
+  const reads=h.queries.length;await h.setScope('caixa');
+  assert.equal(h.queries.length,reads);assert.equal(h.current.resourcesReady,true);
+ });
