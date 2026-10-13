@@ -2546,6 +2546,25 @@ html, body {
   white-space: normal;
   overflow-wrap: anywhere;
 }
+.partner-panel .admin-module-layout .admin-top-items-table {
+  width: 100%;
+  min-width: 0;
+  table-layout: fixed;
+  font-size: 12.5px;
+}
+.partner-panel .admin-module-layout .admin-top-items-table th,
+.partner-panel .admin-module-layout .admin-top-items-table td {
+  padding: 8px 7px;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.partner-panel .admin-module-layout .admin-top-items-table th:first-child {
+  width: 40%;
+}
+.partner-panel .admin-module-layout .admin-top-items-table th:last-child {
+  width: 27%;
+}
 @container admin-layout (max-width: 800px) {
   .partner-panel .admin-sidebar-content-wrapper { grid-template-columns: minmax(0, 1fr); }
   .partner-panel .admin-collapsible-sidebar { position: static; max-height: none; }
