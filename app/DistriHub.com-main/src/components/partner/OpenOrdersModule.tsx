@@ -160,7 +160,7 @@ export function OpenOrdersModule({ canEditPrice, products, onUpdateItems, onUpda
       }
       if (filters.orderId) {
         const term = filters.orderId.toLowerCase();
-        if (!sale.id.toLowerCase().includes(term) && !sale.id.slice(0, 8).toUpperCase().includes(term)) return false;
+        if (!sale.id.toLowerCase().includes(term) && !(sale.sale_number ? String(sale.sale_number).padStart(6, '0') : sale.id.slice(0, 8).toUpperCase()).includes(term)) return false;
       }
       if (filters.customerSearch) {
         const term = filters.customerSearch.toLowerCase();
@@ -365,7 +365,7 @@ export function OpenOrdersModule({ canEditPrice, products, onUpdateItems, onUpda
                 return (
                   <tr key={s.id}>
                     <td data-label="Pedido">
-                      <strong>#{s.id.slice(0, 8).toUpperCase()}</strong>
+                      <strong>#{(s.sale_number ? String(s.sale_number).padStart(6, '0') : s.id.slice(0, 8).toUpperCase())}</strong>
                       <small className="open-order-secondary">{new Date(s.created_at).toLocaleString('pt-BR')}</small>
                       <span className="order-origin-badge">{s.origin === 'catalogo' ? 'Online' : 'PDV'}</span>
                     </td>

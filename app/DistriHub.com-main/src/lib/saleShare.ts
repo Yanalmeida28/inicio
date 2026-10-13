@@ -23,7 +23,7 @@ export function saleShareUrl(sale: PrintableSale, channel: 'whatsapp' | 'email',
   const message = [
     isQuote ? 'ORÇAMENTO — CUPOM NÃO FISCAL' : 'CUPOM NÃO FISCAL',
     ...(isQuote ? ['Pedido em aberto — pagamento não confirmado.'] : []),
-    ...(sale.id ? [`Venda: ${sale.id}`] : []),
+    ...(sale.id ? [`Venda: ${sale.sale_number ? String(sale.sale_number).padStart(6, '0') : sale.id}`] : []),
     `Data: ${new Date(sale.created_at).toLocaleString('pt-BR')}`,
     `Cliente: ${sale.customer_name || customer.name}`,
     ...(salespersonName ? [`Colaborador: ${salespersonName}`] : []),
@@ -46,6 +46,7 @@ export function saleShareUrl(sale: PrintableSale, channel: 'whatsapp' | 'email',
   if (!/^[^\s@<>,;:?&#%]+@[^\s@<>,;:?&#%]+\.[^\s@<>,;:?&#%]+$/.test(email)) {
     throw new Error('Cadastre um e-mail válido no cadastro do cliente para enviar o cupom.');
   }
-  const subject = isQuote ? (sale.id ? `Orçamento do pedido ${sale.id}` : 'Orçamento') : sale.id ? `Cupom da venda ${sale.id}` : 'Cupom da sua compra';
+  const reference = sale.sale_number ? String(sale.sale_number).padStart(6, '0') : sale.id;
+  const subject = isQuote ? (reference ? `Orçamento do pedido ${reference}` : 'Orçamento') : reference ? `Cupom da venda ${reference}` : 'Cupom da sua compra';
   return `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}`;
 }

@@ -4,7 +4,7 @@ import { money } from '../utils';
 import { saleChargeTotal, salePaymentDescription } from './pdv';
 import { receiptPreferences } from './personalization';
 
-export type PrintableSale = Pick<PartnerSale, 'customer_name' | 'items' | 'total' | 'freight_fee' | 'imei' | 'serial_number' | 'payment_method' | 'payment_splits' | 'created_at' | 'branch_id' | 'customer_id' | 'salesperson_id'> & { id?: string; status?: PartnerSale['status'] };
+export type PrintableSale = Pick<PartnerSale, 'sale_number' | 'customer_name' | 'items' | 'total' | 'freight_fee' | 'imei' | 'serial_number' | 'payment_method' | 'payment_splits' | 'created_at' | 'branch_id' | 'customer_id' | 'salesperson_id'> & { id?: string; status?: PartnerSale['status'] };
 
 export type ReceiptDetails = { customer?: PartnerCustomer; salespersonName?: string; settings?: StoreSettings; companyName?: string; companyDocument?: string | null; companyAddress?: string | null };
 
@@ -50,7 +50,7 @@ export function printSale(sale: PrintableSale, format: 'receipt' | 'label', deta
     parent.append(element);
   }
   const date = new Date(sale.created_at).toLocaleString('pt-BR');
-  const reference = sale.id ? `Venda: ${sale.id}` : `Venda: ${date}`;
+  const reference = sale.id ? `Venda: ${sale.sale_number ? String(sale.sale_number).padStart(6, '0') : sale.id}` : `Venda: ${date}`;
   function identification(parent: HTMLElement) {
     line(parent, reference);
     line(parent, `Cliente: ${sale.customer_name || 'Consumidor'}`, false, format === 'receipt');

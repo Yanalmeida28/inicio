@@ -43,6 +43,7 @@ import type {
 type SalePayload = Omit<
   PartnerSale,
   | 'id'
+  | 'sale_number'
   | 'user_id'
   | 'created_at'
   | 'status'
@@ -1896,7 +1897,16 @@ read('sales', () => fetchAllPages((from, to) => client
         }
         try { attempts.complete(ns.id); setPendingSale(null); }
         catch { setPdvSyncWarning('Venda confirmada. A recuperação local permanece pendente; não repita com outro ID.'); }
-        if (isSupabaseConfigured && supabase) await syncConfirmedSale(ns.branch_id!);
+        if (isSupabaseConfigured && supabase) {
+          await syncConfirmedSale(ns.branch_id!);
+          try {
+            const { data: numbered } = await supabase.from('partner_sales').select('sale_number').eq('id', ns.id).eq('user_id', currentIdentity.companyUserId).maybeSingle();
+            if (numbered?.sale_number) {
+              ns.sale_number = Number(numbered.sale_number);
+              if (identityScopeRef.current === scope) setData(previous=>({...previous,sales:previous.sales.map(item=>item.id===ns.id?{...item,sale_number:ns.sale_number}:item)}));
+            }
+          } catch { /* Sale is confirmed; number can be recovered in history. */ }
+        }
         return ns;
       } finally { saleInFlight.current = false; }
     }, [requireIdentity, validateBilledSale, syncConfirmedSale],

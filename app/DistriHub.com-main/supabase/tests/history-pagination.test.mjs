@@ -36,6 +36,25 @@ async function fixture() {
  return db;
 }
 async function login(db,id) { await db.query("SELECT set_config('test.auth_uid',$1,false)",[id??'']); }
+test('sale numbers backfill without stock effects, remain immutable and can be searched in history',async()=>{
+ const db=await fixture();try {
+  await db.exec('CREATE SCHEMA partner_rma_private');
+  const before=(await db.query('SELECT count(*)::int n,sum(total) amount FROM partner_sales')).rows[0];
+  await db.exec(await readFile(new URL('../migrations/20261013202052_readable_sale_numbers.sql',import.meta.url),'utf8'));
+  const after=(await db.query('SELECT count(*)::int n,sum(total) amount,count(distinct sale_number)::int numbered FROM partner_sales')).rows[0];
+  assert.equal(after.n,before.n);assert.equal(after.amount,before.amount);assert.equal(after.numbered,after.n);
+  assert.equal((await db.query('SELECT count(*)::int n FROM stock_movements')).rows[0].n,0);
+  await login(db,ids.owner);
+  const row=(await page(db)).sales[0];assert.ok(row.sale_number>0);
+  const found=await page(db,{search:String(row.sale_number).padStart(6,'0')});
+  assert.equal(found.total,1);assert.equal(found.sales[0].id,row.id);
+  await assert.rejects(db.query('UPDATE partner_sales SET sale_number=DEFAULT WHERE id=$1',[row.id]),/nao pode ser alterado/);
+  await db.query("UPDATE partner_sales SET customer_name='Nome atualizado' WHERE id=$1",[row.id]);
+  assert.equal((await db.query('SELECT sale_number FROM partner_sales WHERE id=$1',[row.id])).rows[0].sale_number,row.sale_number);
+  const created=(await db.query("INSERT INTO partner_sales(id,user_id,branch_id,items,total,status) VALUES(gen_random_uuid(),$1,$2,'[]',0,'pre_venda') RETURNING sale_number",[ids.owner,ids.branch])).rows[0];
+  assert.ok(created.sale_number>after.numbered);
+ }finally{await db.close();}
+});
 async function page(db,{company=ids.owner,branch=ids.branch,status='all',search='',number=0,start='2026-10-12',end='2026-10-12'}={}) {
  return (await db.query('SELECT read_partner_sales_history($1,$2,$3,$4,$5,$6,$7) result',[company,branch,start,end,status,search,number])).rows[0].result;
 }

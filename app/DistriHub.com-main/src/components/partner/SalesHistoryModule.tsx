@@ -75,7 +75,7 @@ export function SalesHistoryModule({ companyId, branchId = null, isActive = true
       const date = localDate(sale.completed_at ?? sale.created_at);
       return sale.status !== 'pre_venda' && (!startDate || date >= startDate) && (!endDate || date <= endDate)
         && (status === 'all' || (status === 'devolucao' ? !!saleReturnLabel(sale, rmaRequests) || sale.status === status : sale.status === status && !saleReturnLabel(sale, rmaRequests)))
-        && (!term || normalize([sale.id, sale.customer_name, sale.imei, sale.serial_number].join(' ')).includes(term));
+        && (!term || normalize([sale.id, sale.sale_number ? String(sale.sale_number).padStart(6, '0') : '', sale.customer_name, sale.imei, sale.serial_number].join(' ')).includes(term));
     }).sort((a, b) => new Date(b.completed_at ?? b.created_at).getTime() - new Date(a.completed_at ?? a.created_at).getTime());
   }, [serverMode, sales, rmaRequests, search, startDate, endDate, status]);
   const displayedSales = serverMode ? currentHistory?.sales ?? [] : filteredSales;
@@ -186,7 +186,7 @@ export function SalesHistoryModule({ companyId, branchId = null, isActive = true
               ) : (
                 displayedSales.map((s) => (
                   <tr key={s.id} className={s.status === 'cancelada' ? 'cancelled-row' : ''}>
-                    <td data-label="Cliente"><strong>{s.customer_name ?? '—'}</strong><small className="sales-history-id" title={s.id}>#{s.id.slice(0, 8)}</small></td>
+                    <td data-label="Cliente"><strong>{s.customer_name ?? '—'}</strong><small className="sales-history-id" title={s.id}>#{(s.sale_number ? String(s.sale_number).padStart(6, '0') : s.id.slice(0, 8))}</small></td>
                     <td data-label="Itens">
                       {s.items.length} {s.items.length === 1 ? 'item' : 'itens'}
                       {s.items.length > 0 && <details style={{ marginTop: '6px' }}>

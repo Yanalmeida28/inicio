@@ -251,6 +251,7 @@ export interface SaleItem {
 export interface SalePayment { method: 'dinheiro' | 'pix' | 'cartao'; amount: number; }
 
 export interface PartnerSale {
+  sale_number?: number;
   payment_splits?: SalePayment[];
   /** Frete recebido para repasse a terceiros; não compõe total/faturamento. */
   freight_fee?: number;

@@ -1180,7 +1180,7 @@ function AuditTrail({ sales, salespeople }: { sales: PartnerSale[]; salespeople:
           action: 'Venda Cancelada',
           entity_type: 'venda',
           entity_id: sale.id,
-          details: `Pedido #${sale.id.slice(0, 8).toUpperCase()} cancelado — Cliente: ${sale.customer_name ?? '—'} — Total: ${money.format(sale.total)}`,
+          details: `Pedido #${(sale.sale_number ? String(sale.sale_number).padStart(6, '0') : sale.id.slice(0, 8).toUpperCase())} cancelado — Cliente: ${sale.customer_name ?? '—'} — Total: ${money.format(sale.total)}`,
           created_at: sale.created_at,
         });
       }
@@ -1194,7 +1194,7 @@ function AuditTrail({ sales, salespeople }: { sales: PartnerSale[]; salespeople:
           action: 'Venda Finalizada',
           entity_type: 'venda',
           entity_id: sale.id,
-          details: `Pedido #${sale.id.slice(0, 8).toUpperCase()} concluído — Cliente: ${sale.customer_name ?? '—'} — Total: ${money.format(sale.total)} — Pagamento: ${salePaymentDescription(sale)}`,
+          details: `Pedido #${(sale.sale_number ? String(sale.sale_number).padStart(6, '0') : sale.id.slice(0, 8).toUpperCase())} concluído — Cliente: ${sale.customer_name ?? '—'} — Total: ${money.format(sale.total)} — Pagamento: ${salePaymentDescription(sale)}`,
           created_at: sale.created_at,
         });
       }
@@ -1208,7 +1208,7 @@ function AuditTrail({ sales, salespeople }: { sales: PartnerSale[]; salespeople:
           action: 'Pré-Venda Criada',
           entity_type: 'pre_venda',
           entity_id: sale.id,
-          details: `Orçamento #${sale.id.slice(0, 8).toUpperCase()} gerado — Cliente: ${sale.customer_name ?? '—'} — Total: ${money.format(sale.total)}`,
+          details: `Orçamento #${(sale.sale_number ? String(sale.sale_number).padStart(6, '0') : sale.id.slice(0, 8).toUpperCase())} gerado — Cliente: ${sale.customer_name ?? '—'} — Total: ${money.format(sale.total)}`,
           created_at: sale.created_at,
         });
       }

@@ -204,7 +204,7 @@ export function CashRegisterModule({ branchId, branchName, scopeKey, sales, oper
               <option value="">Selecione uma venda elegível</option>
               {refundableSales.map(sale => {
                 const remaining = eligiblePayments(sale.id).reduce((sum, original) => sum + paymentRemaining(original), 0);
-                return <option key={sale.id} value={sale.id}>#{sale.id.slice(0, 8).toUpperCase()} · {money.format(remaining)} restantes</option>;
+                return <option key={sale.id} value={sale.id}>#{(sale.sale_number ? String(sale.sale_number).padStart(6, '0') : sale.id.slice(0, 8).toUpperCase())} · {money.format(remaining)} restantes</option>;
               })}
             </select></label>
             {selectedRefundSale && refundOriginal && <>

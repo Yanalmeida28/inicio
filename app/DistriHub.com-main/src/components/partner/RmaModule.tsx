@@ -262,6 +262,11 @@ export function RmaModule({
   }
 
   const labelRma = rmaRequests.find((r) => r.id === labelRmaId);
+  function saleReference(rma: RmaRequest) {
+    if (!rma.sale_id) return rma.batch_or_order;
+    const sale = sales.find(item => item.id === rma.sale_id);
+    return `Venda #${sale?.sale_number ? String(sale.sale_number).padStart(6, '0') : rma.sale_id.slice(0, 8).toUpperCase()}`;
+  }
 
   function printLabel() {
     if (!labelRma) return;
@@ -273,7 +278,7 @@ export function RmaModule({
     const style = doc.createElement('style');
     style.textContent = '@page{size:58mm auto;margin:3mm}body{font:12px Arial;color:#000;width:52mm;margin:0}p{margin:4px 0;overflow-wrap:anywhere}button{margin:12px 0}@media print{button{display:none}}';
     doc.head.append(style);
-    for (const text of ['RMA / DEVOLUÇÃO', labelRma.product_name, `SKU: ${labelRma.product_sku}`, `Origem: ${labelRma.batch_or_order}`, `RMA: ${labelRma.id}`, `Quantidade: ${labelRma.quantity ?? 1}`, labelRma.customer_name ? `Cliente: ${labelRma.customer_name}` : '']) {
+    for (const text of ['RMA / DEVOLUÇÃO', labelRma.product_name, `SKU: ${labelRma.product_sku}`, `Origem: ${saleReference(labelRma)}`, `RMA: ${labelRma.id}`, `Quantidade: ${labelRma.quantity ?? 1}`, labelRma.customer_name ? `Cliente: ${labelRma.customer_name}` : '']) {
       if (!text) continue;
       const line = doc.createElement('p'); line.textContent = text; doc.body.append(line);
     }
@@ -433,7 +438,7 @@ export function RmaModule({
                     <option value="">{selectedCustomer ? 'Selecione uma venda...' : 'Busque e selecione um cliente'}</option>
                     {customerSales.map((sale) => (
                       <option key={sale.id} value={sale.id}>
-                        {new Date(sale.created_at).toLocaleDateString('pt-BR')} · {money.format(sale.total)} · #{sale.id.slice(0, 8).toUpperCase()}
+                        {new Date(sale.created_at).toLocaleDateString('pt-BR')} · {money.format(sale.total)} · #{(sale.sale_number ? String(sale.sale_number).padStart(6, '0') : sale.id.slice(0, 8).toUpperCase())}
                       </option>
                     ))}
                   </select>
@@ -458,7 +463,7 @@ export function RmaModule({
                   <span><small>Cliente</small><strong>{selectedCustomer?.name}</strong></span>
                   <span><small>Produto</small><strong>{productName}</strong></span>
                   <span><small>SKU</small><strong>{productSku}</strong></span>
-                  <span><small>Pedido de origem</small><strong>Venda #{selectedSale?.id}</strong></span>
+                  <span><small>Pedido de origem</small><strong>Venda #{selectedSale?.sale_number ? String(selectedSale.sale_number).padStart(6, '0') : selectedSale?.id.slice(0, 8).toUpperCase()}</strong></span>
                 </div>
               )}
             </>
@@ -579,7 +584,7 @@ export function RmaModule({
                           <div className="rma-product-attachments">{(rma.attachments ?? []).map(file => <button type="button" key={file.path} className="rma-advance-btn" onClick={() => void openAttachment(file.path)}>{file.kind === 'before' ? 'Antes' : file.kind === 'after' ? 'Depois' : 'Defeito'}: {file.name}</button>)}</div>
                         </details>
                       </td>
-                      <td>{rma.batch_or_order}</td>
+                      <td>{saleReference(rma)}</td>
                       <td>
                         <span className="rma-status-badge" style={{ color: rmaStatusColors[rma.status], borderColor: rmaStatusColors[rma.status] }}>
                           {rmaStatusLabels[rma.status]}
@@ -656,7 +661,7 @@ export function RmaModule({
                 <div className="thermal-label-info">
                   <strong>{labelRma.product_name}</strong>
                   <small>SKU: {labelRma.product_sku}</small>
-                  <small>Origem: {labelRma.batch_or_order}</small>
+                  <small>Origem: {saleReference(labelRma)}</small>
                 </div>
               </div>
             </div>

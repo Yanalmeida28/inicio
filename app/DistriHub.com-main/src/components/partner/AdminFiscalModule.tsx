@@ -365,7 +365,7 @@ export function AdminFiscalModule({ section, userId, branchId, sales, branches, 
               <option value="">Selecione uma venda...</option>
               {completedSales.map((sale) => (
                 <option key={sale.id} value={sale.id}>
-                  #{sale.id.slice(0, 8).toUpperCase()} — {sale.customer_name || 'Cliente'} — {money.format(sale.total)}
+                  #{(sale.sale_number ? String(sale.sale_number).padStart(6, '0') : sale.id.slice(0, 8).toUpperCase())} — {sale.customer_name || 'Cliente'} — {money.format(sale.total)}
                 </option>
               ))}
             </select>
