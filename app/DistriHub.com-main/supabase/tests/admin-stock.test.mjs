@@ -21,6 +21,7 @@ vm.runInNewContext(ts.transpileModule(await readFile(new URL('../../src/componen
   require: name => name === '../../hooks/useSessionDraft'
     ? sessionDraftMocks
     : name === './ProductProfitPreview' ? { ProductProfitPreview: () => null }
+    : name === './ProductPhotoField' ? { ProductPhotoField: () => null }
     : name === '../../utils' || name === '../../lib/saleReturns' || name === './ImportExportModule'
       ? {}
       : require(name),

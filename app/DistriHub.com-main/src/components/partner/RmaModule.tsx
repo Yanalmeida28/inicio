@@ -9,6 +9,7 @@ import { money } from '../../utils';
 import { supabase } from '../../lib/supabase';
 import { returnedQuantity } from '../../lib/saleReturns';
 import { RmaRefundForm, type RmaRefundHandler } from './RmaRefundForm';
+import { RmaPhotoUpload, type RmaPhotoHandler } from './RmaPhotoUpload';
 import { filterRmas, rmaControl, rmaDestination, rmaDestinations, type RmaFilters } from '../../lib/rmaControl';
 
 type RmaModuleProps = {
@@ -22,6 +23,7 @@ type RmaModuleProps = {
   onUpdateStatus: (id: string, status: RmaStatus, destination?: RmaRequest['destination']) => Promise<unknown>;
   onGrantCredit?: (id: string, amount: number) => Promise<void>;
   onRefund?: RmaRefundHandler;
+  onAddPhotos?: RmaPhotoHandler;
   onDelete: (id: string) => Promise<void>;
 };
 
@@ -33,7 +35,7 @@ function errorMessage(error: unknown, fallback: string) {
 }
 
 export function RmaModule({
-  rmaRequests, customers, products, sales, warrantyTerms, currentRole, onCreate, onUpdateStatus, onGrantCredit, onRefund, onDelete,
+  rmaRequests, customers, products, sales, warrantyTerms, currentRole, onCreate, onUpdateStatus, onGrantCredit, onRefund, onAddPhotos, onDelete,
 }: RmaModuleProps) {
   const [showForm, setShowForm] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -64,6 +66,7 @@ export function RmaModule({
   const [controlFilters, setControlFilters] = useState<RmaFilters>({ search: '', from: '', to: '', destination: 'all', settlement: 'all', dateBasis: 'solicitacao' });
   const [creditRma, setCreditRma] = useState<RmaRequest | null>(null);
   const [refundRma, setRefundRma] = useState<RmaRequest | null>(null);
+  const [photoRma, setPhotoRma] = useState<RmaRequest | null>(null);
   const [creditAmount, setCreditAmount] = useState('');
   const [creditError, setCreditError] = useState<string | null>(null);
   const [destinationRma, setDestinationRma] = useState<RmaRequest | null>(null);
@@ -312,6 +315,7 @@ export function RmaModule({
         </form>
       </div>}
       {refundRma && onRefund && <RmaRefundForm key={refundRma.id} rma={refundRma} onConfirm={onRefund} onClose={() => setRefundRma(null)} />}
+      {photoRma && onAddPhotos && <RmaPhotoUpload key={photoRma.id} rma={photoRma} onSave={onAddPhotos} onClose={() => setPhotoRma(null)} />}
 
       {destinationRma && <div className="modal-overlay">
         <form className="modal-card rma-form" onSubmit={confirmDestination}>
@@ -505,7 +509,7 @@ export function RmaModule({
 
           <div className="form-row">
             <label className="photo-upload-label">
-              <span><Camera size={15} /> Foto do Aparelho Entrada (Antes)</span>
+              <span><Camera size={15} /> Foto da peça / produto na entrada</span>
               <div className="photo-upload-area">
                 {beforePhoto ? (
                   <div className="photo-preview">
@@ -523,7 +527,7 @@ export function RmaModule({
               </div>
             </label>
             <label className="photo-upload-label">
-              <span><Camera size={15} /> Foto do Aparelho Saída (Depois)</span>
+              <span><Camera size={15} /> Foto da peça / produto na saída</span>
               <div className="photo-upload-area">
                 {afterPhoto ? (
                   <div className="photo-preview">
@@ -584,6 +588,7 @@ export function RmaModule({
                       </td>
                       <td>
                         <div className="row-action-group">
+                          {onAddPhotos && <button type="button" className="rma-advance-btn" disabled={busy || (rma.attachments?.length??0)>=20} onClick={()=>setPhotoRma(rma)}><Camera size={14} /> Adicionar fotos</button>}
                           {currentDestination(rma) !== 'estoque' && (
                             <button className="rma-advance-btn" disabled={busy} onClick={() => { setDestinationRma(rma); setDestination(currentDestination(rma)); setActionError(null); }} title="Escolher destino">
                               <ArrowRightCircle size={13} /> Escolher destino

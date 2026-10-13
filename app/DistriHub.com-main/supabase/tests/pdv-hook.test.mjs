@@ -18,8 +18,31 @@ vm.runInNewContext(compile(await readFile(new URL('../../src/lib/invoicePayments
 const operationModule={exports:{}};
 vm.runInNewContext(compile(await readFile(new URL('../../src/lib/operationAttempts.ts',import.meta.url),'utf8')),{exports:operationModule.exports,crypto:{randomUUID},Error});
 let renderer;
+test('RMA photo retry repeats the same storage path and checks the metadata confirmation',async()=>{
+ const paths=[];let fail=true;
+ const rma={id:'rma-photos',user_id:'owner',branch_id:'branch',attachments:[]};
+ const h=await harness({resourceScope:'rma',readResult:(table,fallback)=>table==='rma_requests_v2'?{data:[rma],error:null}:fallback,
+  storageClient:{from:bucket=>({upload:async(path)=>{assert.equal(bucket,'rma-attachments');paths.push(path);return {error:null};}})},
+  rpc:async(name,args)=>{assert.equal(name,'add_partner_rma_attachment');return fail?{error:{message:'Vinculo indisponivel'}}:{data:{...rma,attachments:[{kind:args.p_kind,name:args.p_name,path:args.p_path}]},error:null};},
+ });
+ const files=[{id:'photo-id',kind:'defect',file:{name:'Peça.png',type:'image/png',size:100}}];
+ await act(async()=>{await assert.rejects(h.current.addRmaPhotos(rma.id,files),error=>error.message==='Vinculo indisponivel');});
+ fail=false;await act(async()=>h.current.addRmaPhotos(rma.id,files));
+ assert.deepEqual(paths,['owner/rma-photos/photo-id-Pe_a.png','owner/rma-photos/photo-id-Pe_a.png']);
+ assert.equal(h.current.rmas[0].attachments.length,1);
+});
+test('product photo updates preserve an omitted image and honor explicit removal',async()=>{
+ const calls=[];
+ const product={id:'photo-product',user_id:'owner',branch_id:'branch',name:'Produto',image_url:'https://storage.test/photo.png',cost_price:10,sale_price:20,wholesale_price:15,stock:2,min_stock:1};
+ const h=await harness({readResult:(table,fallback)=>table==='partner_products'?{data:[product],error:null}:fallback,rpc:async(name,args)=>{calls.push([name,args]);return {data:product.id,error:null};}});
+ await act(async()=>h.current.updateProduct(product.id,{name:'Produto atualizado'}));
+ assert.equal(calls.findLast(call=>call[0]==='execute_partner_product_mutation')[1].p_image_url,product.image_url);
+ await act(async()=>h.current.updateProduct(product.id,{image_url:null}));
+ assert.equal(calls.findLast(call=>call[0]==='execute_partner_product_mutation')[1].p_image_url,null);
+ assert.equal(h.current.products.find(item=>item.id===product.id).image_url,null);
+});
 afterEach(async()=>{if(renderer) await act(async()=>renderer.unmount());renderer=null;});
-async function harness({initialSales=[],initialInvoices=[],initialCustomers=[],rpc,values=new Map(),readResult,branchId=null,resourceScope=null,identity: suppliedIdentity}={}) {
+async function harness({initialSales=[],initialInvoices=[],initialCustomers=[],rpc,values=new Map(),readResult,branchId=null,resourceScope=null,identity: suppliedIdentity,storageClient}={}) {
   const storage={getItem:k=>values.get(k)??null,setItem:(k,v)=>values.set(k,v),removeItem:k=>values.delete(k)};
   const identity=suppliedIdentity??{authUserId:'owner',companyUserId:'owner',salespersonId:null,branchId:null,role:'administrador'};
   const initial={partner_sales:initialSales,partner_invoices:initialInvoices,partner_customers:initialCustomers};
@@ -29,7 +52,7 @@ async function harness({initialSales=[],initialInvoices=[],initialCustomers=[],r
   const intervals=[];
   const timeouts=new Map();
   let timerId=0;
-  const client={rpc,auth:{getSession:async()=>({data:{session:{user:{id:identity.authUserId}}},error:null})},from(table){
+  const client={rpc,storage:storageClient,auth:{getSession:async()=>({data:{session:{user:{id:identity.authUserId}}},error:null})},from(table){
     queries.push(table); let first=0,last=499;
     const q={select(){return q;},eq(){return q;},order(){return q;},limit(){return q;},range(from,to){first=from;last=to;return q;},
       maybeSingle(){return Promise.resolve(readResult?.(table,{data:null,error:null})??{data:null,error:null});},

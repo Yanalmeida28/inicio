@@ -15,6 +15,7 @@ import type {
 } from '../../types';
 import { formatCnpj, formatCpf, isValidCnpj, isValidCpf, money, normalizeDocument } from '../../utils';
 import { ProductProfitPreview } from './ProductProfitPreview';
+import { ProductPhotoField } from './ProductPhotoField';
 import { ImportExportModule, ExportButtons } from './ImportExportModule';
 import { saleReturnLabel, saleItemDescription } from '../../lib/saleReturns';
 
@@ -330,11 +331,14 @@ function ProductsSubTab({ defaultIsService = false, isActive = true, products, a
   const [saving, setSaving] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
+  const [imageUrl, setImageUrl] = useSessionDraftState<string | null>('products:image-url', null);
+  const [photoBusy, setPhotoBusy] = useState(false);
 
 
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (saving || photoBusy) return;
     if (!name.trim() || !sale) return;
     if (!selectedBranchId) {
       window.alert('Selecione uma filial antes de cadastrar produtos para manter o estoque separado por filial.');
@@ -347,7 +351,7 @@ function ProductsSubTab({ defaultIsService = false, isActive = true, products, a
         name, sku: sku || null, cost_price: Number(cost) || 0, sale_price: Number(sale) || 0,
         wholesale_price: Number(wholesale) || 0,
         stock: Number(stock) || 0, min_stock: Number(minStock) || 0,
-        image_url: null, supplier_id: supplierId || null, category: category || null, is_service: isService, branch_id: selectedBranchId,
+        image_url: imageUrl, supplier_id: supplierId || null, category: category || null, is_service: isService, branch_id: selectedBranchId,
         ncm: ncm || null, cfop: cfop || null, cst_csosn: cstCsosn || null,
         icms_rate: Number(icmsRate) || 0, pis_rate: Number(pisRate) || 0, cofins_rate: Number(cofinsRate) || 0,
         brand: undefined,
@@ -359,6 +363,7 @@ function ProductsSubTab({ defaultIsService = false, isActive = true, products, a
       setName(''); setSku(''); setCost(''); setSale(''); setWholesale(''); setStock(''); setMinStock('5'); setCategory(''); setSupplierId(''); setIsService(defaultIsService);
       setNcm(''); setCfop(''); setCstCsosn(''); setIcmsRate(''); setPisRate(''); setCofinsRate('');
       setShowForm(false);
+      setImageUrl(null);
     } catch (error) {
       setFormError(error instanceof Error ? error.message : 'Não foi possível salvar o produto.');
     } finally {
@@ -424,6 +429,7 @@ function ProductsSubTab({ defaultIsService = false, isActive = true, products, a
             </label>
           </div>
           </section>
+          <ProductPhotoField value={imageUrl} onChange={setImageUrl} disabled={saving} onBusyChange={setPhotoBusy} />
           <section className="product-form-section">
             <h4>Preços e rentabilidade</h4>
           <div className="form-row product-form-row">
@@ -499,7 +505,7 @@ function ProductsSubTab({ defaultIsService = false, isActive = true, products, a
           </div>
           </section>
           {formError && <p className="form-error-msg" style={{ color: '#e3829b', fontSize: '13px' }}>{formError}</p>}
-          <button type="submit" className="module-submit-btn" disabled={saving || supplierSaving}>{saving ? 'Salvando...' : 'Cadastrar'}</button>
+          <button type="submit" className="module-submit-btn" disabled={saving || supplierSaving || photoBusy}>{saving ? 'Salvando...' : 'Cadastrar'}</button>
         </form>
       )}
 
@@ -525,7 +531,7 @@ function ProductsSubTab({ defaultIsService = false, isActive = true, products, a
             ) : (
               matchingProducts.map((p) => (
                 <tr key={p.id}>
-                  <td><strong>{p.name}</strong>{p.is_service && <small className="tag-service">Serviço</small>}</td>
+                  <td>{p.image_url && <img src={p.image_url} alt={p.name} loading="lazy" style={{width:48,height:48,objectFit:'contain',borderRadius:6,display:'block',marginBottom:4}} />}<strong>{p.name}</strong>{p.is_service && <small className="tag-service">Serviço</small>}</td>
                   <td>{p.sku ?? '—'}</td>
                   <td>{money.format(p.cost_price)}</td>
                   <td>{money.format(p.sale_price)}</td>
@@ -661,6 +667,8 @@ function ProductEditModal({ product, categories, suppliers, onAddSupplier, savin
   onSave: (updates: Partial<PartnerProduct>) => Promise<void>;
 }) {
   const [supplierSaving, setSupplierSaving] = useState(false);
+  const [imageUrl, setImageUrl] = useState(product.image_url);
+  const [photoBusy, setPhotoBusy] = useState(false);
   const [name, setName] = useState(product.name);
   const [sku, setSku] = useState(product.sku ?? '');
   const [cost, setCost] = useState(String(product.cost_price));
@@ -682,8 +690,10 @@ function ProductEditModal({ product, categories, suppliers, onAddSupplier, savin
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
+    if (saving || photoBusy) return;
     if (!name.trim() || !sale) return;
     await onSave({
+      image_url: imageUrl,
       name: name.trim(), sku: sku.trim() || null, cost_price: Number(cost) || 0,
       sale_price: Number(sale) || 0, wholesale_price: Number(wholesale) || 0,
       stock: Math.max(0, Number(stock) || 0), min_stock: Math.max(0, Number(minStock) || 0),
@@ -698,6 +708,7 @@ function ProductEditModal({ product, categories, suppliers, onAddSupplier, savin
       <form className="modal-card product-edit-modal" onSubmit={submit} onClick={(event) => event.stopPropagation()}>
         <div className="modal-header"><h4>Editar produto</h4><button type="button" className="modal-close" onClick={onClose} aria-label="Fechar">×</button></div>
         <div className="product-edit-body">
+          <ProductPhotoField value={imageUrl} onChange={setImageUrl} disabled={saving} onBusyChange={setPhotoBusy} />
           <div className="form-row"><label>Nome<input value={name} onChange={(e) => setName(e.target.value)} required /></label><label>SKU<input value={sku} onChange={(e) => setSku(e.target.value)} /></label></div>
           <h4>Preços e rentabilidade</h4>
           <div className="form-row"><label>Preço de custo<input type="number" min="0" step="0.01" value={cost} onChange={(e) => setCost(e.target.value)} /></label><label>Preço varejo<input type="number" min="0" step="0.01" value={sale} onChange={(e) => setSale(e.target.value)} required /></label><label>Preço atacado<input type="number" min="0" step="0.01" value={wholesale} onChange={(e) => setWholesale(e.target.value)} /></label></div>
@@ -709,7 +720,7 @@ function ProductEditModal({ product, categories, suppliers, onAddSupplier, savin
           <div className="form-row"><label>ICMS (%)<input type="number" min="0" step="0.01" value={icmsRate} onChange={(e) => setIcmsRate(e.target.value)} /></label><label>PIS (%)<input type="number" min="0" step="0.01" value={pisRate} onChange={(e) => setPisRate(e.target.value)} /></label><label>COFINS (%)<input type="number" min="0" step="0.01" value={cofinsRate} onChange={(e) => setCofinsRate(e.target.value)} /></label></div>
           {error && <div className="branch-action-error" role="alert">{error}</div>}
         </div>
-        <div className="product-edit-footer"><button type="button" className="rma-advance-btn" onClick={onClose} disabled={saving}>Cancelar</button><button type="submit" className="module-submit-btn" disabled={saving || supplierSaving}>{saving ? 'Salvando...' : 'Salvar alterações'}</button></div>
+        <div className="product-edit-footer"><button type="button" className="rma-advance-btn" onClick={onClose} disabled={saving || photoBusy}>Cancelar</button><button type="submit" className="module-submit-btn" disabled={saving || supplierSaving || photoBusy}>{saving ? 'Salvando...' : 'Salvar alterações'}</button></div>
       </form>
     </div>
   );

@@ -17,6 +17,7 @@ vm.runInNewContext(ts.transpileModule(source+'\nexports.CustomerProfile=Customer
   if(name==='../../hooks/useSessionDraft')return { useSessionDraftState: (key, initial) => React.useState(draftInitialValues.has(key)?draftInitialValues.get(key):initial) };
   if(name==='./ImportExportModule')return {ExportButtons:()=>null};
   if(name==='./ProductProfitPreview')return {ProductProfitPreview:()=>null};
+  if(name==='./ProductPhotoField')return {ProductPhotoField:()=>null};
   if(name==='../../lib/saleReturns')return {};
   return require(name);
 }});

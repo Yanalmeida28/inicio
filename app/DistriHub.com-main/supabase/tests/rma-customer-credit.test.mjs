@@ -169,6 +169,7 @@ async function component(file, name) {
    if(dependency==='../../lib/accounts') return {isOverdue:()=>false};
    if(dependency==='./InvoiceReceipts') return {InvoiceReceipts:()=>null};
    if(dependency==='./RmaRefundForm') return {RmaRefundForm:()=>null};
+   if(dependency==='./RmaPhotoUpload') return {RmaPhotoUpload:()=>null};
    if(dependency==='react') return React;
    if(dependency==='react/jsx-runtime') return jsx;
    if(dependency==='lucide-react') return new Proxy({},{get:()=>()=>null});

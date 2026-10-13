@@ -1,12 +1,12 @@
 # Destino das peças devolvidas
 
-O botão Avançar foi substituído por Escolher destino, com confirmação: avaliação, fornecedor ou estoque disponível. Abrir a solicitação não adiciona estoque. Apenas confirmar estoque reintegra a quantidade, uma única vez. Uma peça reintegrada não pode trocar de destino sem uma operação de estoque específica.
+O botão Avançar foi substituído por Escolher destino, com confirmação: avaliação, avaria, fornecedor ou estoque disponível. Abrir a solicitação não adiciona estoque. Apenas confirmar estoque reintegra a quantidade, uma única vez. Uma peça reintegrada não pode trocar de destino sem uma operação de estoque específica.
 
 Crédito ao cliente é uma ação separada, disponível para administrador/gerente em devoluções vinculadas a venda e cliente. Pode ser gerado com a peça em avaliação ou no fornecedor, sem entrada indevida no estoque. Os limites de valor, permissões e aplicações em faturas permanecem preservados.
 
 A migração adiciona destination e conserva os registros existentes sem repetir movimentos. Destinos antigos sem comprovação ficam em avaliação; registros reintegrados permanecem no estoque. Compatibilidade com chamadas antigas de status foi mantida.
 
-Migrações e interface preparadas localmente. Não aplicadas nem publicadas neste ajuste.
+Migrações aplicadas e interface publicada em 13/10/2026, na versão eb3cdd1. O painel inclui filtros e totais por destino, créditos e reembolsos. A suite completa dessa publicação passou em 382 testes.
 
 ## Reembolso
 

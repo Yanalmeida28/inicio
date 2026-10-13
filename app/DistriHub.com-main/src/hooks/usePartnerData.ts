@@ -3,6 +3,7 @@ import type { PostgrestError } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { InvoicePaymentAttempts } from '../lib/invoicePayments';
 import { OperationAttempts } from '../lib/operationAttempts';
+import type { RmaPhotoFile } from '../components/partner/RmaPhotoUpload';
 import { mergePartnerChange, PartnerDataVersions, PartnerLoadCache, partnerResources, type PartnerCollection } from '../lib/partnerSync';
 import { splitPaymentError, billedSaleError, saleChargeTotal, validSalePrice, isDefinitiveSaleRejection, PdvSaleAttemptStore, pdvErrorMessage, type CustomerCredit } from '../lib/pdv';
 import type {
@@ -1156,7 +1157,7 @@ read('sales', () => fetchAllPages((from, to) => client
             p_is_service:
               product.is_service ?? existing.is_service,
             p_image_url:
-              product.image_url ?? existing.image_url ?? null,
+              product.image_url === undefined ? existing.image_url ?? null : product.image_url,
             p_supplier_id: product.supplier_id === undefined ? existing.supplier_id ?? null : product.supplier_id,
           },
         );
@@ -2694,6 +2695,29 @@ read('sales', () => fetchAllPages((from, to) => client
     await loadData();
   }, [requireIdentity, loadData]);
 
+  const addRmaPhotos = useCallback(async (id: string, files: RmaPhotoFile[]) => {
+    const identity = requireIdentity();
+    const scope = identity.authUserId + ':' + identity.companyUserId;
+    if (!supabase) throw new Error('Supabase não configurado.');
+    const existing = data.rmas.find(rma=>rma.id===id);
+    if (!existing) throw new Error('Devolução não encontrada.');
+    ensureEmployeeBranch(identity,existing.branch_id);
+    for (const item of files) {
+      if (identityScopeRef.current !== scope) throw new Error('A conta mudou durante o envio. Abra a devolução na conta original para conferir os anexos.');
+      if (!['image/jpeg','image/png','image/webp','image/heic'].includes(item.file.type) || !item.file.size || item.file.size>20*1024*1024) throw new Error('Use fotos JPG, PNG, WebP ou HEIC de até 20 MB.');
+      const path = `${identity.authUserId}/${id}/${item.id}-${item.file.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`;
+      const {error: uploadError} = await supabase.storage.from('rma-attachments').upload(path,item.file,{upsert:true,contentType:item.file.type});
+      if (uploadError) throw uploadError;
+      const {data: updated,error} = await supabase.rpc('add_partner_rma_attachment',{p_rma_id:id,p_kind:item.kind,p_name:item.file.name,p_path:path});
+      if (error) throw error;
+      if (!updated || updated.id!==id || !updated.attachments?.some((file: {path:string})=>file.path===path)) throw new Error('Anexo sem confirmação. Recupere o envio antes de tentar outros arquivos.');
+      if (mountedRef.current && identityScopeRef.current === scope) {
+        dataRevisionRef.current.invalidate(['rmas']);
+        setData(previous=>({...previous,rmas:previous.rmas.map(rma=>rma.id===id?{...rma,...updated}:rma)}));
+      }
+    }
+  }, [requireIdentity,data.rmas]);
+
   const refundRma = useCallback(async (id: string, amount: number, method: 'dinheiro' | 'pix' | 'cartao', reason: string, requestId: string, operatorId: string | null, operatorPin: string | null) => {
     requireIdentity();
     if (!supabase) throw new Error('Supabase não configurado.');
@@ -4089,6 +4113,7 @@ read('sales', () => fetchAllPages((from, to) => client
     createRma,
     updateRmaStatus,
     grantRmaCredit,
+    addRmaPhotos,
     refundRma,
     applyRmaCredit,
     deleteRma,
