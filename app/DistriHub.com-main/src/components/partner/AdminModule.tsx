@@ -807,8 +807,9 @@ function ExecutiveDashboard({
       </div>
 
       {/* Daily Revenue Line Chart */}
-      <h4 className="report-section-title"><LineChartIcon size={16} /> Receita Diária (Bruta vs Líquida)</h4>
-      <DailyRevenueChart data={dailyData} />
+      <h4 className="report-section-title"><LineChartIcon size={16} /> Faturamento × Lucro bruto estimado</h4>
+      <DailyRevenueChart data={dailyData} grossTotal={current.grossRevenue} profitTotal={current.netRevenue} />
+      <p className="admin-empty-hint">Lucro bruto estimado = faturamento menos o custo dos produtos vendidos. Não desconta impostos e despesas operacionais.</p>
 
       {/* Profit by Category + Payment Donut */}
       <div className="admin-dashboard-row">
@@ -1007,16 +1008,20 @@ function ExecutiveDashboard({
 
 /* ============ Daily Revenue SVG Line Chart ============ */
 
-function DailyRevenueChart({ data }: { data: { date: Date; gross: number; net: number }[] }) {
+function DailyRevenueChart({ data, grossTotal, profitTotal }: { data: { date: Date; gross: number; net: number }[]; grossTotal: number; profitTotal: number }) {
   const width = 800;
   const height = 240;
   const labelWidth = Math.max(70, ...data.map(day => Math.max(money.format(day.gross).length, money.format(day.net).length) * 6 + 16));
   const padding = { top: 20, right: 20, bottom: 30, left: Math.min(labelWidth, 180) };
   const chartW = width - padding.left - padding.right;
   const chartH = height - padding.top - padding.bottom;
+  const legend = <div className="admin-chart-legend" aria-label="Totais do período selecionado">
+    <span><span className="legend-dot inflow" /> Faturamento: <strong>{money.format(grossTotal)}</strong></span>
+    <span><span className="legend-dot" style={{ background: '#5bbc87' }} /> Lucro bruto estimado: <strong>{money.format(profitTotal)}</strong></span>
+  </div>;
 
   if (data.length === 0 || data.every((d) => d.gross === 0 && d.net === 0)) {
-    return <div className="admin-chart-empty"><LineChartIcon size={32} /><p>Sem dados de receita para o período selecionado.</p></div>;
+    return <><div className="admin-chart-empty"><LineChartIcon size={32} /><p>Sem dados de receita para o período selecionado.</p></div>{legend}</>;
   }
 
   const maxVal = Math.max(...data.map((d) => Math.max(d.gross, d.net)), 1);
@@ -1094,15 +1099,12 @@ function DailyRevenueChart({ data }: { data: { date: Date; gross: number; net: n
             <g key={i} className="chart-tooltip-group">
               <circle cx={x} cy={yGross} r="3" fill="#3b9bed" className="chart-dot" />
               <circle cx={x} cy={yNet} r="3" fill="#5bbc87" className="chart-dot" />
-              <title>{`${d.date.toLocaleDateString('pt-BR')} — Bruta: ${money.format(d.gross)} | Líquida: ${money.format(d.net)}`}</title>
+              <title>{`${d.date.toLocaleDateString('pt-BR')} — Faturamento: ${money.format(d.gross)} | Lucro bruto estimado: ${money.format(d.net)}`}</title>
             </g>
           );
         })}
       </svg>
-      <div className="admin-chart-legend">
-        <span><span className="legend-dot inflow" /> Receita Bruta</span>
-        <span><span className="legend-dot" style={{ background: '#5bbc87' }} /> Receita Líquida</span>
-      </div>
+      {legend}
     </div>
   );
 }
