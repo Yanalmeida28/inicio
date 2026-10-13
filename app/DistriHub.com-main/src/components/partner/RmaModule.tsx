@@ -569,11 +569,15 @@ export function RmaModule({
                     <>
                       <td>
                         <strong>{rma.product_name}</strong>
-                        <small>SKU {rma.product_sku}</small>
-                        <small>{rma.defect_description}</small>
-                        {(rma.attachments ?? []).map(file => <button type="button" key={file.path} className="rma-advance-btn" onClick={() => void openAttachment(file.path)}>{file.kind === 'before' ? 'Antes' : file.kind === 'after' ? 'Depois' : 'Defeito'}: {file.name}</button>)}
-                        <small>Quantidade: {rma.quantity ?? 1}{rma.stock_restored_at ? ' · Entrada no estoque registrada' : ''}</small>
-                        <small>Destino: {destinationLabels[currentDestination(rma)]}</small>
+                        <small>SKU {rma.product_sku} · Qtd. {rma.quantity ?? 1}</small>
+                        <small>{destinationLabels[currentDestination(rma)]}</small>
+                        <details className="rma-product-details">
+                          <summary>Ver detalhes{rma.attachments?.length ? ` · ${rma.attachments.length} anexo(s)` : ''}</summary>
+                          {rma.customer_name && <p>Cliente: {rma.customer_name}</p>}
+                          <p>Defeito: {rma.defect_description || 'Não informado'}</p>
+                          {rma.stock_restored_at && <p>Entrada no estoque registrada.</p>}
+                          <div className="rma-product-attachments">{(rma.attachments ?? []).map(file => <button type="button" key={file.path} className="rma-advance-btn" onClick={() => void openAttachment(file.path)}>{file.kind === 'before' ? 'Antes' : file.kind === 'after' ? 'Depois' : 'Defeito'}: {file.name}</button>)}</div>
+                        </details>
                       </td>
                       <td>{rma.batch_or_order}</td>
                       <td>

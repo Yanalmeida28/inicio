@@ -1842,6 +1842,11 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
   color: #edf5fc !important;
   font-weight: 700;
 }
+.partner-panel .rma-product-details { margin-top: 7px; font-size: 12px; }
+.partner-panel .rma-product-details summary { cursor: pointer; color: var(--dh-text-secondary); }
+.partner-panel .rma-product-details p { margin: 8px 0; white-space: normal; overflow-wrap: anywhere; }
+.partner-panel .rma-product-attachments { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; }
+.partner-panel .rma-product-attachments button { max-width: 100%; white-space: normal; overflow-wrap: anywhere; text-align: left; }
 .partner-panel .financial-title-actions > .pix-actions {
   display: flex;
   flex-direction: column;
