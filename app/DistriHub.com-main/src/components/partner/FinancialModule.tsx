@@ -239,8 +239,8 @@ export function FinancialModule({ invoices, creditLimit, creditUsed, onPayInvoic
                         {inv.status === 'paga' ? 'Paga' : inv.status === 'parcial' ? 'Parcialmente paga' : inv.status === 'cancelada' ? 'Cancelada' : 'Em Aberto'}
                       </span>
                     </td>
-                    <td>
-                      <button type="button" className="rma-advance-btn" onClick={()=>setReceiptInvoiceId(receiptInvoiceId === inv.id ? null : inv.id)}>Histórico de recebimentos</button>
+                    <td className="financial-title-actions">
+                      <button type="button" className="rma-advance-btn" title="Histórico de recebimentos" aria-label="Histórico de recebimentos" onClick={()=>setReceiptInvoiceId(receiptInvoiceId === inv.id ? null : inv.id)}>Histórico</button>
                       {receiptInvoiceId === inv.id && <InvoiceReceipts invoice={inv} />}
                       {isOpen(inv) && (
                         <>
