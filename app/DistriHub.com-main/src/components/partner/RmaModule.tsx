@@ -350,7 +350,7 @@ export function RmaModule({
           <button type="button" className="rma-advance-btn" onClick={() => { setControlFilters({ search: '', from: '', to: '', destination: 'all', settlement: 'all', dateBasis: 'solicitacao' }); setFilter('all'); }}>Limpar filtros</button>
         </div>
         <p>{visibleRequests.length} solicitação(ões). Resumo e lista consideram os mesmos filtros e a filial selecionada. Datas no horário de São Paulo.</p>
-        <div className="orders-summary" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
+        <div className="orders-summary rma-control-summary" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
           {Object.entries(control.groups).map(([key, group]) => <div className="orders-summary-card" key={key}>
             <small>{rmaDestinations[key as keyof typeof rmaDestinations]}</small><strong>{group.quantity} peça(s)</strong>
             {canDelete && <><p>Custo: {money.format(group.cost / 100)}{group.estimated ? ' (estimado em parte)' : ''}</p>{group.unknown > 0 && <small>{group.unknown} peça(s) sem custo disponível</small>}</>}
