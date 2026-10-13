@@ -1,3 +1,4 @@
+import { printerPreferences, sendReceipt } from './directPrint';
 import type { PartnerCustomer, PartnerSale, StoreSettings } from '../types';
 import { money } from '../utils';
 import { saleChargeTotal, salePaymentDescription } from './pdv';
@@ -7,19 +8,22 @@ export type PrintableSale = Pick<PartnerSale, 'customer_name' | 'items' | 'total
 
 export type ReceiptDetails = { customer?: PartnerCustomer; salespersonName?: string; settings?: StoreSettings; companyName?: string; companyDocument?: string | null; companyAddress?: string | null };
 
-export function printSale(sale: PrintableSale, format: 'receipt' | 'label', details: ReceiptDetails = {}, preparedWindow?: Window) {
-  const popup = preparedWindow ?? window.open('', '_blank', 'width=440,height=700');
-  if (!popup) throw new Error('Permita pop-ups neste navegador para imprimir o cupom ou a etiqueta.');
+export function directReceiptEnabled() { return Boolean(printerPreferences()); }
 
-  if (preparedWindow) {
-    popup.document.head.replaceChildren();
-    popup.document.body.replaceChildren();
+export function printSale(sale: PrintableSale, format: 'receipt' | 'label', details: ReceiptDetails = {}, preparedWindow?: Window) {
+  const direct = format === 'receipt' ? printerPreferences() : null;
+  const popup = direct ? null : preparedWindow ?? window.open('', '_blank', 'width=440,height=700');
+  if (!direct && !popup) throw new Error('Permita pop-ups neste navegador para imprimir o cupom ou a etiqueta.');
+
+  if (!direct && preparedWindow) {
+    preparedWindow.document.head.replaceChildren();
+    preparedWindow.document.body.replaceChildren();
   }
   const isQuote = sale.status === 'pre_venda' || sale.status === 'aberta';
   const receipt = receiptPreferences(details.settings?.personalization?.receipt);
   const fontSize = format === 'receipt' ? receipt.font_size : 12;
   const contentWidth = format === 'receipt' && receipt.paper_width === '58' ? 50 : 72;
-  const doc = popup.document;
+  const doc = direct ? document.implementation.createHTMLDocument('Cupom') : popup!.document;
   doc.title = format === 'receipt' ? (isQuote ? 'Orçamento — cupom não fiscal' : 'Cupom não fiscal') : 'Etiqueta da venda';
   doc.documentElement.lang = 'pt-BR';
   const style = doc.createElement('style');
@@ -128,13 +132,23 @@ export function printSale(sale: PrintableSale, format: 'receipt' | 'label', deta
       main.append(label);
     }
   }
+  if (direct) {
+    preparedWindow?.close();
+    const text = Array.from(main.children).map(element => {
+      if (element.tagName === 'IMG') return '';
+      if (element.tagName === 'HR') return '--------------------------------';
+      if (element.children.length) return Array.from(element.children).map(child => child.textContent ?? '').join('  ');
+      return element.textContent ?? '';
+    }).filter(Boolean).join('\n');
+    return sendReceipt(text, direct);
+  }
   const button = doc.createElement('button');
   button.textContent = 'Imprimir';
-  button.onclick = () => { popup.focus(); popup.print(); };
+  button.onclick = () => { popup!.focus(); popup!.print(); };
   doc.body.append(button);
   // Keep the preview available for retrying or changing the printer settings.
   const images = Array.from(doc.images);
   void Promise.all(images.map((img) => img.decode().catch(() => undefined))).then(() => {
-    if (!popup.closed) popup.requestAnimationFrame(() => { popup.focus(); popup.print(); });
+    if (!popup!.closed) popup!.requestAnimationFrame(() => { popup!.focus(); popup!.print(); });
   });
 }

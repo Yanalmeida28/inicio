@@ -25,7 +25,7 @@ vm.runInNewContext(source, {
   exports: module.exports, Date, Error, setTimeout: () => 1,
   window: { open: printing.open ?? (() => null), setTimeout: () => 1, clearTimeout() {} },
   require(name) {
-    if (name === '../../lib/salePrint') return { printSale: printing.printSale ?? (() => {}) };
+    if (name === '../../lib/salePrint') return { directReceiptEnabled: () => Boolean(printing.direct), printSale: printing.printSale ?? (() => {}) };
     if(name==='./SplitPaymentFields') return splitPaymentComponent;
     if (name === 'react') return react;
     if (name === '../../lib/pdv') return helpers;
@@ -276,3 +276,13 @@ if (process.env.PDV_BROWSER_FIXTURE === '1') {
       document.querySelector('#audit').textContent=JSON.stringify({visible:rects.every(r=>r.width>0&&r.height>0),fieldCount:fields.length,belowSearch:bar.top>=search.bottom,belowCart:bar.top>=Math.min(cart.bottom,content.bottom),sameRow:Math.max(...rects.map(r=>r.bottom))-Math.min(...rects.map(r=>r.bottom))<5,inputFontPx:parseFloat(getComputedStyle(fields[0]).fontSize),inputHeight:rects[0].height,controlsFit:rects.every(r=>r.left>=bar.left&&r.right<=total.left),workspaceWidth:search.width,dockedAtBottom:Math.abs(bar.bottom-innerHeight)<3,noCartOverlap:content.bottom<=bar.top,lastItemVisible:lastItem.bottom<=content.bottom+1&&lastItem.top>=content.top});
     </script>`);
 }
+
+test('direct receipt printing awaits the saved sale and never opens a browser popup', async()=>{
+ let calls=0,printed=0;
+ const checkout=loadCheckout(React,{direct:true,open:()=>{throw Error('Browser dialog must not open');},printSale:async sale=>{assert.equal(sale.id,'confirmed-direct');printed++;}}).Checkout;
+ await act(async()=>{renderer=TestRenderer.create(React.createElement(checkout,{...props,onCreateSale:async sale=>{calls++;return {...sale,id:'confirmed-direct',status:'concluida',created_at:new Date().toISOString()};}}));});
+ await act(async()=>renderer.root.findByProps({'aria-label':'Buscar produto por nome ou SKU'}).props.onChange({target:{value:'Produto'}}));
+ await act(async()=>renderer.root.findByProps({className:'pdv-product-card'}).props.onClick());
+ const printButton=renderer.root.findAllByType('button').find(button=>button.props.className?.includes('pdv-checkout') && button.children.some(child=>typeof child==='string' && child.toLowerCase().includes('imprimir')));
+ assert.ok(printButton);await act(async()=>printButton.props.onClick());assert.equal(calls,1);assert.equal(printed,1);
+});

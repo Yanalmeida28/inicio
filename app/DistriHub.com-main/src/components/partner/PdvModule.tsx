@@ -1,4 +1,4 @@
-import { printSale, type ReceiptDetails } from '../../lib/salePrint';
+import { directReceiptEnabled, printSale, type ReceiptDetails } from '../../lib/salePrint';
 import { SplitPaymentFields } from './SplitPaymentFields';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -746,7 +746,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, isActive = 
     const validation = paymentMethod === 'misto' ? splitPaymentError(checkoutChargeTotal, parts) : null;
     if (validation) { setCheckoutError(validation); return; }
     const fallbackName = clientType === 'atacado' ? 'Cliente Atacado' : 'Cliente Varejo';
-    const printWindow = shouldPrint ? window.open('', '_blank', 'width=440,height=700') : null;
+    const printWindow = shouldPrint && !directReceiptEnabled?.() ? window.open('', '_blank', 'width=440,height=700') : null;
     if (printWindow) printWindow.document.body.textContent = 'Aguardando confirmação da venda...';
     checkoutInFlight.current = true;
     setIsCheckingOut(true);
@@ -779,12 +779,12 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, isActive = 
       setLastAddedId(null);
       if (shouldPrint) {
         try {
-          if (!printWindow || printWindow.closed) throw new Error('Permita pop-ups no navegador e reimprima pelo Histórico.');
-          printSale(confirmedSale, 'receipt', {
+          if (!directReceiptEnabled?.() && (!printWindow || printWindow.closed)) throw new Error('Permita pop-ups no navegador e reimprima pelo Histórico.');
+          await printSale(confirmedSale, 'receipt', {
             ...receiptDetails,
             customer: customers.find(c => c.id === confirmedSale.customer_id),
             salespersonName: salespeople.find(person => person.id === confirmedSale.salesperson_id)?.name,
-          }, printWindow);
+          }, printWindow ?? undefined);
         } catch (error) {
           printWindow?.close();
           setCheckoutError('Venda finalizada. ' + (error instanceof Error ? error.message : 'Não foi possível imprimir. Reimprima pelo Histórico.'));

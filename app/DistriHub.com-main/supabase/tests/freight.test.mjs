@@ -40,6 +40,7 @@ async function load(name, window) {
   vm.runInNewContext(ts.transpileModule(await readFile(new URL(`../../src/lib/${name}.ts`,import.meta.url),'utf8'),{
     compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020},
   }).outputText,{exports,window,require(name){
+    if(name==='./directPrint')return {printerPreferences:()=>null,sendReceipt:async()=>{}};
     if(name==='./pdv')return pdvHelpers;
     if(name==='./personalization')return personalizationHelpers;
     if(name==='../utils')return {money:currency};

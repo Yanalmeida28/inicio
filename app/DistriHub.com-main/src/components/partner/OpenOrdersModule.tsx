@@ -98,11 +98,11 @@ export function OpenOrdersModule({ canEditPrice, products, onUpdateItems, onUpda
   const [documentError, setDocumentError] = useState<string | null>(null);
   const [shareNotice, setShareNotice] = useState<string | null>(null);
 
-  function handlePrint(sale: PartnerSale, format: 'receipt' | 'label') {
+  async function handlePrint(sale: PartnerSale, format: 'receipt' | 'label') {
     setDocumentError(null);
     setShareNotice(null);
     try {
-      printSale(sale, format, {
+      await printSale(sale, format, {
         ...receiptDetails,
         customer: customers.find((customer) => customer.id === sale.customer_id),
         salespersonName: salespeople.find((person) => person.id === sale.salesperson_id)?.name,

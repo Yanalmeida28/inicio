@@ -1,3 +1,4 @@
+import { PrinterSettings } from './PrinterSettings';
 import { useState, type ReactNode } from 'react';
 import {
   Settings, User, Mail, Phone, FileText, Lock, CreditCard,
@@ -131,6 +132,8 @@ export function SettingsModule({ user, profile, onProfileUpdate, branchManagemen
           <p>Perfil, segurança e gerenciamento de assinatura</p>
         </div>
       </div>
+
+      <PrinterSettings />
 
       {/* Profile Section */}
       {branchManagement && <>

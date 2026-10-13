@@ -108,9 +108,9 @@ export function SalesHistoryModule({ companyId, branchId = null, isActive = true
     }
   }
 
-  function handlePrint(sale: PrintableSale, format: 'receipt' | 'label') {
+  async function handlePrint(sale: PrintableSale, format: 'receipt' | 'label') {
     setPrintError(null);
-    try { printSale(sale, format, {
+    try { await printSale(sale, format, {
       ...receiptDetails,
       customer: customers.find((customer) => customer.id === sale.customer_id),
       salespersonName: salespeople.find((person) => person.id === sale.salesperson_id)?.name,

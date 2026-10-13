@@ -1,0 +1,14 @@
+CONECTOR DISTRiHUB - WINDOWS
+
+1. Instale o driver da impressora no Windows e confira se ela imprime uma pagina de teste.
+2. Extraia todos os arquivos deste ZIP. Abra Instalar.cmd e aceite a permissao do Windows.
+3. No DistriHub, abra Configuracoes > Impressora de cupons. Busque a impressora, selecione o papel e clique em Testar cupom e salvar.
+4. Confira o cupom. A configuracao fica salva neste navegador/computador.
+
+O conector inicia com o Windows. Para abrir novamente, use Conector DistriHub na pasta Inicializar do Windows (Win+R, shell:startup).
+Se o navegador pedir acesso a rede local, permita para distrihub.com.br.
+O cupom direto usa texto, sem logotipo. Corte automatico e tamanho de papel dependem do driver da impressora. Etiquetas usam a impressao normal do navegador.
+O envio a fila do Windows nao confirma que o papel saiu. Em caso de erro ou falta de confirmacao, confira a impressora antes de reenviar.
+Para voltar a impressao normal, clique em Usar impressao pelo navegador no app.
+Para desativar o conector, remova somente o atalho Conector DistriHub da pasta Inicializar e reinicie o Windows.
+Nenhum pagamento ou venda e feito pelo conector. Ele aceita apenas pedidos locais originados de https://distrihub.com.br ou https://www.distrihub.com.br.
