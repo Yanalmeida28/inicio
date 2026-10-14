@@ -14,9 +14,13 @@ type Props = {
   operatorId: string | null;
   operatorPin: string | null;
   salespeople: PartnerSalesperson[];
+  isActive?: boolean;
+  managedSessionId?: string | null;
+  onManageSession?: (session: CashSession | null) => void;
+  onGoToPdv?: () => void;
 };
 
-export function CashRegisterModule({ branchId, branchName, scopeKey, sales, operatorId, operatorPin, salespeople }: Props) {
+export function CashRegisterModule({ branchId, branchName, scopeKey, sales, operatorId, operatorPin, salespeople, isActive = true, managedSessionId = null, onManageSession, onGoToPdv }: Props) {
   const [sessions, setSessions] = useState<CashSession[]>([]);
   const [movements, setMovements] = useState<CashMovement[]>([]);
   const [selectedId, setSelectedId] = useState('');
@@ -38,6 +42,8 @@ export function CashRegisterModule({ branchId, branchName, scopeKey, sales, oper
   const [notice, setNotice] = useState<string | null>(null);
   const [pending, setPending] = useState<CashRequest | null>(null);
   const [actorKey, setActorKey] = useState('');
+  const [canManage, setCanManage] = useState(false);
+  const [cashSales, setCashSales] = useState<PartnerSale[]>([]);
   const inFlight = useRef(false);
   const generation = useRef(0);
   const context = useRef({ branchId, operatorId, operatorPin, scopeKey });
@@ -51,26 +57,54 @@ export function CashRegisterModule({ branchId, branchName, scopeKey, sales, oper
       p_branch_id: branchId, p_salesperson_id: operatorId, p_pin: operatorPin,
     });
     if (error) throw error;
+    if (!data || typeof data.actor_key !== 'string' || !Array.isArray(data.sessions) || !Array.isArray(data.movements)) throw new Error('Não foi possível conferir os dados do Caixa. Atualize antes de operar.');
     if (request === generation.current) {
       setSessions(data.sessions ?? []);
       setMovements(data.movements ?? []);
       setActorKey(data.actor_key);
+      setCanManage(data.can_manage === true);
+      setCashSales(data.sales ?? []);
     }
   }, [branchId, operatorId, operatorPin]);
 
   useEffect(() => {
-    let active = true;
     setLoading(true); setError(null); setNotice(null); setSessions([]); setMovements([]);
+    setActorKey(''); setCanManage(false); setCashSales([]);
     setSelectedId(''); setSupervisorPin(''); setCounted(''); setNotes('');
+    setOpening('0'); setAmount(''); setKind('sangria'); setReason(''); setSupervisorId('');
+    setRefundSaleId(''); setRefundMethod(''); setRefundAmount(''); setRefundReason('');
+    setPending(null);
     try { setPending(new CashRequestStore(sessionStorage, scopeKey).read()); }
     catch (e) { setError(pdvErrorMessage(e)); setLoading(false); return; }
-    if (!branchId) { setLoading(false); return; }
-    void refresh().catch(e => { if (active) setError(pdvErrorMessage(e)); })
-      .finally(() => { if (active) setLoading(false); });
-    return () => { active = false; invalidateReads(); };
-  }, [branchId, operatorId, operatorPin, scopeKey, refresh, invalidateReads]);
+    return invalidateReads;
+  }, [branchId, operatorId, operatorPin, scopeKey, invalidateReads]);
 
-  const current = sessions.find(s => !s.closed_at && s.actor_key === actorKey);
+  useEffect(() => {
+    if (!isActive || !branchId) { invalidateReads(); setLoading(false); return; }
+    let active = true;
+    const sync = () => {
+      setLoading(true);
+      void refresh().then(() => { if (active) setError(null); })
+        .catch(e => { if (active) setError(pdvErrorMessage(e)); })
+        .finally(() => { if (active) setLoading(false); });
+    };
+    const visible = () => { if (document.visibilityState === 'visible') sync(); };
+    sync();
+    window.addEventListener('focus', sync);
+    window.addEventListener('distrihub:cash-changed', sync);
+    document.addEventListener('visibilitychange', visible);
+    return () => {
+      active = false; invalidateReads();
+      window.removeEventListener('focus', sync); window.removeEventListener('distrihub:cash-changed', sync);
+      document.removeEventListener('visibilitychange', visible);
+    };
+  }, [refresh, isActive, branchId, sales, invalidateReads]);
+
+  const ownCurrent = sessions.find(s => !s.closed_at && s.actor_key === actorKey);
+  const current = managedSessionId
+    ? canManage ? sessions.find(s => s.id === managedSessionId && !s.closed_at) : undefined
+    : ownCurrent;
+  const supervised = Boolean(current && current.actor_key !== actorKey);
   const otherOpenSessions = sessions.filter(s => !s.closed_at && s.actor_key !== actorKey);
   const selected = sessions.find(s => s.id === selectedId) ?? current ?? sessions[0];
   const selectedMovements = movements.filter(m => m.session_id === selected?.id);
@@ -86,7 +120,8 @@ export function CashRegisterModule({ branchId, branchName, scopeKey, sales, oper
   const paymentRemaining = (original: CashMovement) => Math.round((Number(original.amount) - movements
     .filter(movement => movement.sale_id === original.sale_id && movement.payment_method === original.payment_method && ['devolucao', 'estorno'].includes(movement.kind))
     .reduce((sum, movement) => sum + Number(movement.amount), 0)) * 100) / 100;
-  const refundableSales = sales.filter(sale => sale.branch_id === branchId && sale.status === 'concluida' &&
+  const allSales = [...cashSales, ...sales.filter(sale => !cashSales.some(saved => saved.id === sale.id))];
+  const refundableSales = allSales.filter(sale => sale.branch_id === branchId && sale.status === 'concluida' &&
     eligiblePayments(sale.id).some(original => paymentRemaining(original) > 0));
   const selectedRefundSale = refundableSales.find(sale => sale.id === refundSaleId);
   const refundPayments = selectedRefundSale ? eligiblePayments(selectedRefundSale.id).filter(original => paymentRemaining(original) > 0) : [];
@@ -96,9 +131,10 @@ export function CashRegisterModule({ branchId, branchName, scopeKey, sales, oper
   async function mutate(action: 'abrir' | 'movimentar' | 'fechar' | 'devolver', recovery = false) {
     if (!supabase || inFlight.current) return;
     const startedContext = context.current;
+    const stillCurrent = () => context.current.scopeKey === startedContext.scopeKey && context.current.branchId === startedContext.branchId && context.current.operatorId === startedContext.operatorId && context.current.operatorPin === startedContext.operatorPin;
     inFlight.current = true; setBusy(true); setError(null); setNotice(null);
-    const store = new CashRequestStore(sessionStorage, scopeKey);
     try {
+      const store = new CashRequestStore(sessionStorage, scopeKey);
       const previous = store.read();
       if (previous && !recovery) throw new Error('Confirme a operação pendente antes de registrar outra movimentação.');
       const request: CashRequest | null = recovery ? previous : {
@@ -108,8 +144,10 @@ export function CashRegisterModule({ branchId, branchName, scopeKey, sales, oper
         amount: cashAmount(action === 'abrir' ? opening : action === 'fechar' ? counted : action === 'devolver' ? refundAmount : amount),
         kind: action === 'devolver' ? 'dinheiro' : kind,
         reason: action === 'fechar' ? notes.trim() : action === 'devolver' ? refundReason.trim() : reason.trim(),
+        supervised,
       };
       if (!request) throw new Error('Nenhuma operação pendente.');
+      if (!recovery && (loading || !isActive || (action !== 'abrir' && !current))) throw new Error('Atualize e selecione um caixa aberto antes de operar.');
       if (request.action === 'movimentar' && (!request.reason || request.amount <= 0)) throw new Error('Informe um valor maior que zero e o motivo da movimentação.');
       if (request.action === 'devolver') {
         if (!request.saleId || !request.reason || request.amount <= 0) {
@@ -123,7 +161,7 @@ export function CashRegisterModule({ branchId, branchName, scopeKey, sales, oper
       }
       store.save(request); setPending(request);
       const { error } = request.action === 'devolver'
-        ? await supabase.rpc('record_partner_cash_refund', {
+        ? await supabase.rpc(request.supervised ? 'supervised_record_partner_cash_refund' : 'record_partner_cash_refund', {
           p_branch_id: branchId,
           p_salesperson_id: operatorId,
           p_pin: operatorPin,
@@ -136,7 +174,7 @@ export function CashRegisterModule({ branchId, branchName, scopeKey, sales, oper
           p_supervisor_pin: supervisorPin || null,
           p_request_id: request.id,
         })
-        : await supabase.rpc('mutate_partner_cash_register', {
+        : await supabase.rpc(request.supervised ? 'supervised_mutate_partner_cash_register' : 'mutate_partner_cash_register', {
           p_action: request.action, p_branch_id: branchId, p_salesperson_id: operatorId, p_pin: operatorPin,
           p_session_id: request.sessionId,
           p_amount: request.amount, p_kind: request.kind, p_reason: request.reason,
@@ -144,17 +182,32 @@ export function CashRegisterModule({ branchId, branchName, scopeKey, sales, oper
           p_request_id: request.id,
         });
       if (error) {
-        if (!previous && isDefinitiveSaleRejection(error.code ?? '')) { store.clear(); setPending(null); }
-        throw error;
+        if (!previous && isDefinitiveSaleRejection(error.code ?? '')) {
+          store.clear(); if (stillCurrent()) setPending(null);
+          throw error;
+        }
+        if (previous && isDefinitiveSaleRejection(error.code ?? '')) {
+          const resolution = await supabase.rpc('resolve_partner_cash_request', {
+            p_branch_id: branchId, p_salesperson_id: operatorId, p_pin: operatorPin, p_request: request,
+          });
+          if (resolution.error) throw resolution.error;
+          if (resolution.data === false) {
+            store.clear(); if (stillCurrent()) setPending(null);
+            throw new Error('Operação não registrada; a pendência foi liberada. Corrija os dados e tente novamente. ' + pdvErrorMessage(error));
+          }
+          if (resolution.data !== true) throw new Error('Não foi possível conciliar a operação pendente. Atualize e tente confirmar novamente.');
+        } else throw error;
       }
       store.clear();
-      if (context.current !== startedContext && (context.current.scopeKey !== scopeKey || context.current.branchId !== branchId || context.current.operatorId !== operatorId || context.current.operatorPin !== operatorPin)) return;
+      if (!stillCurrent()) return;
       setPending(null);
       setNotice(request.action === 'abrir' ? 'Caixa aberto.' : request.action === 'fechar' ? 'Caixa fechado. O relatório está no histórico.' : request.action === 'devolver' ? 'Devolução financeira registrada nesta sessão.' : 'Movimentação registrada.');
       setAmount(''); setReason(''); setCounted(''); setNotes(''); setSupervisorPin(''); setSelectedId('');
       if (request.action === 'devolver') { setRefundSaleId(''); setRefundMethod(''); setRefundAmount(''); setRefundReason(''); }
-      try { await refresh(); } catch (e) { setError('Operação confirmada, mas a atualização falhou. Clique em Atualizar. ' + pdvErrorMessage(e)); }
-    } catch (e) { setError(pdvErrorMessage(e)); }
+      if (request.action === 'fechar' && request.supervised) onManageSession?.(null);
+      window.dispatchEvent(new Event('distrihub:cash-changed'));
+      try { await refresh(); } catch (e) { if (stillCurrent()) setError('Operação confirmada, mas a atualização falhou. Clique em Atualizar. ' + pdvErrorMessage(e)); }
+    } catch (e) { if (stillCurrent()) setError(pdvErrorMessage(e)); }
     finally { inFlight.current = false; setBusy(false); }
   }
 
@@ -177,18 +230,33 @@ export function CashRegisterModule({ branchId, branchName, scopeKey, sales, oper
     }}><RefreshCw size={14} /> Atualizar</button>
     {error && <p className="otp-error-msg" role="alert">{error}</p>}
     {notice && <p role="status">{notice}</p>}
+    {canManage && onManageSession && <section className="cash-card">
+      <label>Caixa para operar<select value={managedSessionId ?? ''} disabled={busy || loading || Boolean(pending)} onChange={e => {
+        const session = sessions.find(item => item.id === e.target.value && !item.closed_at) ?? null;
+        setSelectedId(session?.id ?? ''); onManageSession(session);
+        setOpening('0'); setAmount(''); setReason(''); setCounted(''); setNotes(''); setSupervisorId(''); setSupervisorPin('');
+        setRefundSaleId(''); setRefundMethod(''); setRefundAmount(''); setRefundReason('');
+      }}>
+        <option value="">Meu caixa</option>
+        {otherOpenSessions.map(session => <option key={session.id} value={session.id}>{session.operator_name} · Caixa aberto</option>)}
+      </select></label>
+      <p>Gerente e proprietário podem finalizar vendas, registrar movimentos e fechar o caixa selecionado. O sistema registra o responsável pela operação.</p>
+      {current && onGoToPdv && <button className="module-submit-btn" disabled={busy || loading || Boolean(pending)} onClick={onGoToPdv}>Ir ao PDV · Caixa de {current.operator_name}</button>}
+      {managedSessionId && !current && !loading && <p role="alert">O caixa selecionado foi fechado ou não está mais disponível. Selecione outro caixa.</p>}
+    </section>}
     {pending && <section className="cash-card"><p>Há uma operação com resultado ainda não confirmado: {pending.action} · {money.format(pending.amount)}. Confirme antes de iniciar outra operação.</p>
       {authorization()}<button className="module-submit-btn" disabled={busy || loading} onClick={() => void mutate(pending.action, true)}>Confirmar operação pendente</button>
     </section>}
     {loading ? <p>Carregando caixa...</p> : <>
-      {!current && !error && otherOpenSessions.length > 0 && <p role="status">Os caixas abertos de {otherOpenSessions.map(session => session.operator_name).join(', ')} pertencem a outros operadores. Para finalizar vendas, confirme o operador correspondente ou abra o seu próprio caixa nesta filial.</p>}
-      {!current && !error && <section className="cash-card"><h4>Abrir caixa</h4><p>Informe o dinheiro disponível para troco. Pré-vendas não entram no saldo até serem finalizadas.</p>
+      {!current && !error && otherOpenSessions.length > 0 && <p role="status">Há caixas abertos de {otherOpenSessions.map(session => session.operator_name).join(', ')}. {canManage ? 'Selecione o caixa acima para operar como responsável.' : 'Abra o caixa do operador atual para finalizar vendas.'}</p>}
+      {!current && !managedSessionId && actorKey && <section className="cash-card"><h4>Abrir caixa</h4><p>Informe o dinheiro disponível para troco. Pré-vendas não entram no saldo até serem finalizadas.</p>
         <form onSubmit={e => { e.preventDefault(); void mutate('abrir'); }} className="cash-fields">
           <label>Troco inicial (R$)<input inputMode="decimal" value={opening} onChange={e => setOpening(e.target.value)} disabled={busy} required /></label>
-          <button className="module-submit-btn" disabled={busy}>{busy ? 'Aguarde...' : 'Abrir caixa'}</button>
+          <button className="module-submit-btn" disabled={busy || Boolean(pending)}>{busy ? 'Aguarde...' : 'Abrir caixa'}</button>
         </form>
       </section>}
       {current && <section className="cash-card"><h4>Caixa aberto · {current.operator_name}</h4><p>Aberto em {new Date(current.opened_at).toLocaleString('pt-BR')}</p>
+        <fieldset disabled={busy || Boolean(pending)} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
         <form onSubmit={e => { e.preventDefault(); void mutate('movimentar'); }}>
           <h4>Registrar movimentação</h4><div className="cash-fields">
             <label>Tipo<select value={kind} onChange={e => setKind(e.target.value as typeof kind)} disabled={busy}><option value="sangria">Sangria (retirada)</option><option value="suprimento">Suprimento (entrada)</option></select></label>
@@ -226,13 +294,19 @@ export function CashRegisterModule({ branchId, branchName, scopeKey, sales, oper
           <p>Fechamentos com diferença exigem justificativa e autorização de gerente ou administrador.</p>{authorization()}
           <button className="module-submit-btn" disabled={busy}>Confirmar fechamento</button>
         </form>
+        </fieldset>
       </section>}
       <section className="cash-card"><h4>Histórico e relatório</h4><label>Caixa<select value={selected?.id ?? ''} onChange={e => setSelectedId(e.target.value)}>
         {!sessions.length && <option value="">Nenhum caixa registrado</option>}
         {sessions.map(s => <option key={s.id} value={s.id}>{new Date(s.opened_at).toLocaleString('pt-BR')} · {s.operator_name} · {s.closed_at ? 'Fechado' : 'Aberto'}</option>)}
       </select></label>
       {selected && <>
-        {selected.actor_key !== actorKey && <p>Consulta do caixa de {selected.operator_name}. Selecionar este relatório não troca o operador nem o caixa usado nas vendas.</p>}
+        {selected.actor_key !== actorKey && <p>Relatório do caixa de {selected.operator_name}. Para operar, use “Caixa para operar” acima.</p>}
+        <h4>Vendas deste caixa</h4>
+        <div className="stock-table-wrap"><table className="rma-table"><thead><tr><th>Venda</th><th>Cliente</th><th>Total</th><th>Status</th></tr></thead><tbody>
+          {allSales.filter(sale => selectedMovements.some(m => m.sale_id === sale.id && m.kind === 'venda')).map(sale => <tr key={sale.id}><td>#{sale.sale_number ?? sale.id.slice(0, 8).toUpperCase()}</td><td>{sale.customer_name}</td><td>{money.format(Number(sale.total) + Number(sale.freight_fee ?? 0))}</td><td>{sale.status}</td></tr>)}
+          {!selectedMovements.some(m => m.kind === 'venda') && <tr><td colSpan={4}>Nenhuma venda registrada neste caixa.</td></tr>}
+        </tbody></table></div>
         <div className="cash-summary"><div><small>Troco inicial</small><strong>{money.format(selected.opening_amount)}</strong></div>
           {Object.entries(totals).map(([key, value]) => <div key={key}><small>{cashPaymentLabels[key] ?? key} · líquido</small><strong>{money.format(value)}</strong></div>)}
           <div className="cash-day-total"><small>Total do dia</small><strong>{money.format(dayTotal)}</strong><small>{today.split('-').reverse().join('/')} · {selected.operator_name}</small></div>

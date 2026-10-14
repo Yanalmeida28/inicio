@@ -55,6 +55,7 @@ before(async () => {
     CREATE FUNCTION partner_subscription_private.require_actor(text) RETURNS void LANGUAGE sql AS $$ SELECT $$;`);
   await db.exec(JSON.parse(await read('./fixtures/split_payment_baseline.json')));
   await db.exec(await read('../migrations/20261009211459_add_split_sale_payments.sql'));
+  await db.exec(await read('../migrations/20261014224645_fix_cash_supervision_recovery_and_balance.sql'));
 });
 after(() => db.close());
 
@@ -653,4 +654,94 @@ test('cash movements use exact cents and pending requests survive remount withou
   assert.equal(cashAmount('10,25'),10.25); assert.throws(()=>cashAmount('10.001'));
   assert.equal(cashTotals([{kind:'venda',payment_method:'dinheiro',amount:0.1},{kind:'venda',payment_method:'dinheiro',amount:0.2},{kind:'sangria',payment_method:'dinheiro',amount:0.1}]).dinheiro,0.2);
   store.clear(); assert.equal(store.read(),null);
+});
+
+async function supervisedSale(session, extra={}) {
+ const r={id:randomUUID(),operator:null,pin:null,...extra};
+ await sql('SELECT supervised_execute_partner_sale_mutation($1,$2,$3,$4,NULL,$5,$6::jsonb,100,NULL,NULL,$7,$8,$9,$10,$11,$12,NULL,0,NULL)',
+ [session,r.operator,r.pin,r.id,'Cliente',JSON.stringify([{product_id:product,name:'Produto',quantity:1,unit_price:100}]),'dinheiro',branch,'concluida','pdv','varejo','balcao']);
+ return r;
+}
+
+test('owner supervises employee cash, views its sales, finalizes and closes without impersonation',async()=>{
+ await login(employeeAuth); const session=await mutate('abrir',20);
+ await login(owner); const request=await supervisedSale(session);
+ assert.equal((await sql('SELECT session_id FROM partner_cash_movements WHERE sale_id=$1',[request.id])).rows[0].session_id,session);
+ const snapshot=(await sql('SELECT read_partner_cash_register($1) AS data',[branch])).rows[0].data;
+ assert.equal(snapshot.can_manage,true); assert.ok(snapshot.sales.some(s=>s.id===request.id));
+ await supervisedSale(session,request);
+ await sql("SELECT supervised_mutate_partner_cash_register('fechar',$1,NULL,NULL,$2,120,NULL,'Fechado pelo proprietário',NULL,NULL,$3)",[branch,session,randomUUID()]);
+ await supervisedSale(session,request);
+ const closed=(await sql('SELECT * FROM partner_cash_sessions WHERE id=$1',[session])).rows[0];
+ assert.equal(closed.actor_key,employee);assert.equal(Number(closed.expected_amount),120);
+ const audit=(await sql("SELECT actor_name,action FROM partner_audit_logs WHERE action LIKE '%supervisionado%'")).rows;
+ assert.equal(audit.length,2);assert.ok(audit.every(log=>log.actor_name===owner));
+});
+
+test('linked manager finalizes and closes employee cash but cashier cannot supervise',async()=>{
+ const managerAuth=randomUUID();await sql('UPDATE partner_salespeople SET auth_user_id=$1 WHERE id=$2',[managerAuth,manager]);
+ await login(employeeAuth); const session=await mutate('abrir',0);
+ await assert.rejects(supervisedSale(session),/Somente gerente/);
+ await login(managerAuth);await supervisedSale(session);
+ await sql("SELECT supervised_mutate_partner_cash_register('fechar',$1,NULL,NULL,$2,100,NULL,'',NULL,NULL,$3)",[branch,session,randomUUID()]);
+ assert.equal(Number((await sql('SELECT expected_amount FROM partner_cash_sessions WHERE id=$1',[session])).rows[0].expected_amount),100);
+});
+
+test('supervision refuses foreign cash, another branch, changed retry destination and new sale in closed cash',async()=>{
+ await login(employeeAuth);const employeeCash=await mutate('abrir',0);
+ await login(owner);const ownerCash=await mutate('abrir',0);const request=await supervisedSale(employeeCash);
+ await assert.rejects(supervisedSale(ownerCash,request),/outro caixa/);
+ await sql("SELECT supervised_mutate_partner_cash_register('fechar',$1,NULL,NULL,$2,100,NULL,'',NULL,NULL,$3)",[branch,employeeCash,randomUUID()]);
+ await assert.rejects(supervisedSale(employeeCash),/Abra o caixa/);
+ await login(other);await assert.rejects(supervisedSale(employeeCash),/inválido|filial/i);
+ await login(owner);await assert.rejects(sql("SELECT supervised_mutate_partner_cash_register('fechar',$1,NULL,NULL,$2,0,NULL,'',NULL,NULL,$3)",[foreignBranch,ownerCash,randomUUID()]),/Filial inválida/);
+});
+
+test('cash refund cannot exceed money in the new session; supply enables it and retries remain idempotent',async()=>{
+ const original=await mutate('abrir',0);const sold=await sale();await mutate('fechar',100,{session:original});
+ const session=await mutate('abrir',0);const request=randomUUID();
+ const refund=()=>sql('SELECT record_partner_cash_refund($1,NULL,NULL,$2,$3,100,$4,NULL,NULL,$5)',[branch,session,sold.id,'Devolução',request]);
+ await assert.rejects(refund(),/dinheiro disponível/);
+ assert.equal((await sql("SELECT count(*)::int n FROM partner_cash_movements WHERE kind='devolucao'")).rows[0].n,0);
+ await mutate('movimentar',100,{session,kind:'suprimento',reason:'Fundos para devolução'});
+ await refund();await refund();await mutate('fechar',0,{session});await refund();
+ assert.equal((await sql("SELECT count(*)::int n FROM partner_cash_movements WHERE kind='devolucao'")).rows[0].n,1);
+});
+
+test('supervised refunds use destination cash balance and record the real supervisor',async()=>{
+ const original=await mutate('abrir',0);const sold=await sale();await mutate('fechar',100,{session:original});
+ await login(employeeAuth);const session=await mutate('abrir',0);await login(owner);
+ const request=randomUUID();const refund=()=>sql('SELECT supervised_record_partner_cash_refund($1,NULL,NULL,$2,$3,100,$4,NULL,NULL,$5,$6)',[branch,session,sold.id,'Devolução',request,'dinheiro']);
+ await assert.rejects(refund(),/dinheiro disponível/);
+ await sql("SELECT supervised_mutate_partner_cash_register('movimentar',$1,NULL,NULL,$2,100,'suprimento','Fundos',NULL,NULL,$3)",[branch,session,randomUUID()]);
+ await refund();await refund();
+ assert.equal((await sql("SELECT authorized_by FROM partner_cash_movements WHERE request_id=$1",[request])).rows[0].authorized_by,owner);
+});
+
+test('pending reconciliation distinguishes absent, confirmed and conflicting payloads without new financial writes',async()=>{
+ const id=randomUUID();const request={id,action:'abrir',amount:20,sessionId:null,kind:'sangria',reason:'',saleId:null};
+ const resolve=payload=>sql('SELECT resolve_partner_cash_request($1,NULL,NULL,$2::jsonb) AS confirmed',[branch,JSON.stringify(payload)]);
+ assert.equal((await resolve(request)).rows[0].confirmed,false);
+ await assert.rejects(mutate('abrir',20,{request:id}),/conciliada como não registrada/);
+ request.id=randomUUID();const session=await mutate('abrir',20,{request:request.id});assert.equal((await resolve(request)).rows[0].confirmed,true);
+ await assert.rejects(resolve({...request,amount:21}),/divergentes/);
+ const closeId=randomUUID();const closing={id:closeId,action:'fechar',amount:20,sessionId:session,reason:''};
+ assert.equal((await resolve(closing)).rows[0].confirmed,false);
+ await assert.rejects(mutate('fechar',20,{session,request:closeId}),/conciliada como não registrada/);
+ closing.id=randomUUID();await mutate('fechar',20,{session,request:closing.id});assert.equal((await resolve(closing)).rows[0].confirmed,true);
+ await login(employeeAuth);await assert.rejects(resolve(closing),/não autorizado/);
+});
+
+test('new public supervision functions are invoker-only and anonymous cannot execute',async()=>{
+ const funcs=(await sql("SELECT p.proname,p.prosecdef,has_function_privilege('anon',p.oid,'EXECUTE') AS anon FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND (p.proname LIKE 'supervised_%' OR p.proname='resolve_partner_cash_request')")).rows;
+ assert.equal(funcs.length,4);assert.ok(funcs.every(f=>!f.prosecdef&&!f.anon));
+});
+
+test('PIX refunds do not require physical cash, while inactive supervisors cannot access cash',async()=>{
+ const original=await mutate('abrir',0);const sold=await sale({method:'pix'});await mutate('fechar',0,{session:original});
+ const session=await mutate('abrir',0);
+ await sql('SELECT record_partner_cash_refund($1,NULL,NULL,$2,$3,100,$4,NULL,NULL,$5,$6)',[branch,session,sold.id,'Devolução PIX',randomUUID(),'pix']);
+ assert.deepEqual((await sql('SELECT partner_cash_private.totals($1) AS totals',[session])).rows[0].totals,{dinheiro:0,pix:-100,cartao:0,faturado:0});
+ const managerAuth=randomUUID();await sql('UPDATE partner_salespeople SET auth_user_id=$1,active=false WHERE id=$2',[managerAuth,manager]);await login(managerAuth);
+ await assert.rejects(supervisedSale(session),/inativo/);
 });

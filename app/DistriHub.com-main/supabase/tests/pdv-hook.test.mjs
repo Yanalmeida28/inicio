@@ -93,6 +93,34 @@ async function harness({initialSales=[],initialInvoices=[],initialCustomers=[],r
 const payload=()=>({customer_id:'customer',customer_name:'Cliente',items:[{product_id:'physical',name:'Produto',quantity:1,unit_price:100}],total:100,branch_id:'branch',salesperson_id:null,customer_type:'varejo',delivery_type:'balcao',payment_method:'pix'});
 const snapshot=(overrides={})=>({credits:[{customer_id:'customer',allow_credit:true,credit_limit:1000,used:0,available:1000}],products:[],movements:[],sales:[],invoices:[],...overrides});
 
+test('supervised checkout persists its cash destination and recovers it with the same sale ID',async()=>{
+ let fail=true;const calls=[];
+ const h=await harness({rpc:async(name,args)=>{
+  calls.push({name,args});
+  if(name==='supervised_execute_partner_sale_mutation')return fail?{error:{code:'08006',message:'Conexão perdida'}}:{data:args.p_sale_id,error:null};
+  return {data:snapshot(),error:null};
+ }});
+ await act(async()=>assert.rejects(h.current.createSale({...payload(),cash_session_id:'employee-cash'}),/mesmo ID/));
+ assert.equal(h.current.pendingSale.cash_session_id,'employee-cash');
+ await act(async()=>assert.rejects(h.current.createSale({...payload(),cash_session_id:'different-cash'}),/resultado pendente/));
+ fail=false;await act(async()=>h.current.retryPendingSale());
+ const mutations=calls.filter(c=>c.name==='supervised_execute_partner_sale_mutation');
+ assert.equal(mutations.length,2);assert.equal(mutations[0].args.p_sale_id,mutations[1].args.p_sale_id);
+ assert.ok(mutations.every(c=>c.args.p_cash_session_id==='employee-cash'&&c.args.p_salesperson_id===null&&c.args.p_pin===null));
+ assert.equal(h.current.pendingSale,null);
+});
+
+test('manager finalizes a pre-sale into explicitly selected cash and preserves its commercial salesperson',async()=>{
+ const pre={...payload(),id:'pre',user_id:'owner',status:'pre_venda',salesperson_id:'seller'};let mutation;
+ const h=await harness({initialSales:[pre],rpc:async(name,args)=>{
+  if(name==='supervised_execute_partner_sale_mutation'){mutation=args;return {data:'pre',error:null};}
+  return {data:snapshot({sales:[{...pre,status:'concluida'}]}),error:null};
+ }});
+ await act(async()=>h.current.finalizePreSale('pre','pix',null,null,undefined,'employee-cash'));
+ assert.equal(mutation.p_cash_session_id,'employee-cash');assert.equal(mutation.p_commercial_salesperson_id,'seller');
+ assert.equal(mutation.p_salesperson_id,null);assert.equal(mutation.p_status,'concluida');
+});
+
 test('shared customer credit updates use the selected branch context without changing the shared customer',async()=>{
   let request;
   const h=await harness({branchId:'branch',initialCustomers:[{id:'customer',user_id:'owner',name:'Cliente',branch_id:null,credit_limit:0,allow_credit:false}],rpc:async(name,args)=>{request={name,...args};return {data:{id:'customer',user_id:'owner',branch_id:null,...args.p_fields},error:null};}});

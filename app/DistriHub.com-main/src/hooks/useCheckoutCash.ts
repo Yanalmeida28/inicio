@@ -5,12 +5,12 @@ import { checkoutCash, closedCashMessage, type CheckoutCashSnapshot } from '../l
 import type { CashSession } from '../lib/cashRegister';
 
 type State = { status: 'loading' | 'open' | 'closed' | 'authorize' | 'error'; current: CashSession | null; others: CashSession[]; message: string };
-export function useCheckoutCash(branchId: string, operatorId: string | null, operatorPin: string | null, operatorName: string, scope: string, isActive = true) {
+export function useCheckoutCash(branchId: string, operatorId: string | null, operatorPin: string | null, operatorName: string, scope: string, isActive = true, managedSessionId: string | null = null) {
   const [state, setState] = useState<State>({ status: 'loading', current: null, others: [], message: 'Conferindo caixa...' });
   const generation = useRef(0);
   const invalidateReads = useCallback(() => { generation.current++; }, []);
-  const context = useRef({ branchId, operatorId, operatorPin, scope });
-  context.current = { branchId, operatorId, operatorPin, scope };
+  const context = useRef({ branchId, operatorId, operatorPin, scope, managedSessionId });
+  context.current = { branchId, operatorId, operatorPin, scope, managedSessionId };
   const needsPin = Boolean(operatorId && !operatorPin);
   const read = useCallback(async () => {
     if (!branchId) throw new Error('Selecione uma filial para conferir o caixa.');
@@ -21,8 +21,8 @@ export function useCheckoutCash(branchId: string, operatorId: string | null, ope
     });
     if (error) throw new Error(pdvErrorMessage(error));
     if (!data || typeof data.actor_key !== 'string' || !Array.isArray(data.sessions)) throw new Error('Não foi possível identificar o caixa do operador.');
-    return checkoutCash(data as CheckoutCashSnapshot, branchId);
-  }, [branchId, operatorId, operatorPin, operatorName, needsPin]);
+    return checkoutCash(data as CheckoutCashSnapshot, branchId, managedSessionId);
+  }, [branchId, operatorId, operatorPin, operatorName, needsPin, managedSessionId]);
   const performRefresh = useCallback(async () => {
     const request = ++generation.current;
     setState({ status: 'loading', current: null, others: [], message: 'Conferindo caixa...' });
@@ -51,16 +51,17 @@ export function useCheckoutCash(branchId: string, operatorId: string | null, ope
     const visible = () => { if (document.visibilityState === 'visible') sync(); };
     sync();
     window.addEventListener('focus', sync);
+    window.addEventListener('distrihub:cash-changed', sync);
     document.addEventListener('visibilitychange', visible);
-    return () => { invalidateReads(); inFlight.current = null; window.removeEventListener('focus', sync); document.removeEventListener('visibilitychange', visible); };
+    return () => { invalidateReads(); inFlight.current = null; window.removeEventListener('focus', sync); window.removeEventListener('distrihub:cash-changed', sync); document.removeEventListener('visibilitychange', visible); };
   }, [refresh, scope, invalidateReads, isActive]);
   const assertOpen = useCallback(async () => {
     const result = await refresh();
     if (context.current.branchId !== branchId || context.current.operatorId !== operatorId
-      || context.current.operatorPin !== operatorPin || context.current.scope !== scope) {
+      || context.current.operatorPin !== operatorPin || context.current.scope !== scope || context.current.managedSessionId !== managedSessionId) {
       throw new Error('O operador ou a filial mudou durante a conferência. Confira o caixa antes de finalizar.');
     }
     if (!result.current) throw new Error(closedCashMessage(operatorName, result.others.map(session => session.operator_name)));
-  }, [refresh, operatorName, branchId, operatorId, operatorPin, scope]);
+  }, [refresh, operatorName, branchId, operatorId, operatorPin, scope, managedSessionId]);
   return { ...state, refresh, assertOpen };
 }

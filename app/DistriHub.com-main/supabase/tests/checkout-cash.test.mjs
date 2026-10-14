@@ -60,6 +60,26 @@ test('operator selection survives a reload, is isolated by account and never sto
   assert.equal(new helpers.OperatorSelectionStore(storage,'account').read().operatorId,null);
 });
 
+test('explicit supervised destination requires server management permission and an open session in the branch',()=>{
+ const snapshot={actor_key:'owner',sessions:[managerSession],can_manage:true};
+ assert.equal(helpers.checkoutCash(snapshot,'branch','manager-session').current.id,'manager-session');
+ assert.equal(helpers.checkoutCash({...snapshot,can_manage:false},'branch','manager-session').current,null);
+ assert.equal(helpers.checkoutCash(snapshot,'other','manager-session').current,null);
+ assert.equal(helpers.checkoutCash({...snapshot,sessions:[{...managerSession,closed_at:'now'}]},'branch','manager-session').current,null);
+});
+
+test('supervised checkout rechecks the selected cash while preserving manager authentication',async()=>{
+ let data={actor_key:'owner',sessions:[managerSession],can_manage:true};const calls=[];
+ const hook=await compile('../../src/hooks/useCheckoutCash.ts',{react:React,'../lib/supabase':{supabase:{rpc:async(name,args)=>{calls.push({name,args});return {data,error:null};}}},'../lib/checkoutCash':helpers,'../lib/pdv':{pdvErrorMessage:e=>e.message}});
+ let api;function Consumer(){api=hook.useCheckoutCash('branch',null,null,'Gerente','owner',true,'manager-session');return null;}
+ let view;await act(async()=>{view=TestRenderer.create(React.createElement(Consumer));});
+ try {
+  assert.equal(api.status,'open');await act(async()=>api.assertOpen());
+  assert.ok(calls.every(c=>c.args.p_salesperson_id===null&&c.args.p_pin===null));
+  data={...data,sessions:[{...managerSession,closed_at:'now'}]};await act(async()=>assert.rejects(api.assertOpen(),/não está aberto/));
+ } finally {act(()=>view.unmount());}
+});
+
 test('checkout rechecks the real open session and cannot use another operator cash',async()=>{
   let data={actor_key:'owner',sessions:[managerSession]};
   const calls=[];

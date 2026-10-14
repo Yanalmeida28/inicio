@@ -254,6 +254,7 @@ export interface SalePayment { method: 'dinheiro' | 'pix' | 'cartao'; amount: nu
 export interface PartnerSale {
   /** Browser-only provenance for clearing the exact confirmed checkout draft. */
   draft_scope?: string;
+  cash_session_id?: string | null;
   sale_number?: number;
   payment_splits?: SalePayment[];
   /** Frete recebido para repasse a terceiros; não compõe total/faturamento. */

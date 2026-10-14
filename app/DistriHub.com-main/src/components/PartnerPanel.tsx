@@ -335,6 +335,7 @@ export function PartnerPanel({
   const [recoveredSaleNotice, setRecoveredSaleNotice] = useState<string | null>(null);
   useEffect(() => setRecoveredSaleNotice(null), [identity?.authUserId, identity?.companyUserId]);
   const [refreshingPdv, setRefreshingPdv] = useState(false);
+  const [managedCashSession, setManagedCashSession] = useState<{ id: string; operator_name: string } | null>(null);
   const { refreshPdv } = partner;
 
   const activeSalesperson = identity?.salespersonId
@@ -408,6 +409,7 @@ export function PartnerPanel({
     : 'administrador';
 
   const operatorScope = `${identity?.authUserId}:${identity?.companyUserId}`;
+  useEffect(() => { setManagedCashSession(null); }, [operatorScope, effectiveBranchId, currentSalespersonId]);
   useEffect(() => {
     if (!identity || partner.loading || operatorRestoredScope.current === operatorScope) return;
     operatorRestoredScope.current = operatorScope;
@@ -438,11 +440,11 @@ export function PartnerPanel({
   }, [operatorScope, operatorSelectionScope, identity, isEmployeeRestricted, selectedBranchId, currentSalespersonId]);
 
   const checkoutCash = useCheckoutCash(effectiveBranchId, isEmployeeRestricted ? null : currentSalespersonId,
-    isEmployeeRestricted ? null : activeOperatorPin, activeSalesperson?.name ?? 'Proprietário / Administrador', operatorScope, ['pdv', 'pedidos', 'caixa'].includes(activeTab));
+    isEmployeeRestricted ? null : activeOperatorPin, managedCashSession?.operator_name ?? activeSalesperson?.name ?? 'Proprietário / Administrador', operatorScope, ['pdv', 'pedidos', 'caixa'].includes(activeTab), managedCashSession?.id ?? null);
   const refreshCash = checkoutCash.refresh;
   useEffect(() => {
     if (activeTab === 'pdv' || activeTab === 'pedidos' || activeTab === 'caixa') void refreshCash().catch(() => {});
-  }, [activeTab, refreshCash]);
+  }, [activeTab, refreshCash, partner.sales]);
 
   useEffect(() => {
     if (
@@ -1142,6 +1144,7 @@ export function PartnerPanel({
       {
         ...sale,
         branch_id: targetBranch,
+        cash_session_id: managedCashSession?.id ?? null,
         salesperson_id: activeSalesperson
           ? activeSalesperson.id
           : sale.salesperson_id || null,
@@ -1234,6 +1237,7 @@ export function PartnerPanel({
       operatorId,
       operatorPin,
       paymentSplits,
+      managedCashSession?.id ?? null,
     );
   }
 
@@ -2113,6 +2117,10 @@ export function PartnerPanel({
               <div hidden={activeTab !== 'caixa'}>
               {renderTab('caixa',
               <CashRegisterModule
+                isActive={activeTab === 'caixa'}
+                managedSessionId={managedCashSession?.id ?? null}
+                onManageSession={setManagedCashSession}
+                onGoToPdv={!blockedTabs.includes('pdv') ? () => setActiveTab('pdv') : undefined}
                 branchId={effectiveBranchId}
                 sales={partner.sales}
                 scopeKey={`${identity?.authUserId}:${identity?.companyUserId}:${activeSalesperson?.id ?? 'owner'}:${effectiveBranchId}`}

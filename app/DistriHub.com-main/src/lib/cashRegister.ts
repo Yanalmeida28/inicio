@@ -23,6 +23,7 @@ export interface CashRequest {
   amount: number;
   kind: 'sangria' | 'suprimento' | 'dinheiro' | 'pix' | 'cartao' | 'faturado';
   reason: string;
+  supervised?: boolean;
 }
 
 // No operator/manager PIN is persisted. Reloads recover the same financial UUID.
@@ -38,7 +39,10 @@ export class CashRequestStore {
     }
     return request;
   }
-  save(request: CashRequest) { this.storage.setItem(this.key, JSON.stringify(request)); }
+  save(request: CashRequest) {
+    const { id, action, sessionId, saleId, paymentMethod, amount, kind, reason, supervised } = request;
+    this.storage.setItem(this.key, JSON.stringify({ id, action, sessionId, saleId, paymentMethod, amount, kind, reason, supervised }));
+  }
   clear() { this.storage.removeItem(this.key); }
 }
 

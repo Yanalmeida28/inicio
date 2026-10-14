@@ -2,10 +2,12 @@ import type { CashSession } from './cashRegister';
 
 export type CheckoutCashSnapshot = { actor_key: string; sessions: CashSession[] };
 
-export function checkoutCash(snapshot: CheckoutCashSnapshot, branchId: string) {
+export function checkoutCash(snapshot: CheckoutCashSnapshot & { can_manage?: boolean }, branchId: string, managedSessionId?: string | null) {
   const open = snapshot.sessions.filter(session => session.branch_id === branchId && !session.closed_at);
   return {
-    current: open.find(session => session.actor_key === snapshot.actor_key) ?? null,
+    current: managedSessionId
+      ? (snapshot.can_manage ? open.find(session => session.id === managedSessionId) : null) ?? null
+      : open.find(session => session.actor_key === snapshot.actor_key) ?? null,
     others: open.filter(session => session.actor_key !== snapshot.actor_key),
   };
 }

@@ -106,6 +106,7 @@ export function saleRequestKey(sale: Partial<PartnerSale>): string {
     sale.imei ?? null, sale.serial_number ?? null, sale.payment_method ?? null,
     sale.branch_id, sale.salesperson_id ?? null, sale.customer_type ?? 'varejo',
     sale.delivery_type ?? 'balcao', sale.origin ?? 'pdv', sale.status ?? 'concluida',
+    sale.cash_session_id ?? null,
   ]);
 }
 
@@ -140,6 +141,7 @@ export class PdvSaleAttemptStore {
       delivery_type: sale.delivery_type, status: sale.status, origin: sale.origin, online_payment: sale.online_payment,
       payment_status: sale.payment_status, created_at: sale.created_at,
       draft_scope: sale.draft_scope,
+      cash_session_id: sale.cash_session_id,
     };
     this.storage.setItem(this.key, JSON.stringify(stored));
     return stored;

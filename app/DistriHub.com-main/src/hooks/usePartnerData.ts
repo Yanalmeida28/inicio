@@ -1818,7 +1818,8 @@ read('sales', () => fetchAllPages((from, to) => client
         setPendingSale(ns);
         if (isSupabaseConfigured && supabase) {
           try {
-            const { data: confirmedId, error: rpcError } = await supabase.rpc('execute_partner_sale_mutation', {
+            const { data: confirmedId, error: rpcError } = await supabase.rpc(ns.cash_session_id ? 'supervised_execute_partner_sale_mutation' : 'execute_partner_sale_mutation', {
+              ...(ns.cash_session_id ? { p_cash_session_id: ns.cash_session_id } : {}),
               p_salesperson_id: operatorId ?? null, p_pin: operatorPin ?? null,
               p_commercial_salesperson_id: ns.salesperson_id,
               p_sale_id: ns.id, p_customer_id: ns.customer_id, p_customer_name: ns.customer_name,
@@ -1987,6 +1988,7 @@ read('sales', () => fetchAllPages((from, to) => client
       operatorId?: string | null,
       operatorPin?: string | null,
       paymentSplits?: SalePayment[],
+      cashSessionId?: string | null,
     ) => {
       const currentIdentity = requireIdentity();
 
@@ -2029,8 +2031,9 @@ read('sales', () => fetchAllPages((from, to) => client
       if (isSupabaseConfigured && supabase) {
         const { error: rpcErr } =
           await supabase.rpc(
-            'execute_partner_sale_mutation',
+            cashSessionId ? 'supervised_execute_partner_sale_mutation' : 'execute_partner_sale_mutation',
             {
+              ...(cashSessionId ? { p_cash_session_id: cashSessionId } : {}),
               p_salesperson_id:
                 effectiveOperatorId,
               p_pin: effectiveOperatorPin,
