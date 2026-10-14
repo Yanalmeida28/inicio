@@ -2137,6 +2137,8 @@ export function PartnerPanel({
               {renderTab('pedidos', <CatalogOrdersModule companyId={identity?.companyUserId ?? null} branchId={effectiveBranchId} />, ':catalog')}
               {renderTab('pedidos',
               <OpenOrdersModule
+                key={`${identity?.authUserId}:${identity?.companyUserId}:${effectiveBranchId}:${activeSalesperson?.id ?? 'owner'}`}
+                isActive={activeTab === 'pedidos'}
                 onPullToPdv={(sale) => {
                   if (sale.status !== 'pre_venda' || !sale.branch_id || blockedTabs.includes('pdv')) return;
                   if (lockedBranchId && sale.branch_id !== lockedBranchId) return;
@@ -2170,12 +2172,14 @@ export function PartnerPanel({
                 onFinalizePreSale={
                   handleFinalizePreSale
                 }
-                onCancelSale={
-                  handleCancelSale
-                }
-                onDeleteSale={
-                  handleDeleteSale
-                }
+                onCancelSale={async (id, supervisorId, supervisorPin) => {
+                  const { operatorId, operatorPin } = getOperatorContext();
+                  await partner.mutateOpenOrder(id, 'cancel', operatorId, operatorPin, supervisorId, supervisorPin);
+                }}
+                onDeleteSale={async (id, supervisorId, supervisorPin) => {
+                  const { operatorId, operatorPin } = getOperatorContext();
+                  await partner.mutateOpenOrder(id, 'delete', operatorId, operatorPin, supervisorId, supervisorPin);
+                }}
               />)}
               </div>
             )}

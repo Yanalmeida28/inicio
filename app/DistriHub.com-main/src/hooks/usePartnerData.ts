@@ -2076,6 +2076,30 @@ read('sales', () => fetchAllPages((from, to) => client
     [data.sales, requireIdentity, refreshPdv, syncConfirmedSale],
   );
 
+  const mutateOpenOrder = useCallback(async (id: string, action: 'cancel' | 'delete', operatorId?: string | null, operatorPin?: string | null, supervisorId?: string | null, supervisorPin?: string | null) => {
+    if (saleInFlight.current) throw new Error('Aguarde a operação em andamento.');
+    saleInFlight.current = true;
+    try {
+      const currentIdentity = requireIdentity();
+      const sale = data.sales.find(item => item.id === id);
+      if (!sale?.branch_id || !['aberta', 'pre_venda'].includes(sale.status)) throw new Error('Pedido não está mais aberto. Atualize a lista.');
+      ensureEmployeeBranch(currentIdentity, sale.branch_id);
+      if (!supabase || !isSupabaseConfigured) throw new Error('Conecte-se para autorizar esta operação.');
+      const { data: confirmed, error } = await supabase.rpc('mutate_partner_open_order', {
+        p_sale_id: id, p_branch_id: sale.branch_id, p_action: action,
+        p_salesperson_id: operatorId ?? null, p_pin: operatorPin ?? null,
+        p_supervisor_id: supervisorId ?? null, p_supervisor_pin: supervisorPin ?? null,
+      });
+      if (error) throw new Error(pdvErrorMessage(error));
+      if (confirmed !== id) throw new Error('Resultado não confirmado. Atualize os pedidos antes de tentar novamente.');
+      if (identityScopeRef.current !== `${currentIdentity.authUserId}:${currentIdentity.companyUserId}`) return;
+      dataRevisionRef.current.invalidate(['sales']);
+      setData(previous => ({ ...previous, sales: action === 'delete'
+        ? previous.sales.filter(item => item.id !== id)
+        : previous.sales.map(item => item.id === id ? { ...item, status: 'cancelada', payment_status: 'cancelado' } : item) }));
+    } finally { saleInFlight.current = false; }
+  }, [data.sales, requireIdentity]);
+
   const cancelSale = useCallback(
     async (
       id: string,
@@ -4066,6 +4090,7 @@ read('sales', () => fetchAllPages((from, to) => client
     updateOpenOrderCustomer,
     updateDelivery,
     finalizePreSale,
+    mutateOpenOrder,
     cancelSale,
     deleteSale,
 

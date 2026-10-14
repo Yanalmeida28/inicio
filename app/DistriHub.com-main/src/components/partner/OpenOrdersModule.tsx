@@ -1,5 +1,6 @@
 import { SplitPaymentFields } from './SplitPaymentFields';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { orderMatchesDate } from '../../lib/openOrderFilters';
 import {
   ClipboardList, Search, X, Calendar, Filter, ArrowRight, Wallet, Lock,
 } from 'lucide-react';
@@ -20,6 +21,7 @@ type Props = {
   customers: PartnerCustomer[];
   salespeople: PartnerSalesperson[];
   currentRole: SalespersonRole;
+  isActive?: boolean;
   receiptDetails?: ReceiptDetails;
   onFinalizePreSale?: (id: string, paymentMethod: string, paymentSplits?: SalePayment[]) => Promise<void>;
   onCancelSale: (id: string, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
@@ -42,7 +44,13 @@ const payStatusLabels: Record<string, { label: string; color: string }> = {
   cancelado: { label: 'Cancelado', color: '#fda4af' },
 };
 
-export function OpenOrdersModule({ canEditPrice, products, onUpdateItems, onUpdateCustomer, sales, customers, salespeople, currentRole, receiptDetails, onFinalizePreSale, onCancelSale, onDeleteSale, onPullToPdv }: Props) {
+export function OpenOrdersModule({ canEditPrice, products, onUpdateItems, onUpdateCustomer, sales, customers, salespeople, currentRole, receiptDetails, onFinalizePreSale, onCancelSale, onDeleteSale, onPullToPdv, isActive = true }: Props) {
+  const mounted = useRef(true);
+  const active = useRef(isActive); active.current = isActive;
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const canApply = () => mounted.current && active.current;
+  const [notice, setNotice] = useState<string | null>(null);
+  const [filterError, setFilterError] = useState<string | null>(null);
   const [customerTarget, setCustomerTarget] = useState<PartnerSale | null>(null);
   const [newCustomerId, setNewCustomerId] = useState('');
   const [customerTerm, setCustomerTerm] = useState('');
@@ -56,14 +64,15 @@ export function OpenOrdersModule({ canEditPrice, products, onUpdateItems, onUpda
     (!customerTerm.trim() || `${customer.name} ${customer.document ?? ''}`.toLocaleLowerCase('pt-BR').includes(customerTerm.trim().toLocaleLowerCase('pt-BR'))));
 
   async function saveCustomer() {
-    if (!customerTarget || !newCustomerId || customerInFlight.current) return;
+    if (!canApply() || !customerTarget || !newCustomerId || customerInFlight.current || finalizeInFlight.current || cancelInFlight.current) return;
+    if (!sales.some(sale => sale.id === customerTarget.id && sale.branch_id === customerTarget.branch_id && ['pre_venda', 'aberta'].includes(sale.status))) { setCustomerError('Pedido não está mais aberto. Atualize a lista.'); return; }
     customerInFlight.current = true;
     setSavingCustomer(true);
     setCustomerError(null);
     try {
       await onUpdateCustomer(customerTarget.id, newCustomerId);
-      setCustomerTarget(null);
-    } catch (error) { setCustomerError(pdvErrorMessage(error)); }
+      if (canApply()) setCustomerTarget(null);
+    } catch (error) { if (canApply()) setCustomerError(pdvErrorMessage(error)); }
     finally { customerInFlight.current = false; setSavingCustomer(false); }
   }
   const [editTarget, setEditTarget] = useState<PartnerSale | null>(null);
@@ -95,6 +104,15 @@ export function OpenOrdersModule({ canEditPrice, products, onUpdateItems, onUpda
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState<string | null>(null);
   const [isVerifyingPin, setIsVerifyingPin] = useState(false);
+  const cancelInFlight = useRef(false);
+  const canSelfAuthorize = currentRole === 'administrador' || currentRole === 'gerente';
+  const busy = isFinalizing || isVerifyingPin || savingCustomer;
+  useEffect(() => {
+    if (!isActive) { setFinalizeTarget(null); setCancelTarget(null); setCustomerTarget(null); setEditTarget(null); setPinInput(''); return; }
+    const latest = (target: PartnerSale | null) => target ? sales.find(sale => sale.id === target.id && sale.branch_id === target.branch_id && ['aberta', 'pre_venda'].includes(sale.status)) ?? null : null;
+    setFinalizeTarget(target => { const sale = latest(target); return sale?.status === 'pre_venda' ? sale : null; });
+    setCancelTarget(latest); setCustomerTarget(latest); setEditTarget(latest);
+  }, [sales, isActive]);
 
   const [documentError, setDocumentError] = useState<string | null>(null);
   const [shareNotice, setShareNotice] = useState<string | null>(null);
@@ -143,7 +161,7 @@ export function OpenOrdersModule({ canEditPrice, products, onUpdateItems, onUpda
 
   // O PIN nunca é comparado no cliente: quem valida é a RPC no backend.
   // A lista abaixo serve apenas para escolher o responsável que autoriza.
-  const managers = salespeople.filter((s) => s.role === 'administrador' || s.role === 'gerente');
+  const managers = salespeople.filter(s => (s.active ?? s.is_active) !== false && (s.role === 'administrador' || (s.role === 'gerente' && s.branch_id === cancelTarget?.branch_id)));
 
   const openOrders = useMemo(() => {
     return sales.filter((s) => s.status === 'aberta' || s.status === 'pre_venda');
@@ -153,12 +171,7 @@ export function OpenOrdersModule({ canEditPrice, products, onUpdateItems, onUpda
     if (!appliedFilters) return openOrders;
     const filters = appliedFilters;
     return openOrders.filter((sale) => {
-      if (filters.dateStart && new Date(sale.created_at) < new Date(filters.dateStart)) return false;
-      if (filters.dateEnd) {
-        const end = new Date(filters.dateEnd);
-        end.setHours(23, 59, 59, 999);
-        if (new Date(sale.created_at) > end) return false;
-      }
+      if (!orderMatchesDate(sale.created_at, filters.dateStart, filters.dateEnd)) return false;
       if (filters.orderId) {
         const term = filters.orderId.toLowerCase();
         if (!sale.id.toLowerCase().includes(term) && !(sale.sale_number ? String(sale.sale_number).padStart(6, '0') : sale.id.slice(0, 8).toUpperCase()).includes(term)) return false;
@@ -176,6 +189,8 @@ export function OpenOrdersModule({ canEditPrice, products, onUpdateItems, onUpda
   }, [appliedFilters, customers, openOrders]);
 
   function handleSearch() {
+    if (dateStart && dateEnd && dateStart > dateEnd) { setFilterError('A data inicial deve ser anterior ou igual à data final.'); return; }
+    setFilterError(null);
     setAppliedFilters({ dateStart, dateEnd, orderId, customerSearch, statusFilter, paymentFilter, sourceFilter });
   }
 
@@ -183,12 +198,14 @@ export function OpenOrdersModule({ canEditPrice, products, onUpdateItems, onUpda
     setDateStart(''); setDateEnd(''); setOrderId(''); setCustomerSearch('');
     setStatusFilter('all'); setPaymentFilter('all'); setSourceFilter('all');
     setAppliedFilters(null);
+    setFilterError(null);
   }
 
   const totalAmount = displayedOrders.reduce((sum, s) => sum + saleChargeTotal(s), 0);
   const pendingCount = displayedOrders.filter((s) => s.payment_status === 'pendente' || s.status === 'pre_venda').length;
 
   function requestFinalize(sale: PartnerSale) {
+    if (!canApply() || finalizeInFlight.current || cancelInFlight.current || customerInFlight.current) return;
     setFinalizeTarget(sale);
     setFinalizePayment(sale.payment_method || 'pix');
     setFinalizeDraft(splitPaymentDraft(sale.payment_splits));
@@ -196,7 +213,8 @@ export function OpenOrdersModule({ canEditPrice, products, onUpdateItems, onUpda
   }
 
   async function confirmFinalize() {
-    if (!finalizeTarget || !onFinalizePreSale || finalizeInFlight.current) return;
+    if (!canApply() || !finalizeTarget || !onFinalizePreSale || finalizeInFlight.current || cancelInFlight.current || customerInFlight.current) return;
+    if (!sales.some(sale => sale.id === finalizeTarget.id && sale.branch_id === finalizeTarget.branch_id && sale.status === 'pre_venda')) { setFinalizeError('Pedido não está mais aberto. Atualize a lista.'); return; }
     const parts = finalizePayment === 'misto' ? draftPayments(finalizeDraft) : [];
     const validation = finalizePayment === 'misto' ? splitPaymentError(saleChargeTotal(finalizeTarget), parts) : null;
     if (validation) { setFinalizeError(validation); return; }
@@ -206,9 +224,11 @@ export function OpenOrdersModule({ canEditPrice, products, onUpdateItems, onUpda
     try {
       // The shared hook checks a fresh authorized credit balance before calling the sale RPC.
       await onFinalizePreSale(finalizeTarget.id, finalizePayment, parts);
+      if (!canApply()) return;
+      setNotice(`Pedido #${finalizeTarget.sale_number ?? finalizeTarget.id.slice(0, 8).toUpperCase()} finalizado.`);
       setFinalizeTarget(null);
     } catch (error) {
-      setFinalizeError(pdvErrorMessage(error));
+      if (canApply()) setFinalizeError(pdvErrorMessage(error));
     } finally {
       finalizeInFlight.current = false;
       setIsFinalizing(false);
@@ -216,41 +236,46 @@ export function OpenOrdersModule({ canEditPrice, products, onUpdateItems, onUpda
   }
 
   function requestCancel(sale: PartnerSale) {
+    if (!canApply() || finalizeInFlight.current || cancelInFlight.current || customerInFlight.current) return;
     setCancelTarget(sale);
-    setSupervisorId(managers[0]?.id ?? '');
+    setSupervisorId(canSelfAuthorize ? '' : salespeople.find(person => (person.active ?? person.is_active) !== false && (person.role === 'administrador' || (person.role === 'gerente' && person.branch_id === sale.branch_id)))?.id ?? '');
     setPinInput('');
     setPinError(null);
   }
 
-  // Autenticação delegada ao backend: o PIN digitado é enviado às RPCs
-  // existentes (execute_partner_sale_mutation / execute_partner_sale_delete),
-  // que o validam contra o pin_hash. Nenhuma comparação ocorre no navegador.
+  // O callback mantém o operador autenticado e envia a autorização do
+  // supervisor separadamente. O PIN é validado somente no servidor.
   async function verifyPinAndCancel(action: 'cancel' | 'delete') {
-    if (!cancelTarget) return;
-    if (!supervisorId) {
+    if (!canApply() || !cancelTarget || cancelInFlight.current || finalizeInFlight.current || customerInFlight.current) return;
+    if (!sales.some(sale => sale.id === cancelTarget.id && sale.branch_id === cancelTarget.branch_id && ['pre_venda', 'aberta'].includes(sale.status))) { setPinError('Pedido não está mais aberto. Atualize a lista.'); return; }
+    if (!supervisorId && !canSelfAuthorize) {
       setPinError('Selecione o responsável (Administrador ou Gerente).');
       return;
     }
-    if (!pinInput) {
+    if (supervisorId && !/^\d{4,8}$/.test(pinInput.trim())) {
       setPinError('Digite o PIN do responsável selecionado.');
       return;
     }
+    cancelInFlight.current = true;
     setIsVerifyingPin(true);
     setPinError(null);
     try {
       if (action === 'cancel') {
-        await onCancelSale(cancelTarget.id, supervisorId, pinInput);
+        await onCancelSale(cancelTarget.id, supervisorId || undefined, supervisorId ? pinInput.trim() : undefined);
       } else {
-        await onDeleteSale(cancelTarget.id, supervisorId, pinInput);
+        await onDeleteSale(cancelTarget.id, supervisorId || undefined, supervisorId ? pinInput.trim() : undefined);
       }
+      if (!canApply()) return;
+      setNotice(`Pedido #${cancelTarget.sale_number ?? cancelTarget.id.slice(0, 8).toUpperCase()} ${action === 'delete' ? 'apagado' : 'cancelado'}.`);
       setCancelTarget(null);
       setSupervisorId('');
       setPinInput('');
       setPinError(null);
     } catch (error) {
-      setPinError(error instanceof Error ? error.message : 'Não foi possível autorizar. Verifique o PIN.');
+      if (canApply()) setPinError(pdvErrorMessage(error));
     } finally {
       setIsVerifyingPin(false);
+      cancelInFlight.current = false;
     }
   }
 
@@ -281,6 +306,8 @@ export function OpenOrdersModule({ canEditPrice, products, onUpdateItems, onUpda
 
       {documentError && <p className="otp-error-msg" role="alert">{documentError}</p>}
       {shareNotice && <p role="status">{shareNotice}</p>}
+      {notice && <p role="status">{notice}</p>}
+      {filterError && <p role="alert" className="otp-error-msg">{filterError}</p>}
 
       {/* Filter Bar */}
       <div className="orders-filter-bar">
@@ -384,20 +411,21 @@ export function OpenOrdersModule({ canEditPrice, products, onUpdateItems, onUpda
                     <td data-label="Ações" className="open-order-actions">
                       <div className="row-action-group">
                         {canCheckout && s.status === 'pre_venda' && (
-                          <button className="module-submit-btn compact" onClick={() => requestFinalize(s)} title="Finalizar no caixa">
+                          <button className="module-submit-btn compact" disabled={busy} onClick={() => requestFinalize(s)} title="Finalizar no caixa">
                             <Wallet size={14} /> Finalizar
                           </button>
                         )}
                         {canCheckout && onPullToPdv && s.status === 'pre_venda' && (
-                          <button className="rma-advance-btn" onClick={() => onPullToPdv(s)} title="Resgatar para PDV">
+                          <button className="rma-advance-btn" disabled={busy} onClick={() => onPullToPdv(s)} title="Resgatar para PDV">
                             <ArrowRight size={14} /> Resgatar para PDV
                           </button>
                         )}
                         <SaleActionsMenu
                           onChangeCustomer={canChangeCustomer && s.payment_status === 'pendente' && !s.online_payment ? () => {
+                            if (!canApply() || finalizeInFlight.current || cancelInFlight.current || customerInFlight.current) return;
                             setCustomerTarget(s); setNewCustomerId(s.customer_id ?? ''); setCustomerTerm(''); setCustomerError(null);
                           } : undefined}
-                          onEditItems={s.status === 'pre_venda' ? () => setEditTarget(s) : undefined}
+                          onEditItems={s.status === 'pre_venda' && !busy ? () => setEditTarget(s) : undefined}
                           onPrintReceipt={() => handlePrint(s, 'receipt')}
                           onPrintLabel={() => handlePrint(s, 'label')}
                           onWhatsApp={() => handleShare(s, 'whatsapp')}
@@ -433,11 +461,11 @@ export function OpenOrdersModule({ canEditPrice, products, onUpdateItems, onUpda
         />
       )}
       {finalizeTarget && (
-        <div className="modal-backdrop" onClick={() => setFinalizeTarget(null)}>
+        <div className="modal-backdrop" onClick={() => { if (!finalizeInFlight.current) setFinalizeTarget(null); }}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '400px' }}>
             <div className="modal-header">
               <h3><Wallet size={18} style={{ display: 'inline', marginRight: '6px' }} /> Finalizar Pedido</h3>
-              <button onClick={() => setFinalizeTarget(null)}><X size={18} /></button>
+              <button disabled={isFinalizing} onClick={() => { if (!finalizeInFlight.current) setFinalizeTarget(null); }}><X size={18} /></button>
             </div>
             <p className="otp-description">
               <strong>{finalizeTarget.customer_name ?? 'Cliente'}</strong> — {finalizeTarget.items.length} {finalizeTarget.items.length === 1 ? 'item' : 'itens'} — {money.format(saleChargeTotal(finalizeTarget))}
@@ -446,6 +474,7 @@ export function OpenOrdersModule({ canEditPrice, products, onUpdateItems, onUpda
               <strong>Forma de Pagamento</strong>
               <select
                 value={finalizePayment}
+                disabled={isFinalizing}
                 onChange={(e) => setFinalizePayment(e.target.value)}
                 style={{ width: '100%', marginTop: '6px' }}
               >
@@ -498,16 +527,16 @@ export function OpenOrdersModule({ canEditPrice, products, onUpdateItems, onUpda
 
       {/* Cancel/Delete Modal */}
       {cancelTarget && (
-        <div className="modal-backdrop" onClick={() => setCancelTarget(null)}>
+        <div className="modal-backdrop" onClick={() => { if (!cancelInFlight.current) { setCancelTarget(null); setPinInput(''); } }}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '380px' }}>
             <div className="modal-header">
               <h3><Lock size={18} style={{ display: 'inline', marginRight: '6px' }} /> Confirmação Necessária</h3>
-              <button onClick={() => setCancelTarget(null)}><X size={18} /></button>
+              <button disabled={isVerifyingPin} onClick={() => { if (!cancelInFlight.current) { setCancelTarget(null); setPinInput(''); } }}><X size={18} /></button>
             </div>
             <p className="otp-description">
-              Cancelar ou apagar um pedido requer permissão de Administrador ou Gerente. Selecione o responsável e digite o PIN dele para continuar.
+              Gerente e proprietário podem autorizar pelo próprio acesso. Funcionários precisam selecionar um responsável e informar o PIN dele.
             </p>
-            {managers.length === 0 ? (
+            {managers.length === 0 && !canSelfAuthorize ? (
               <p className="otp-error-msg">Nenhum Administrador ou Gerente cadastrado. Cadastre um em Colaboradores antes de continuar.</p>
             ) : (
               <>
@@ -515,31 +544,34 @@ export function OpenOrdersModule({ canEditPrice, products, onUpdateItems, onUpda
                   <strong>Responsável</strong>
                   <select
                     value={supervisorId}
+                    disabled={isVerifyingPin}
                     onChange={(e) => { setSupervisorId(e.target.value); setPinError(null); }}
                     style={{ width: '100%', marginTop: '6px' }}
                   >
+                    {canSelfAuthorize && <option value="">Autorizar com meu acesso atual</option>}
                     {managers.map((m) => <option key={m.id} value={m.id}>{m.name} ({m.role === 'administrador' ? 'Administrador' : 'Gerente'})</option>)}
                   </select>
                 </label>
-                <label style={{ display: 'block', marginBottom: '12px' }}>
+                {supervisorId && <label style={{ display: 'block', marginBottom: '12px' }}>
                   <strong>PIN do responsável</strong>
                   <input
                     type="password"
+                    disabled={isVerifyingPin}
                     value={pinInput}
                     onChange={(e) => { setPinInput(e.target.value); setPinError(null); }}
                     maxLength={8}
                     style={{ width: '100%', marginTop: '6px' }}
                     autoFocus
                   />
-                </label>
+                </label>}
               </>
             )}
             {pinError && <p className="otp-error-msg">{pinError}</p>}
             <div className="otp-actions">
-              <button className="rma-advance-btn danger" onClick={() => verifyPinAndCancel('delete')} disabled={isVerifyingPin || managers.length === 0}>
+              <button className="rma-advance-btn danger" onClick={() => verifyPinAndCancel('delete')} disabled={isVerifyingPin || (!canSelfAuthorize && managers.length === 0) || cancelTarget.status !== 'pre_venda'}>
                 {isVerifyingPin ? 'Verificando...' : 'Apagar'}
               </button>
-              <button className="module-submit-btn" onClick={() => verifyPinAndCancel('cancel')} disabled={isVerifyingPin || managers.length === 0}>
+              <button className="module-submit-btn" onClick={() => verifyPinAndCancel('cancel')} disabled={isVerifyingPin || (!canSelfAuthorize && managers.length === 0)}>
                 {isVerifyingPin ? 'Verificando...' : 'Cancelar Pedido'}
               </button>
             </div>

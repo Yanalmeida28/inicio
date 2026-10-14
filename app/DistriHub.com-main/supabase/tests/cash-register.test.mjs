@@ -56,6 +56,7 @@ before(async () => {
   await db.exec(JSON.parse(await read('./fixtures/split_payment_baseline.json')));
   await db.exec(await read('../migrations/20261009211459_add_split_sale_payments.sql'));
   await db.exec(await read('../migrations/20261014224645_fix_cash_supervision_recovery_and_balance.sql'));
+  await db.exec(await read('../migrations/20261014230708_fix_open_order_authorization.sql'));
 });
 after(() => db.close());
 
@@ -744,4 +745,39 @@ test('PIX refunds do not require physical cash, while inactive supervisors canno
  assert.deepEqual((await sql('SELECT partner_cash_private.totals($1) AS totals',[session])).rows[0].totals,{dinheiro:0,pix:-100,cartao:0,faturado:0});
  const managerAuth=randomUUID();await sql('UPDATE partner_salespeople SET auth_user_id=$1,active=false WHERE id=$2',[managerAuth,manager]);await login(managerAuth);
  await assert.rejects(supervisedSale(session),/inativo/);
+});
+
+const actOnQuote=(id,action='cancel',supervisor=null,pin=null,targetBranch=branch)=>sql('SELECT mutate_partner_open_order($1,$2,$3,NULL,NULL,$4,$5) AS id',[id,targetBranch,action,supervisor,pin]);
+test('owner and linked manager authorize open-order cancel/delete with their authenticated identity',async()=>{
+ const quote=await sale({status:'pre_venda'});await actOnQuote(quote.id);await actOnQuote(quote.id);
+ assert.equal((await sql('SELECT status FROM partner_sales WHERE id=$1',[quote.id])).rows[0].status,'cancelada');
+ const managerAuth=randomUUID();await sql('UPDATE partner_salespeople SET auth_user_id=$1 WHERE id=$2',[managerAuth,manager]);await login(managerAuth);
+ const second=await sale({status:'pre_venda'});await actOnQuote(second.id,'delete');
+ assert.equal((await sql('SELECT count(*)::int n FROM partner_sales WHERE id=$1',[second.id])).rows[0].n,0);
+ assert.equal((await sql('SELECT stock FROM partner_products WHERE id=$1',[product])).rows[0].stock,10);
+});
+test('cashier authorizes with separate supervisor PIN and remains the audited operator',async()=>{
+ await login(employeeAuth);const quote=await sale({status:'pre_venda'});
+ await assert.rejects(actOnQuote(quote.id),/exige autorização/);
+ await assert.rejects(actOnQuote(quote.id,'cancel',manager,'0000'),/PIN incorreto/);
+ await actOnQuote(quote.id,'cancel',manager,'9876');
+ const log=(await sql("SELECT * FROM partner_audit_logs WHERE action='cancelamento_pedido_aberto'")).rows[0];
+ assert.equal(log.actor_role,'caixa');assert.match(log.details,new RegExp(employee));assert.match(log.details,new RegExp(manager));
+});
+test('open-order supervisor must be active, in company and in the authorized branch',async()=>{
+ await login(employeeAuth);const quote=await sale({status:'pre_venda'});
+ await sql('UPDATE partner_salespeople SET active=false WHERE id=$1',[manager]);await assert.rejects(actOnQuote(quote.id,'delete',manager,'9876'),/PIN incorreto/);
+ await sql('UPDATE partner_salespeople SET active=true,branch_id=$1 WHERE id=$2',[foreignBranch,manager]);await assert.rejects(actOnQuote(quote.id,'delete',manager,'9876'),/PIN incorreto/);
+ await sql('UPDATE partner_salespeople SET branch_id=$1,user_id=$2 WHERE id=$3',[branch,other,manager]);await assert.rejects(actOnQuote(quote.id,'delete',manager,'9876'),/PIN incorreto/);
+ await login(other);await assert.rejects(actOnQuote(quote.id),/Filial inválida/);
+ await login(employeeAuth);await assert.rejects(actOnQuote(quote.id,'cancel',manager,'9876',foreignBranch),/filial/);
+});
+test('new open-order actions cannot delete or cancel completed/paid orders or financial entries',async()=>{
+ const session=await mutate('abrir',0);const paid=await sale();
+ for(const action of ['cancel','delete'])await assert.rejects(actOnQuote(paid.id,action),/Somente pedidos em aberto/);
+ assert.equal((await sql('SELECT stock FROM partner_products WHERE id=$1',[product])).rows[0].stock,9);
+ const quote=await sale({status:'pre_venda'});await sql("UPDATE partner_sales SET payment_status='pago' WHERE id=$1",[quote.id]);
+ await assert.rejects(actOnQuote(quote.id),/exige o fluxo de estorno/);
+ assert.equal((await sql('SELECT count(*)::int n FROM partner_cash_movements WHERE session_id=$1',[session])).rows[0].n,1);
+ await db.exec('SET ROLE anon');await assert.rejects(actOnQuote(quote.id),/permission denied/);
 });

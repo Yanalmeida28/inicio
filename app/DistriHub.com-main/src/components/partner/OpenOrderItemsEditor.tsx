@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { Search, Trash2, X } from 'lucide-react';
 import type { PartnerCustomer, PartnerProduct, PartnerSale } from '../../types';
 import { money } from '../../utils';
-import { pdvTotal, validSalePrice, customerPriceTable, productTablePrice } from '../../lib/pdv';
+import { pdvTotal, saleChargeTotal, validSalePrice, customerPriceTable, productTablePrice } from '../../lib/pdv';
 import { SalePriceInput } from './SalePriceInput';
 
 type Props = {
@@ -110,7 +110,8 @@ export function OpenOrderItemsEditor({ canEditPrice, sale, products, customers =
         {missingProduct && <p className="otp-error-msg">Retire os produtos que não estão mais disponíveis no catálogo desta filial.</p>}
         {priceError && <p role="alert" className="otp-error-msg">{priceError}</p>}
         {error && <p className="otp-error-msg" role="alert">{error}</p>}
-        <div className="pdv-total-bar"><span>Total do pedido</span><strong>{money.format(pdvTotal(quotedItems))}</strong></div>
+        <p>Subtotal: {money.format(pdvTotal(quotedItems))} · Frete: {money.format(sale.freight_fee ?? 0)}</p>
+        <div className="pdv-total-bar"><span>Total do pedido</span><strong>{money.format(saleChargeTotal({ total: pdvTotal(quotedItems), freight_fee: sale.freight_fee }))}</strong></div>
         <div className="otp-actions">
           <button type="button" className="rma-advance-btn" disabled={saving} onClick={onClose}>Cancelar</button>
           <button type="button" className="module-submit-btn" disabled={saving || !items.length || missingProduct} onClick={save}>{saving ? 'Salvando...' : 'Salvar alterações'}</button>

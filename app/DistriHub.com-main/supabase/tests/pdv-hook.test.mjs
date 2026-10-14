@@ -93,6 +93,23 @@ async function harness({initialSales=[],initialInvoices=[],initialCustomers=[],r
 const payload=()=>({customer_id:'customer',customer_name:'Cliente',items:[{product_id:'physical',name:'Produto',quantity:1,unit_price:100}],total:100,branch_id:'branch',salesperson_id:null,customer_type:'varejo',delivery_type:'balcao',payment_method:'pix'});
 const snapshot=(overrides={})=>({credits:[{customer_id:'customer',allow_credit:true,credit_limit:1000,used:0,available:1000}],products:[],movements:[],sales:[],invoices:[],...overrides});
 
+test('open-order action keeps authenticated operator and supervisor credentials separate and updates only after confirmation',async()=>{
+ const pre={...payload(),id:'pre-open',user_id:'owner',status:'pre_venda',payment_status:'pendente'};
+ let fail=true;const calls=[];
+ const h=await harness({initialSales:[pre],rpc:async(name,args)=>{calls.push({name,args});return fail?{error:{message:'PIN incorreto'}}:{data:args.p_sale_id,error:null};}});
+ await act(async()=>assert.rejects(h.current.mutateOpenOrder(pre.id,'cancel',null,null,'manager','9876'),/PIN incorreto/));
+ assert.equal(h.current.sales[0].status,'pre_venda');
+ fail=false;await act(async()=>h.current.mutateOpenOrder(pre.id,'cancel',null,null,'manager','9876'));
+ assert.ok(calls.every(call=>call.name==='mutate_partner_open_order'&&call.args.p_salesperson_id===null&&call.args.p_pin===null&&call.args.p_supervisor_id==='manager'&&call.args.p_supervisor_pin==='9876'));
+ assert.equal(h.current.sales[0].status,'cancelada');assert.equal(h.current.sales[0].payment_status,'cancelado');
+});
+test('open-order hook serializes delete and cancel and refuses an unconfirmed response',async()=>{
+ const pre={...payload(),id:'pre-open',user_id:'owner',status:'pre_venda'};let release;
+ const h=await harness({initialSales:[pre],rpc:()=>new Promise(resolve=>{release=resolve;})});
+ let first;await act(async()=>{first=h.current.mutateOpenOrder(pre.id,'delete');await assert.rejects(h.current.mutateOpenOrder(pre.id,'cancel'),/Aguarde/);});
+ await act(async()=>{release({data:'wrong-id',error:null});await assert.rejects(first,/não confirmado/);});assert.equal(h.current.sales.length,1);
+});
+
 test('supervised checkout persists its cash destination and recovers it with the same sale ID',async()=>{
  let fail=true;const calls=[];
  const h=await harness({rpc:async(name,args)=>{
