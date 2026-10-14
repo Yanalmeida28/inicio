@@ -9,6 +9,21 @@ type DraftContextValue = {
 const DraftContext = createContext<DraftContextValue | null>(null);
 const memoryDrafts = new Map<string, unknown>();
 
+// Called only after confirmation. It deliberately leaves other forms and branches intact.
+// eslint-disable-next-line react-refresh/only-export-components
+export function clearConfirmedPdvDraft(scope: string, kind: 'checkout' | 'presale') {
+  const prefix = `distrihub:draft:${scope}:${kind}:`;
+  const keys = new Set([...memoryDrafts.keys()].filter(key => key.startsWith(prefix)));
+  for (let index = 0; index < window.sessionStorage.length; index++) {
+    const key = window.sessionStorage.key(index);
+    if (key?.startsWith(prefix)) keys.add(key);
+  }
+  for (const key of keys) {
+    window.sessionStorage.removeItem(key);
+    memoryDrafts.delete(key);
+  }
+}
+
 export function SessionDraftProvider({ scope, children }: { scope: string; children: ReactNode }) {
   const [error, setError] = useState<{ scope: string; message: string } | null>(null);
   const reportError = useCallback((message: string) => setError({ scope, message }), [scope]);

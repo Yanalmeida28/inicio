@@ -18,6 +18,8 @@ vm.runInNewContext(ts.transpileModule(source+'\nexports.CustomerProfile=Customer
   if(name==='./ImportExportModule')return {ExportButtons:()=>null};
   if(name==='./ProductProfitPreview')return {ProductProfitPreview:()=>null};
   if(name==='./ProductPhotoField')return {ProductPhotoField:()=>null};
+  if(name==='./CustomerPhoto')return {CustomerPhoto:()=>null};
+  if(name==='../../lib/cadastroXml')return {};
   if(name==='../../lib/saleReturns')return {};
   return require(name);
 }});

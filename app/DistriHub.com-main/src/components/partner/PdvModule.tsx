@@ -10,10 +10,9 @@ import type { DeliveryType, PartnerProduct, PartnerCustomer, PartnerSale, SalePa
 import { SalePriceInput } from './SalePriceInput';
 import { PreSaleCheckout } from './PreSaleCheckout';
 import { money } from '../../utils';
-import { draftPayments, emptySplitPaymentDraft, splitPaymentDraft, splitPaymentError, billedSaleError, pdvErrorMessage, pdvTotal, saleChargeTotal, validSalePrice, type CustomerCredit } from '../../lib/pdv';
+import { draftPayments, emptySplitPaymentDraft, splitPaymentDraft, splitPaymentError, billedSaleError, pdvErrorMessage, pdvTotal, saleChargeTotal, validSalePrice, type CustomerCredit, customerPriceTable, productTablePrice, type PriceTable } from '../../lib/pdv';
 import { SessionDraftProvider, useSessionDraftScope, useSessionDraftState } from '../../hooks/useSessionDraft';
 
-type PriceTable = 'varejo' | 'atacado';
 type ClientType = 'varejo' | 'atacado';
 type PdvSubTab = 'pdv' | 'pre-venda';
 
@@ -112,7 +111,7 @@ function CustomerSearchPicker({ id, customers, customerId, clientType, onSelect 
     const digits = query.replace(/\D/g, '');
     if (!term) return [];
     return customers.filter((customer) => {
-      if (customer.customer_type !== clientType) return false;
+      if (customer.is_active === false || (customer.customer_type ?? 'varejo') !== clientType) return false;
       const contact = [customer.phone, customer.phone_commercial_1, customer.phone_commercial_2].filter(Boolean).join(' ');
       return normalize(customer.name).includes(term) || (digits.length > 0 && contact.replace(/\D/g, '').includes(digits));
     }).slice(0, 8);
@@ -331,7 +330,7 @@ type Props = {
     serial_number?: string;
     payment_method?: string; payment_splits?: SalePayment[];
     salesperson_id?: string | null;
-    branch_id?: string | null;
+    draft_scope?: string; branch_id?: string | null;
   }) => Promise<PartnerSale>;
   onCreatePreSale: (sale: {
     customer_id: string | null;
@@ -345,8 +344,8 @@ type Props = {
     imei?: string;
     serial_number?: string;
     salesperson_id?: string | null;
-    branch_id?: string | null;
-  }) => Promise<void>;
+    draft_scope?: string; branch_id?: string | null;
+  }) => Promise<PartnerSale | void>;
   onFinalizePreSale: (id: string, paymentMethod: string, paymentSplits?: SalePayment[]) => Promise<void>;
   onCancelSale: (id: string, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
   onDeleteSale: (id: string, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
@@ -516,8 +515,9 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, isActive = 
   selectedBranchId: string | null;
   canCheckout: boolean;
   receiptDetails?: ReceiptDetails;
-  onCreateSale: (sale: { customer_id: string | null; customer_name: string; items: SaleItem[]; total: number; freight_fee?: number; customer_type: ClientType; delivery_type: DeliveryType; imei?: string; serial_number?: string; payment_method?: string; payment_splits?: SalePayment[]; salesperson_id?: string | null; branch_id?: string | null }) => Promise<PartnerSale>;
+  onCreateSale: (sale: { customer_id: string | null; customer_name: string; items: SaleItem[]; total: number; freight_fee?: number; customer_type: ClientType; delivery_type: DeliveryType; imei?: string; serial_number?: string; payment_method?: string; payment_splits?: SalePayment[]; salesperson_id?: string | null; draft_scope?: string; branch_id?: string | null }) => Promise<PartnerSale>;
 }) {
+  const draftScope = useSessionDraftScope();
   const [search, setSearch] = useSessionDraftState('checkout:product-search', '');
   const [visibleProductCount, setVisibleProductCount] = useState(PRODUCT_PAGE_SIZE);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -589,10 +589,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, isActive = 
   }, []);
 
 
-  function getPriceForProduct(p: PartnerProduct, table: PriceTable): number {
-    if (table === 'atacado' && p.wholesale_price && p.wholesale_price > 0) return p.wholesale_price;
-    return p.sale_price;
-  }
+  function getPriceForProduct(p: PartnerProduct, table: PriceTable): number { return productTablePrice(p, table); }
 
   function handleClientTypeChange(type: ClientType) {
     setClientType(type);
@@ -607,18 +604,19 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, isActive = 
   }
 
   function handleCustomerChange(id: string) {
-    setCustomerId(id);
-    if (id) {
-      const customer = customers.find((c) => c.id === id);
-      if (customer) {
-        const type = customer.customer_type === 'atacado' ? 'atacado' : 'varejo';
-        setClientType(type);
-        setPriceTable(type);
-        setCustomerName(customer.name);
-      }
-    } else {
-      setCustomerName('');
-    }
+    if (!canChangeCart()) return;
+    const customer = customers.find(candidate => candidate.id === id);
+    if (customer?.is_active === false) return;
+    const type = customer ? customer.customer_type === 'atacado' ? 'atacado' : 'varejo' : clientType;
+    const table = customerPriceTable(customer, type);
+    try {
+      const next = cart.map(item => {
+        const product = products.find(product => product.id === item.product_id);
+        return product ? { ...item, unit_price: getPriceForProduct(product, table) } : item;
+      });
+      setCustomerId(id); setCustomerName(customer?.name ?? ''); setClientType(type); setPriceTable(table);
+      updateCart(next);
+    } catch (error) { setCheckoutError(pdvErrorMessage(error)); }
   }
 
   const filtered = useMemo(() => {
@@ -686,7 +684,8 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, isActive = 
       }
     }
 
-    const price = getPriceForProduct(product, priceTable);
+    let price: number;
+    try { price = getPriceForProduct(product, priceTable); } catch (error) { setCheckoutError(pdvErrorMessage(error)); return; }
     updateCart((prev) => {
       const existing = prev.find((i) => i.product_id === product.id);
       if (existing) return prev.map((i) => i.product_id === product.id ? { ...i, quantity: i.quantity + 1 } : i);
@@ -738,6 +737,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, isActive = 
       return;
     }
     const customer = customers.find((c) => c.id === customerId);
+    if (customer?.is_active === false) { setCheckoutError('Cliente inativo. Selecione outro cliente.'); return; }
     if (paymentMethod === 'faturado') {
       const message = billedSaleError(credit, customerId || null, checkoutChargeTotal);
       if (message) { setCheckoutError(message); return; }
@@ -754,6 +754,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, isActive = 
     setCheckoutError(null);
     try {
       const confirmedSale = await onCreateSale({
+        draft_scope: draftScope,
         customer_id: customerId || null,
         customer_name: customerName || customer?.name || fallbackName,
         items: checkoutCart,
@@ -871,7 +872,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, isActive = 
                   >
                     <strong>{p.name}</strong>
                     {p.sku && <small>SKU: {p.sku}</small>}
-                    <span>{money.format(getPriceForProduct(p, priceTable))}</span>
+                    <span>{priceTable === 'premium' && p.premium_price == null ? 'Premium não configurado' : money.format(getPriceForProduct(p, priceTable))}</span>
                     {!p.is_service && (
                       <small className={`pdv-stock${outOfStock ? ' out' : ''}`}>
                         {outOfStock ? 'Sem estoque' : `${p.stock} un. em estoque`}
@@ -954,7 +955,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, isActive = 
                 <div className="pdv-form-section">
                   <span className="pdv-form-section-label">Cliente</span>
                   <label>
-                    Tabela de preços
+                    Tipo de cliente
                     <select aria-label="Tabela de preços da venda" value={clientType} onChange={event => handleClientTypeChange(event.target.value as ClientType)}>
                       <option value="varejo">Varejo</option>
                       <option value="atacado">Atacado</option>
@@ -968,6 +969,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, isActive = 
                     clientType={clientType}
                     onSelect={handleCustomerChange}
                   />
+                  {customerId && <small>Tabela aplicada: {priceTable === 'premium' ? 'Premium' : priceTable === 'atacado' ? 'Atacado' : 'Varejo'}</small>}
                 </div>
                 <div className="pdv-form-section">
                   <span className="pdv-form-section-label">Pagamento</span>
@@ -1028,7 +1030,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, isActive = 
 
           <div className="pdv-sale-footer">
               <div className="pdv-total-bar">
-                <span>Total {priceTable === 'atacado' ? '(Atacado)' : '(Varejo)'}</span>
+                <span>Total {priceTable === 'premium' ? '(Premium)' : priceTable === 'atacado' ? '(Atacado)' : '(Varejo)'}</span>
                 <strong>{money.format(chargeTotal)}</strong>
               </div>
 
@@ -1065,7 +1067,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, isActive = 
 
 /* ============ Pré-Venda / Orçamentos ============ */
 
-function PreVendaTab({ products, customers, sales, salespeople, activeSalespersonId, segment, selectedBranchId, canCheckout, canEditPrice, onCreatePreSale, onFinalizePreSale, onCancelSale, onDeleteSale, onPullToPdv }: {
+function PreVendaTab({ products, customers, sales, salespeople, activeSalespersonId, segment, selectedBranchId, hasPendingSale = false, isActive = true, canCheckout, canEditPrice, onCreatePreSale, onFinalizePreSale, onCancelSale, onDeleteSale, onPullToPdv }: {
   onPullToPdv: (sale: PartnerSale) => void;
   products: PartnerProduct[];
   customers: PartnerCustomer[];
@@ -1074,13 +1076,16 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
   activeSalespersonId?: string | null;
   segment: string;
   selectedBranchId: string | null;
+  hasPendingSale?: boolean;
+  isActive?: boolean;
   canCheckout: boolean;
-  onCreatePreSale: (sale: { customer_id: string | null; customer_name: string; items: SaleItem[]; total: number; freight_fee?: number; customer_type: ClientType; delivery_type: DeliveryType; payment_method?: string | null; imei?: string; serial_number?: string; salesperson_id?: string | null; branch_id?: string | null }) => Promise<void>;
+  onCreatePreSale: (sale: { customer_id: string | null; customer_name: string; items: SaleItem[]; total: number; freight_fee?: number; customer_type: ClientType; delivery_type: DeliveryType; payment_method?: string | null; imei?: string; serial_number?: string; salesperson_id?: string | null; draft_scope?: string; branch_id?: string | null }) => Promise<PartnerSale | void>;
   canEditPrice: boolean;
   onFinalizePreSale: (id: string, paymentMethod: string, paymentSplits?: SalePayment[]) => Promise<void>;
   onCancelSale: (id: string, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
   onDeleteSale: (id: string, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
 }) {
+  const draftScope = useSessionDraftScope();
   const [search, setSearch] = useSessionDraftState('presale:product-search', '');
   const [cart, setCart] = useSessionDraftState<{ product_id: string; name: string; quantity: number; unit_price: number }[]>('presale:cart', []);
   const [customerId, setCustomerId] = useSessionDraftState('presale:customer-id', '');
@@ -1092,6 +1097,8 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
   const freightAmount = freightFee === '' ? 0 : Number(freightFee);
   const [salespersonId, setSalespersonId] = useSessionDraftState('presale:salesperson-id', '');
   const [saved, setSaved] = useState(false);
+  const [savedId, setSavedId] = useState<string | null>(null);
+  const saveInFlight = useRef(false);
   const [preSalePayment, setPreSalePayment] = useSessionDraftState('presale:payment-method', '');
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -1111,12 +1118,10 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
   const traceabilityLabel = segment === 'assistencia' ? 'IMEI / Selo' : 'Nº de Série';
   const preSales = sales.filter((s) => s.status === 'pre_venda');
 
-  function getPriceForProduct(p: PartnerProduct, table: PriceTable): number {
-    if (table === 'atacado' && p.wholesale_price && p.wholesale_price > 0) return p.wholesale_price;
-    return p.sale_price;
-  }
+  function getPriceForProduct(p: PartnerProduct, table: PriceTable): number { return productTablePrice(p, table); }
 
   function handleClientTypeChange(type: ClientType) {
+    if (saveInFlight.current || hasPendingSale || !isActive) return;
     setClientType(type);
     setPriceTable(type);
     setCustomerId('');
@@ -1129,18 +1134,19 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
   }
 
   function handleCustomerChange(id: string) {
-    setCustomerId(id);
-    if (id) {
-      const customer = customers.find((c) => c.id === id);
-      if (customer) {
-        const type = customer.customer_type === 'atacado' ? 'atacado' : 'varejo';
-        setClientType(type);
-        setPriceTable(type);
-        setCustomerName(customer.name);
-      }
-    } else {
-      setCustomerName('');
-    }
+    if (saveInFlight.current || hasPendingSale || !isActive) return;
+    const customer = customers.find(candidate => candidate.id === id);
+    if (customer?.is_active === false) return;
+    const type = customer ? customer.customer_type === 'atacado' ? 'atacado' : 'varejo' : clientType;
+    const table = customerPriceTable(customer, type);
+    try {
+      const next = cart.map(item => {
+        const product = products.find(product => product.id === item.product_id);
+        return product ? { ...item, unit_price: getPriceForProduct(product, table) } : item;
+      });
+      setCustomerId(id); setCustomerName(customer?.name ?? ''); setClientType(type); setPriceTable(table);
+      setCart(next);
+    } catch (error) { setSaveError(pdvErrorMessage(error)); }
   }
 
   const filtered = useMemo(() => {
@@ -1155,7 +1161,9 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
   const chargeTotal = saleChargeTotal({ total, freight_fee: freightAmount });
 
   function addToCart(product: PartnerProduct) {
-    const price = getPriceForProduct(product, priceTable);
+    if (saveInFlight.current || hasPendingSale || !isActive) return;
+    let price: number;
+    try { price = getPriceForProduct(product, priceTable); } catch (error) { setSaveError(pdvErrorMessage(error)); return; }
     setCart((prev) => {
       const existing = prev.find((i) => i.product_id === product.id);
       if (existing) return prev.map((i) => i.product_id === product.id ? { ...i, quantity: i.quantity + 1 } : i);
@@ -1166,6 +1174,7 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
   }
 
   function changeQty(id: string, delta: number) {
+    if (saveInFlight.current || hasPendingSale || !isActive) return;
     setCart((prev) => prev.flatMap((i) => {
       if (i.product_id !== id) return [i];
       const q = i.quantity + delta;
@@ -1174,11 +1183,12 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
   }
 
   function removeFromCart(id: string) {
+    if (saveInFlight.current || hasPendingSale || !isActive) return;
     setCart((prev) => prev.filter((i) => i.product_id !== id));
   }
 
   async function handleSavePreSale() {
-    if (cart.length === 0) return;
+    if (saveInFlight.current || hasPendingSale || !isActive || cart.length === 0) return;
     if (!validSalePrice(freightAmount) || cart.some(item => !validSalePrice(item.unit_price))) {
       setSaveError('Informe preços e frete válidos com até duas casas decimais.');
       return;
@@ -1188,11 +1198,14 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
       return;
     }
     const customer = customers.find((c) => c.id === customerId);
+    if (customer?.is_active === false) { setSaveError('Cliente inativo. Selecione outro cliente.'); return; }
     const fallbackName = clientType === 'atacado' ? 'Cliente Atacado' : 'Cliente Varejo';
+    saveInFlight.current = true;
     setIsSaving(true);
     setSaveError(null);
     try {
-      await onCreatePreSale({
+      const confirmed = await onCreatePreSale({
+        draft_scope: draftScope,
         payment_method: preSalePayment || null,
         customer_id: customerId || null,
         customer_name: customerName || customer?.name || fallbackName,
@@ -1206,11 +1219,12 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
       });
       setCart([]); setFreightFee(0); setCustomerId(''); setCustomerName(''); setSalespersonId('');
       setPreSalePayment('');
+      setSavedId(confirmed?.id ?? null);
       setSaved(true);
-      setTimeout(() => setSaved(false), 2500);
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : 'Não foi possível salvar a pré-venda.');
     } finally {
+      saveInFlight.current = false;
       setIsSaving(false);
     }
   }
@@ -1280,6 +1294,10 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
 
   return (
     <>
+      {saved && <div role="status" className="sent-message">Pré-venda salva com sucesso{savedId ? ' — #' + savedId.slice(0, 8).toUpperCase() : ''}. Aguardando finalização no caixa.</div>}
+      {hasPendingSale && <p role="alert">Há uma operação pendente. Recupere a venda antes de alterar ou salvar este orçamento.</p>}
+      {saveError && <p role="alert" className="otp-error-msg">{saveError}</p>}
+      <fieldset disabled={isSaving || hasPendingSale || !isActive} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
       <div className="pdv-layout pdv-presale-layout">
         <div className="pdv-left">
           <div className="pdv-search-bar">
@@ -1304,7 +1322,7 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
                 >
                   <strong>{p.name}</strong>
                   <small>{p.sku ?? '—'}</small>
-                  <span>{money.format(getPriceForProduct(p, priceTable))}</span>
+                  <span>{priceTable === 'premium' && p.premium_price == null ? 'Premium não configurado' : money.format(getPriceForProduct(p, priceTable))}</span>
                   {!p.is_service && <small className="pdv-stock">{p.stock} un.</small>}
                 </button>
               ))
@@ -1316,7 +1334,7 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
           <div className="pdv-cart-header">
             <h4>Orçamento Atual</h4>
             {cart.length > 0 && (
-              <button className="rma-advance-btn danger" onClick={() => setCart([])}>
+              <button className="rma-advance-btn danger" onClick={() => { if (!saveInFlight.current && !hasPendingSale) setCart([]); }}>
                 <X size={14} /> Limpar
               </button>
             )}
@@ -1376,11 +1394,12 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
                     clientType={clientType}
                     onSelect={handleCustomerChange}
                   />
+                  {customerId && <small>Tabela aplicada: {priceTable === 'premium' ? 'Premium' : priceTable === 'atacado' ? 'Atacado' : 'Varejo'}</small>}
                 </div>
                 <div className="pdv-form-section">
                   <span className="pdv-form-section-label">Pagamento</span>
                   <label style={{ display: 'block', marginBottom: '12px' }}>Forma de pagamento prevista
-                    <select value={preSalePayment} onChange={event => setPreSalePayment(event.target.value)} disabled={isSaving}>
+                    <select value={preSalePayment} onChange={event => setPreSalePayment(event.target.value)} disabled={isSaving || hasPendingSale || !isActive}>
                       <option value="">A definir</option><option value="pix">PIX</option>
                       <option value="dinheiro">Dinheiro</option><option value="cartao">Cartão</option><option value="faturado">Faturado</option>
                     </select>
@@ -1426,7 +1445,7 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
               </div>
 
               <p className="otp-description">O pagamento será confirmado ao finalizar a pré-venda no caixa.</p>
-              <button className="module-submit-btn pdv-checkout-btn" onClick={handleSavePreSale} disabled={isSaving}>
+              <button className="module-submit-btn pdv-checkout-btn" onClick={handleSavePreSale} disabled={isSaving || hasPendingSale || !isActive}>
                 {saved ? <><Check size={18} /> Pré-Venda Salva!</> : <><ClipboardList size={18} /> {isSaving ? 'Salvando...' : 'Salvar Pré-Venda'}</>}
               </button>
 
@@ -1441,6 +1460,7 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
         </div>
       </div>
 
+      </fieldset>
       {/* Pending Pre-Sales List */}
       <div className="pdv-recent-sales pdv-presale-pending">
         <h4>Pré-Vendas Pendentes ({preSales.length})</h4>

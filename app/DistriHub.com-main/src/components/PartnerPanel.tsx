@@ -39,7 +39,7 @@ import { cadastroDestination, type AdminCadastrosTarget } from '../lib/cadastros
 import { supabase } from '../lib/supabase';
 import { BranchSelector } from './partner/BranchSelector';
 import { useCheckoutCash } from '../hooks/useCheckoutCash';
-import { SessionDraftProvider, useSessionDraftState } from '../hooks/useSessionDraft';
+import { SessionDraftProvider, useSessionDraftState, clearConfirmedPdvDraft } from '../hooks/useSessionDraft';
 import { OperatorSelectionStore } from '../lib/checkoutCash';
 
 const loadCadastrosModule = () => import('./partner/CadastrosModule').then((module) => ({ default: module.CadastrosModule }));
@@ -332,6 +332,8 @@ export function PartnerPanel({
   const [preSaleToCheckout, setPreSaleToCheckout] = useState<PartnerSale | null>(null);
   const [pdvReadError, setPdvReadError] = useState<string | null>(null);
   const [recoveringSale, setRecoveringSale] = useState(false);
+  const [recoveredSaleNotice, setRecoveredSaleNotice] = useState<string | null>(null);
+  useEffect(() => setRecoveredSaleNotice(null), [identity?.authUserId, identity?.companyUserId]);
   const [refreshingPdv, setRefreshingPdv] = useState(false);
   const { refreshPdv } = partner;
 
@@ -390,7 +392,10 @@ export function PartnerPanel({
     setRecoveringSale(true);
     try {
       const { operatorId, operatorPin } = getOperatorContext();
-      await partner.retryPendingSale(operatorId, operatorPin);
+      const confirmed = await partner.retryPendingSale(operatorId, operatorPin);
+      const sourceScope = confirmed.draft_scope ?? `${identity?.authUserId}:${identity?.companyUserId}:${currentSalespersonId ?? 'owner'}:${confirmed.branch_id}:pdv:${confirmed.branch_id}:${currentSalespersonId ?? 'owner'}`;
+      clearConfirmedPdvDraft(sourceScope, confirmed.status === 'pre_venda' ? 'presale' : 'checkout');
+      setRecoveredSaleNotice(`${confirmed.status === 'pre_venda' ? 'Pré-venda' : 'Venda'} #${confirmed.sale_number ?? confirmed.id.slice(0, 8).toUpperCase()} recuperada e confirmada. O rascunho desta operação foi limpo.`);
       setPdvReadError(null);
       // Clear the original cart only after this same sale has been confirmed.
       setPdvRevision(value => value + 1);
@@ -917,10 +922,7 @@ export function PartnerPanel({
       target.branch_id &&
       target.branch_id !== effectiveBranchId
     ) {
-      window.alert(
-        'Acesso negado: você não tem permissão para alterar clientes de outra filial.',
-      );
-      return;
+      throw new Error('Acesso negado: você não tem permissão para alterar clientes de outra filial.');
     }
 
     const {
@@ -1110,6 +1112,7 @@ export function PartnerPanel({
       serial_number?: string;
       payment_method?: string; payment_splits?: SalePayment[];
       salesperson_id?: string | null;
+      draft_scope?: string;
       branch_id?: string | null;
     },
   ) {
@@ -1160,6 +1163,7 @@ export function PartnerPanel({
       imei?: string;
       serial_number?: string;
       salesperson_id?: string | null;
+      draft_scope?: string;
       branch_id?: string | null;
     },
   ) {
@@ -1169,20 +1173,14 @@ export function PartnerPanel({
         effectiveBranchId;
 
     if (!targetBranch) {
-      window.alert(
-        'Selecione uma filial para criar a pré-venda.',
-      );
-      return;
+      throw new Error('Selecione uma filial para criar a pré-venda.');
     }
 
     if (
       isEmployeeRestricted &&
       targetBranch !== effectiveBranchId
     ) {
-      window.alert(
-        'Acesso negado: você só pode criar pré-vendas na sua filial vinculada.',
-      );
-      return;
+      throw new Error('Acesso negado: você só pode criar pré-vendas na sua filial vinculada.');
     }
 
     const {
@@ -1190,7 +1188,7 @@ export function PartnerPanel({
       operatorPin,
     } = getOperatorContext();
 
-    await partner.createPreSale(
+    return await partner.createPreSale(
       {
         ...sale,
         branch_id: targetBranch,
@@ -1693,6 +1691,10 @@ export function PartnerPanel({
                 onDeleteProduct={
                   handleDeleteProduct
                 }
+                onImportXml={async (invoice, branchId) => {
+                  const { operatorId, operatorPin } = getOperatorContext();
+                  await partner.importStockXml(invoice, branchId, operatorId, operatorPin);
+                }}
                 onAddCategory={
                   partner.addCategory
                 }
@@ -2019,8 +2021,9 @@ export function PartnerPanel({
             {renderTab('cadastros', renderCadastros())}
 
             {(activeTab === 'pdv' || activeTab === 'pedidos' || activeTab === 'historico') &&
-              (pdvReadError || partner.pdvSyncWarning || partner.pendingSale) && (
+              (pdvReadError || partner.pdvSyncWarning || partner.pendingSale || recoveredSaleNotice) && (
               <div role="status">
+                {recoveredSaleNotice && <p>{recoveredSaleNotice} <button type="button" className="rma-advance-btn" onClick={() => setRecoveredSaleNotice(null)}>Fechar</button></p>}
                 {(pdvReadError || partner.pdvSyncWarning) && (
                   <>
                     <p className="otp-error-msg">{pdvReadError || partner.pdvSyncWarning}</p>

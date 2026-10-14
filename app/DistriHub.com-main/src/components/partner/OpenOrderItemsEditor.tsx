@@ -1,19 +1,20 @@
 import { useRef, useState } from 'react';
 import { Search, Trash2, X } from 'lucide-react';
-import type { PartnerProduct, PartnerSale } from '../../types';
+import type { PartnerCustomer, PartnerProduct, PartnerSale } from '../../types';
 import { money } from '../../utils';
-import { pdvTotal, validSalePrice } from '../../lib/pdv';
+import { pdvTotal, validSalePrice, customerPriceTable, productTablePrice } from '../../lib/pdv';
 import { SalePriceInput } from './SalePriceInput';
 
 type Props = {
   canEditPrice: boolean;
   sale: PartnerSale;
   products: PartnerProduct[];
+  customers?: PartnerCustomer[];
   onSave: (id: string, items: PartnerSale['items']) => Promise<void>;
   onClose: () => void;
 };
 
-export function OpenOrderItemsEditor({ canEditPrice, sale, products, onSave, onClose }: Props) {
+export function OpenOrderItemsEditor({ canEditPrice, sale, products, customers = [], onSave, onClose }: Props) {
   const [items, setItems] = useState(() => sale.items.map(item => ({ ...item })));
   const [search, setSearch] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -23,7 +24,8 @@ export function OpenOrderItemsEditor({ canEditPrice, sale, products, onSave, onC
   const normalize = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   const term = normalize(search.trim());
   const matches = term ? catalog.filter(product => normalize(product.name).includes(term) || normalize(product.sku ?? '').includes(term)) : [];
-  const price = (product: PartnerProduct) => sale.customer_type === 'atacado' && (product.wholesale_price ?? 0) > 0 ? product.wholesale_price! : product.sale_price;
+  const table = customerPriceTable(customers.find(customer => customer.id === sale.customer_id), sale.customer_type === 'atacado' ? 'atacado' : 'varejo');
+  const price = (product: PartnerProduct) => productTablePrice(product, table);
 
   function changeQuantity(productId: string, quantity: number) {
     setError(null);
@@ -36,6 +38,7 @@ export function OpenOrderItemsEditor({ canEditPrice, sale, products, onSave, onC
   }
 
   function addProduct(product: PartnerProduct) {
+    try { price(product); } catch (cause) { setError(cause instanceof Error ? cause.message : 'Preço não configurado.'); return; }
     const existing = items.find(item => item.product_id === product.id);
     if (existing) changeQuantity(product.id, existing.quantity + 1);
     else if (!product.is_service && product.stock <= 0) setError('Produto sem estoque nesta filial.');
@@ -46,13 +49,17 @@ export function OpenOrderItemsEditor({ canEditPrice, sale, products, onSave, onC
   }
 
   // Editing creates a new quote using current catalog prices; the RPC validates it.
+  let priceError: string | null = null;
   const quotedItems = items.map(item => {
     const product = catalog.find(product => product.id === item.product_id);
-    return product ? { ...item, name: product.name, unit_price: canEditPrice ? item.unit_price : price(product) } : item;
+    try {
+      if (product) price(product);
+      return product ? { ...item, name: product.name, unit_price: canEditPrice ? item.unit_price : price(product) } : item;
+    } catch (cause) { priceError = cause instanceof Error ? cause.message : 'Preço não configurado.'; return item; }
   });
   const missingProduct = items.some(item => !catalog.some(product => product.id === item.product_id));
   async function save() {
-    if (inFlight.current || !items.length || missingProduct) return;
+    if (inFlight.current || !items.length || missingProduct || priceError) return;
     if (quotedItems.some(item => !validSalePrice(item.unit_price))) {
       setError('Informe preços válidos com até duas casas decimais.');
       return;
@@ -81,7 +88,7 @@ export function OpenOrderItemsEditor({ canEditPrice, sale, products, onSave, onC
           {term && <div className="open-order-editor-results">
             {matches.length ? matches.map(product => (
               <button type="button" className="rma-advance-btn" key={product.id} onClick={() => addProduct(product)}>
-                {product.name} · {money.format(price(product))} · Adicionar
+                {product.name} · {table === 'premium' && product.premium_price == null ? 'Premium não configurado' : money.format(price(product))} · Adicionar
               </button>
             )) : <p className="empty-row">Nenhum produto encontrado nesta filial.</p>}
           </div>}
@@ -101,6 +108,7 @@ export function OpenOrderItemsEditor({ canEditPrice, sale, products, onSave, onC
           </div>
         </fieldset>
         {missingProduct && <p className="otp-error-msg">Retire os produtos que não estão mais disponíveis no catálogo desta filial.</p>}
+        {priceError && <p role="alert" className="otp-error-msg">{priceError}</p>}
         {error && <p className="otp-error-msg" role="alert">{error}</p>}
         <div className="pdv-total-bar"><span>Total do pedido</span><strong>{money.format(pdvTotal(quotedItems))}</strong></div>
         <div className="otp-actions">

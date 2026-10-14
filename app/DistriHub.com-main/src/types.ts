@@ -173,6 +173,7 @@ export interface PartnerCategory {
 }
 
 export interface PartnerProduct {
+  premium_price?: number | null;
   supplier_id?: string | null;
   brand?: string | null;
   active?: boolean;
@@ -251,6 +252,8 @@ export interface SaleItem {
 export interface SalePayment { method: 'dinheiro' | 'pix' | 'cartao'; amount: number; }
 
 export interface PartnerSale {
+  /** Browser-only provenance for clearing the exact confirmed checkout draft. */
+  draft_scope?: string;
   sale_number?: number;
   payment_splits?: SalePayment[];
   /** Frete recebido para repasse a terceiros; não compõe total/faturamento. */

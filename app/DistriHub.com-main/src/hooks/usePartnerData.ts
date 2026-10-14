@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PostgrestError } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { InvoicePaymentAttempts } from '../lib/invoicePayments';
+import type { XmlStockImport } from '../lib/cadastroXml';
 import { OperationAttempts } from '../lib/operationAttempts';
 import type { RmaPhotoFile } from '../components/partner/RmaPhotoUpload';
 import { mergePartnerChange, PartnerDataVersions, PartnerLoadCache, partnerResources, type PartnerCollection } from '../lib/partnerSync';
@@ -887,96 +888,48 @@ read('sales', () => fetchAllPages((from, to) => client
     [requireAuthenticatedSession],
   );
 
+  const customerPhotoPaths = useRef(new WeakMap<File, string>());
   const updateCustomer = useCallback(
-    async (
-      id: string,
-      customer: Partial<CustomerPayload>,
-      operatorId?: string | null,
-      operatorPin?: string | null,
-    ) => {
-      const { identity: currentIdentity, client } =
-        await requireAuthenticatedSession();
-
-      const existing = data.customers.find(
-        (item) => item.id === id,
-      );
-
-      if (!existing) {
-        throw new Error('Cliente não encontrado.');
-      }
-
-      ensureEmployeeBranch(
-        currentIdentity,
-        customer.branch_id ?? existing.branch_id,
-      );
-
-      // Mesma regra de operador: id + PIN do modal ou null (auth.uid()).
-      const effectiveOperatorId = operatorId ?? null;
-      const effectiveOperatorPin = operatorPin ?? null;
-
-      const {  error: rpcError } =
-        await client.rpc(
-          'execute_partner_customer_mutation',
-          {
-            p_salesperson_id: effectiveOperatorId,
-            p_pin: effectiveOperatorPin,
-            p_customer_id: id,
-            p_branch_id:
-              customer.branch_id ?? existing.branch_id ?? syncBranchId ?? currentIdentity.branchId ?? null,
-            p_name: customer.name ?? existing.name,
-            p_document:
-              customer.document ?? existing.document ?? null,
-            p_phone: customer.phone ?? existing.phone ?? null,
-            p_email: customer.email ?? existing.email ?? null,
-            p_birthday:
-              customer.birthday ?? existing.birthday ?? null,
-            p_address:
-              customer.address ?? existing.address ?? null,
-            p_neighborhood:
-              customer.neighborhood ??
-              existing.neighborhood ??
-              null,
-            p_city: customer.city ?? existing.city ?? null,
-            p_device_model:
-              customer.device_model ??
-              existing.device_model ??
-              null,
-            p_notes: customer.notes ?? existing.notes ?? null,
-            p_customer_type:
-              customer.customer_type ?? existing.customer_type,
-            p_credit_limit:
-              customer.credit_limit ?? existing.credit_limit ?? 0,
-            p_allow_credit:
-              customer.allow_credit ??
-              existing.allow_credit ??
-              false,
-          },
-        );
-
-      if (rpcError) {
-        throw rpcError;
-      }
-
-      // A RPC retorna o id (uuid) do cliente, não a linha completa.
-      const updatedCustomer: PartnerCustomer = {
-        ...existing,
-        ...customer,
-        id,
-        updated_at: new Date().toISOString(),
-      };
-
-      dataRevisionRef.current.invalidate(["customers"]);
-      setData((prev) => ({
-        ...prev,
-        customers: prev.customers.map((item) =>
-          item.id === id ? updatedCustomer : item,
-        ),
-      }));
-
+    async (id: string, customer: Partial<CustomerPayload> & { photo_file?: File | null; remove_photo?: boolean }, operatorId?: string | null, operatorPin?: string | null) => {
+      const { identity: currentIdentity, client } = await requireAuthenticatedSession();
+      const existing = data.customers.find(item => item.id === id);
+      if (!existing) throw new Error('Cliente não encontrado.');
+      ensureEmployeeBranch(currentIdentity, existing.branch_id);
+      const { photo_file: file, remove_photo: remove, ...fields } = customer;
+      if (file) {
+        if (!['image/jpeg','image/png','image/webp'].includes(file.type) || file.size > 2 * 1024 * 1024) throw new Error('Use uma foto JPG, PNG ou WebP de até 2 MB.');
+        const extension = file.type === 'image/jpeg' ? 'jpg' : file.type === 'image/png' ? 'png' : 'webp';
+        const photoPath = customerPhotoPaths.current.get(file) ?? currentIdentity.authUserId + '/' + id + '/' + crypto.randomUUID() + '.' + extension;
+        customerPhotoPaths.current.set(file, photoPath);
+        const { error } = await client.storage.from('customer-photos').upload(photoPath, file, { upsert: true, contentType: file.type });
+        if (error) throw error;
+        fields.photo_url = photoPath;
+      } else if (remove) fields.photo_url = null;
+      // Undefined means preserve; explicit null clears nullable fields.
+      const { data: saved, error } = await client.rpc('update_partner_customer_profile', {
+        p_customer_id: id, p_fields: fields, p_operator_id: operatorId ?? null, p_operator_pin: operatorPin ?? null,
+        p_branch_id: existing.branch_id ?? syncBranchId ?? currentIdentity.branchId ?? null,
+      });
+      if (error) throw error;
+      if (!saved || saved.id !== id) throw new Error('O banco não confirmou o salvamento do cliente.');
+      const updatedCustomer = saved as PartnerCustomer;
+      if (file) customerPhotoPaths.current.delete(file);
+      dataRevisionRef.current.invalidate(['customers']);
+      setData(previous => ({ ...previous, customers: previous.customers.map(item => item.id === id ? updatedCustomer : item) }));
       return updatedCustomer;
-    },
-    [data.customers, requireAuthenticatedSession, syncBranchId],
+    }, [data.customers, requireAuthenticatedSession, syncBranchId],
   );
+
+  const importStockXml = useCallback(async (invoice: XmlStockImport, branchId: string, operatorId?: string | null, operatorPin?: string | null) => {
+    const { identity: currentIdentity, client } = await requireAuthenticatedSession();
+    ensureEmployeeBranch(currentIdentity, branchId);
+    const { error } = await client.rpc('import_partner_stock_xml', {
+      p_branch_id: branchId, p_invoice: invoice, p_operator_id: operatorId ?? null, p_operator_pin: operatorPin ?? null,
+    });
+    if (error) throw error;
+    dataRevisionRef.current.invalidate(['products','suppliers','movements']);
+    await loadData(true, ['products','suppliers','movements']);
+  }, [requireAuthenticatedSession, loadData]);
 
   const deleteCustomer = useCallback(
     async (
@@ -1051,7 +1004,7 @@ read('sales', () => fetchAllPages((from, to) => client
 
       const { data: created, error: rpcError } =
         await client.rpc(
-          'execute_partner_product_mutation',
+          'execute_partner_product_priced_mutation',
           {
             p_salesperson_id: effectiveOperatorId,
             p_pin: effectiveOperatorPin,
@@ -1068,6 +1021,7 @@ read('sales', () => fetchAllPages((from, to) => client
             p_is_service: product.is_service,
             p_image_url: product.image_url ?? null,
             p_supplier_id: product.supplier_id ?? null,
+            p_premium_price: product.premium_price ?? null,
           },
         );
 
@@ -1134,7 +1088,7 @@ read('sales', () => fetchAllPages((from, to) => client
 
       const {  error: rpcError } =
         await supabase.rpc(
-          'execute_partner_product_mutation',
+          'execute_partner_product_priced_mutation',
           {
             p_salesperson_id: effectiveOperatorId,
             p_pin: effectiveOperatorPin,
@@ -1160,6 +1114,7 @@ read('sales', () => fetchAllPages((from, to) => client
             p_image_url:
               product.image_url === undefined ? existing.image_url ?? null : product.image_url,
             p_supplier_id: product.supplier_id === undefined ? existing.supplier_id ?? null : product.supplier_id,
+            p_premium_price: product.premium_price === undefined ? existing.premium_price ?? null : product.premium_price,
           },
         );
 
@@ -4078,6 +4033,7 @@ read('sales', () => fetchAllPages((from, to) => client
 
     addCustomer,
     updateCustomer,
+    importStockXml,
     deleteCustomer,
 
     addProduct,

@@ -51,6 +51,7 @@ export function OpenOrdersModule({ canEditPrice, products, onUpdateItems, onUpda
   const customerInFlight = useRef(false);
   const canChangeCustomer = ['administrador', 'gerente', 'caixa', 'vendedor'].includes(currentRole);
   const availableCustomers = customers.filter(customer =>
+    customer.is_active !== false &&
     (!customer.branch_id || customer.branch_id === customerTarget?.branch_id) &&
     (!customerTerm.trim() || `${customer.name} ${customer.document ?? ''}`.toLocaleLowerCase('pt-BR').includes(customerTerm.trim().toLocaleLowerCase('pt-BR'))));
 
@@ -426,6 +427,7 @@ export function OpenOrdersModule({ canEditPrice, products, onUpdateItems, onUpda
           canEditPrice={canEditPrice}
           sale={editTarget}
           products={products}
+          customers={customers}
           onSave={onUpdateItems}
           onClose={() => setEditTarget(null)}
         />

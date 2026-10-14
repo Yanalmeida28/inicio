@@ -36,9 +36,9 @@ test('product photo updates preserve an omitted image and honor explicit removal
  const product={id:'photo-product',user_id:'owner',branch_id:'branch',name:'Produto',image_url:'https://storage.test/photo.png',cost_price:10,sale_price:20,wholesale_price:15,stock:2,min_stock:1};
  const h=await harness({readResult:(table,fallback)=>table==='partner_products'?{data:[product],error:null}:fallback,rpc:async(name,args)=>{calls.push([name,args]);return {data:product.id,error:null};}});
  await act(async()=>h.current.updateProduct(product.id,{name:'Produto atualizado'}));
- assert.equal(calls.findLast(call=>call[0]==='execute_partner_product_mutation')[1].p_image_url,product.image_url);
+ assert.equal(calls.findLast(call=>call[0]==='execute_partner_product_priced_mutation')[1].p_image_url,product.image_url);
  await act(async()=>h.current.updateProduct(product.id,{image_url:null}));
- assert.equal(calls.findLast(call=>call[0]==='execute_partner_product_mutation')[1].p_image_url,null);
+ assert.equal(calls.findLast(call=>call[0]==='execute_partner_product_priced_mutation')[1].p_image_url,null);
  assert.equal(h.current.products.find(item=>item.id===product.id).image_url,null);
 });
 afterEach(async()=>{if(renderer) await act(async()=>renderer.unmount());renderer=null;});
@@ -95,19 +95,46 @@ const snapshot=(overrides={})=>({credits:[{customer_id:'customer',allow_credit:t
 
 test('shared customer credit updates use the selected branch context without changing the shared customer',async()=>{
   let request;
-  const h=await harness({branchId:'branch',initialCustomers:[{id:'customer',user_id:'owner',name:'Cliente',branch_id:null,credit_limit:0,allow_credit:false}],rpc:async(name,args)=>{request={name,...args};return {data:'customer',error:null};}});
+  const h=await harness({branchId:'branch',initialCustomers:[{id:'customer',user_id:'owner',name:'Cliente',branch_id:null,credit_limit:0,allow_credit:false}],rpc:async(name,args)=>{request={name,...args};return {data:{id:'customer',user_id:'owner',branch_id:null,...args.p_fields},error:null};}});
   await act(async()=>{await h.current.updateCustomer('customer',{credit_limit:500,allow_credit:true});});
   assert.equal(request.p_branch_id,'branch');
-  assert.equal(request.p_credit_limit,500);
-  assert.equal(request.p_allow_credit,true);
+  assert.equal(request.name,'update_partner_customer_profile');
+  assert.equal(request.p_fields.credit_limit,500);
+  assert.equal(request.p_fields.allow_credit,true);
   assert.equal(h.current.customers.find(c=>c.id==='customer').branch_id,null);
 });
 
 test('customer credit updates retain the customer branch when another branch is selected',async()=>{
   let request;
-  const h=await harness({branchId:'selected-branch',initialCustomers:[{id:'customer',user_id:'owner',name:'Cliente',branch_id:'customer-branch',credit_limit:0,allow_credit:false}],rpc:async(name,args)=>{request=args;return {data:'customer',error:null};}});
+  const h=await harness({branchId:'selected-branch',initialCustomers:[{id:'customer',user_id:'owner',name:'Cliente',branch_id:'customer-branch',credit_limit:0,allow_credit:false}],rpc:async(name,args)=>{request=args;return {data:{id:'customer',user_id:'owner',branch_id:'customer-branch',...args.p_fields},error:null};}});
   await act(async()=>{await h.current.updateCustomer('customer',{credit_limit:200});});
   assert.equal(request.p_branch_id,'customer-branch');
+});
+
+test('customer profile sends extended fields and explicit nulls, uses the confirmed row, and retains photo path on retry',async()=>{
+ const initial={id:'customer',user_id:'owner',name:'Cliente',branch_id:'branch',notes:'Antiga',photo_url:null};
+ const paths=[];let request,fail=true;
+ const h=await harness({initialCustomers:[initial],storageClient:{from:bucket=>({upload:async(path)=>{assert.equal(bucket,'customer-photos');paths.push(path);return {error:null};}})},rpc:async(name,args)=>{
+  assert.equal(name,'update_partner_customer_profile');request=args;
+  return fail?{error:{message:'Resposta perdida'}}:{data:{...initial,...args.p_fields,name:'Nome confirmado'},error:null};
+ }});
+ const file={name:'foto.png',type:'image/png',size:100};
+ const fields={name:'Nome digitado',trade_name:'Fantasia',zip_code:'12345678',phone_commercial_1:'11999999999',notes:null,photo_file:file};
+ await act(async()=>{await assert.rejects(h.current.updateCustomer(initial.id,fields),error=>error.message==='Resposta perdida');});
+ assert.equal(h.current.customers[0].name,'Cliente');
+ fail=false;await act(async()=>h.current.updateCustomer(initial.id,fields));
+ assert.equal(paths.length,2);assert.equal(paths[0],paths[1]);
+ assert.equal(request.p_fields.notes,null);assert.equal(request.p_fields.zip_code,'12345678');assert.equal(request.p_fields.photo_file,undefined);
+ assert.equal(h.current.customers[0].name,'Nome confirmado');assert.equal(h.current.customers[0].trade_name,'Fantasia');
+ await act(async()=>h.current.updateCustomer(initial.id,{remove_photo:true}));
+ assert.equal(request.p_fields.photo_url,null);assert.equal(h.current.customers[0].photo_url,null);
+});
+
+test('customer upload failure does not call the profile mutation or show unconfirmed changes',async()=>{
+ let calls=0;
+ const h=await harness({initialCustomers:[{id:'customer',user_id:'owner',name:'Cliente',branch_id:'branch'}],storageClient:{from:()=>({upload:async()=>({error:{message:'Upload indisponível'}})})},rpc:async()=>{calls++;return {error:null};}});
+ await act(async()=>{await assert.rejects(h.current.updateCustomer('customer',{trade_name:'Alterado',photo_file:{type:'image/png',size:100}}),error=>error.message==='Upload indisponível');});
+ assert.equal(calls,0);assert.equal(h.current.customers[0].trade_name,undefined);
 });
 
 test('a delayed full refresh cannot reopen a sale after a newer PDV snapshot',async()=>{

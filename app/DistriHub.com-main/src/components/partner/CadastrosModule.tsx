@@ -2,7 +2,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { SessionDraftProvider, useSessionDraftScope, useSessionDraftState } from '../../hooks/useSessionDraft';
 import { createPortal } from 'react-dom';
 import {
-  Boxes, FileText, Package, Plus, Tag, Trash2, Upload, Users, Wrench,
+  Boxes, FileText, Package, Plus, Tag, Trash2, Upload, Users,
   Building2, Layers, QrCode, X, History,
   IdCard, MapPin, Wallet, Phone, Save, Camera, UserCircle, MoreVertical, Pencil,
   Check, TrendingUp, AlertTriangle, Activity,
@@ -14,15 +14,13 @@ import type {
   PersonType, RmaRequest,
 } from '../../types';
 import { formatCnpj, formatCpf, isValidCnpj, isValidCpf, money, normalizeDocument } from '../../utils';
+import { parseStockXml, type XmlStockImport } from '../../lib/cadastroXml';
+import { CustomerPhoto } from './CustomerPhoto';
 import { ProductProfitPreview } from './ProductProfitPreview';
 import { ProductPhotoField } from './ProductPhotoField';
 import { ImportExportModule, ExportButtons } from './ImportExportModule';
 import { saleReturnLabel, saleItemDescription } from '../../lib/saleReturns';
 
-// Alias local: payload de atualização de cliente usado pelo perfil de cliente.
-// Campos do formulário (CustomerForm) mais o suporte de foto do modal
-// (photo_file/remove_photo são ignorados pelo handler atual, mas fazem parte
-// do contrato do callback onUpdate).
 type PartnerCustomerUpdate = Partial<
   Omit<PartnerCustomer, 'id' | 'user_id' | 'created_at' | 'updated_at'>
 > & {
@@ -54,6 +52,7 @@ type Props = {
   onUpdateProduct: (id: string, updates: Partial<PartnerProduct>) => Promise<void>;
   onReplenishStock: (productId: string, branchId: string, quantity: number, unitCost?: number | null, reason?: string) => Promise<{ newStock: number }>;
   onDeleteProduct: (id: string) => Promise<void>;
+  onImportXml: (invoice: XmlStockImport, branchId: string) => Promise<void>;
   onAddCategory: (name: string) => Promise<void>;
   onDeleteCategory: (id: string) => Promise<void>;
   onAddSupplier: (s: Omit<PartnerSupplier, 'id' | 'user_id' | 'created_at' | 'payable_balance'>) => Promise<PartnerSupplier>;
@@ -102,7 +101,7 @@ export function CadastrosModule({
   isActive = true, onDataScopeChange,
   products, branches, selectedBranchId, categories, suppliers, salespeople, combos, modifiers, customers, sales,
   allSales, rmaRequests = [], segment, onAddProduct, onUpdateProduct, onDeleteProduct,
-  onReplenishStock,
+  onReplenishStock, onImportXml,
   onAddCategory, onDeleteCategory, onAddSupplier, onUpdateSupplier, onDeleteSupplier, onAddSalesperson,
   onUpdateSalesperson, onDeleteSalesperson,
   onAddCombo, onDeleteCombo, onAddModifier, onDeleteModifier, onAddCustomer,
@@ -174,15 +173,15 @@ export function CadastrosModule({
           <CategoriesSubTab categories={categories} products={filteredProducts} onAdd={onAddCategory} onDelete={onDeleteCategory} />
           </div>
         )}
-        {(adminTarget ? subTab === 'xml' : visitedSubTabs.has('xml')) && <div hidden={subTab !== 'xml'}><XmlSubTab selectedBranchId={selectedBranchId} onAddProduct={onAddProduct} /></div>}
+        {(adminTarget ? subTab === 'xml' : visitedSubTabs.has('xml')) && <div hidden={subTab !== 'xml'}><XmlSubTab selectedBranchId={selectedBranchId} onImport={onImportXml} /></div>}
         {(adminTarget ? subTab === 'combos' : visitedSubTabs.has('combos')) && (
           <div hidden={subTab !== 'combos'}>
-          <CombosSubTab combos={combos} products={filteredProducts} onAdd={onAddCombo} onDelete={onDeleteCombo} />
+          <CombosSubTab combos={combos.filter(combo => combo.items.every(item => filteredProducts.some(product => product.id === item.product_id)))} products={filteredProducts} onAdd={onAddCombo} onDelete={onDeleteCombo} />
           </div>
         )}
         {(adminTarget ? subTab === 'modificadores' : visitedSubTabs.has('modificadores')) && (
           <div hidden={subTab !== 'modificadores'}>
-          <ModifiersSubTab modifiers={modifiers} products={filteredProducts} onAdd={onAddModifier} onDelete={onDeleteModifier} />
+          <ModifiersSubTab modifiers={modifiers.filter(modifier => filteredProducts.some(product => product.id === modifier.product_id))} products={filteredProducts} onAdd={onAddModifier} onDelete={onDeleteModifier} />
           </div>
         )}
         {(adminTarget ? subTab === 'clientes' : visitedSubTabs.has('clientes')) && (
@@ -306,6 +305,7 @@ function ProductsSubTab({ defaultIsService = false, isActive = true, products, a
   const [cost, setCost] = useSessionDraftState('products:cost', '');
   const [sale, setSale] = useSessionDraftState('products:sale', '');
   const [wholesale, setWholesale] = useSessionDraftState('products:wholesale', '');
+  const [premium, setPremium] = useSessionDraftState('products:premium', '');
   const [stock, setStock] = useSessionDraftState('products:stock', '');
   const [minStock, setMinStock] = useSessionDraftState('products:min-stock', '5');
   const [category, setCategory] = useSessionDraftState('products:category', '');
@@ -349,7 +349,7 @@ function ProductsSubTab({ defaultIsService = false, isActive = true, products, a
     try {
       await onAddProduct({
         name, sku: sku || null, cost_price: Number(cost) || 0, sale_price: Number(sale) || 0,
-        wholesale_price: Number(wholesale) || 0,
+        wholesale_price: Number(wholesale) || 0, premium_price: premium.trim() ? Number(premium) : null,
         stock: Number(stock) || 0, min_stock: Number(minStock) || 0,
         image_url: imageUrl, supplier_id: supplierId || null, category: category || null, is_service: isService, branch_id: selectedBranchId,
         ncm: ncm || null, cfop: cfop || null, cst_csosn: cstCsosn || null,
@@ -360,7 +360,7 @@ function ProductsSubTab({ defaultIsService = false, isActive = true, products, a
         image: undefined,
         description: undefined
       });
-      setName(''); setSku(''); setCost(''); setSale(''); setWholesale(''); setStock(''); setMinStock('5'); setCategory(''); setSupplierId(''); setIsService(defaultIsService);
+      setName(''); setSku(''); setCost(''); setSale(''); setWholesale(''); setPremium(''); setStock(''); setMinStock('5'); setCategory(''); setSupplierId(''); setIsService(defaultIsService);
       setNcm(''); setCfop(''); setCstCsosn(''); setIcmsRate(''); setPisRate(''); setCofinsRate('');
       setShowForm(false);
       setImageUrl(null);
@@ -446,6 +446,7 @@ function ProductsSubTab({ defaultIsService = false, isActive = true, products, a
               <input type="number" step="0.01" value={wholesale} onChange={(e) => setWholesale(e.target.value)} placeholder="0,00" />
             </label>
           </div>
+          <label>Preço Premium (opcional)<input aria-label="Preço Premium" type="number" min="0" max="99999999.99" step="0.01" value={premium} onChange={event => setPremium(event.target.value)} placeholder="Não configurado" /></label>
           <ProductProfitPreview cost={cost} retail={sale} wholesale={wholesale} />
           </section>
           <section className="product-form-section">
@@ -674,6 +675,7 @@ function ProductEditModal({ product, categories, suppliers, onAddSupplier, savin
   const [cost, setCost] = useState(String(product.cost_price));
   const [sale, setSale] = useState(String(product.sale_price));
   const [wholesale, setWholesale] = useState(String(product.wholesale_price));
+  const [premium, setPremium] = useState(product.premium_price == null ? '' : String(product.premium_price));
   const [stock, setStock] = useState(String(product.stock));
   const [minStock, setMinStock] = useState(String(product.min_stock));
   const [category, setCategory] = useState(product.category ?? '');
@@ -695,7 +697,7 @@ function ProductEditModal({ product, categories, suppliers, onAddSupplier, savin
     await onSave({
       image_url: imageUrl,
       name: name.trim(), sku: sku.trim() || null, cost_price: Number(cost) || 0,
-      sale_price: Number(sale) || 0, wholesale_price: Number(wholesale) || 0,
+      sale_price: Number(sale) || 0, wholesale_price: Number(wholesale) || 0, premium_price: premium.trim() ? Number(premium) : null,
       stock: Math.max(0, Number(stock) || 0), min_stock: Math.max(0, Number(minStock) || 0),
       supplier_id: supplierId || null, category: category || null, is_service: isService, ncm: ncm || null,
       cfop: cfop || null, cst_csosn: cstCsosn || null, icms_rate: Number(icmsRate) || 0,
@@ -712,6 +714,7 @@ function ProductEditModal({ product, categories, suppliers, onAddSupplier, savin
           <div className="form-row"><label>Nome<input value={name} onChange={(e) => setName(e.target.value)} required /></label><label>SKU<input value={sku} onChange={(e) => setSku(e.target.value)} /></label></div>
           <h4>Preços e rentabilidade</h4>
           <div className="form-row"><label>Preço de custo<input type="number" min="0" step="0.01" value={cost} onChange={(e) => setCost(e.target.value)} /></label><label>Preço varejo<input type="number" min="0" step="0.01" value={sale} onChange={(e) => setSale(e.target.value)} required /></label><label>Preço atacado<input type="number" min="0" step="0.01" value={wholesale} onChange={(e) => setWholesale(e.target.value)} /></label></div>
+          <label>Preço Premium (opcional)<input aria-label="Preço Premium" type="number" min="0" max="99999999.99" step="0.01" value={premium} onChange={event => setPremium(event.target.value)} placeholder="Não configurado" /></label>
           <ProductProfitPreview cost={cost} retail={sale} wholesale={wholesale} />
           <div className="form-row"><label>Estoque<input type="number" min="0" step="1" value={stock} onChange={(e) => setStock(e.target.value)} /></label><label>Estoque mínimo<input type="number" min="0" step="1" value={minStock} onChange={(e) => setMinStock(e.target.value)} /></label><label>Categoria<select value={category} onChange={(e) => setCategory(e.target.value)}><option value="">Selecione...</option>{categories.map((item) => <option key={item.id} value={item.name}>{item.name}</option>)}</select></label></div>
           <SupplierField suppliers={suppliers} value={supplierId} onChange={setSupplierId} onAdd={onAddSupplier} disabled={saving} onBusyChange={setSupplierSaving} />
@@ -827,6 +830,17 @@ function CategoriesSubTab({ categories, products, onAdd, onDelete }: {
   onAdd: (name: string) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
 }) {
+  const actionLock = useRef(false);
+  const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  async function runAction(action: () => Promise<void>) {
+    if (actionLock.current) return;
+    actionLock.current = true; setBusy(true); setActionError(null);
+    try { await action(); }
+    catch (cause) { setActionError(cause && typeof cause === 'object' && 'message' in cause ? String(cause.message) : 'Não foi possível concluir. Tente novamente.'); }
+    finally { actionLock.current = false; setBusy(false); }
+  }
+
   const [name, setName] = useSessionDraftState('categories:name', '');
   const [selectedCategoryId, setSelectedCategoryId] = useSessionDraftState<string | null>('categories:selected-id', null, undefined, value => value === null || typeof value === 'string');
   const selectedCategory = categories.find((category) => category.id === selectedCategoryId) ?? null;
@@ -837,17 +851,19 @@ function CategoriesSubTab({ categories, products, onAdd, onDelete }: {
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) return;
-    await onAdd(name);
+    await runAction(async () => { await onAdd(name.trim());
     setName('');
+    });
   }
   return (
     <div>
+      {actionError && <p role="alert" className="otp-error-msg">{actionError}</p>}
       <form className="rma-form inline" onSubmit={handleAdd}>
         <label>
           Nova Categoria
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex: Displays / Telas" required />
         </label>
-        <button type="submit" className="module-submit-btn"><Plus size={16} /> Adicionar</button>
+        <button type="submit" disabled={busy} className="module-submit-btn"><Plus size={16} /> Adicionar</button>
       </form>
       <div className="category-browser-list">
         {categories.length === 0 ? (
@@ -873,7 +889,7 @@ function CategoriesSubTab({ categories, products, onAdd, onDelete }: {
                   className="category-browser-delete"
                   aria-label={`Excluir categoria ${category.name}`}
                   title="Excluir categoria"
-                  onClick={() => onDelete(category.id)}
+                  disabled={busy} onClick={() => runAction(() => onDelete(category.id))}
                 >
                   <Trash2 size={13} />
                 </button>
@@ -916,131 +932,47 @@ function CategoriesSubTab({ categories, products, onAdd, onDelete }: {
   );
 }
 
-function XmlSubTab({ selectedBranchId, onAddProduct }: {
+function XmlSubTab({ selectedBranchId, onImport }: {
   selectedBranchId: string | null;
-  onAddProduct: (p: Omit<PartnerProduct, 'id' | 'user_id' | 'created_at' | 'updated_at'>) => Promise<void>;
+  onImport: (invoice: XmlStockImport, branchId: string) => Promise<void>;
 }) {
   const [fileName, setFileName] = useState('');
-  const [parsed, setParsed] = useState<{ name: string; sku: string; qty: number; cost: number }[] | null>(null);
-  const [parseError, setParseError] = useState<string | null>(null);
+  const [parsed, setParsed] = useState<XmlStockImport | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [imported, setImported] = useState(false);
-
-  function readXmlValue(parent: Element, name: string) {
-    return Array.from(parent.getElementsByTagName('*')).find((element) => element.localName === name)?.textContent?.trim() ?? '';
-  }
-
-  function parseDecimal(value: string) {
-    const normalized = value.replace(/\./g, '').replace(',', '.');
-    const parsedValue = Number(normalized);
-    return Number.isFinite(parsedValue) ? parsedValue : 0;
-  }
-
-  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setFileName(file.name);
-    setParseError(null);
-    setParsed(null);
-    setImported(false);
+  const [saving, setSaving] = useState(false);
+  const lock = useRef(false);
+  const fileVersion = useRef(0);
+  async function handleFile(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file || lock.current) return;
+    const version = ++fileVersion.current;
+    setFileName(file.name); setParsed(null); setError(null); setImported(false);
     try {
-      const xmlText = await file.text();
-      const xmlDocument = new DOMParser().parseFromString(xmlText, 'application/xml');
-      if (xmlDocument.getElementsByTagName('parsererror').length > 0) {
-        throw new Error('O arquivo selecionado não contém um XML válido.');
-      }
-      const items = Array.from(xmlDocument.getElementsByTagName('*'))
-        .filter((element) => element.localName === 'det')
-        .map((det) => {
-          const product = Array.from(det.children).find((child) => child.localName === 'prod');
-          if (!product) return null;
-          const quantity = parseDecimal(readXmlValue(product, 'qCom'));
-          const total = parseDecimal(readXmlValue(product, 'vProd'));
-          const unitCost = parseDecimal(readXmlValue(product, 'vUnCom')) || (quantity > 0 ? total / quantity : 0);
-          const ean = readXmlValue(product, 'cEAN');
-          const productCode = readXmlValue(product, 'cProd');
-          return {
-            name: readXmlValue(product, 'xProd'),
-            sku: productCode || (ean && ean !== 'SEM GTIN' ? ean : ''),
-            qty: quantity,
-            cost: unitCost,
-          };
-        })
-        .filter((item): item is { name: string; sku: string; qty: number; cost: number } => Boolean(item?.name && item.qty > 0 && item.cost >= 0));
-      if (items.length === 0) throw new Error('Nenhum item válido foi encontrado na NF-e.');
-      setParsed(items);
-    } catch (error) {
-      setFileName('');
-      setParseError(error instanceof Error ? error.message : 'Não foi possível ler o XML da NF-e.');
+      const invoice = parseStockXml(await file.text());
+      if (version === fileVersion.current) setParsed(invoice);
+    } catch (cause) {
+      if (version === fileVersion.current) setError(cause instanceof Error ? cause.message : 'Não foi possível ler a NF-e.');
     }
   }
-
   async function handleImport() {
-    if (!parsed) return;
-    if (!selectedBranchId) {
-      window.alert('Selecione uma filial antes de importar produtos para manter o estoque separado entre filiais.');
-      return;
-    }
-    for (const item of parsed) {
-      await onAddProduct({
-        name: item.name, sku: item.sku, cost_price: item.cost, sale_price: item.cost * 1.8,
-        wholesale_price: item.cost * 1.3,
-        stock: item.qty, min_stock: 5, image_url: null, category: null, is_service: false, branch_id: selectedBranchId,
-        ncm: null, cfop: null, cst_csosn: null, icms_rate: 0, pis_rate: 0, cofins_rate: 0,
-        brand: undefined,
-        active: undefined,
-        price: undefined,
-        image: undefined,
-        description: undefined
-      });
-    }
-    setImported(true);
-    setParsed(null);
-    setFileName('');
+    if (lock.current || !parsed) return;
+    if (!selectedBranchId) { setError('Selecione uma filial antes de importar a NF-e.'); return; }
+    lock.current = true; setSaving(true); setError(null); setImported(false);
+    try {
+      await onImport(parsed, selectedBranchId);
+      setImported(true); setParsed(null); setFileName('');
+    } catch (cause) {
+      setError(cause && typeof cause === 'object' && 'message' in cause ? String(cause.message) : 'Não foi possível importar. Você pode tentar novamente com a mesma nota.');
+    } finally { lock.current = false; setSaving(false); }
   }
-
-  return (
-    <div>
-      <div className="xml-info-banner">
-        <FileText size={20} />
-        <div>
-          <strong>Entrada Automática via XML (NF-e)</strong>
-          <p>Importe arquivos XML de notas fiscais para dar entrada em lote no estoque, cadastrando fornecedor, produtos e quantidades automaticamente.</p>
-        </div>
-      </div>
-      <label className="upload-label">
-        <div className="media-upload">
-          <Upload size={18} />
-          <span>{fileName || 'Selecionar arquivo XML da NF-e'}</span>
-          <input type="file" accept=".xml,application/xml,text/xml" onChange={handleFile} hidden />
-        </div>
-      </label>
-      {parseError && <div className="xml-error-message"><AlertTriangle size={16} /> {parseError}</div>}
-      {parsed && (
-        <div className="stock-table-wrap">
-          <table className="rma-table">
-            <thead>
-              <tr><th>Produto</th><th>SKU</th><th>Qtd.</th><th>Custo Unit.</th><th>Custo Total</th></tr>
-            </thead>
-            <tbody>
-              {parsed.map((item, i) => (
-                <tr key={i}>
-                  <td><strong>{item.name}</strong></td>
-                  <td>{item.sku}</td>
-                  <td>{item.qty}</td>
-                  <td>{money.format(item.cost)}</td>
-                  <td>{money.format(item.cost * item.qty)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <button className="module-submit-btn" onClick={handleImport}>
-            <Wrench size={16} /> Dar entrada no estoque ({parsed.length} itens)
-          </button>
-        </div>
-      )}
-      {imported && <div className="sent-message">Itens importados e adicionados ao estoque com sucesso!</div>}
-    </div>
-  );
+  return <div>
+    <div className="xml-info-banner"><FileText size={20} /><div><strong>Entrada Automática via XML (NF-e)</strong><p>Confira os itens e importe a nota para cadastrar o fornecedor e dar entrada no estoque da filial selecionada. Uma nota já importada não gera outra entrada.</p></div></div>
+    <label className="upload-label"><div className="media-upload"><Upload size={18} /><span>{fileName || 'Selecionar arquivo XML da NF-e'}</span><input type="file" accept=".xml,application/xml,text/xml" onChange={handleFile} disabled={saving} hidden /></div></label>
+    {error && <div role="alert" className="xml-error-message"><AlertTriangle size={16} /> {error}</div>}
+    {parsed && <div className="stock-table-wrap"><p>Fornecedor: {parsed.supplier.name} — {parsed.supplier.document}</p><small>NF-e: {parsed.invoiceKey}</small><table className="rma-table"><thead><tr><th>Produto</th><th>SKU</th><th>Qtd.</th><th>Custo Unit.</th><th>Custo Total</th></tr></thead><tbody>{parsed.items.map((item, index) => <tr key={index}><td>{item.name}</td><td>{item.sku}</td><td>{item.qty}</td><td>{money.format(item.cost)}</td><td>{money.format(item.cost * item.qty)}</td></tr>)}</tbody></table><button className="module-submit-btn" onClick={handleImport} disabled={saving}>{saving ? 'Importando...' : 'Dar entrada no estoque (' + parsed.items.length + ' itens)'}</button></div>}
+    {imported && <div className="sent-message">NF-e processada. Estoque e fornecedor atualizados sem duplicar entradas anteriores.</div>}
+  </div>;
 }
 
 function CombosSubTab({ combos, products, onAdd, onDelete }: {
@@ -1049,6 +981,17 @@ function CombosSubTab({ combos, products, onAdd, onDelete }: {
   onAdd: (c: Omit<PartnerCombo, 'id' | 'user_id' | 'created_at'>) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
 }) {
+  const actionLock = useRef(false);
+  const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  async function runAction(action: () => Promise<void>) {
+    if (actionLock.current) return;
+    actionLock.current = true; setBusy(true); setActionError(null);
+    try { await action(); }
+    catch (cause) { setActionError(cause && typeof cause === 'object' && 'message' in cause ? String(cause.message) : 'Não foi possível concluir. Tente novamente.'); }
+    finally { actionLock.current = false; setBusy(false); }
+  }
+
   const [showForm, setShowForm] = useSessionDraftState('combos:show-form', false);
   const [name, setName] = useSessionDraftState('combos:name', '');
   const [price, setPrice] = useSessionDraftState('combos:price', '');
@@ -1057,12 +1000,14 @@ function CombosSubTab({ combos, products, onAdd, onDelete }: {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim() || !price || selected.length === 0) return;
+    if (!Number.isFinite(Number(price)) || Number(price) < 0 || selected.some(id => !products.some(product => product.id === id))) { setActionError('Informe um preço não negativo e produtos da filial atual.'); return; }
     const items = selected.map((pid) => {
       const p = products.find((x) => x.id === pid);
       return { product_id: pid, name: p?.name ?? '', quantity: 1 };
     });
-    await onAdd({ name, price: Number(price), items, active: true });
+    await runAction(async () => { await onAdd({ name: name.trim(), price: Number(price), items, active: true });
     setName(''); setPrice(''); setSelected([]); setShowForm(false);
+    });
   }
 
   function toggleProduct(id: string) {
@@ -1071,6 +1016,7 @@ function CombosSubTab({ combos, products, onAdd, onDelete }: {
 
   return (
     <div>
+      {actionError && <p role="alert" className="otp-error-msg">{actionError}</p>}
       <button className="module-action-btn" onClick={() => setShowForm(!showForm)}>
         {showForm ? 'Cancelar' : <><Plus size={16} /> Novo Combo / Kit</>}
       </button>
@@ -1083,7 +1029,7 @@ function CombosSubTab({ combos, products, onAdd, onDelete }: {
             </label>
             <label>
               Preço Fechado
-              <input type="number" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="0,00" required />
+              <input type="number" min="0" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="0,00" required />
             </label>
           </div>
           <div className="product-picker">
@@ -1101,7 +1047,7 @@ function CombosSubTab({ combos, products, onAdd, onDelete }: {
               ))}
             </div>
           </div>
-          <button type="submit" className="module-submit-btn">Criar combo</button>
+          <button type="submit" disabled={busy} className="module-submit-btn">Criar combo</button>
         </form>
       )}
       <div className="combo-list">
@@ -1114,7 +1060,7 @@ function CombosSubTab({ combos, products, onAdd, onDelete }: {
                 <strong>{c.name}</strong>
                 <small>{c.items.length} itens • {money.format(c.price)}</small>
               </div>
-              <button className="rma-advance-btn danger" onClick={() => onDelete(c.id)}><Trash2 size={14} /></button>
+              <button className="rma-advance-btn danger" disabled={busy} onClick={() => runAction(() => onDelete(c.id))}><Trash2 size={14} /></button>
             </div>
           ))
         )}
@@ -1129,6 +1075,17 @@ function ModifiersSubTab({ modifiers, products, onAdd, onDelete }: {
   onAdd: (m: Omit<PartnerModifier, 'id' | 'user_id' | 'created_at'>) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
 }) {
+  const actionLock = useRef(false);
+  const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  async function runAction(action: () => Promise<void>) {
+    if (actionLock.current) return;
+    actionLock.current = true; setBusy(true); setActionError(null);
+    try { await action(); }
+    catch (cause) { setActionError(cause && typeof cause === 'object' && 'message' in cause ? String(cause.message) : 'Não foi possível concluir. Tente novamente.'); }
+    finally { actionLock.current = false; setBusy(false); }
+  }
+
   const [name, setName] = useSessionDraftState('modifiers:name', '');
   const [adj, setAdj] = useSessionDraftState('modifiers:price-adjustment', '');
   const [productId, setProductId] = useSessionDraftState('modifiers:product-id', '');
@@ -1136,12 +1093,15 @@ function ModifiersSubTab({ modifiers, products, onAdd, onDelete }: {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim() || !productId) return;
-    await onAdd({ name, price_adjustment: Number(adj) || 0, product_id: productId });
+    if (!Number.isFinite(Number(adj || 0)) || !products.some(product => product.id === productId)) { setActionError('Informe um ajuste válido e um produto da filial atual.'); return; }
+    await runAction(async () => { await onAdd({ name: name.trim(), price_adjustment: Number(adj) || 0, product_id: productId });
     setName(''); setAdj(''); setProductId('');
+    });
   }
 
   return (
     <div>
+      {actionError && <p role="alert" className="otp-error-msg">{actionError}</p>}
       <form className="rma-form" onSubmit={handleSubmit}>
         <div className="form-row">
           <label>
@@ -1160,7 +1120,7 @@ function ModifiersSubTab({ modifiers, products, onAdd, onDelete }: {
             <input type="number" step="0.01" value={adj} onChange={(e) => setAdj(e.target.value)} placeholder="0,00" />
           </label>
         </div>
-        <button type="submit" className="module-submit-btn"><Plus size={16} /> Adicionar modificador</button>
+        <button type="submit" disabled={busy} className="module-submit-btn"><Plus size={16} /> Adicionar modificador</button>
       </form>
       <div className="stock-table-wrap">
         <table className="rma-table">
@@ -1174,7 +1134,7 @@ function ModifiersSubTab({ modifiers, products, onAdd, onDelete }: {
                   <td>{products.find((p) => p.id === m.product_id)?.name ?? '—'}</td>
                   <td>{m.name}</td>
                   <td>{m.price_adjustment >= 0 ? '+' : ''}{money.format(m.price_adjustment)}</td>
-                  <td><button className="rma-advance-btn danger" onClick={() => onDelete(m.id)}><Trash2 size={14} /></button></td>
+                  <td><button className="rma-advance-btn danger" disabled={busy} onClick={() => runAction(() => onDelete(m.id))}><Trash2 size={14} /></button></td>
                 </tr>
               ))
             )}
@@ -1618,6 +1578,7 @@ function CustomerProfileModal({ customer, sales, rmaRequests, salespeople, onUpd
     ...customer,
     name: customer.name,
     branch_id: customer.branch_id ?? null,
+    convenio: customer.convenio === true || String(customer.convenio) === 'true',
   }));
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [creditLimitInput, setCreditLimitInput] = useState(() => String(customer.credit_limit ?? 0));
@@ -1626,7 +1587,12 @@ function CustomerProfileModal({ customer, sales, rmaRequests, salespeople, onUpd
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const customerSales = sales.filter((sale) => sale.customer_id === customer.id);
-  const totalPurchases = customerSales.reduce((total, sale) => total + sale.total, 0);
+  const completedPurchases = customerSales.filter(sale => sale.status === 'concluida');
+  const totalPurchases = completedPurchases.reduce((total, sale) => {
+    const returned = rmaRequests.filter(request => request.sale_id === sale.id && request.user_id === sale.user_id)
+      .reduce((sum, request) => sum + Math.max(Number(request.credit_amount ?? 0), Number(request.refund_amount ?? 0)), 0);
+    return total + Math.max(0, sale.total - returned);
+  }, 0);
   const tabs: { id: CustomerTab; label: string; icon: typeof UserCircle }[] = [
     { id: 'cadastrais', label: 'Dados Cadastrais', icon: IdCard },
     { id: 'enderecos', label: 'Outros Endereços', icon: MapPin },
@@ -1655,6 +1621,8 @@ function CustomerProfileModal({ customer, sales, rmaRequests, salespeople, onUpd
     const creditLimit = Number(creditLimitInput || 0);
     if (!form.name?.trim()) { setError('Nome ou razão social é obrigatório.'); return; }
     if (!Number.isFinite(creditLimit) || creditLimit < 0) { setError('O limite de crédito não pode ser negativo.'); return; }
+    const doc = normalizeDocument(form.document ?? '');
+    if (doc && (form.person_type === 'PJ' ? !isValidCnpj(doc) : !isValidCpf(doc))) { setError('Informe um CPF/CNPJ válido para o tipo de pessoa selecionado.'); return; }
     setIsSaving(true); setError(null); setSuccess(false);
     try {
       await onUpdate(customer.id, { ...form, name: form.name.trim(), credit_limit: creditLimit, photo_file: photoFile, remove_photo: removePhoto });
@@ -1676,7 +1644,7 @@ function CustomerProfileModal({ customer, sales, rmaRequests, salespeople, onUpd
         </div>
         <div className="customer-profile-header">
           <div className="customer-avatar">
-            {photoFile ? <img src={URL.createObjectURL(photoFile)} alt="Prévia da foto" /> : <Camera size={24} />}
+            <CustomerPhoto path={customer.photo_url} file={photoFile} removed={removePhoto} />
             <small>{photoFile ? 'Nova foto' : 'Foto'}</small>
             <label className="customer-photo-picker"><Camera size={13} /> Adicionar foto<input type="file" accept="image/*" onChange={(event) => { setPhotoFile(event.target.files?.[0] ?? null); setRemovePhoto(false); }} /></label>
             {customer.photo_url && <button type="button" onClick={() => { setRemovePhoto(true); setPhotoFile(null); }}>Remover</button>}
@@ -1684,7 +1652,7 @@ function CustomerProfileModal({ customer, sales, rmaRequests, salespeople, onUpd
           <div className="customer-profile-summary">
             <strong>{form.name}</strong>
             <small>{form.document || 'Sem documento'} - {form.customer_group ?? 'Varejo'}</small>
-            <small>Total em compras: {money.format(totalPurchases)} ({customerSales.length} pedidos)</small>
+            <small>Total em compras: {money.format(totalPurchases)} ({completedPurchases.length} compras concluídas)</small>
           </div>
         </div>
         <div className="subtab-bar customer-profile-tabs">

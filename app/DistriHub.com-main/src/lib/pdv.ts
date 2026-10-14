@@ -1,4 +1,17 @@
-import type { PartnerSale, SalePayment } from '../types';
+import type { PartnerSale, SalePayment, PartnerCustomer, PartnerProduct } from '../types';
+
+export type PriceTable = 'varejo' | 'atacado' | 'premium';
+export function customerPriceTable(customer: Pick<PartnerCustomer, 'price_table' | 'customer_type'> | undefined, fallback: 'varejo' | 'atacado'): PriceTable {
+  const table = customer?.price_table;
+  return table === 'premium' || table === 'atacado' || table === 'varejo' ? table : fallback;
+}
+export function productTablePrice(product: Pick<PartnerProduct, 'sale_price' | 'wholesale_price' | 'premium_price'>, table: PriceTable): number {
+  if (table === 'premium') {
+    if (product.premium_price == null || !validSalePrice(product.premium_price)) throw new Error('Defina um preço Premium válido para este produto no Cadastro.');
+    return product.premium_price;
+  }
+  return table === 'atacado' && product.wholesale_price > 0 ? product.wholesale_price : product.sale_price;
+}
 
 export function validSalePrice(value: number): boolean {
   return Number.isFinite(value) && value >= 0 && value <= 99999999.99 && Math.abs(value * 100 - Math.round(value * 100)) < 0.000001;
@@ -126,6 +139,7 @@ export class PdvSaleAttemptStore {
       salesperson_id: sale.salesperson_id, branch_id: sale.branch_id, customer_type: sale.customer_type,
       delivery_type: sale.delivery_type, status: sale.status, origin: sale.origin, online_payment: sale.online_payment,
       payment_status: sale.payment_status, created_at: sale.created_at,
+      draft_scope: sale.draft_scope,
     };
     this.storage.setItem(this.key, JSON.stringify(stored));
     return stored;
