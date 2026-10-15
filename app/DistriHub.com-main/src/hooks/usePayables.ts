@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { FinancialOperationAttempts, type FinancialOperation, type FinancialRecovery } from '../lib/invoicePayments';
+import { isDefinitiveSaleRejection } from '../lib/pdv';
 import type { PayableAccount } from '../lib/accounts';
 
 export function usePayables(userId?: string) {
@@ -7,10 +9,14 @@ export function usePayables(userId?: string) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const revision = useRef(0);
+  const locks = useRef(new Set<string>());
+  const [attemptVersion, setAttemptVersion] = useState(0);
+  const companyRef = useRef(userId); companyRef.current = userId;
   const load = useCallback(async () => {
     const request = ++revision.current;
     setLoading(true);
     setError('');
+    try {
     if (!supabase || !userId) {
       setError('Conecte a loja para consultar Contas a Pagar.');
       setAccounts([]);
@@ -39,23 +45,65 @@ export function usePayables(userId?: string) {
     }
     if (request === revision.current) { setAccounts(all); setLoading(false); }
     return request === revision.current;
+    } catch (cause) {
+      if (request === revision.current) {
+        setAccounts([]); setLoading(false);
+        setError(cause instanceof Error ? cause.message : 'Não foi possível carregar as contas.');
+      }
+      return false;
+    }
   }, [userId]);
   const invalidate = useCallback(() => { revision.current++; }, []);
   useEffect(() => { setAccounts([]); void load(); return invalidate; }, [load, invalidate]);
 
-  const create = async (account: Omit<PayableAccount, 'id' | 'user_id' | 'paid_amount' | 'status' | 'created_at'>, id: string) => {
-    if (!supabase || !userId) throw new Error('Loja não conectada.');
-    const { error: failure } = await supabase.rpc('create_partner_payable', { p_id: id, p_branch_id: account.branch_id,
-      p_supplier_id: account.supplier_id, p_description: account.description, p_creditor_name: account.creditor_name,
-      p_category: account.category, p_amount: account.amount, p_due_date: account.due_date });
-    if (failure) throw new Error(failure.message);
-    if (!await load()) throw new Error('Cadastro confirmado, mas a consulta falhou. Tente novamente para atualizar; o mesmo cadastro será reutilizado.');
+  const execute = async (payload: FinancialOperation, token: string) => {
+    const client = supabase;
+    if (!client || !userId) throw new Error('Loja não conectada.');
+    const company = userId;
+    const { data: auth, error: authError } = await client.auth.getUser();
+    if (authError || auth.user?.id !== company || companyRef.current !== company) throw new Error('Operação financeira exige o proprietário autenticado.');
+    const scope = company + ':' + company;
+    const store = new FinancialOperationAttempts(window.localStorage);
+    const key = scope + ':' + payload.kind;
+    if (locks.current.has(key)) throw new Error('Operação em confirmação. Aguarde.');
+    const pending = store.pending(scope, payload.kind);
+    locks.current.add(key);
+    try {
+      const attempt = store.get(scope, payload, token);
+      setAttemptVersion(version => version + 1);
+      let response;
+      let expected: string;
+      if (payload.kind === 'payable-create') {
+        const account = payload.account; expected = attempt.token;
+        response = await client.rpc('create_partner_payable', { p_id: attempt.token, p_branch_id: account.branch_id,
+          p_supplier_id: account.supplier_id, p_description: account.description, p_creditor_name: account.creditor_name,
+          p_category: account.category, p_amount: account.amount, p_due_date: account.due_date });
+      } else if (payload.kind === 'payable-payment') {
+        expected = payload.payableId;
+        response = await client.rpc('record_partner_payable_payment', { p_payable_id: payload.payableId, p_amount: payload.amount, p_payment_id: attempt.token });
+      } else throw new Error('Operação de contas inválida.');
+      if (response.error) {
+        if (!pending && isDefinitiveSaleRejection(response.error.code ?? '')) store.confirm(scope, payload.kind);
+        throw new Error(response.error.message);
+      }
+      if (response.data !== expected) throw new Error('O servidor não confirmou a operação. Recupere a tentativa pendente.');
+      store.confirm(scope, payload.kind);
+      if (companyRef.current === company) await load();
+    } finally { locks.current.delete(key); setAttemptVersion(version => version + 1); }
   };
-  const pay = async (id: string, amount: number, paymentId: string) => {
-    if (!supabase) throw new Error('Loja não conectada.');
-    const { error: failure } = await supabase.rpc('record_partner_payable_payment', { p_payable_id: id, p_amount: amount, p_payment_id: paymentId });
-    if (failure) throw new Error(failure.message);
-    if (!await load()) throw new Error('Pagamento confirmado, mas a consulta falhou. Tente novamente para atualizar; o mesmo pagamento será reutilizado.');
-  };
-  return { accounts, loading, error, reload: load, create, pay };
+  const create = (account: Omit<PayableAccount, 'id' | 'user_id' | 'paid_amount' | 'status' | 'created_at'>, id: string) => execute({ kind: 'payable-create', account }, id);
+  const pay = (id: string, amount: number, paymentId: string) => execute({ kind: 'payable-payment', payableId: id, amount }, paymentId);
+  const recoveries: FinancialRecovery[] = [];
+  let recoveryError = '';
+  void attemptVersion;
+  if (userId) {
+    try {
+      const store = new FinancialOperationAttempts(window.localStorage);
+      for (const kind of ['payable-create', 'payable-payment'] as const) {
+        const attempt = store.pending(userId + ':' + userId, kind);
+        if (attempt) recoveries.push({ id: kind, label: kind === 'payable-create' ? 'Recuperar cadastro de conta' : 'Recuperar pagamento de conta', run: () => execute(attempt.payload, attempt.token) });
+      }
+    } catch (cause) { recoveryError = cause instanceof Error ? cause.message : 'Não foi possível recuperar tentativas.'; }
+  }
+  return { accounts, loading, error, reload: load, create, pay, recoveries, recoveryError };
 }

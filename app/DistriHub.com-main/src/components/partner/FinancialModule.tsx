@@ -1,11 +1,17 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Wallet, CreditCard, Receipt, Check } from 'lucide-react';
 import type { PartnerInvoice, RmaRequest } from '../../types';
-import { isOverdue } from '../../lib/accounts';
+import { accountPaid as paidAmount, accountBalance as balance, isOverdue } from '../../lib/accounts';
 import { InvoiceReceipts } from './InvoiceReceipts';
 import { money } from '../../utils';
+import { FinancialRecoveryPanel } from './FinancialRecoveryPanel';
+import type { FinancialRecovery } from '../../lib/invoicePayments';
 
 type Props = {
+  contextKey?: string;
+  isActive?: boolean;
+  recoveries?: FinancialRecovery[];
+  recoveryError?: string;
   invoices: PartnerInvoice[];
   creditLimit: number;
   creditUsed: number;
@@ -14,11 +20,19 @@ type Props = {
   onApplyCredit?: (rmaId: string, invoiceId: string, amount: number, applicationId: string) => Promise<void>;
 };
 
-const paidAmount = (invoice: PartnerInvoice) => Number(invoice.paid_amount ?? (invoice.status === 'paga' ? invoice.amount : 0));
-const balance = (invoice: PartnerInvoice) => Math.max(0, Math.round(Number(invoice.amount) * 100) - Math.round(paidAmount(invoice) * 100)) / 100;
 const isOpen = (invoice: PartnerInvoice) => invoice.status === 'aberta' || invoice.status === 'parcial';
 
-export function FinancialModule({ invoices, creditLimit, creditUsed, onPayInvoice, rmaRequests = [], onApplyCredit }: Props) {
+export function FinancialModule(props: Props) {
+  const context = props.contextKey ?? [...new Set(props.invoices.map(invoice => invoice.user_id + ':' + invoice.branch_id))].sort().join('|');
+  return <FinancialScreen key={context} {...props} />;
+}
+
+function FinancialScreen({ invoices, creditLimit, creditUsed, onPayInvoice, rmaRequests = [], onApplyCredit, recoveries = [], recoveryError, isActive = true }: Props) {
+  const mounted = useRef(true);
+  const activeRef = useRef(isActive); activeRef.current = isActive;
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  useEffect(() => { if (!isActive) { setPayingId(null); setCreditInvoice(null); } }, [isActive]);
+  const pending = recoveries.length > 0 || Boolean(recoveryError);
   const [payingId, setPayingId] = useState<string | null>(null);
   const [paymentMode, setPaymentMode] = useState<'full' | 'partial'>('full');
   const [amount, setAmount] = useState('');
@@ -30,6 +44,9 @@ export function FinancialModule({ invoices, creditLimit, creditUsed, onPayInvoic
   const [receiptInvoiceId, setReceiptInvoiceId] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'aberta' | 'paga'>('all');
   const [creditInvoice, setCreditInvoice] = useState<PartnerInvoice | null>(null);
+  useEffect(() => {
+    setCreditInvoice(current => current ? invoices.find(invoice => invoice.id === current.id && isOpen(invoice)) ?? null : null);
+  }, [invoices]);
   const [selectedCreditId, setSelectedCreditId] = useState('');
   const [creditAmount, setCreditAmount] = useState('');
   const [creditError, setCreditError] = useState<string | null>(null);
@@ -48,7 +65,7 @@ export function FinancialModule({ invoices, creditLimit, creditUsed, onPayInvoic
 
   async function confirmCredit(event: React.FormEvent) {
     event.preventDefault();
-    if (submittingRef.current || !creditInvoice || !onApplyCredit || !applicationId.current) return;
+    if (!isActive || pending || submittingRef.current || !creditInvoice || !onApplyCredit || !applicationId.current) return;
     const normalized = creditAmount.trim().replace(',', '.');
     const value = Number(normalized);
     const credit = eligibleCredits(creditInvoice).find(rma => rma.id === selectedCreditId);
@@ -58,15 +75,16 @@ export function FinancialModule({ invoices, creditLimit, creditUsed, onPayInvoic
     submittingRef.current = true; setSubmitting(true); setCreditError(null);
     try {
       await onApplyCredit(credit.id, creditInvoice.id, value, applicationId.current);
+      if (!mounted.current || !activeRef.current) return;
       setCreditInvoice(null); setSuccess('Crédito abatido na fatura. Nenhuma entrada em dinheiro foi registrada.');
-    } catch (error) { setCreditError(error && typeof error === 'object' && 'message' in error ? String(error.message) : 'Não foi possível abater o crédito.'); }
-    finally { submittingRef.current = false; setSubmitting(false); }
+    } catch (error) { if (mounted.current && activeRef.current) setCreditError(error && typeof error === 'object' && 'message' in error ? String(error.message) : 'Não foi possível abater o crédito.'); }
+    finally { submittingRef.current = false; if (mounted.current) setSubmitting(false); }
   }
 
   const openInvoices = invoices.filter(isOpen);
   const totalOpen = openInvoices.reduce((sum, i) => sum + balance(i), 0);
   const totalPaid = invoices.reduce((sum, i) => sum + paidAmount(i), 0);
-  const totalInvoiced = invoices.reduce((sum, i) => sum + i.amount, 0);
+  const totalInvoiced = invoices.filter(invoice => invoice.status !== 'cancelada').reduce((sum, i) => sum + i.amount, 0);
   const creditAvailable = creditLimit - creditUsed;
 
   const overdueCount = useMemo(
@@ -89,7 +107,7 @@ export function FinancialModule({ invoices, creditLimit, creditUsed, onPayInvoic
   }
 
   async function confirmPay(invoice: PartnerInvoice) {
-    if (submittingRef.current) return;
+    if (!isActive || pending || submittingRef.current) return;
     setPaymentError(null);
     const normalizedAmount = amount.trim().replace(',', '.');
     const value = paymentMode === 'partial' ? Number(normalizedAmount) : balance(invoice);
@@ -104,19 +122,21 @@ export function FinancialModule({ invoices, creditLimit, creditUsed, onPayInvoic
         paymentRequest.current = { id: invoice.id, amount: value, token: crypto.randomUUID() };
       }
       await onPayInvoice(invoice.id, value, paymentRequest.current.token);
+      if (!mounted.current || !activeRef.current) return;
       paymentRequest.current = null;
       setPayingId(null);
       setSuccess(paymentMode === 'partial' ? 'Amortização registrada com sucesso!' : 'Título quitado com sucesso!');
     } catch (error) {
-      setPaymentError(error instanceof Error ? error.message : 'Não foi possível registrar o pagamento.');
+      if (mounted.current && activeRef.current) setPaymentError(error instanceof Error ? error.message : 'Não foi possível registrar o pagamento.');
     } finally {
       submittingRef.current = false;
-      setSubmitting(false);
+      if (mounted.current) setSubmitting(false);
     }
   }
 
   return (
     <div className="panel-module">
+      {!creditInvoice && <FinancialRecoveryPanel actions={recoveries} error={recoveryError} disabled={submitting} />}
       {rmaRequests.some(rma => Number(rma.refund_amount) > 0) && <details className="module-card">
         <summary>Reembolsos de devoluções · {money.format(rmaRequests.reduce((sum, rma) => sum + Math.round(Number(rma.refund_amount ?? 0) * 100), 0) / 100)}</summary>
         <p>Saídas registradas no Caixa. Estes valores não são créditos disponíveis nem novos recebimentos.</p>
@@ -169,16 +189,17 @@ export function FinancialModule({ invoices, creditLimit, creditUsed, onPayInvoic
       {creditInvoice && <div className="modal-overlay">
         <form className="modal-card pdv-form" onSubmit={confirmCredit}>
           <h4>Abater crédito de devolução</h4>
+          <FinancialRecoveryPanel actions={recoveries} error={recoveryError} disabled={submitting} />
           <p>{creditInvoice.customer_name} — {creditInvoice.number} · Saldo da fatura: {money.format(balance(creditInvoice))}</p>
-          <label>Crédito disponível<select aria-label="Crédito disponível" value={selectedCreditId} disabled={submitting} onChange={event => {
+          <label>Crédito disponível<select aria-label="Crédito disponível" value={selectedCreditId} disabled={submitting || pending || !isActive} onChange={event => {
             setSelectedCreditId(event.target.value);
             const credit = eligibleCredits(creditInvoice).find(rma => rma.id === event.target.value);
             setCreditAmount(credit ? Math.min(availableCredit(credit), balance(creditInvoice)).toFixed(2) : '');
           }}>{eligibleCredits(creditInvoice).map(rma => <option key={rma.id} value={rma.id}>{rma.product_name} — {money.format(availableCredit(rma))}</option>)}</select></label>
-          <label>Valor a abater (R$)<input aria-label="Valor a abater" inputMode="decimal" value={creditAmount} onChange={event => setCreditAmount(event.target.value)} disabled={submitting} required /></label>
+          <label>Valor a abater (R$)<input aria-label="Valor a abater" inputMode="decimal" value={creditAmount} onChange={event => setCreditAmount(event.target.value)} disabled={submitting || pending || !isActive} required /></label>
           {creditError && <p className="otp-error-msg" role="alert">{creditError}</p>}
           <div className="pix-actions">
-            <button type="submit" className="module-submit-btn" disabled={submitting}>{submitting ? 'Registrando...' : 'Confirmar abatimento'}</button>
+            <button type="submit" className="module-submit-btn" disabled={submitting || pending || !isActive}>{submitting ? 'Registrando...' : 'Confirmar abatimento'}</button>
             <button type="button" className="rma-advance-btn" disabled={submitting} onClick={() => setCreditInvoice(null)}>Cancelar</button>
           </div>
         </form>
@@ -233,7 +254,7 @@ export function FinancialModule({ invoices, creditLimit, creditUsed, onPayInvoic
                     <td><strong>{money.format(inv.amount)}</strong></td>
                     <td>{money.format(paidAmount(inv))}{Number(inv.return_credit_amount) > 0 && <small style={{ display: 'block' }}>Inclui crédito RMA: {money.format(Number(inv.return_credit_amount))}</small>}</td>
                     <td>{money.format(balance(inv))}</td>
-                    <td>{inv.due_date ? new Date(inv.due_date).toLocaleDateString('pt-BR') : '—'}</td>
+                    <td>{inv.due_date ? new Date(inv.due_date.slice(0, 10) + 'T12:00:00').toLocaleDateString('pt-BR') : '—'}</td>
                     <td>
                       <span className={`rma-status-badge status-${inv.status === 'paga' ? 'success' : inv.status === 'cancelada' ? 'danger' : 'warning'}`}>
                         {inv.status === 'paga' ? 'Paga' : inv.status === 'parcial' ? 'Parcialmente paga' : inv.status === 'cancelada' ? 'Cancelada' : 'Em Aberto'}
@@ -250,19 +271,19 @@ export function FinancialModule({ invoices, creditLimit, creditUsed, onPayInvoic
                               {paymentMode === 'partial' && (
                                 <label>
                                   Valor a amortizar (R$)
-                                  <input type="text" inputMode="decimal" placeholder="0,00" value={amount} onChange={(event) => setAmount(event.target.value)} disabled={submitting} required autoFocus />
+                                  <input type="text" inputMode="decimal" placeholder="0,00" value={amount} onChange={(event) => setAmount(event.target.value)} disabled={submitting || pending || !isActive} required autoFocus />
                                 </label>
                               )}
                               <div className="pix-actions">
-                                <button type="submit" className="module-submit-btn" disabled={submitting}><Check size={16} /> {submitting ? 'Registrando...' : paymentMode === 'partial' ? 'Confirmar amortização' : 'Confirmar quitação'}</button>
+                                <button type="submit" className="module-submit-btn" disabled={submitting || pending || !isActive}><Check size={16} /> {submitting ? 'Registrando...' : paymentMode === 'partial' ? 'Confirmar amortização' : 'Confirmar quitação'}</button>
                                 <button type="button" className="rma-advance-btn" disabled={submitting} onClick={() => setPayingId(null)}>Cancelar</button>
                               </div>
                             </form>
                           ) : (
                             <div className="pix-actions">
-                              <button className="rma-advance-btn" disabled={submitting} onClick={() => handlePay(inv.id, 'partial')}>Amortizar</button>
-                              <button className="rma-advance-btn" disabled={submitting} onClick={() => handlePay(inv.id, 'full')}>Quitar título</button>
-                              {onApplyCredit && eligibleCredits(inv).length > 0 && <button className="rma-advance-btn" disabled={submitting} onClick={() => openCredit(inv)}>Abater crédito RMA</button>}
+                              <button className="rma-advance-btn" disabled={submitting || pending || !isActive} onClick={() => handlePay(inv.id, 'partial')}>Amortizar</button>
+                              <button className="rma-advance-btn" disabled={submitting || pending || !isActive} onClick={() => handlePay(inv.id, 'full')}>Quitar título</button>
+                              {onApplyCredit && eligibleCredits(inv).length > 0 && <button className="rma-advance-btn" disabled={submitting || pending || !isActive} onClick={() => openCredit(inv)}>Abater crédito RMA</button>}
                             </div>
                           )}
                           {paymentError && payingId === inv.id && <p className="otp-error-msg" role="alert">{paymentError}</p>}

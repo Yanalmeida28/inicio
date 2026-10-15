@@ -1,26 +1,28 @@
 import { useEffect, useState } from 'react';
 import type { PartnerInvoice, PartnerSale, StockMovement } from '../../types';
 import type { PayableAccount } from '../../lib/accounts';
-import { actualFinancialFlow, projectedFinancialFlow, localDate, type InvoiceReceipt, type PayablePayment } from '../../lib/financialFlow';
+import { actualFinancialFlow, projectedFinancialFlow, localDate, type InvoiceReceipt, type PayablePayment, type FinancialRefund } from '../../lib/financialFlow';
 import { supabase } from '../../lib/supabase';
 import { money } from '../../utils';
 
-type Props = { userId?: string; branchId: string; invoices: PartnerInvoice[]; payables: PayableAccount[]; sales: PartnerSale[]; movements: StockMovement[]; payablesUnavailable: boolean };
+type Props = { isActive?: boolean; userId?: string; branchId: string; invoices: PartnerInvoice[]; payables: PayableAccount[]; sales: PartnerSale[]; movements: StockMovement[]; payablesUnavailable: boolean };
 const today = () => localDate(new Date().toISOString());
 const shifted = (days: number) => { const date = new Date(); date.setDate(date.getDate() + days); return localDate(date.toISOString()); };
 
-export function FinancialFlowModule({ userId, branchId, invoices, payables, sales, movements, payablesUnavailable }: Props) {
+export function FinancialFlowModule({ userId, branchId, invoices, payables, sales, movements, payablesUnavailable, isActive = true }: Props) {
   const [mode, setMode] = useState<'realizado' | 'previsto'>('realizado');
   const [start, setStart] = useState(() => shifted(-29));
   const [end, setEnd] = useState(today);
   const [receipts, setReceipts] = useState<InvoiceReceipt[]>([]);
   const [payments, setPayments] = useState<PayablePayment[]>([]);
+  const [refunds, setRefunds] = useState<FinancialRefund[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [revision, setRevision] = useState(0);
   useEffect(() => {
+    if (!isActive) return;
     let active = true;
-    setLoading(true); setError(''); setReceipts([]); setPayments([]);
+    setLoading(true); setError(''); setReceipts([]); setPayments([]); setRefunds([]);
     async function load() {
       const client = supabase;
       if (!client || !userId) throw new Error('Loja não conectada.');
@@ -29,22 +31,27 @@ export function FinancialFlowModule({ userId, branchId, invoices, payables, sale
       async function pages(table: string) {
         const all: unknown[] = [];
         for (let offset = 0; ; offset += 500) {
-          const result = await client!.from(table).select('*').eq('user_id', userId!).order('id').range(offset, offset + 499);
+          const columns = table === 'rma_requests_v2' ? 'id,user_id,branch_id,customer_name,refund_amount,refund_request_id,refunded_at' : '*';
+          const result = await client!.from(table).select(columns).eq('user_id', userId!).order('id').range(offset, offset + 499);
+          if (!active) return [];
           if (result.error) throw new Error(result.error.message);
           all.push(...result.data);
           if (result.data.length < 500) return all;
         }
       }
-      const [receiptRows, paymentRows] = await Promise.all([pages('partner_invoice_receipts'), pages('partner_payable_payments')]);
-      if (active) { setReceipts((receiptRows as InvoiceReceipt[]).filter(r => !branchId || r.branch_id === branchId)); setPayments(paymentRows as PayablePayment[]); }
+      const [receiptRows, paymentRows, refundRows] = await Promise.all([pages('partner_invoice_receipts'), pages('partner_payable_payments'), pages('rma_requests_v2')]);
+      if (active) {
+        setReceipts((receiptRows as InvoiceReceipt[]).filter(r => !branchId || r.branch_id === branchId)); setPayments(paymentRows as PayablePayment[]);
+        setRefunds((refundRows as FinancialRefund[]).filter(r => r.user_id === userId && (!branchId || r.branch_id === branchId)));
+      }
     }
     void load().catch(cause => { if (active) setError(cause instanceof Error ? cause.message : 'Falha ao consultar movimentos.'); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [userId, branchId, invoices, payables, revision]);
+  }, [userId, branchId, invoices, payables, revision, isActive]);
 
   const scopedSales = sales.filter(s => !branchId || s.branch_id === branchId);
-  const records = mode === 'realizado' ? actualFinancialFlow(scopedSales, movements, receipts, payments, payables, invoices) : projectedFinancialFlow(invoices, payables);
+  const records = mode === 'realizado' ? actualFinancialFlow(scopedSales, movements, receipts, payments, payables, invoices, refunds) : projectedFinancialFlow(invoices, payables);
   const invalidRange = Boolean(start && end && start > end);
   const rows = records.filter(r => r.date && localDate(r.date) && (!start || localDate(r.date) >= start) && (!end || localDate(r.date) <= end))
     .sort((a, b) => localDate(a.date!).localeCompare(localDate(b.date!)) || a.id.localeCompare(b.id));
@@ -58,7 +65,7 @@ export function FinancialFlowModule({ userId, branchId, invoices, payables, sale
   let running = 0;
   return <section className="module-card">
     <h4 className="report-section-title">Fluxo Financeiro</h4>
-    <p>{mode === 'realizado' ? 'Vendas à vista, recebimentos de faturas e pagamentos de contas registrados. Resultado dos movimentos do período; não é o saldo bancário ou o fechamento do caixa.' : 'Previsão pelos vencimentos e saldos ainda pendentes. Estes valores não representam dinheiro já recebido ou pago.'}</p>
+    <p>{mode === 'realizado' ? 'Vendas à vista, recebimentos de faturas, pagamentos de contas e reembolsos de devoluções registrados. Resultado dos movimentos do período; não é o saldo bancário ou o fechamento do caixa.' : 'Previsão pelos vencimentos e saldos ainda pendentes. Estes valores não representam dinheiro já recebido ou pago.'}</p>
     <div className="orders-filter-row" style={{ flexWrap: 'wrap', margin: '16px 0' }}>
       {(['realizado', 'previsto'] as const).map(value => <button key={value} type="button" className={`rma-advance-btn ${mode === value ? 'active' : ''}`} onClick={() => { setMode(value); setStart(value === 'realizado' ? shifted(-29) : today()); setEnd(value === 'realizado' ? today() : shifted(29)); }}>{value === 'realizado' ? 'Realizado' : 'Previsto'}</button>)}
       <label>De <input type="date" value={start} onChange={e => setStart(e.target.value)} /></label>

@@ -2294,6 +2294,10 @@ export function PartnerPanel({
               <div hidden={activeTab !== 'administrativo'}>
               {renderTab('administrativo',
               <AdminModule
+                contextKey={[identity?.authUserId, identity?.companyUserId, activeSalesperson?.id].join(':')}
+                isActive={activeTab === 'administrativo'}
+                recoveries={partner.financialRecoveries}
+                recoveryError={partner.financialRecoveryError}
                 renderSettings={() => <SettingsModule user={user} profile={partner.profile} onProfileUpdate={partner.updateProfile} />}
                 renderCadastros={renderCadastros}
                 invoices={filteredInvoices}
@@ -2379,6 +2383,10 @@ export function PartnerPanel({
               <div hidden={activeTab !== 'financeiro'}>
               {renderTab('financeiro',
               <FinancialModule
+                contextKey={[identity?.authUserId, identity?.companyUserId, effectiveBranchId, activeSalesperson?.id].join(':')}
+                isActive={activeTab === 'financeiro'}
+                recoveries={partner.financialRecoveries}
+                recoveryError={partner.financialRecoveryError}
                 rmaRequests={filteredRmaRequests}
                 onApplyCredit={partner.applyRmaCredit}
                 invoices={

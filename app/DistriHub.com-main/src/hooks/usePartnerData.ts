@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PostgrestError } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { InvoicePaymentAttempts } from '../lib/invoicePayments';
+import { InvoicePaymentAttempts, FinancialOperationAttempts, type FinancialRecovery } from '../lib/invoicePayments';
 import type { XmlStockImport } from '../lib/cadastroXml';
 import { OperationAttempts } from '../lib/operationAttempts';
 import type { RmaPhotoFile } from '../components/partner/RmaPhotoUpload';
@@ -246,6 +246,8 @@ function ensureEmployeeBranch(
 }
 
 export function usePartnerData(identity: PartnerIdentity | null, syncBranchId: string | null = null, resourceScope: string | null = null) {
+  const [financialRevision, setFinancialRevision] = useState(0);
+  const financialLocks = useRef(new Set<string>());
   const [data, setData] = useState<PartnerDataState>(initialData);
   const resourceScopeRef = useRef(resourceScope); resourceScopeRef.current = resourceScope;
   const requestedResourcesRef = useRef(partnerResources(resourceScope)); requestedResourcesRef.current = partnerResources(resourceScope);
@@ -2384,90 +2386,37 @@ read('sales', () => fetchAllPages((from, to) => client
     [data.products, requireIdentity, loadData],
   );
 
-  const payInvoice = useCallback(
-    async (
-      id: string,
-      amount?: number,
-      requestId?: string,
-    ) => {
-      const currentIdentity = requireIdentity();
-
-      if (!isSupabaseConfigured || !supabase) {
-        throw new Error('Supabase não configurado.');
-      }
-
-      const invoice = data.invoices.find(
-        (item) => item.id === id,
-      );
-
-      if (!invoice) {
-        throw new Error(
-          'Fatura não encontrada.',
-        );
-      }
-
-      if (invoice.user_id !== currentIdentity.companyUserId) {
-        throw new Error(
-          'Acesso negado à fatura.',
-        );
-      }
-
-      const outstandingAmount =
-        Math.max(
-          0,
-          Math.round(Number(invoice.amount ?? 0) * 100) -
-            Math.round(Number(invoice.paid_amount ?? 0) * 100),
-        ) / 100;
-
-      const paymentAmount =
-        amount ?? outstandingAmount;
-
-      if (
-        !Number.isFinite(paymentAmount) ||
-        paymentAmount <= 0
-      ) {
-        throw new Error(
-          'Valor de recebimento inválido.',
-        );
-      }
-
-      if (
-        paymentAmount >
-        outstandingAmount + 0.000001
-      ) {
-        throw new Error(
-          'Valor excede o saldo da fatura.',
-        );
-      }
-
-      const attemptStore = new InvoicePaymentAttempts(window.localStorage);
-      const paymentScope = currentIdentity.authUserId + ':' + currentIdentity.companyUserId;
-      const attempt = attemptStore.get(paymentScope, id, paymentAmount, requestId ?? crypto.randomUUID());
-      const { data: paidInvoiceId, error } =
-        await supabase.rpc(
-          'record_partner_invoice_payment_once',
-          {
-            p_invoice_id: id,
-            p_amount: paymentAmount,
-            p_request_id: attempt.token,
-          },
-        );
-
+  const payInvoice = useCallback(async (id: string, amount?: number, requestId?: string) => {
+    const { identity: currentIdentity, client } = await requireAuthenticatedSession();
+    const scope = currentIdentity.authUserId + ':' + currentIdentity.companyUserId;
+    const store = new InvoicePaymentAttempts(window.localStorage);
+    const pending = store.pending(scope, id);
+    const invoice = data.invoices.find(item => item.id === id);
+    if (invoice && invoice.user_id !== currentIdentity.companyUserId) throw new Error('Acesso negado à fatura.');
+    if (!pending && !invoice) throw new Error('Fatura não encontrada.');
+    const outstanding = invoice ? Math.max(0, Math.round(Number(invoice.amount) * 100) - Math.round(Number(invoice.paid_amount ?? 0) * 100)) / 100 : 0;
+    const value = amount ?? pending?.amount ?? outstanding;
+    if (!Number.isFinite(value) || value <= 0) throw new Error('Valor de recebimento inválido.');
+    if (!pending && (invoice?.status === 'cancelada' || value > outstanding + 0.000001)) throw new Error('Valor excede o saldo da fatura ou fatura cancelada.');
+    const key = scope + ':invoice:' + id;
+    if (financialLocks.current.has(key)) throw new Error('Recebimento em confirmação. Aguarde.');
+    financialLocks.current.add(key);
+    try {
+      const attempt = store.get(scope, id, value, requestId ?? crypto.randomUUID());
+      setFinancialRevision(revision => revision + 1);
+      const { data: confirmed, error } = await client.rpc('record_partner_invoice_payment_once', { p_invoice_id: id, p_amount: attempt.amount, p_request_id: attempt.token });
       if (error) {
-        throw new Error(pdvErrorMessage(error));
+        if (!pending && isDefinitiveSaleRejection(error.code ?? '')) store.confirm(scope, id);
+        throw Object.assign(new Error(pdvErrorMessage(error)), { code: error.code });
       }
-
-      if (paidInvoiceId !== id) {
-        throw new Error(
-          'O recebimento não foi confirmado pelo servidor.',
-        );
+      if (confirmed !== id) throw new Error('O recebimento não foi confirmado pelo servidor. Recupere a tentativa pendente.');
+      store.confirm(scope, id);
+      if (identityScopeRef.current === scope) {
+        dataRevisionRef.current.invalidate(['invoices']);
+        try { await loadData(true, ['invoices']); } catch { console.warn('[usePartnerData] Recebimento confirmado; atualização pendente.'); }
       }
-      attemptStore.confirm(paymentScope, id);
-      dataRevisionRef.current.invalidate(['invoices']);
-      try { await loadData(true, ['invoices']); } catch { console.warn('[usePartnerData] Recebimento confirmado; atualização dos dados pendente.'); }
-    },
-    [data.invoices, loadData, requireIdentity],
-  );
+    } finally { financialLocks.current.delete(key); setFinancialRevision(revision => revision + 1); }
+  }, [data.invoices, loadData, requireAuthenticatedSession]);
 
   const updateStoreSettings = useCallback(
     async (settings: Partial<StoreSettings>) => {
@@ -2731,15 +2680,49 @@ read('sales', () => fetchAllPages((from, to) => client
   }, [requireIdentity]);
 
   const applyRmaCredit = useCallback(async (rmaId: string, invoiceId: string, amount: number, applicationId: string) => {
-    requireIdentity();
-    if (!supabase) throw new Error('Supabase não configurado.');
-    const { data: confirmed, error } = await supabase.rpc('apply_partner_rma_credit', {
-      p_rma_id: rmaId, p_invoice_id: invoiceId, p_amount: amount, p_application_id: applicationId,
-    });
-    if (error) throw error;
-    if (confirmed !== applicationId) throw new Error('O abatimento não foi confirmado pelo servidor.');
-    await loadData();
-  }, [requireIdentity, loadData]);
+    const { identity: currentIdentity, client } = await requireAuthenticatedSession();
+    const scope = currentIdentity.authUserId + ':' + currentIdentity.companyUserId;
+    const store = new FinancialOperationAttempts(window.localStorage);
+    const pending = store.pending(scope, 'rma-credit');
+    const key = scope + ':rma-credit';
+    if (financialLocks.current.has(key)) throw new Error('Abatimento em confirmação. Aguarde.');
+    financialLocks.current.add(key);
+    try {
+      const attempt = store.get(scope, { kind: 'rma-credit', rmaId, invoiceId, amount }, applicationId);
+      setFinancialRevision(revision => revision + 1);
+      const { data: confirmed, error } = await client.rpc('apply_partner_rma_credit', { p_rma_id: rmaId, p_invoice_id: invoiceId, p_amount: amount, p_application_id: attempt.token });
+      if (error) {
+        if (!pending && isDefinitiveSaleRejection(error.code ?? '')) store.confirm(scope, 'rma-credit');
+        throw Object.assign(new Error(pdvErrorMessage(error)), { code: error.code });
+      }
+      if (confirmed !== attempt.token) throw new Error('O abatimento não foi confirmado pelo servidor. Recupere a tentativa pendente.');
+      store.confirm(scope, 'rma-credit');
+      if (identityScopeRef.current === scope) {
+        dataRevisionRef.current.invalidate(['invoices', 'rmas']);
+        try { await loadData(true, ['invoices', 'rmas']); } catch { console.warn('[usePartnerData] Abatimento confirmado; atualização pendente.'); }
+      }
+    } finally { financialLocks.current.delete(key); setFinancialRevision(revision => revision + 1); }
+  }, [requireAuthenticatedSession, loadData]);
+
+  let financialRecoveries: FinancialRecovery[] = [];
+  let financialRecoveryError = '';
+  // Revision intentionally triggers this read after a mutation changes local persistence.
+  void financialRevision;
+  if (identity) {
+    const scope = identity.authUserId + ':' + identity.companyUserId;
+    try {
+      financialRecoveries = new InvoicePaymentAttempts(window.localStorage).list(scope).map(attempt => ({
+        id: 'invoice:' + attempt.invoiceId,
+        label: 'Recuperar recebimento de R$ ' + attempt.amount.toFixed(2),
+        run: () => payInvoice(attempt.invoiceId, attempt.amount, attempt.token),
+      }));
+      const attempt = new FinancialOperationAttempts(window.localStorage).pending(scope, 'rma-credit');
+      if (attempt?.payload.kind === 'rma-credit') {
+        const payload = attempt.payload;
+        financialRecoveries.push({ id: 'rma-credit', label: 'Recuperar abatimento de R$ ' + payload.amount.toFixed(2), run: () => applyRmaCredit(payload.rmaId, payload.invoiceId, payload.amount, attempt.token) });
+      }
+    } catch (error) { financialRecoveryError = pdvErrorMessage(error); }
+  }
 
   const deleteRma = useCallback(
     async (id: string) => {
@@ -4103,6 +4086,8 @@ read('sales', () => fetchAllPages((from, to) => client
     recordStockMovement,
 
     payInvoice,
+    financialRecoveries,
+    financialRecoveryError,
     createInvoice,
     updateInvoice,
 

@@ -13,8 +13,12 @@ export interface PayablePayment {
 export interface FinancialMovement {
   id: string; date: string | null; description: string; amount: number;
 }
+export interface FinancialRefund {
+  id: string; user_id: string; branch_id: string | null; customer_name?: string | null;
+  refund_amount: number; refund_request_id?: string | null; refunded_at?: string | null;
+}
 
-export function actualFinancialFlow(sales: PartnerSale[], movements: StockMovement[], receipts: InvoiceReceipt[], payments: PayablePayment[], payables: PayableAccount[], invoices: PartnerInvoice[]): FinancialMovement[] {
+export function actualFinancialFlow(sales: PartnerSale[], movements: StockMovement[], receipts: InvoiceReceipt[], payments: PayablePayment[], payables: PayableAccount[], invoices: PartnerInvoice[], refunds: FinancialRefund[] = []): FinancialMovement[] {
   const saleTimes = new Map<string, string>();
   for (const movement of movements) {
     const match = /^\s*sa[ií]da por venda\s+(\S+)\s*$/i.exec(movement.reason ?? '');
@@ -23,6 +27,8 @@ export function actualFinancialFlow(sales: PartnerSale[], movements: StockMoveme
   }
   const billed = new Set(invoices.filter(i => i.status !== 'cancelada').map(i => i.sale_id));
   const accounts = new Map(payables.map(a => [a.id, a]));
+  const confirmedRefunds = new Map(refunds.filter(refund => Number.isFinite(Number(refund.refund_amount)) && Number(refund.refund_amount) > 0)
+    .map(refund => [refund.refund_request_id || refund.id, refund]));
   return [
     ...sales.filter(s => s.status === 'concluida' && s.payment_method !== 'faturado' && !billed.has(s.id)).map(s => ({
       id: `sale-${s.id}`, date: saleTimes.get(s.id) ?? s.completed_at ?? s.created_at,
@@ -31,6 +37,8 @@ export function actualFinancialFlow(sales: PartnerSale[], movements: StockMoveme
     ...receipts.map(r => ({ id: `receipt-${r.id}`, date: r.occurred_at, description: `Fatura ${r.invoice_number} — ${r.customer_name}`, amount: Number(r.amount) })),
     ...payments.filter(p => accounts.has(p.payable_id)).map(p => ({ id: `payment-${p.id}`, date: p.created_at,
       description: `${accounts.get(p.payable_id)!.description} — ${accounts.get(p.payable_id)!.creditor_name}`, amount: -Number(p.amount) })),
+    ...[...confirmedRefunds].map(([id, refund]) => ({ id: `rma-refund-${id}`, date: refund.refunded_at ?? null,
+      description: `Reembolso de devolução — ${refund.customer_name ?? 'Cliente'}`, amount: -Number(refund.refund_amount) })),
   ];
 }
 
@@ -47,5 +55,7 @@ export function localDate(value: string): string {
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
   const date = new Date(value);
   if (!Number.isFinite(date.getTime())) return '';
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(date);
+  const part = (type: string) => parts.find(value => value.type === type)?.value;
+  return `${part('year')}-${part('month')}-${part('day')}`;
 }

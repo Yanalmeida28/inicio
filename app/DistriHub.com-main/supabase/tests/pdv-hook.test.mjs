@@ -351,6 +351,31 @@ test('recebimento com resposta perdida reutiliza identificador após remontar a 
   assert.equal([...values.keys()].filter(k=>k.startsWith('distrihub-invoice-payment:')).length,0);
 });
 
+test('paid invoice recovery reaches the server with the original amount and UUID after reload',async()=>{
+ const values=new Map(),calls=[];let fail=true;
+ const invoice={id:'fully-paid',user_id:'owner',amount:100,paid_amount:0,status:'aberta'};
+ const rpc=async(name,args)=>{calls.push([name,args]);return fail?{error:{message:'Resposta perdida'}}:{data:args.p_invoice_id,error:null};};
+ let h=await harness({initialInvoices:[invoice],values,rpc});
+ await act(async()=>assert.rejects(h.current.payInvoice(invoice.id,100),/Resposta perdida/));
+ await act(async()=>renderer.unmount());renderer=null;fail=false;
+ h=await harness({initialInvoices:[{...invoice,paid_amount:100,status:'paga'}],values,rpc});
+ assert.equal(h.current.financialRecoveries.length,1);
+ await act(async()=>h.current.financialRecoveries[0].run());
+ assert.equal(calls.length,2);assert.equal(calls[0][1].p_request_id,calls[1][1].p_request_id);assert.equal(calls[1][1].p_amount,100);assert.equal(h.current.financialRecoveries.length,0);
+});
+
+test('RMA credit retry survives remount, locks changed data and confirms without another application ID',async()=>{
+ const values=new Map(),calls=[];let fail=true;
+ const rpc=async(name,args)=>{calls.push([name,args]);return fail?{error:{message:'Resposta perdida'}}:{data:args.p_application_id,error:null};};
+ let h=await harness({values,rpc});
+ await act(async()=>assert.rejects(h.current.applyRmaCredit('rma','invoice',20,'original-id'),/Resposta perdida/));
+ await act(async()=>renderer.unmount());renderer=null;
+ h=await harness({values,rpc});
+ await act(async()=>assert.rejects(h.current.applyRmaCredit('rma','invoice',30,'new-id'),/sem confirmação/));assert.equal(calls.length,1);
+ fail=false;await act(async()=>h.current.financialRecoveries[0].run());
+ assert.equal(calls[1][1].p_application_id,'original-id');assert.equal(calls[1][1].p_amount,20);assert.equal(h.current.financialRecoveries.length,0);
+});
+
 test('pre-sale uncertain response survives remount and reuses UUID and payload without credentials',async()=>{
   const requests=[];let fail=true;
   const rpc=async(name,args)=>{

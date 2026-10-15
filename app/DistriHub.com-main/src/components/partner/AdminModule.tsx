@@ -21,6 +21,7 @@ import { AdminFiscalModule } from './AdminFiscalModule';
 import { AdminDataExports, AdminDeviceRegistry } from './AdminSettingsTools';
 import { financialAccounts, type PayableAccount } from '../../lib/accounts';
 import { legacyCostSalesCount } from '../../lib/reportMetrics';
+import type { FinancialRecovery } from '../../lib/invoicePayments';
 import type { PartnerInvoice } from '../../types';
 import type {
   PartnerSale, PartnerProduct, PartnerSalesperson, SalespersonRole,
@@ -59,6 +60,10 @@ class AdminErrorBoundary extends Component<
 }
 
 type Props = {
+  contextKey?: string;
+  isActive?: boolean;
+  recoveries?: FinancialRecovery[];
+  recoveryError?: string;
   renderSettings?: () => ReactNode;
   renderCadastros?: (target: AdminCadastrosTarget) => ReactNode;
   invoices?: PartnerInvoice[];
@@ -167,13 +172,13 @@ const sidebarSections: {
 export function AdminModule({
   renderSettings,
   renderCadastros,
-  invoices = [], onReceiveInvoice,
+  invoices = [], onReceiveInvoice, contextKey, isActive = true, recoveries, recoveryError,
   userId, sales = [], products = [], movements = [], salespeople = [], branches = [], customers = [], suppliers = [], categories = [],
   selectedBranchId = '', onSelectBranch, onNavigate, ownerView = false,
 }: Props) {
   return (
     <AdminErrorBoundary>
-      <AdminModuleInner
+      <AdminModuleInner key={contextKey} contextKey={contextKey} isActive={isActive} recoveries={recoveries} recoveryError={recoveryError}
         renderSettings={renderSettings}
         renderCadastros={renderCadastros}
         invoices={invoices}
@@ -199,7 +204,7 @@ export function AdminModule({
 function AdminModuleInner({
   renderSettings,
   renderCadastros,
-  invoices = [], onReceiveInvoice,
+  invoices = [], onReceiveInvoice, contextKey, isActive = true, recoveries, recoveryError,
   userId, sales, products, movements = [], salespeople, branches = [], customers = [], suppliers = [], categories = [],
   selectedBranchId = '', onSelectBranch, ownerView = false,
 }: Props) {
@@ -335,7 +340,10 @@ function AdminModuleInner({
             )}
             {(activeItemId === 'pagar' || activeItemId === 'receber') && (
               <AccountsModule
-                key={activeItemId}
+                key={[activeItemId, branchFilter, contextKey].join(':')}
+                isActive={isActive}
+                recoveries={recoveries}
+                recoveryError={recoveryError}
                 kind={activeItemId === 'pagar' ? 'pagar' : 'receber'}
                 invoices={scopedInvoices}
                 payables={payables}
@@ -345,8 +353,8 @@ function AdminModuleInner({
                 onReceive={onReceiveInvoice}
               />
             )}
-            {activeItemId === 'cliente-fiado' && <CustomerAccountsModule customers={customers} invoices={scopedInvoices} payables={payables} branches={branches} suppliers={suppliers} branchId={branchFilter} onReceive={onReceiveInvoice} />}
-            {activeItemId === 'fluxo' && <FinancialFlowModule userId={userId} branchId={branchFilter} invoices={scopedInvoices} payables={scopedPayables} sales={sales} movements={movements} payablesUnavailable={payables.loading || Boolean(payables.error)} />}
+            {activeItemId === 'cliente-fiado' && <CustomerAccountsModule key={[contextKey, branchFilter].join(':')} isActive={isActive} recoveries={recoveries} recoveryError={recoveryError} customers={customers} invoices={scopedInvoices} payables={payables} branches={branches} suppliers={suppliers} branchId={branchFilter} onReceive={onReceiveInvoice} />}
+            {activeItemId === 'fluxo' && <FinancialFlowModule key={[contextKey, branchFilter].join(':')} isActive={isActive} userId={userId} branchId={branchFilter} invoices={scopedInvoices} payables={scopedPayables} sales={sales} movements={movements} payablesUnavailable={payables.loading || Boolean(payables.error)} />}
             </>
           )}
           {activeAdminTab === 'fiscal' && (

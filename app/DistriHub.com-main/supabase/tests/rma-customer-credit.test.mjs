@@ -166,7 +166,8 @@ async function component(file, name) {
  vm.runInNewContext(ts.transpileModule(source,{compilerOptions:{jsx:ts.JsxEmit.ReactJSX,module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText,{
   exports:module.exports, crypto:{randomUUID:()=>operation}, require(dependency) {
    if(dependency==='../../lib/supabase') return {supabase:null};
-   if(dependency==='../../lib/accounts') return {isOverdue:()=>false};
+   if(dependency==='../../lib/accounts') return {isOverdue:()=>false,accountPaid:a=>Number(a.paid_amount??0),accountBalance:a=>a.status==='cancelada'?0:Math.max(0,Number(a.amount)-Number(a.paid_amount??0))};
+   if(dependency==='./FinancialRecoveryPanel') return {FinancialRecoveryPanel:()=>null};
    if(dependency==='./InvoiceReceipts') return {InvoiceReceipts:()=>null};
    if(dependency==='./RmaRefundForm') return {RmaRefundForm:()=>null};
    if(dependency==='./RmaPhotoUpload') return {RmaPhotoUpload:()=>null};
