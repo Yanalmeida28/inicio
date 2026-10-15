@@ -38,6 +38,7 @@ function ServiceOrderDetailsContent({ order, customers, onClose, onChanged }: Pr
   const terminal = ['cancelada', 'finalizada'].includes(order.status);
   const fileKey = 'service-order-details:' + order.user_id + ':' + order.id;
   const selectedCustomer = customers.find(customer => customer.id === customerId && (!customer.branch_id || customer.branch_id === order.branch_id));
+  const showManualContact = !customerId && !order.customer_id;
   const customerAddress = selectedCustomer
     ? [selectedCustomer.address, selectedCustomer.address_number, selectedCustomer.complement, selectedCustomer.neighborhood, selectedCustomer.city, selectedCustomer.state, selectedCustomer.zip_code]
       .map(value => value?.trim()).filter(Boolean).join(', ')
@@ -96,10 +97,10 @@ function ServiceOrderDetailsContent({ order, customers, onClose, onChanged }: Pr
     <section aria-label="Dados do cliente" style={{ padding: 14, borderRadius: 10, border: '1px solid rgba(127,127,127,.25)' }}>
       <h4 style={{ margin: '0 0 10px' }}>Dados do cliente</h4>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: 10 }}>
-        <p style={{ margin: 0 }}><strong>Nome:</strong> {selectedCustomer?.name || order.customer_name || 'Não informado'}</p>
-        <p style={{ margin: 0 }}><strong>E-mail:</strong> {selectedCustomer?.email || order.customer_email || 'Não informado'}</p>
-        <p style={{ margin: 0 }}><strong>Endereço:</strong> {customerAddress || order.customer_address || 'Não informado'}</p>
-        <p style={{ margin: 0 }}><strong>Telefone:</strong> {selectedCustomer?.phone || order.customer_phone || 'Não informado'}</p>
+        <p style={{ margin: 0 }}><strong>Nome:</strong> {selectedCustomer?.name || ((showManualContact || customerId === order.customer_id) ? order.customer_name : '') || 'Não informado'}</p>
+        <p style={{ margin: 0 }}><strong>E-mail:</strong> {(showManualContact ? order.customer_email : selectedCustomer?.email) || 'Não informado'}</p>
+        <p style={{ margin: 0 }}><strong>Endereço:</strong> {(showManualContact ? order.customer_address : customerAddress) || 'Não informado'}</p>
+        <p style={{ margin: 0 }}><strong>Telefone:</strong> {(showManualContact ? order.customer_phone : selectedCustomer?.phone) || 'Não informado'}</p>
       </div>
     </section>
     <p style={{ whiteSpace: 'pre-wrap' }}>{order.entry_notes}</p>

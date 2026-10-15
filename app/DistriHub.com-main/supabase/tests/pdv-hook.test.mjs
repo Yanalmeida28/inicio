@@ -47,7 +47,7 @@ test('deleting a collaborator revokes access through the existing mutation and k
  const employee={id:'employee',user_id:'owner',name:'Funcionário',role:'vendedor',commission_rate:0,phone:null,email:'funcionario@example.test',active:true,branch_id:null,blocked_modules:['pdv']};
  const calls=[];let fail=true;
  const h=await harness({readResult:(table,fallback)=>table==='partner_salespeople'?{data:[employee],error:null}:fallback,
-  rpc:async(name,args)=>{calls.push({name,args});return fail?{data:null,error:{message:'Falha ao salvar'}}:{data:employee.id,error:null};}});
+  rpc:async(name,args)=>{calls.push({name,args});return fail?{data:null,error:{message:'Falha ao salvar'}}:{data:{...employee,active:false},error:null};}});
  await act(async()=>{await assert.rejects(h.current.deleteSalesperson(employee.id,'admin','1234'),error=>error.message==='Falha ao salvar');});
  assert.equal(h.current.salespeople[0].active,true);
  fail=false;
@@ -59,6 +59,19 @@ test('deleting a collaborator revokes access through the existing mutation and k
  assert.equal(h.current.salespeople.length,1);
  assert.equal(h.current.salespeople[0].active,false);
  assert.equal(h.current.salespeople[0].blocked_modules[0],'pdv');
+});
+
+test('collaborator access stays unchanged until an inactive record from the correct company is confirmed',async()=>{
+ const employee={id:'employee-confirmation',user_id:'owner',name:'Funcionário',role:'vendedor',active:true,branch_id:null};
+ let reply=null;
+ const h=await harness({resourceScope:'configuracoes',readResult:(table,fallback)=>table==='partner_salespeople'?{data:[employee],error:null}:fallback,rpc:async()=>({data:reply,error:null})});
+ for(const invalid of [null,employee.id,[],[{...employee,active:false},{...employee,active:false}],{...employee,active:true},{...employee,user_id:'other',active:false},{...employee,id:'another',active:false}]){
+  reply=invalid;
+  await act(async()=>assert.rejects(h.current.deleteSalesperson(employee.id),/não confirmou a desativação/));
+  assert.equal(h.current.salespeople[0].active,true);
+ }
+ reply=[{...employee,active:false}];await act(async()=>h.current.deleteSalesperson(employee.id));
+ assert.equal(h.current.salespeople[0].active,false);
 });
 test('delivery saves through checked API without requiring global sales cache and preserves error code',async()=>{
  const calls=[];let fail=false;

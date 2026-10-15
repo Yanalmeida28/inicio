@@ -53,6 +53,16 @@ test('recebimento com identificador: repetição não duplica; valores iguais co
  await assert.rejects(sql('SELECT record_partner_invoice_payment_once($1,20,$2)',[invoice,request]),/Fatura nao encontrada/);
  await sql("SELECT set_config('test.auth_uid',$1,false)",[owner]);
 });
+test('manual-customer invoices receive partial and final payment without a customer registry link',async()=>{
+ const id=randomUUID(),first=randomUUID(),second=randomUUID();
+ await sql("INSERT INTO partner_invoices(id,user_id,customer_id,customer_name,amount,status) VALUES($1,$2,NULL,'Cliente manual da OS',80,'aberta')",[id,owner]);
+ for(let i=0;i<2;i++)await sql('SELECT record_partner_invoice_payment_once($1,30,$2)',[id,first]);
+ assert.equal(Number((await sql('SELECT paid_amount FROM partner_invoices WHERE id=$1',[id])).rows[0].paid_amount),30);
+ await sql('SELECT record_partner_invoice_payment_once($1,50,$2)',[id,second]);
+ const row=(await sql('SELECT customer_id,customer_name,paid_amount,status FROM partner_invoices WHERE id=$1',[id])).rows[0];
+ assert.equal(row.customer_id,null);assert.equal(row.customer_name,'Cliente manual da OS');assert.equal(Number(row.paid_amount),80);assert.equal(row.status,'paga');
+});
+
 test('nova venda captura custo e endereço; mudanças de cadastro não reescrevem histórico',async()=>{
  const sale=randomUUID();
  await sql("INSERT INTO partner_sales(id,user_id,customer_id,items,total,status,delivery_type) VALUES($1,$2,$3,$4::jsonb,100,'concluida','entrega')",[sale,owner,customer,JSON.stringify([{product_id:product,quantity:1,unit_price:100}])]);

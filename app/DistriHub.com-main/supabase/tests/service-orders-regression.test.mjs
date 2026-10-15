@@ -99,6 +99,20 @@ test('manual customer can be entered, is saved to the OS and shown after creatio
  assert.deepEqual({...payload.manual_customer},{name:'Cliente sem cadastro',email:'manual@example.com',address:'Rua das Flores, 123',phone:'(11) 98888-7777'});
  for(const value of ['Cliente sem cadastro','manual@example.com','Rua das Flores, 123','(11) 98888-7777'])assert.match(rendered(),new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')));
 });
+
+test('changing a manual OS to a registered customer never shows the former contact even before saving',async()=>{
+ const manual={...orderA,customer_id:null,customer_name:'Cliente antigo',customer_email:'old@example.com',customer_phone:'Telefone antigo',customer_address:'Endereço antigo'};
+ await harness({detail:manual,customers:[{id:'new-customer',name:'Cliente novo',branch_id:'branch-a'}]});
+ assert.match(rendered(),/old@example.com/);
+ await act(async()=>view.root.findAllByType('select')[0].props.onChange({target:{value:'new-customer'}}));
+ assert.match(rendered(),/Cliente novo/);
+ assert.doesNotMatch(rendered(),/old@example.com|Telefone antigo|Endereço antigo/);
+});
+
+test('registered OS never falls back to stale manual contact fields after reloading',async()=>{
+ await harness({detail:{...orderA,customer_email:'stale@example.com',customer_phone:'Contato anterior',customer_address:'Endereço anterior'},customers:[{id:orderA.customer_id,name:'Cliente atual',branch_id:'branch-a'}]});
+ assert.doesNotMatch(rendered(),/stale@example.com|Contato anterior|Endereço anterior/);
+});
 test('manual customer requires a name and validates provided email',async()=>{
  const h=await harness();
  await act(async()=>view.root.findAllByType('select')[0].props.onChange({target:{value:'__manual__'}}));

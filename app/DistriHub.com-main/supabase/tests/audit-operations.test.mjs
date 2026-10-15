@@ -50,6 +50,7 @@ before(async () => {
   await db.exec(await read('../migrations/20261015010204_fix_service_order_customer_and_billing.sql'));
   await db.exec(await read('../migrations/20261015184249_service_order_manual_parts.sql'));
   await db.exec(await read('../migrations/20261015205000_service_order_manual_customer.sql'));
+  await db.exec(await read('../migrations/20261015213923_fix_service_order_manual_billing_and_contacts.sql'));
 });
 after(() => db.close());
 test('reposição: mesma tentativa soma uma vez; tentativa diferente é uma nova entrada; outros dados são rejeitados', async () => {
@@ -107,6 +108,37 @@ test('mixed OS invoices include manual parts while cancellation returns only cat
   assert.equal(invoices.length,1);assert.equal(Number(invoices[0].amount),110.5);
   await sql("SELECT update_service_order_workflow($1,'cancelada','Técnico','aprovado','Cliente desistiu',$2)",[id,customer]);
   assert.equal(Number((await sql('SELECT stock FROM partner_products WHERE id=$1',[product])).rows[0].stock),stock);
+});
+
+test('manual customer OS bills once without creating a registry customer and keeps billed identity locked',async()=>{
+ await login(owner);const id=randomUUID();const name='Cliente avulso para cobrança';
+ const payload={...osPayload(),customer_id:null,manual_customer:{name,email:'manual@example.com',phone:'11999999999',address:'Rua manual'}};
+ const customers=(await sql('SELECT count(*)::int n FROM partner_customers')).rows[0].n;
+ await sql('SELECT create_service_order_once($1,$2::jsonb)',[id,JSON.stringify(payload)]);
+ await assert.rejects(sql("SELECT bill_service_order_once($1,'2026-10-30')",[id]),/pronta/);
+ await sql("SELECT update_service_order_workflow_checked($1,'pronta','Técnico','aprovado','Pronta',NULL,false)",[id]);
+ for(let i=0;i<2;i++)await sql("SELECT bill_service_order_once($1,'2026-10-30')",[id]);
+ const invoices=(await sql('SELECT customer_id,customer_name,amount FROM partner_invoices WHERE service_order_id=$1',[id])).rows;
+ assert.equal(invoices.length,1);assert.equal(invoices[0].customer_id,null);assert.equal(invoices[0].customer_name,name);assert.equal(Number(invoices[0].amount),80);
+ assert.equal((await sql('SELECT count(*)::int n FROM partner_customers')).rows[0].n,customers);
+ await assert.rejects(sql("SELECT update_service_order_workflow_checked($1,'pronta','Técnico','aprovado','Troca',$2,false)",[id,customer]),/já faturada/);
+ const unnamed=randomUUID();await sql('SELECT create_service_order_once($1,$2::jsonb)',[unnamed,JSON.stringify({...osPayload(),customer_id:null})]);
+ await sql("SELECT update_service_order_workflow_checked($1,'pronta','Técnico','aprovado','Pronta',NULL,false)",[unnamed]);
+ await assert.rejects(sql("SELECT bill_service_order_once($1,'2026-10-30')",[unnamed]),/Informe cliente/);
+});
+
+test('both workflow APIs clear the former contact only when customer identity changes',async()=>{
+ await login(owner);
+ for(const checked of [false,true]){
+  const id=randomUUID();const payload={...osPayload(),customer_id:null,manual_customer:{name:'Anterior',email:'old@example.com',address:'Antigo',phone:'111'}};
+  await sql('SELECT create_service_order_once($1,$2::jsonb)',[id,JSON.stringify(payload)]);
+  const api=checked?'update_service_order_workflow_checked':'update_service_order_workflow';
+  await sql(`SELECT ${api}($1,'aberta','','aguardando_aprovacao','Nota',NULL${checked?',false':''})`,[id]);
+  assert.equal((await sql('SELECT customer_email FROM service_orders WHERE id=$1',[id])).rows[0].customer_email,'old@example.com');
+  await sql(`SELECT ${api}($1,'aberta','','aguardando_aprovacao','Troca',$2${checked?',false':''})`,[id,customer]);
+  const current=(await sql('SELECT customer_id,customer_email,customer_address,customer_phone FROM service_orders WHERE id=$1',[id])).rows[0];
+  assert.equal(current.customer_id,customer);assert.equal(current.customer_email,null);assert.equal(current.customer_address,null);assert.equal(current.customer_phone,null);
+ }
 });
 
 test('invalid manual parts roll back the entire OS and stock; other branches remain forbidden',async()=>{

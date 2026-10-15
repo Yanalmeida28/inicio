@@ -3058,6 +3058,7 @@ read('sales', () => fetchAllPages((from, to) => client
       operatorId?: string | null,
       operatorPin?: string | null,
     ) => {
+      const currentIdentity = requireIdentity();
       if (!isSupabaseConfigured || !supabase) {
         throw new Error('Supabase não configurado.');
       }
@@ -3070,7 +3071,7 @@ read('sales', () => fetchAllPages((from, to) => client
         throw new Error('Operador não encontrado.');
       }
 
-      const { error } = await supabase.rpc(
+      const { data: confirmed, error } = await supabase.rpc(
         'execute_partner_salesperson_mutation',
         {
           p_name: existing.name,
@@ -3091,6 +3092,12 @@ read('sales', () => fetchAllPages((from, to) => client
         throw formatSalespersonSaveError(error);
       }
 
+      const confirmedRow = Array.isArray(confirmed) && confirmed.length === 1 ? confirmed[0] : confirmed;
+      if (!confirmedRow || confirmedRow.id !== id || confirmedRow.user_id !== currentIdentity.companyUserId || confirmedRow.active !== false) {
+        throw new Error('O servidor não confirmou a desativação. Atualize a lista antes de tentar novamente.');
+      }
+      if (identityScopeRef.current !== currentIdentity.authUserId + ':' + currentIdentity.companyUserId) return;
+
       dataRevisionRef.current.invalidate(["salespeople"]);
       setData((prev) => ({
         ...prev,
@@ -3102,7 +3109,7 @@ read('sales', () => fetchAllPages((from, to) => client
           ),
       }));
     },
-    [data.salespeople],
+    [data.salespeople, requireIdentity],
   );
 
   const createInvoice = useCallback(
