@@ -48,7 +48,7 @@ before(async () => {
   await db.exec(await read('../migrations/20261012195624_fix_audited_operations.sql'));
   await db.exec(await read('../migrations/20261012201545_close_legacy_operation_paths.sql'));
   await db.exec(await read('../migrations/20261015010204_fix_service_order_customer_and_billing.sql'));
-  await db.exec(await read('../migrations/20261015183456_service_order_manual_parts.sql'));
+  await db.exec(await read('../migrations/20261015184249_service_order_manual_parts.sql'));
 });
 after(() => db.close());
 test('reposição: mesma tentativa soma uma vez; tentativa diferente é uma nova entrada; outros dados são rejeitados', async () => {

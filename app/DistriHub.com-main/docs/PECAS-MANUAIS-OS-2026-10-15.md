@@ -6,6 +6,6 @@ O backend passa a aceitar itens com `product_id` nulo, descrição válida e `st
 
 A alteração é na criação da OS; não acrescenta edição das peças de uma OS já gravada. Pedidos idempotentes existentes continuam compatíveis. A recuperação preserva identificador e conteúdo da solicitação, impedindo duplicação após perda de resposta.
 
-Migração gerada pela CLI Supabase: `20261015183456_service_order_manual_parts.sql`. Apenas relaxa a obrigatoriedade de produto para itens manuais e acrescenta a restrição que exige descrição e ausência de baixa. Preserva autenticação, validação da filial, controle SaaS, permissões e RLS. A migração e o frontend ainda aguardam publicação; não houve criação de OS ou movimentação em dados reais.
+Migração gerada pela CLI Supabase: `20261015184249_service_order_manual_parts.sql`. Apenas relaxa a obrigatoriedade de produto para itens manuais e acrescenta a restrição que exige descrição e ausência de baixa. Preserva autenticação, validação da filial, controle SaaS, permissões e RLS. A migração e o frontend ainda aguardam publicação; não houve criação de OS ou movimentação em dados reais.
 
 Testes específicos: inclusão/edição/remoção independente, preço brasileiro, validação de campos, recuperação após remontagem, criação mista, cobrança, cancelamento, rollback completo e rejeição de outra empresa. Os 23 testes de operações e regressão de OS passaram. Validação geral: 523 testes passaram; TypeScript, lint sem avisos e build aprovados.
