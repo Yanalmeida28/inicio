@@ -2037,7 +2037,7 @@ function SalespeopleSubTab({
   ) {
     if (
       !window.confirm(
-        `Excluir o colaborador "${salespersonName}"?`
+        `Desativar o acesso de "${salespersonName}"? O histórico do colaborador será preservado.`
       )
     ) {
       return;
@@ -2049,7 +2049,7 @@ function SalespeopleSubTab({
       window.alert(
         error instanceof Error
           ? error.message
-          : 'Não foi possível excluir o colaborador.'
+          : 'Não foi possível desativar o acesso do colaborador.'
       );
     }
   }
@@ -2552,7 +2552,8 @@ function SalespeopleSubTab({
                               salesperson.name
                             )
                           }
-                          title="Excluir"
+                          title="Desativar acesso"
+                          aria-label={`Desativar acesso de ${salesperson.name}`}
                         >
                           <Trash2 size={14} />
                         </button>

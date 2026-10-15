@@ -43,6 +43,23 @@ test('supplier creation refuses consolidated scope and never invents a supplier 
  await assert.rejects(h.current.addSupplier({name:'Sem filial'}),/Selecione uma filial/);assert.equal(calls,0);
  await assert.rejects(h.current.addSupplier({name:'Teste',branch_id:'varejo'}),/nao confirmado/);assert.equal(calls,1);assert.equal(h.current.suppliers.length,0);
 });
+test('deleting a collaborator revokes access through the existing mutation and keeps the record',async()=>{
+ const employee={id:'employee',user_id:'owner',name:'Funcionário',role:'vendedor',commission_rate:0,phone:null,email:'funcionario@example.test',active:true,branch_id:null,blocked_modules:['pdv']};
+ const calls=[];let fail=true;
+ const h=await harness({readResult:(table,fallback)=>table==='partner_salespeople'?{data:[employee],error:null}:fallback,
+  rpc:async(name,args)=>{calls.push({name,args});return fail?{data:null,error:{message:'Falha ao salvar'}}:{data:employee.id,error:null};}});
+ await act(async()=>{await assert.rejects(h.current.deleteSalesperson(employee.id,'admin','1234'),error=>error.message==='Falha ao salvar');});
+ assert.equal(h.current.salespeople[0].active,true);
+ fail=false;
+ await act(async()=>h.current.deleteSalesperson(employee.id,'admin','1234'));
+ assert.equal(calls[1].name,'execute_partner_salesperson_mutation');
+ assert.equal(calls[1].args.p_salesperson_id,employee.id);
+ assert.equal(calls[1].args.p_is_active,false);
+ assert.equal(calls[1].args.p_operator_id,'admin');
+ assert.equal(h.current.salespeople.length,1);
+ assert.equal(h.current.salespeople[0].active,false);
+ assert.equal(h.current.salespeople[0].blocked_modules[0],'pdv');
+});
 test('delivery saves through checked API without requiring global sales cache and preserves error code',async()=>{
  const calls=[];let fail=false;
  const row={id:'delivery-sale',user_id:'owner',branch_id:'branch',delivery_revision:2,delivery_status:'em_rota'};

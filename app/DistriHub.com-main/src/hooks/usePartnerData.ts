@@ -3062,29 +3062,47 @@ read('sales', () => fetchAllPages((from, to) => client
         throw new Error('Supabase não configurado.');
       }
 
+      const existing = data.salespeople.find(
+        (item) => item.id === id,
+      );
+
+      if (!existing) {
+        throw new Error('Operador não encontrado.');
+      }
+
       const { error } = await supabase.rpc(
-        'execute_partner_salesperson_delete',
+        'execute_partner_salesperson_mutation',
         {
+          p_name: existing.name,
+          p_role: existing.role,
+          p_commission_rate: existing.commission_rate ?? 0,
+          p_phone: existing.phone ?? null,
+          p_email: normalizeSalespersonEmail(existing.email),
+          p_is_active: false,
+          p_branch_id: existing.branch_id ?? null,
           p_salesperson_id: id,
           p_operator_id: operatorId ?? null,
           p_operator_pin: operatorPin ?? null,
+          p_new_pin: null,
         },
       );
 
       if (error) {
-        throw error;
+        throw formatSalespersonSaveError(error);
       }
 
       dataRevisionRef.current.invalidate(["salespeople"]);
       setData((prev) => ({
         ...prev,
         salespeople:
-          prev.salespeople.filter(
-            (item) => item.id !== id,
+          prev.salespeople.map((item) =>
+            item.id === id
+              ? { ...item, active: false, is_active: false }
+              : item,
           ),
       }));
     },
-    [],
+    [data.salespeople],
   );
 
   const createInvoice = useCallback(
