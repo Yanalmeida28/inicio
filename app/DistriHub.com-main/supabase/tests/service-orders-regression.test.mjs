@@ -20,7 +20,7 @@ let view;afterEach(async()=>{if(view)await act(async()=>view.unmount());view=nul
 const rendered=()=>JSON.stringify(view.toJSON());
 const button=text=>view.root.findAllByType('button').find(n=>n.children.some(child=>typeof child==='string'&&child.trim()===text));
 const save=()=>view.root.findAllByType('button').find(n=>n.props.onClick?.name==='saveOrder');
-async function harness({orders=[],read,rpc,invoice=null,blocked=false,values=new Map(),detail=null}={}){
+async function harness({orders=[],read,rpc,invoice=null,blocked=false,values=new Map(),detail=null,customers=[]}={}){
  const calls=[],queries=[];let lastCreate;let storageBlocked=blocked;
  const storage={getItem:k=>values.get(k)??null,setItem:(k,v)=>values.set(k,v),removeItem:k=>values.delete(k)};
  const win={};Object.defineProperty(win,'localStorage',{get(){if(storageBlocked)throw new Error('Armazenamento bloqueado');return storage;}});
@@ -46,7 +46,7 @@ async function harness({orders=[],read,rpc,invoice=null,blocked=false,values=new
  };
  const globals={require:load,Date,Error,console,crypto:{randomUUID},window:win,URL:{createObjectURL:()=>'',revokeObjectURL(){}}};
  vm.runInNewContext(detailSource,{...globals,exports:details});vm.runInNewContext(moduleSource,{...globals,exports:module});
- let currentProps=detail?{order:detail,customers:[],onClose(){},onChanged(){}}:props;
+ let currentProps=detail?{order:detail,customers,onClose(){},onChanged(){}}:{...props,customers};
  const Component=detail?details.ServiceOrderDetails:module.ServiceOrdersModule;
  await act(async()=>{view=TestRenderer.create(React.createElement(Component,currentProps));});
  return {calls,queries,values,unblock(){storageBlocked=false;},update:async changes=>{currentProps={...currentProps,...changes};await act(async()=>view.update(React.createElement(Component,currentProps)));}};
@@ -65,6 +65,24 @@ test('no branch selection shows no service orders and does not query across bran
  await h.update({selectedBranchId:null});
  assert.doesNotMatch(rendered(),/Cliente A/);
  assert.deepEqual(h.queries.filter(query=>query.table==='service_orders').map(query=>query.branch_id),['branch-a']);
+});
+test('new OS shows the selected customer contact details and only offers customers for its branch',async()=>{
+ const customer={id:'client-a',name:'Cliente A',email:'cliente@example.com',phone:'(11) 99999-0000',address:'Rua A',address_number:'42',neighborhood:'Centro',city:'São Paulo',state:'SP',zip_code:'01000-000'};
+ const otherBranchCustomer={...customer,id:'client-b',name:'Cliente B',branch_id:'branch-b'};
+ const h=await harness({customers:[{...customer,branch_id:'branch-a'},otherBranchCustomer]});
+ const selector=view.root.findAllByType('select')[0];
+ assert.deepEqual(selector.findAllByType('option').map(option=>option.children.join('')),['Sem cliente','Cliente A']);
+ await act(async()=>selector.props.onChange({target:{value:'client-a'}}));
+ assert.match(rendered(),/Dados do cliente/);
+ for(const value of ['cliente@example.com','Rua A, 42, Centro, São Paulo, SP, 01000-000','(11) 99999-0000'])assert.match(rendered(),new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')));
+});
+test('OS details show contact details from the customer linked to the same branch',async()=>{
+ const customer={id:'client-a',name:'Cliente A',email:'cliente@example.com',phone:'(11) 99999-0000',address:'Rua A',address_number:'42',neighborhood:'Centro',city:'São Paulo',state:'SP',zip_code:'01000-000',branch_id:'branch-a'};
+ const otherBranchCustomer={...customer,id:'client-b',name:'Cliente B',email:'wrong@example.com',branch_id:'branch-b'};
+ await harness({detail:orderA,customers:[customer,otherBranchCustomer]});
+ const text=rendered();
+ for(const value of ['Dados do cliente','cliente@example.com','Rua A, 42, Centro, São Paulo, SP, 01000-000','(11) 99999-0000'])assert.match(text,new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')));
+ assert.doesNotMatch(text,/wrong@example\.com/);
 });
 test('list failure is visible, never announces confirmed empty data, and retry loads the orders',async()=>{
  let failed=true;const h=await harness({read:args=>args.table==='service_orders'?{data:failed?null:[orderA],error:failed?{message:'Falha de rede'}:null}:undefined});

@@ -151,6 +151,21 @@ function ServiceOrdersContent({
   const branch = branches.find(
     (item) => item.id === selectedBranchId
   );
+  const branchCustomers = customers.filter(
+    (customer) => !customer.branch_id || customer.branch_id === selectedBranchId
+  );
+  const selectedCustomer = branchCustomers.find((customer) => customer.id === customerId);
+  const customerAddress = selectedCustomer
+    ? [
+        selectedCustomer.address,
+        selectedCustomer.address_number,
+        selectedCustomer.complement,
+        selectedCustomer.neighborhood,
+        selectedCustomer.city,
+        selectedCustomer.state,
+        selectedCustomer.zip_code,
+      ].map((value) => value?.trim()).filter(Boolean).join(', ')
+    : '';
 
   const availableProducts = useMemo(() => {
     const term = productSearch.trim().toLowerCase();
@@ -622,13 +637,27 @@ function ServiceOrdersContent({
                 style={{ ...inputDarkStyle, WebkitAppearance: 'none', appearance: 'none' }}
               >
                 <option value="" style={{ backgroundColor: '#102638', color: '#edf5fc' }}>Sem cliente</option>
-                {customers.map((item) => (
+                {branchCustomers.map((item) => (
                   <option key={item.id} value={item.id} style={{ backgroundColor: '#102638', color: '#edf5fc' }}>
                     {item.name}
                   </option>
                 ))}
               </select>
             </label>
+            {selectedCustomer && (
+              <section
+                aria-label="Dados do cliente"
+                style={{ gridColumn: '1 / -1', padding: 14, borderRadius: 10, backgroundColor: '#102638', border: '1px solid #29465f' }}
+              >
+                <h3 style={{ margin: '0 0 10px', color: '#edf5fc', fontSize: 15 }}>Dados do cliente</h3>
+                <div className="service-order-fields" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: 10, color: '#edf5fc', fontSize: 13 }}>
+                  <p style={{ margin: 0 }}><strong>Nome:</strong> {selectedCustomer.name}</p>
+                  <p style={{ margin: 0 }}><strong>E-mail:</strong> {selectedCustomer.email || 'Não informado'}</p>
+                  <p style={{ margin: 0 }}><strong>Endereço:</strong> {customerAddress || 'Não informado'}</p>
+                  <p style={{ margin: 0 }}><strong>Telefone:</strong> {selectedCustomer.phone || 'Não informado'}</p>
+                </div>
+              </section>
+            )}
 
             <label style={labelDarkStyle}>
               <span style={{ color: '#edf5fc' }}>Tipo de equipamento</span>

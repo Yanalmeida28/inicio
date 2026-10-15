@@ -37,6 +37,11 @@ function ServiceOrderDetailsContent({ order, customers, onClose, onChanged }: Pr
   const lock = useRef(false);
   const terminal = ['cancelada', 'finalizada'].includes(order.status);
   const fileKey = 'service-order-details:' + order.user_id + ':' + order.id;
+  const selectedCustomer = customers.find(customer => customer.id === customerId && (!customer.branch_id || customer.branch_id === order.branch_id));
+  const customerAddress = selectedCustomer
+    ? [selectedCustomer.address, selectedCustomer.address_number, selectedCustomer.complement, selectedCustomer.neighborhood, selectedCustomer.city, selectedCustomer.state, selectedCustomer.zip_code]
+      .map(value => value?.trim()).filter(Boolean).join(', ')
+    : '';
   useEffect(() => {
     let active = true;
     if (!supabase) { setLoading(false); setError('Conexão indisponível.'); return; }
@@ -88,6 +93,15 @@ function ServiceOrderDetailsContent({ order, customers, onClose, onChanged }: Pr
     {loading && <p role="status">Carregando detalhes da OS...</p>}
     {error && <button type="button" disabled={busy || loading} onClick={() => setReadVersion(value => value + 1)}>Recarregar detalhes da OS</button>}
     <p>Cliente: {order.customer_name || 'Não informado'} · Total: {money.format(Number(order.total))}</p>
+    <section aria-label="Dados do cliente" style={{ padding: 14, borderRadius: 10, border: '1px solid rgba(127,127,127,.25)' }}>
+      <h4 style={{ margin: '0 0 10px' }}>Dados do cliente</h4>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: 10 }}>
+        <p style={{ margin: 0 }}><strong>Nome:</strong> {selectedCustomer?.name || (customerId ? order.customer_name : '') || 'Não informado'}</p>
+        <p style={{ margin: 0 }}><strong>E-mail:</strong> {selectedCustomer?.email || 'Não informado'}</p>
+        <p style={{ margin: 0 }}><strong>Endereço:</strong> {customerAddress || 'Não informado'}</p>
+        <p style={{ margin: 0 }}><strong>Telefone:</strong> {selectedCustomer?.phone || 'Não informado'}</p>
+      </div>
+    </section>
     <p style={{ whiteSpace: 'pre-wrap' }}>{order.entry_notes}</p>
     <form className="rma-form" onSubmit={save}><fieldset disabled={busy || terminal || loading || !invoiceKnown}>
       <label>Cliente<select value={customerId} disabled={Boolean(invoiceId)} onChange={e => { if (!lock.current && !invoiceId) setCustomerId(e.target.value); }}><option value="">Não informado</option>{customers.filter(c => !c.branch_id || c.branch_id === order.branch_id).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
