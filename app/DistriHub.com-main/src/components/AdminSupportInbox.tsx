@@ -4,13 +4,17 @@ import type { AdminCompany } from '../types';
 import { supabase } from '../lib/supabase';
 import { SupportChatModule, type SupportMessage } from './partner/SupportChatModule';
 import { saasAdminError } from '../lib/saasAdminControls';
-type Conversation = SupportMessage & { priority: 'normal' | 'high'; closed_at: string | null; closed: boolean; company_name: string };
+type Conversation = SupportMessage & { priority: 'normal' | 'high'; closed_at: string | null; closed_message_position: number | null; closed: boolean; company_name: string };
 export function AdminSupportInbox({ companies }: { companies: AdminCompany[] }) {
   const [user, setUser] = useState<User | null>(null); const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selected, setSelected] = useState<Conversation | null>(null); const [search, setSearch] = useState(''); const [filter, setFilter] = useState('all');
   const [page, setPage] = useState(0); const [total, setTotal] = useState(0); const [pending, setPending] = useState(0);
   const [version, setVersion] = useState(0); const [loading, setLoading] = useState(true); const [saving, setSaving] = useState(false);
   const [error, setError] = useState(''); const lock = useRef(false);
+  const mounted = useRef(true);
+  const selectedId = useRef(selected?.user_id); selectedId.current = selected?.user_id;
+  const stateRevision = useRef(0);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   useEffect(() => {
     let active = true;
     if (!supabase) { setError('Suporte indisponível.'); setLoading(false); return; }
@@ -28,6 +32,18 @@ export function AdminSupportInbox({ companies }: { companies: AdminCompany[] }) 
     });
     return () => { active = false; };
   }, [user, search, filter, page, version]);
+  const conversationId = selected?.user_id;
+  useEffect(() => {
+    if (!supabase || !user || !conversationId) return;
+    let active = true;
+    const revision = stateRevision.current;
+    void supabase.rpc('get_admin_support_conversation', { p_user_id: conversationId }).then(({ data, error }) => {
+      if (!active || revision !== stateRevision.current) return;
+      if (error || !data || data.user_id !== conversationId) { setError('Não foi possível atualizar o atendimento selecionado.'); return; }
+      setSelected(current => current?.user_id === conversationId ? data as Conversation : current);
+    });
+    return () => { active = false; };
+  }, [user, conversationId, version]);
   useEffect(() => {
     if (!supabase || !user) return;
     const client = supabase;
@@ -35,15 +51,21 @@ export function AdminSupportInbox({ companies }: { companies: AdminCompany[] }) 
     const timer = window.setInterval(() => setVersion(v => v + 1), 10000);
     return () => { window.clearInterval(timer); void client.removeChannel(channel); };
   }, [user]);
-  async function update(changes: Partial<Pick<Conversation, 'priority' | 'closed_at'>>) {
+  async function update(action: 'priority_high' | 'priority_normal' | 'close' | 'reopen') {
     if (!supabase || !selected || lock.current) return;
     lock.current = true; setSaving(true); setError('');
+    const target = selected.user_id;
+    stateRevision.current += 1;
     try {
-      const row = { user_id: selected.user_id, priority: selected.priority, closed_at: selected.closed ? selected.closed_at : null, ...changes, updated_at: new Date().toISOString() };
-      const { data, error } = await supabase.from('admin_support_states').upsert(row).select('user_id,priority,closed_at').single();
-      if (error || !data) throw error ?? new Error('Situação do atendimento não confirmada.');
-      setSelected(current => current ? { ...current, ...row, closed: !!row.closed_at && Date.parse(row.closed_at) >= Date.parse(current.created_at) } : null); setVersion(v => v + 1);
-    } catch (cause) { setError(saasAdminError(cause)); } finally { lock.current = false; setSaving(false); }
+      const { data, error } = await supabase.rpc('update_admin_support_state', { p_user_id: target, p_action: action, p_expected_position: selected.message_position });
+      if (error || !data || data.user_id !== target) throw error ?? new Error('Situação do atendimento não confirmada.');
+      if (!mounted.current) return;
+      stateRevision.current += 1;
+      setSelected(current => current?.user_id === target ? { ...current, ...data, closed: !!data.closed_at && Number(data.closed_message_position ?? 0) >= Number(current.message_position) } : current);
+      setVersion(v => v + 1);
+    } catch (cause) {
+      if (mounted.current) { if (selectedId.current === target) setError(saasAdminError(cause)); setVersion(v => v + 1); }
+    } finally { lock.current = false; if (mounted.current) setSaving(false); }
   }
   return <section className="panel-module"><div className="module-header"><div><h3>Atendimento aos clientes</h3><p>{pending} atendimento(s) aguardando resposta.</p></div><button className="rma-advance-btn" disabled={loading || saving} onClick={() => setVersion(v => v + 1)}>Atualizar atendimentos</button></div>
     {error && <p role="alert" className="admin-feedback admin-feedback-error">{error}</p>}
@@ -52,6 +74,6 @@ export function AdminSupportInbox({ companies }: { companies: AdminCompany[] }) 
     <div className="admin-support-conversations">{conversations.map(conversation => <button type="button" className={'admin-support-conversation ' + (selected?.user_id === conversation.user_id ? 'active' : '')} key={conversation.user_id} onClick={() => setSelected(conversation)}><strong>{conversation.company_name}</strong><span>{conversation.message}</span><small>{new Date(conversation.created_at).toLocaleString('pt-BR')} · {conversation.closed ? 'Encerrado' : conversation.sender_role === 'cliente' ? 'Aguardando resposta' : 'Respondido'}{conversation.priority === 'high' ? ' · Prioridade alta' : ''}</small></button>)}</div>
     {!loading && !conversations.length && <p>Nenhum atendimento encontrado.</p>}
     <div className="subscription-actions"><button type="button" disabled={loading || page === 0} onClick={() => setPage(p => p - 1)}>Anterior</button><span>Página {page + 1} · {total} atendimento(s)</span><button type="button" disabled={loading || (page + 1) * 25 >= total} onClick={() => setPage(p => p + 1)}>Próxima</button></div>
-    {selected && user && <div className="module-card"><h4>{companies.find(c => c.user_id === selected.user_id)?.business_name ?? selected.company_name}</h4><div className="subscription-actions"><button type="button" className="rma-advance-btn" disabled={saving} onClick={() => void update({ priority: selected.priority === 'high' ? 'normal' : 'high' })}>{selected.priority === 'high' ? 'Remover prioridade alta' : 'Marcar prioridade alta'}</button><button type="button" className="rma-advance-btn" disabled={saving} onClick={() => void update({ closed_at: selected.closed ? null : new Date().toISOString() })}>{selected.closed ? 'Reabrir atendimento' : 'Encerrar atendimento'}</button></div><SupportChatModule key={selected.user_id} user={user} conversationUserId={selected.user_id} admin /></div>}
+    {selected && user && <div className="module-card"><h4>{companies.find(c => c.user_id === selected.user_id)?.business_name ?? selected.company_name}</h4><div className="subscription-actions"><button type="button" className="rma-advance-btn" disabled={saving} onClick={() => void update(selected.priority === 'high' ? 'priority_normal' : 'priority_high')}>{selected.priority === 'high' ? 'Remover prioridade alta' : 'Marcar prioridade alta'}</button><button type="button" className="rma-advance-btn" disabled={saving} onClick={() => void update(selected.closed ? 'reopen' : 'close')}>{selected.closed ? 'Reabrir atendimento' : 'Encerrar atendimento'}</button></div><SupportChatModule key={selected.user_id} user={user} conversationUserId={selected.user_id} admin /></div>}
   </section>;
 }

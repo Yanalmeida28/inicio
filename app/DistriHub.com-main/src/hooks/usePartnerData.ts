@@ -13,7 +13,7 @@ import type {
   AdminLojista,
   AuditLog,
   B2BOrder,
-  DeliveryStatus,
+  DeliveryOperation,
   PartnerBranch,
   PartnerCategory,
   PartnerCombo,
@@ -1935,51 +1935,27 @@ read('sales', () => fetchAllPages((from, to) => client
     } finally { saleInFlight.current = false; }
   }, [data.sales, data.customers, requireIdentity, syncConfirmedSale]);
 
-  const updateDelivery = useCallback(
-    async (
-      saleId: string,
-      status: DeliveryStatus,
-      driverId: string | null,
-      operatorId?: string | null,
-      operatorPin?: string | null,
-      details?: import('../types').DeliveryDetails & { address: string; contact: string },
-    ) => {
-      const { identity: currentIdentity, client } = await requireAuthenticatedSession();
-      const sale = data.sales.find((item) => item.id === saleId);
-      if (!sale || sale.user_id !== currentIdentity.companyUserId) {
-        throw new Error('Venda não encontrada nesta empresa.');
-      }
-      if (sale.delivery_type !== 'entrega' || sale.status === 'cancelada') {
-        throw new Error('Esta venda não está disponível para gestão de entrega.');
-      }
-
-      const { data: confirmed, error } = await client.rpc(details ? 'save_partner_delivery_details' : 'execute_partner_delivery_mutation', {
-        p_salesperson_id: operatorId ?? null,
-        p_pin: operatorPin ?? null,
-        p_sale_id: saleId,
-        p_status: status,
-        p_driver_id: driverId,
-        ...(details ? { p_details: details } : {}),
-      });
-      if (error) {
-        throw new Error(pdvErrorMessage(error));
-      }
-      if (confirmed !== true) throw new Error('O servidor não confirmou o salvamento da entrega.');
-
-      if (details) { await loadData(); return; }
-      const scope = currentIdentity.authUserId + ':' + currentIdentity.companyUserId;
-      if (identityScopeRef.current === scope) {
-        dataRevisionRef.current.invalidate(["sales"]);
-        setData((prev) => ({
-          ...prev,
-          sales: prev.sales.map((item) => item.id === saleId
-            ? { ...item, delivery_status: status, delivery_driver_id: driverId }
-            : item),
-        }));
-      }
-    },
-    [data.sales, requireAuthenticatedSession, loadData],
-  );
+  const updateDelivery = useCallback(async (saleId: string, operation: DeliveryOperation, operatorId?: string | null, operatorPin?: string | null): Promise<PartnerSale> => {
+    const { identity: currentIdentity, client } = await requireAuthenticatedSession();
+    ensureEmployeeBranch(currentIdentity, operation.branchId);
+    const { data: confirmed, error } = await client.rpc('mutate_partner_delivery_checked', {
+      p_request_id: operation.requestId, p_branch_id: operation.branchId, p_sale_id: saleId,
+      p_expected_revision: operation.expectedRevision, p_patch: operation.patch,
+      p_salesperson_id: operatorId ?? null, p_pin: operatorPin ?? null,
+    });
+    if (error) throw Object.assign(new Error(pdvErrorMessage(error)), { code: error.code });
+    const row = confirmed as PartnerSale | null;
+    if (!row || row.id !== saleId || row.user_id !== currentIdentity.companyUserId || row.branch_id !== operation.branchId || !Number.isSafeInteger(row.delivery_revision)) throw new Error('O servidor não confirmou o salvamento da entrega. Repita a mesma tentativa.');
+    if (identityScopeRef.current === currentIdentity.authUserId + ':' + currentIdentity.companyUserId) {
+      dataRevisionRef.current.invalidate(['sales']);
+      setData(previous => ({ ...previous, sales: previous.sales.map(item => item.id === saleId && (item.delivery_revision ?? 0) <= row.delivery_revision! ? {
+        ...item, delivery_status: row.delivery_status, delivery_driver_id: row.delivery_driver_id,
+        delivery_address: row.delivery_address, delivery_contact: row.delivery_contact,
+        delivery_details: row.delivery_details, delivery_history: row.delivery_history, delivery_revision: row.delivery_revision,
+      } : item) }));
+    }
+    return row;
+  }, [requireAuthenticatedSession]);
 
   const finalizePreSale = useCallback(
     async (

@@ -1,0 +1,71 @@
+import assert from 'node:assert/strict';import {readFile} from 'node:fs/promises';import {createRequire} from 'node:module';import {randomUUID} from 'node:crypto';
+const require=createRequire(new URL('./package.json',import.meta.url));const {PGlite}=require('@electric-sql/pglite');const db=new PGlite();const ids=Object.fromEntries(['owner','other','branch','driver','driverAuth','manager','managerAuth','seller','driverB'].map(k=>[k,randomUUID()]));
+const read=p=>readFile(new URL('../'+p,import.meta.url),'utf8');const sql=(s,p=[])=>db.query(s,p);const login=async id=>{await db.exec('RESET ROLE');await sql("SELECT set_config('test.auth_uid',$1,false)",[id]);};
+const raw=(id,status,driver=null)=>sql('SELECT execute_partner_delivery_mutation(NULL,NULL,$1,$2,$3)',[id,status,driver]);
+const save=(id,status,details,driver=null)=>sql('SELECT save_partner_delivery_details(NULL,NULL,$1,$2,$3,$4::jsonb)',[id,status,driver,JSON.stringify(details)]);
+const seed=async(status='concluida',driver=null)=>{const id=randomUUID();await sql("INSERT INTO partner_sales(id,user_id,branch_id,salesperson_id,items,total,status,created_at,delivery_type,delivery_status,delivery_driver_id) VALUES($1,$2,$3,$4,'[]',100,$5,now(),'entrega','pendente',$6)",[id,ids.owner,ids.branch,ids.seller,status,driver]);return id;};
+import {test} from 'node:test';
+test('delivery authorization, revision, history and retry contracts in PostgreSQL', async()=>{ try{
+ await db.exec(await read('tests/fixtures/pdv_schema.sql'));await db.exec(await read('tests/fixtures/pdv_production.sql'));
+ const reconciled=await read('migrations/20260928044542_fix_pdv_sales_reconciliation.sql');await db.exec(reconciled.slice(reconciled.indexOf('CREATE OR REPLACE FUNCTION public.resolve_partner_pdv_operator'),reconciled.indexOf('-- Add optional commercial')));
+ await db.exec(`ALTER TABLE partner_salespeople ADD COLUMN name text;ALTER TABLE partner_products ADD COLUMN cost_price numeric;
+ ALTER TABLE partner_customers ADD COLUMN address text,ADD COLUMN address_number text,ADD COLUMN complement text,ADD COLUMN neighborhood text,ADD COLUMN city text,ADD COLUMN state text,ADD COLUMN zip_code text,ADD COLUMN phone text;`);
+ await db.exec(await read('migrations/20261007000000_add_persistent_delivery_management.sql'));
+ const operational=await read('migrations/20261011231054_complete_operational_modules.sql');await db.exec(operational.slice(0,operational.indexOf('ALTER TABLE public.rma_requests_v2'))+'COMMIT;');
+ await db.exec(`ALTER TABLE partner_sales ENABLE ROW LEVEL SECURITY;GRANT USAGE ON SCHEMA auth TO authenticated;GRANT SELECT ON partner_sales TO authenticated;
+ CREATE POLICY partner_sales_select ON partner_sales FOR SELECT TO authenticated USING(user_id=(SELECT auth.uid()) OR (branch_id IS NOT NULL AND salesperson_id IS NOT NULL AND partner_employee_can_operate_sale(user_id,branch_id,salesperson_id)));`);
+ await sql('INSERT INTO partner_profiles(id) VALUES($1),($2)',[ids.owner,ids.other]);await sql('INSERT INTO partner_branches(id,user_id) VALUES($1,$2)',[ids.branch,ids.owner]);
+ for(const [id,auth,role] of [[ids.driver,ids.driverAuth,'logistica'],[ids.manager,ids.managerAuth,'gerente'],[ids.seller,null,'vendedor'],[ids.driverB,null,'logistica']])await sql('INSERT INTO partner_salespeople(id,user_id,auth_user_id,branch_id,role,active) VALUES($1,$2,$3,$4,$5,true)',[id,ids.owner,auth,ids.branch,role]);
+
+ await db.exec(`ALTER TABLE partner_sales ADD COLUMN sale_number bigint, ADD COLUMN freight_fee numeric DEFAULT 0;
+ ALTER TABLE partner_salespeople ADD COLUMN blocked_modules text[] NOT NULL DEFAULT '{}';
+ CREATE SCHEMA partner_subscription_private;
+ CREATE FUNCTION partner_subscription_private.require_collaborator_module(feature text) RETURNS void LANGUAGE plpgsql AS $$$$BEGIN
+ IF EXISTS(SELECT 1 FROM public.partner_salespeople WHERE auth_user_id=auth.uid() AND feature=ANY(blocked_modules)) THEN RAISE EXCEPTION 'Modulo bloqueado';END IF; END$$$$;
+ CREATE FUNCTION partner_subscription_private.require_actor(feature text) RETURNS void LANGUAGE plpgsql AS $$$$BEGIN IF auth.uid() IS NULL THEN RAISE EXCEPTION 'Nao autenticado';END IF;PERFORM partner_subscription_private.require_collaborator_module(feature);END$$$$;
+ CREATE FUNCTION partner_subscription_private.require_operator_module(feature text,op uuid) RETURNS void LANGUAGE plpgsql AS $$$$BEGIN IF EXISTS(SELECT 1 FROM public.partner_salespeople WHERE id=op AND feature=ANY(blocked_modules)) THEN RAISE EXCEPTION 'Modulo bloqueado';END IF;END$$$$;
+ CREATE FUNCTION partner_subscription_private.guard_collaborator_write() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER AS $$$$BEGIN PERFORM partner_subscription_private.require_collaborator_module(TG_ARGV[0]);IF TG_OP='DELETE' THEN RETURN OLD;END IF;RETURN NEW;END$$$$;
+ CREATE FUNCTION partner_subscription_private.guard_operational_write() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER AS $$$$BEGIN PERFORM partner_subscription_private.require_actor(TG_ARGV[0]);IF TG_OP='DELETE' THEN RETURN OLD;END IF;RETURN NEW;END$$$$;
+ CREATE TRIGGER collaborator_module_write BEFORE INSERT OR UPDATE OR DELETE ON partner_sales FOR EACH ROW EXECUTE FUNCTION partner_subscription_private.guard_collaborator_write('pdv');
+ CREATE TRIGGER saas_operational_access BEFORE INSERT OR UPDATE OR DELETE ON partner_sales FOR EACH ROW EXECUTE FUNCTION partner_subscription_private.guard_operational_write('pdv');
+ GRANT USAGE ON SCHEMA auth TO authenticated;GRANT EXECUTE ON FUNCTION auth.uid() TO authenticated;` .split('$$').join('$'));
+ // Exercise the production write guards themselves, not only their fixture adapters.
+ for (const [file,name] of [['20261008173249_collaborator_module_permissions.sql','guard_collaborator_write'],['20261008025316_enforce_saas_access_and_billing_jobs.sql','guard_operational_write']]) {
+  const original=await read('migrations/'+file),start=original.indexOf('CREATE FUNCTION partner_subscription_private.'+name);
+  const definition=original.slice(start,original.indexOf('REVOKE ALL ON FUNCTION',start)).replace('CREATE FUNCTION','CREATE OR REPLACE FUNCTION');
+  await db.exec(definition);
+ }
+ await db.exec('CREATE FUNCTION public.partner_has_saas_access(uuid,text) RETURNS boolean LANGUAGE sql AS $$SELECT true$$;');
+ await db.exec(await read('migrations/20261015034214_fix_delivery_authorization_and_workflow.sql'));
+ await login(ids.owner);const assigned=await seed('concluida',ids.driver), quote=await seed('pre_venda'),unassigned=await seed();
+ const readDeliveries=async()=> (await sql('SELECT read_partner_deliveries($1) result',[ids.branch])).rows[0].result;
+ const mutate=async(id,patch,revision=0,request=randomUUID())=>(await sql('SELECT mutate_partner_delivery_checked($1,$2,$3,$4,$5::jsonb) result',[request,ids.branch,id,revision,JSON.stringify(patch)])).rows[0].result;
+ await login(ids.managerAuth);await db.exec('SET ROLE authenticated');let page=await readDeliveries();assert(page.sales.some(s=>s.id===assigned));assert(!page.sales.some(s=>s.id===quote));assert(!('cost_snapshot' in page.sales[0]));
+ await assert.rejects(raw(assigned,'entregue',ids.driver),/permission denied/);await assert.rejects(save(assigned,'entregue',{received_by:'Ana'},ids.driver),/permission denied/);
+ await assert.rejects(mutate(quote,{status:'em_rota'}),/Finalize/);await assert.rejects(mutate(unassigned,{status:'em_rota'}),/endere/);
+ await assert.rejects(mutate(assigned,{status:'falhou'}),/motivo/);await assert.rejects(mutate(assigned,{status:'entregue',received_by:'Ana'}),/rota/);
+ const request=randomUUID();let row=await mutate(assigned,{status:'em_rota',address:'Rua de teste 123'},0,request);assert.equal(row.delivery_revision,1);assert.equal(row.delivery_history.length,2);
+ const replay=await mutate(assigned,{status:'em_rota',address:'Rua de teste 123'},0,request);assert.deepEqual(replay,row);await assert.rejects(mutate(assigned,{status:'falhou',failure_reason:'Ausente'},0,request),/outros dados/);
+ await assert.rejects(mutate(assigned,{notes:'rascunho antigo'},0),/outra opera/);await assert.rejects(mutate(assigned,{status:'entregue'},1),/recebeu/);
+ row=await mutate(assigned,{status:'falhou',failure_reason:'Ausente'},1);assert.equal(row.delivery_revision,2);
+ row=await mutate(assigned,{status:'em_rota'},2);assert.equal(row.delivery_details.failure_reason,undefined);
+ await login(ids.driverAuth);await db.exec('SET ROLE authenticated');page=await readDeliveries();assert.deepEqual(page.sales.map(s=>s.id),[assigned]);await assert.rejects(mutate(unassigned,{notes:'x'}),/Entregador/);await assert.rejects(mutate(assigned,{driver_id:ids.driverB},3),/Entregador/);
+ row=await mutate(assigned,{status:'entregue',received_by:'Ana'},3);assert.equal(row.delivery_revision,4);assert.equal(row.delivery_history.at(-1).details.received_by,'Ana');assert.equal(row.delivery_history.at(-1).details.failure_reason,undefined);const date=row.delivery_details.delivered_at;
+ row=await mutate(assigned,{notes:'Somente observacao'},4);assert.equal(row.delivery_details.delivered_at,date);assert.equal(row.delivery_revision,5);assert.equal(row.delivery_history.length,6);
+ row=await mutate(assigned,{notes:'Somente observacao'},5);assert.equal(row.delivery_revision,5);await assert.rejects(mutate(assigned,{status:'em_rota'},5),/conclu/);
+ await login(ids.owner);await sql("UPDATE partner_salespeople SET blocked_modules=ARRAY['pdv'] WHERE id=$1",[ids.driver]);await login(ids.driverAuth);row=await mutate(assigned,{notes:'PDV bloqueado, entrega permitida'},5);assert.equal(row.delivery_revision,6);
+ await assert.rejects(sql('UPDATE partner_sales SET total=200 WHERE id=$1',[assigned]),/bloqueado/);
+ await login(ids.owner);await sql("UPDATE partner_salespeople SET blocked_modules=ARRAY['entregas'] WHERE id=$1",[ids.driver]);await login(ids.driverAuth);await assert.rejects(readDeliveries(),/bloqueado/);await assert.rejects(mutate(assigned,{notes:'x'},6),/bloqueado/);
+ await login(ids.other);await assert.rejects(mutate(assigned,{notes:'x'},6),/Filial|filial|empresa/);
+ await login(ids.owner);await db.exec('SET ROLE authenticated');await assert.rejects(sql('SELECT * FROM partner_delivery_private.requests'),/permission denied/);
+ await login(ids.owner);await assert.rejects(sql("UPDATE partner_sales SET delivery_status='entregue' WHERE id=$1",[unassigned]),/revis/);
+ const branch2=randomUUID();await sql('INSERT INTO partner_branches(id,user_id) VALUES($1,$2)',[branch2,ids.owner]);
+ await sql("INSERT INTO partner_sales(id,user_id,branch_id,items,total,status,created_at,delivery_type) SELECT gen_random_uuid(),$1,$2,'[]',100,'concluida',now(),'entrega' FROM generate_series(1,105)",[ids.owner,ids.branch]);
+ await login(ids.managerAuth);await db.exec('SET ROLE authenticated');page=await readDeliveries();assert.equal(page.sales.length,100);assert(page.next_cursor);
+ const next=(await sql('SELECT read_partner_deliveries($1,NULL,NULL,$2) result',[ids.branch,page.next_cursor])).rows[0].result;
+ assert.equal(next.sales.length,7);assert(!page.sales.some(a=>next.sales.some(b=>a.id===b.id)));assert.equal(next.next_cursor,null);
+ await assert.rejects(sql('SELECT read_partner_deliveries($1)',[branch2]),/filial/);
+ await login(ids.owner);await sql('UPDATE partner_salespeople SET auth_user_id=$1 WHERE id=$2',[ids.other,ids.seller]);await login(ids.other);await assert.rejects(readDeliveries(),/permiss/);
+ await login(ids.owner);await sql('UPDATE partner_salespeople SET active=false WHERE id=$1',[ids.manager]);await login(ids.managerAuth);await assert.rejects(readDeliveries(),/inativo/);
+ const funcs=await sql("SELECT prosecdef FROM pg_proc WHERE proname IN ('read_partner_deliveries','mutate_partner_delivery_checked')");assert(funcs.rows.every(r=>!r.prosecdef));
+ }finally{await db.close();}});

@@ -18,6 +18,16 @@ vm.runInNewContext(compile(await readFile(new URL('../../src/lib/invoicePayments
 const operationModule={exports:{}};
 vm.runInNewContext(compile(await readFile(new URL('../../src/lib/operationAttempts.ts',import.meta.url),'utf8')),{exports:operationModule.exports,crypto:{randomUUID},Error});
 let renderer;
+test('delivery saves through checked API without requiring global sales cache and preserves error code',async()=>{
+ const calls=[];let fail=false;
+ const row={id:'delivery-sale',user_id:'owner',branch_id:'branch',delivery_revision:2,delivery_status:'em_rota'};
+ const h=await harness({resourceScope:'entregas',rpc:async(name,args)=>{calls.push([name,args]);return fail?{error:{code:'40001',message:'Entrega atualizada'}}:{data:row,error:null};}});
+ const op={requestId:randomUUID(),branchId:'branch',expectedRevision:1,patch:{status:'em_rota'}};
+ await act(async()=>{assert.equal((await h.current.updateDelivery(row.id,op)).delivery_revision,2);});
+ assert.equal(calls[0][0],'mutate_partner_delivery_checked');assert.equal(calls[0][1].p_request_id,op.requestId);assert.equal(calls[0][1].p_expected_revision,1);
+ assert(!h.queries.includes('partner_sales'));assert(!h.queries.includes('partner_customers'));
+ fail=true;await act(async()=>{await assert.rejects(h.current.updateDelivery(row.id,op),error=>error.code==='40001');});
+});
 test('RMA photo retry repeats the same storage path and checks the metadata confirmation',async()=>{
  const paths=[];let fail=true;
  const rma={id:'rma-photos',user_id:'owner',branch_id:'branch',attachments:[]};

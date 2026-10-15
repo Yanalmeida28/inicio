@@ -199,17 +199,19 @@ test('executive PDF escapes names, SKU and category; executive CSV protects form
 });
 
 test('support loads the latest 50 messages and retrieves older messages without duplicates', async () => {
-  const history = Array.from({ length: 120 }, (_, index) => ({ id: 'id-' + index, user_id: 'owner', sender_role: 'cliente', message: 'Message ' + index, created_at: new Date(Date.UTC(2026, 9, 12, 0, index)).toISOString() }));
+  const history = Array.from({ length: 120 }, (_, index) => ({ id: 'id-' + index, user_id: 'owner', sender_role: 'cliente', message: 'Message ' + index, message_position: index + 1, created_at: new Date(Date.UTC(2026, 9, 12, 0, index)).toISOString() }));
   const limits = [];
-  const client = { from() { let cutoff = null; return { select(){ return this; }, eq(){ return this; }, order(){ return this; }, or(value){ cutoff = value.split('created_at.lt.')[1].split(',and')[0]; return this; }, async limit(amount){ limits.push(amount); return { data: history.filter(item => !cutoff || item.created_at < cutoff).slice(-amount).reverse(), error: null }; } }; }, channel: () => ({ on(){ return this; }, subscribe(){ return this; } }), removeChannel(){} };
-  const { SupportChatModule } = await load('components/partner/SupportChatModule.tsx', { '../../lib/supabase': { supabase: client } }, { window: { setInterval: () => 1, clearInterval(){} } });
+  const client = { from() { let before = null, after = null, ascending = false; return { select(){ return this; }, eq(){ return this; }, order(_, options){ ascending = options.ascending; return this; }, lt(_, value){ before=value; return this; }, gt(_, value){ after=value; return this; }, async limit(amount){ limits.push(amount); return { data: history.filter(item => (before === null || item.message_position < before) && (after === null || item.message_position > after)).sort((a,b)=>ascending ? a.message_position-b.message_position : b.message_position-a.message_position).slice(0,amount), error: null }; } }; }, channel: () => ({ on(){ return this; }, subscribe(){ return this; } }), removeChannel(){} };
+  const operations = await load('lib/operationAttempts.ts');
+  const { SupportChatModule } = await load('components/partner/SupportChatModule.tsx', { '../../lib/supabase': { supabase: client }, '../../lib/operationAttempts': operations }, { window: { sessionStorage: { getItem: () => null }, setInterval: () => 1, clearInterval(){} } });
   let renderer; await act(async () => { renderer = TestRenderer.create(React.createElement(SupportChatModule, { user: { id: 'owner' } })); });
-  const count = () => renderer.root.findAllByProps({ className: 'support-message cliente' }).length;
-  assert.equal(count(), 50);
-  for (const expected of [100, 120]) { await act(async () => renderer.root.findAllByType('button').find(button => button.children.includes('Carregar mensagens anteriores')).props.onClick()); assert.equal(count(), expected); }
-  assert.deepEqual(limits, [50, 50, 50]);
-  assert.equal(renderer.root.findAllByType('button').some(button => button.children.includes('Carregar mensagens anteriores')), false);
-  await act(async () => renderer.unmount());
+  try {
+    const count = () => renderer.root.findAllByProps({ className: 'support-message cliente' }).length;
+    assert.equal(count(), 50);
+    for (const expected of [100, 120]) { await act(async () => renderer.root.findAllByType('button').find(button => button.children.includes('Carregar mensagens anteriores')).props.onClick()); assert.equal(count(), expected); }
+    assert.deepEqual(limits, [50, 50, 50, 50]);
+    assert.equal(renderer.root.findAllByType('button').some(button => button.children.includes('Carregar mensagens anteriores')), false);
+  } finally { await act(async () => renderer.unmount()); }
 });
 
 test('Super Admin refresh updates the pending summary and clears a recovered error', async () => {

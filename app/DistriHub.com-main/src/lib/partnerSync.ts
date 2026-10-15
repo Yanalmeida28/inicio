@@ -18,7 +18,7 @@ const moduleCollections: Record<string, PartnerCollection[]> = {
   rma: ['products', 'customers', 'sales', 'rmas'],
   historico: ['customers', 'orders'],
   suporte: [], 'white-label': [], configuracoes: [],
-  entregas: ['sales', 'customers'], fiscal: ['sales', 'products', 'customers'],
+  entregas: [], fiscal: ['sales', 'products', 'customers'],
   financeiro: ['invoices', 'customers', 'rmas'],
   relatorios: ['sales', 'products', 'customers', 'invoices', 'movements', 'categories'],
   administrativo: ['sales', 'products', 'customers', 'invoices', 'movements', 'categories', 'suppliers', 'rmas', 'combos', 'modifiers', 'auditLogs'],

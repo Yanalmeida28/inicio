@@ -2259,6 +2259,7 @@ export function PartnerPanel({
               {renderTab('suporte',
               <SupportChatModule
                 user={user}
+                isActive={activeTab === 'suporte'}
               />)}
               </div>
             )}
@@ -2348,6 +2349,12 @@ export function PartnerPanel({
               <div hidden={activeTab !== 'entregas'}>
               {renderTab('entregas',
               <DeliveryModule
+                companyId={identity?.companyUserId}
+                operatorKey={identity?.authUserId + ':' + (identity?.salespersonId ?? '') + ':' + (activeSalesperson?.id ?? '')}
+                operatorId={getOperatorContext().operatorId}
+                operatorPin={getOperatorContext().operatorPin}
+                currentRole={effectiveRole}
+                isActive={activeTab === 'entregas'}
                 customers={filteredCustomers}
                 sales={
                   filteredSales
@@ -2359,9 +2366,10 @@ export function PartnerPanel({
                   effectiveBranchId ||
                   null
                 }
-                onUpdateDelivery={(saleId, status, driverId, details) => {
+                onUpdateDelivery={(saleId, _status, _driverId, _details, operation) => {
+                  if (!operation) throw new Error('Operação de entrega inválida.');
                   const { operatorId, operatorPin } = getOperatorContext();
-                  return partner.updateDelivery(saleId, status, driverId, operatorId, operatorPin, details);
+                  return partner.updateDelivery(saleId, operation, operatorId, operatorPin);
                 }}
               />)}
               </div>

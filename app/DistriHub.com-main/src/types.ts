@@ -281,6 +281,7 @@ export interface PartnerSale {
   delivery_history?: { status: DeliveryStatus; at: string; actor_id: string; details?: DeliveryDetails }[];
   delivery_status?: DeliveryStatus;
   delivery_driver_id?: string | null;
+  delivery_revision?: number;
   status:
     | 'aberta'
     | 'concluida'
@@ -300,6 +301,9 @@ export interface PartnerSale {
   created_at: string;
   updated_at?: string;
 }
+
+export type DeliveryPatch = Partial<{ status: DeliveryStatus; driver_id: string | null; address: string; contact: string; scheduled_date: string; failure_reason: string; received_by: string; notes: string }>;
+export type DeliveryOperation = { requestId: string; branchId: string; expectedRevision: number; patch: DeliveryPatch };
 
 export interface StockMovement {
   id: string;

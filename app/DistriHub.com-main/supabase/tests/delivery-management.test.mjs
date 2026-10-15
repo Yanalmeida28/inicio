@@ -11,8 +11,8 @@ const require = createRequire(import.meta.url);
 const exports = {};
 vm.runInNewContext(ts.transpileModule(await readFile(new URL('../../src/components/partner/DeliveryModule.tsx', import.meta.url), 'utf8'), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2020 },
-}).outputText, { exports, Error, require: name => name === '../../lib/pdv' ? pdvHelpers : name === '../../utils' ? { money: new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }) } : require(name) });
-const sales = ['one', 'two'].map(id => ({ id, customer_name: id, items: [], total: 100, delivery_type: 'entrega', status: 'concluida', branch_id: 'branch' }));
+}).outputText, { exports, Error, require: name => name === '../../hooks/useDeliveries' ? {useDeliveries:()=>({sales:[],drivers:[],loading:false,error:'',reload:async()=>{},accept:()=>{}})} : name === '../../lib/operationAttempts' ? {} : name === '../../lib/pdv' ? pdvHelpers : name === '../../utils' ? { money: new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }) } : require(name) });
+const sales = ['one', 'two'].map(id => ({ id, customer_name: id, items: [], total: 100, delivery_type: 'entrega', delivery_address: 'Rua de teste 123', delivery_driver_id: 'driver', status: 'concluida', branch_id: 'branch' }));
 
 test('indicadores contam somente valores em rota e fila ativa; entrega mantém endereço e soma unidades', async () => {
   let renderer;
