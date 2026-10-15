@@ -35,12 +35,12 @@ test('split payment receipt and sharing state the exact cash and PIX amounts',as
   const share=await load('saleShare');
   assert.ok(decodeURIComponent(share.saleShareUrl(mixed,'whatsapp',{name:'Cliente',phone:'11999999999'})).includes(expected));
 });
-async function load(name, window) {
+async function load(name, window, directPrint, document) {
   const exports = {};
   vm.runInNewContext(ts.transpileModule(await readFile(new URL(`../../src/lib/${name}.ts`,import.meta.url),'utf8'),{
     compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020},
-  }).outputText,{exports,window,require(name){
-    if(name==='./directPrint')return {printerPreferences:()=>null,sendReceipt:async()=>{}};
+  }).outputText,{exports,window,document,require(name){
+    if(name==='./directPrint')return directPrint ?? {printerPreferences:()=>null,sendReceipt:async()=>{}};
     if(name==='./pdv')return pdvHelpers;
     if(name==='./personalization')return personalizationHelpers;
     if(name==='../utils')return {money:currency};
@@ -48,6 +48,36 @@ async function load(name, window) {
   }});
   return exports;
 }
+
+test('browser and direct receipts preserve saved text and identify the sale branch across units',async()=>{
+  const branches=[{id:'wholesale',name:'Saunier Atacado',address:'Rua Atacado'}, {id:'retail',name:'Saunier Varejo',address:'Rua Varejo'}];
+  for(const direct of [false,true])for(const branch of branches){
+    function element(tag){return {tagName:tag.toUpperCase(),children:[],style:{},append(...nodes){this.children.push(...nodes);},textContent:''};}
+    const document={head:element('head'),body:element('body'),documentElement:{},createElement:element,images:[]};
+    document.implementation={createHTMLDocument:()=>document};
+    let sent='';
+    const print=await load('salePrint',{open:()=>({document,requestAnimationFrame(){},focus(){},print(){}})},
+      {printerPreferences:()=>direct?{printerName:'test'}:null,sendReceipt:async text=>{sent=text;}},document);
+    await print.printSale({...sale,branch_id:branch.id},'receipt',{
+      companyName:'Company account',companyAddress:'Wrong selected branch',branches,
+      settings:{show_cnpj_on_receipt:true,receipt_footer_text:'Footer\nSecond line',personalization:{receipt:{header_text:'Custom header'}}},
+    });
+    const texts=node=>[node.textContent,...node.children.flatMap(texts)];
+    const output=direct?sent:texts(document.body).join('\n');
+    for(const expected of [branch.name,branch.address,'Custom header','Footer\nSecond line'])assert.ok(output.includes(expected),`${direct}: ${expected}`);
+    assert.ok(!output.includes('Wrong selected branch'));
+    assert.ok(!output.includes(branches.find(other=>other.id!==branch.id).address));
+  }
+});
+
+test('unknown sale branch never falls back to another unit address',async()=>{
+  function element(tag){return {children:[],style:{},append(...nodes){this.children.push(...nodes);},textContent:''};}
+  const document={head:element('head'),body:element('body'),documentElement:{},createElement:element,images:[]};
+  const print=await load('salePrint',{open:()=>({document,requestAnimationFrame(){},focus(){},print(){}})});
+  print.printSale(sale,'receipt',{companyName:'Company',companyAddress:'Other unit address',branches:[],settings:{show_cnpj_on_receipt:true}});
+  const texts=node=>[node.textContent,...node.children.flatMap(texts)];
+  assert.ok(!texts(document.body).join('\n').includes('Other unit address'));
+});
 test('freight is charged in exact cents, remains in a pending retry and changes its immutable request key',()=>{
   assert.equal(pdvHelpers.saleChargeTotal(sale),115);
   assert.equal(pdvHelpers.saleChargeTotal({total:0.1,freight_fee:0.2}),0.3);

@@ -2094,7 +2094,7 @@ export function PartnerPanel({
                 currentRole={
                   effectiveRole
                 }
-                receiptDetails={{ settings: storeSettings, companyName: partner.profile?.account_name || partner.profile?.name, companyDocument: partner.profile?.document, companyAddress: partner.branches.find((branch) => branch.id === effectiveBranchId)?.address }}
+                receiptDetails={{ settings: storeSettings, companyName: partner.profile?.account_name || partner.profile?.name, companyDocument: partner.profile?.document, branches: partner.branches }}
                 onCreateSale={
                   handleCreateSale
                 }
@@ -2157,7 +2157,7 @@ export function PartnerPanel({
                   const { operatorId, operatorPin } = getOperatorContext();
                   await partner.updatePreSaleItems(id, items, operatorId, operatorPin);
                 }}
-                receiptDetails={{ settings: storeSettings, companyName: partner.profile?.account_name || partner.profile?.name, companyDocument: partner.profile?.document, companyAddress: partner.branches.find((branch) => branch.id === effectiveBranchId)?.address }}
+                receiptDetails={{ settings: storeSettings, companyName: partner.profile?.account_name || partner.profile?.name, companyDocument: partner.profile?.document, branches: partner.branches }}
                 sales={
                   filteredSales
                 }
@@ -2242,7 +2242,7 @@ export function PartnerPanel({
                   customers={filteredCustomers}
                   salespeople={filteredSalespeople}
                   segment={segment}
-                  receiptDetails={{ settings: storeSettings, companyName: partner.profile?.account_name || partner.profile?.name, companyDocument: partner.profile?.document, companyAddress: partner.branches.find((branch) => branch.id === effectiveBranchId)?.address }}
+                  receiptDetails={{ settings: storeSettings, companyName: partner.profile?.account_name || partner.profile?.name, companyDocument: partner.profile?.document, branches: partner.branches }}
                   onCancelSale={async (id, supervisorId, supervisorPin) => {
                     const { operatorId, operatorPin } = getOperatorContext();
                     await partner.cancelHistorySale(id, effectiveBranchId, operatorId, operatorPin, supervisorId, supervisorPin);

@@ -1,16 +1,21 @@
 import { printerPreferences, sendReceipt } from './directPrint';
-import type { PartnerCustomer, PartnerSale, StoreSettings } from '../types';
+import type { PartnerBranch, PartnerCustomer, PartnerSale, StoreSettings } from '../types';
 import { money } from '../utils';
 import { saleChargeTotal, salePaymentDescription } from './pdv';
 import { receiptPreferences } from './personalization';
 
 export type PrintableSale = Pick<PartnerSale, 'sale_number' | 'customer_name' | 'items' | 'total' | 'freight_fee' | 'imei' | 'serial_number' | 'payment_method' | 'payment_splits' | 'created_at' | 'branch_id' | 'customer_id' | 'salesperson_id'> & { id?: string; status?: PartnerSale['status'] };
 
-export type ReceiptDetails = { customer?: PartnerCustomer; salespersonName?: string; settings?: StoreSettings; companyName?: string; companyDocument?: string | null; companyAddress?: string | null };
+export type ReceiptDetails = { customer?: PartnerCustomer; salespersonName?: string; settings?: StoreSettings; companyName?: string; companyDocument?: string | null; companyAddress?: string | null; branches?: Pick<PartnerBranch, 'id' | 'name' | 'address'>[] };
 
 export function directReceiptEnabled() { return Boolean(printerPreferences()); }
 
 export function printSale(sale: PrintableSale, format: 'receipt' | 'label', details: ReceiptDetails = {}, preparedWindow?: Window) {
+  // Reprints must identify the sale's branch even in consolidated views.
+  const branch = details.branches?.find(candidate => candidate.id === sale.branch_id);
+  if (details.branches) {
+    details = { ...details, companyName: branch?.name || details.companyName, companyAddress: branch?.address };
+  }
   const direct = format === 'receipt' ? printerPreferences() : null;
   const popup = direct ? null : preparedWindow ?? window.open('', '_blank', 'width=440,height=700');
   if (!direct && !popup) throw new Error('Permita pop-ups neste navegador para imprimir o cupom ou a etiqueta.');
