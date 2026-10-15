@@ -1,5 +1,9 @@
 type ScopedRow = { id: string; user_id: string; branch_id?: string | null; status?: string | null };
 
+export function branchDirectoryRows<T extends { branch_id?: string | null }>(rows: T[], branchId: string | null): T[] {
+  return branchId ? rows.filter(row => row.branch_id === branchId) : rows;
+}
+
 export const partnerCollections = ['profile', 'branches', 'settings', 'salespeople', 'customers', 'products', 'sales', 'suppliers', 'categories', 'movements', 'rmas', 'combos', 'modifiers', 'invoices', 'orders', 'auditLogs', 'serviceOrders', 'serviceOrderItems', 'serviceOrderPhotos'] as const;
 export type PartnerCollection = typeof partnerCollections[number];
 const baseCollections: PartnerCollection[] = ['profile', 'branches', 'settings', 'salespeople'];

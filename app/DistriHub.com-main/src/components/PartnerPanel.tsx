@@ -28,6 +28,7 @@ import type { User } from '@supabase/supabase-js';
 import type { PartnerSale, SalePayment } from '../types';
 
 import { usePartnerData } from '../hooks/usePartnerData';
+import { branchDirectoryRows } from '../lib/partnerSync';
 import { useSaasSubscription } from '../hooks/useSaasSubscription';
 import { canUseSaasFeature } from '../lib/saas';
 import { useDeviceHeartbeat } from '../hooks/useDeviceHeartbeat';
@@ -534,6 +535,9 @@ export function PartnerPanel({
       ) ?? null
     );
   }, [partner.branches, lockedBranchId]);
+
+  const filteredSuppliers = branchDirectoryRows(partner.suppliers, effectiveBranchId);
+  const filteredCategories = branchDirectoryRows(partner.categories, effectiveBranchId);
 
   const filteredProducts = useMemo(() => {
     if (!effectiveBranchId) {
@@ -1660,10 +1664,10 @@ export function PartnerPanel({
                   effectiveBranchId
                 }
                 categories={
-                  partner.categories
+                  filteredCategories
                 }
                 suppliers={
-                  partner.suppliers
+                  filteredSuppliers
                 }
                 salespeople={
                   filteredSalespeople
@@ -1703,6 +1707,7 @@ export function PartnerPanel({
                 onAddCategory={
                   partner.addCategory
                 }
+                onUpdateCategory={partner.updateCategory}
                 onDeleteCategory={
                   partner.deleteCategory
                 }
@@ -2326,10 +2331,10 @@ export function PartnerPanel({
                   filteredCustomers
                 }
                 suppliers={
-                  partner.suppliers
+                  filteredSuppliers
                 }
                 categories={
-                  partner.categories
+                  filteredCategories
                 }
                 selectedBranchId={
                   effectiveBranchId

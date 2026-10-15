@@ -18,6 +18,31 @@ vm.runInNewContext(compile(await readFile(new URL('../../src/lib/invoicePayments
 const operationModule={exports:{}};
 vm.runInNewContext(compile(await readFile(new URL('../../src/lib/operationAttempts.ts',import.meta.url),'utf8')),{exports:operationModule.exports,crypto:{randomUUID},Error});
 let renderer;
+
+test('directory visibility changes immediately with branch and never treats legacy unassigned rows as shared',()=>{
+ const module={exports:{}};vm.runInNewContext(compile(syncSource),{exports:module.exports,Date});
+ const rows=[{id:'wholesale',branch_id:'atacado'},{id:'retail',branch_id:'varejo'},{id:'legacy',branch_id:null}];
+ assert.equal(module.exports.branchDirectoryRows(rows,'varejo').map(row=>row.id).join(','),'retail');
+ assert.equal(module.exports.branchDirectoryRows(rows,'atacado').map(row=>row.id).join(','),'wholesale');
+ assert.equal(module.exports.branchDirectoryRows(rows,null).length,3);
+});
+
+test('supplier mutations persist the selected branch and reject a supplier from another unit before sending',async()=>{
+ const calls=[];const existing={id:'atacado-supplier',user_id:'owner',branch_id:'atacado',name:'Atacado'};
+ const h=await harness({branchId:'varejo',resourceScope:'cadastros:fornecedores',readResult:(table,fallback)=>table==='partner_suppliers'?{data:[existing],error:null}:fallback,
+  rpc:async(name,args)=>{calls.push({name,args});return {data:{id:'new-retail',user_id:'owner',branch_id:args.p_branch_id,name:args.p_name,payable_balance:0},error:null};}});
+ await act(async()=>h.current.addSupplier({name:'Varejo'}));
+ assert.equal(calls[0].name,'mutate_partner_branch_supplier');assert.equal(calls[0].args.p_branch_id,'varejo');
+ assert.equal(h.current.suppliers.find(row=>row.id==='new-retail').branch_id,'varejo');
+ await assert.rejects(h.current.updateSupplier(existing.id,{name:'Incorreto'}),/outra filial/);
+ await assert.rejects(h.current.deleteSupplier(existing.id),/outra filial/);assert.equal(calls.length,1);
+});
+
+test('supplier creation refuses consolidated scope and never invents a supplier when confirmation is malformed',async()=>{
+ let calls=0;const h=await harness({resourceScope:'cadastros:fornecedores',rpc:async()=>{calls++;return {data:'only-id',error:null};}});
+ await assert.rejects(h.current.addSupplier({name:'Sem filial'}),/Selecione uma filial/);assert.equal(calls,0);
+ await assert.rejects(h.current.addSupplier({name:'Teste',branch_id:'varejo'}),/nao confirmado/);assert.equal(calls,1);assert.equal(h.current.suppliers.length,0);
+});
 test('delivery saves through checked API without requiring global sales cache and preserves error code',async()=>{
  const calls=[];let fail=false;
  const row={id:'delivery-sale',user_id:'owner',branch_id:'branch',delivery_revision:2,delivery_status:'em_rota'};

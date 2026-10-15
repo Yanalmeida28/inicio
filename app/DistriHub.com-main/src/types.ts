@@ -147,6 +147,7 @@ export interface PartnerCustomer {
 }
 
 export interface PartnerSupplier {
+  branch_id?: string | null;
   status?: string | null;
   zip_code?: string | null;
   state?: string | null;

@@ -1198,195 +1198,49 @@ read('sales', () => fetchAllPages((from, to) => client
     [data.products, requireIdentity],
   );
 
-  const addSupplier = useCallback(
-    async (
-      supplier: SupplierPayload,
-      operatorId?: string | null,
-      operatorPin?: string | null,
-    ) => {
-      const currentIdentity = requireIdentity();
-
-      if (!isSupabaseConfigured || !supabase) {
-        throw new Error('Supabase não configurado.');
-      }
-
-      // Mesma regra de operador: id + PIN do modal ou null (auth.uid()).
-      const effectiveOperatorId = operatorId ?? null;
-      const effectiveOperatorPin = operatorPin ?? null;
-
-      // A RPC atual aceita apenas nome, telefone e observações.
-      // Os demais campos do formulário (documento, e-mail, endereço,
-      // cidade, estado, CEP, status) seguem apenas na UI/local state.
-      const { data: created, error: rpcError } =
-        await supabase.rpc(
-          'execute_partner_supplier_mutation',
-          {
-            p_operator_id: effectiveOperatorId,
-            p_operator_pin: effectiveOperatorPin,
-            p_supplier_id: null,
-            p_name: supplier.name,
-            p_phone: supplier.phone ?? null,
-            p_notes: supplier.notes ?? null,
-          },
-        );
-
-      if (rpcError) {
-        throw rpcError;
-      }
-
-      // A RPC retorna o id (uuid) do fornecedor, não a linha completa.
-      const createdSupplier: PartnerSupplier = {
-        ...supplier,
-        id:
-          (created as string | null) ??
-          crypto.randomUUID(),
-        user_id: currentIdentity.companyUserId,
-        // A RPC sempre insere o fornecedor com saldo a pagar zerado.
-        payable_balance: 0,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-
-      dataRevisionRef.current.invalidate(["suppliers"]);
-      setData((prev) => ({
-        ...prev,
-        suppliers: [
-          createdSupplier,
-          ...prev.suppliers.filter(
-            (item) => item.id !== createdSupplier.id,
-          ),
-        ],
-      }));
-
-      return createdSupplier;
-    },
-    [requireIdentity],
-  );
-
-  const updateSupplier = useCallback(
-    async (
-      id: string,
-      supplier: Partial<SupplierPayload>,
-      operatorId?: string | null,
-      operatorPin?: string | null,
-    ) => {
-      requireIdentity();
-
-      if (!isSupabaseConfigured || !supabase) {
-        throw new Error('Supabase não configurado.');
-      }
-
-      const existing = data.suppliers.find(
-        (item) => item.id === id,
-      );
-
-      if (!existing) {
-        throw new Error('Fornecedor não encontrado.');
-      }
-
-      // Mesma regra de operador: id + PIN do modal ou null (auth.uid()).
-      const effectiveOperatorId = operatorId ?? null;
-      const effectiveOperatorPin = operatorPin ?? null;
-
-      // A RPC atual aceita apenas nome, telefone e observações.
-      const {  error: rpcError } =
-        await supabase.rpc(
-          'execute_partner_supplier_mutation',
-          {
-            p_operator_id: effectiveOperatorId,
-            p_operator_pin: effectiveOperatorPin,
-            p_supplier_id: id,
-            p_name: supplier.name ?? existing.name,
-            p_phone: supplier.phone ?? existing.phone ?? null,
-            p_notes: supplier.notes ?? existing.notes ?? null,
-          },
-        );
-
-      if (rpcError) {
-        throw rpcError;
-      }
-
-      // A RPC retorna o id (uuid) do fornecedor, não a linha completa.
-      const updatedSupplier: PartnerSupplier = {
-        ...existing,
-        ...supplier,
-        id,
-        updated_at: new Date().toISOString(),
-      };
-
-      dataRevisionRef.current.invalidate(["suppliers"]);
-      setData((prev) => ({
-        ...prev,
-        suppliers: prev.suppliers.map((item) =>
-          item.id === id ? updatedSupplier : item,
-        ),
-      }));
-
-      return updatedSupplier;
-    },
-    [data.suppliers, requireIdentity],
-  );
-
-  const deleteSupplier = useCallback(
-    async (
-      id: string,
-      operatorId?: string | null,
-      operatorPin?: string | null,
-    ) => {
-      requireIdentity();
-
-      if (!isSupabaseConfigured || !supabase) {
-        throw new Error('Supabase não configurado.');
-      }
-
-      const existing = data.suppliers.find(
-        (item) => item.id === id,
-      );
-
-      if (!existing) {
-        throw new Error('Fornecedor não encontrado.');
-      }
-
-      // Mesma regra de operador: id + PIN do modal ou null (auth.uid()).
-      const effectiveOperatorId = operatorId ?? null;
-      const effectiveOperatorPin = operatorPin ?? null;
-
-      const { error: rpcError } = await supabase.rpc(
-        'execute_partner_supplier_delete',
-        {
-          p_operator_id: effectiveOperatorId,
-          p_operator_pin: effectiveOperatorPin,
-          p_supplier_id: id,
-        },
-      );
-
-      if (rpcError) {
-        throw rpcError;
-      }
-
-      dataRevisionRef.current.invalidate(["suppliers"]);
-      setData((prev) => ({
-        ...prev,
-        suppliers: prev.suppliers.filter(
-          (item) => item.id !== id,
-        ),
-      }));
-    },
-    [data.suppliers, requireIdentity],
-  );
+  const saveBranchSupplier = useCallback(async (id: string | null, changes: Partial<SupplierPayload>, remove: boolean, operatorId?: string | null, operatorPin?: string | null) => {
+    const currentIdentity = requireIdentity();
+    if (!supabase) throw new Error('Supabase indisponivel.');
+    const existing = id ? data.suppliers.find(item => item.id === id) : undefined;
+    if (id && !existing) throw new Error('Fornecedor nao encontrado.');
+    const branchId = changes.branch_id ?? existing?.branch_id ?? syncBranchId ?? currentIdentity.branchId;
+    if (!branchId) throw new Error('Selecione uma filial antes de salvar o fornecedor.');
+    if (syncBranchId && branchId !== syncBranchId) throw new Error('Fornecedor pertence a outra filial.');
+    ensureEmployeeBranch(currentIdentity, branchId);
+    const value = { ...existing, ...changes };
+    const { data: saved, error } = await supabase.rpc('mutate_partner_branch_supplier', {
+      p_branch_id: branchId, p_supplier_id: id, p_name: value.name ?? null, p_phone: value.phone ?? null,
+      p_notes: value.notes ?? null, p_document: value.document ?? null, p_delete: remove,
+      p_operator_id: operatorId ?? null, p_operator_pin: operatorPin ?? null,
+    });
+    if (error) throw error;
+    if (!saved || saved.user_id !== currentIdentity.companyUserId || (!remove && saved.branch_id !== branchId) || (id && saved.id !== id)) throw new Error('Fornecedor nao confirmado pelo servidor.');
+    if (identityScopeRef.current !== currentIdentity.authUserId + ':' + currentIdentity.companyUserId) return saved as PartnerSupplier;
+    dataRevisionRef.current.invalidate(['suppliers']);
+    setData(previous => ({ ...previous, suppliers: remove ? previous.suppliers.filter(item => item.id !== id) : [saved as PartnerSupplier, ...previous.suppliers.filter(item => item.id !== saved.id)] }));
+    return saved as PartnerSupplier;
+  }, [requireIdentity, data.suppliers, syncBranchId]);
+  const addSupplier = useCallback((supplier: SupplierPayload, operatorId?: string | null, operatorPin?: string | null) => saveBranchSupplier(null, supplier, false, operatorId, operatorPin), [saveBranchSupplier]);
+  const updateSupplier = useCallback((id: string, supplier: Partial<SupplierPayload>, operatorId?: string | null, operatorPin?: string | null) => saveBranchSupplier(id, supplier, false, operatorId, operatorPin), [saveBranchSupplier]);
+  const deleteSupplier = useCallback(async (id: string, operatorId?: string | null, operatorPin?: string | null) => { await saveBranchSupplier(id, {}, true, operatorId, operatorPin); }, [saveBranchSupplier]);
 
   const addCategory = useCallback(
-    async (name: string) => {
+    async (name: string, requestedBranchId?: string) => {
       const currentIdentity = requireIdentity();
 
       if (!isSupabaseConfigured || !supabase) {
         throw new Error('Supabase não configurado.');
       }
 
+      const branchId = requestedBranchId ?? syncBranchId ?? currentIdentity.branchId;
+      if (!branchId) throw new Error('Selecione uma filial antes de criar a categoria.');
+      if (syncBranchId && branchId !== syncBranchId) throw new Error('Categoria pertence a outra filial.');
+      ensureEmployeeBranch(currentIdentity, branchId);
       const { data: created, error } = await supabase
         .from('partner_categories')
         .insert({
           name,
+          branch_id: branchId,
           user_id: currentIdentity.companyUserId,
         })
         .select()
@@ -1408,7 +1262,7 @@ read('sales', () => fetchAllPages((from, to) => client
         ],
       }));
     },
-    [requireIdentity],
+    [requireIdentity, syncBranchId],
   );
 
   const updateCategory = useCallback(
@@ -1430,10 +1284,8 @@ read('sales', () => fetchAllPages((from, to) => client
         throw new Error('Categoria não encontrada.');
       }
 
-      ensureEmployeeBranch(
-        currentIdentity,
-        category.branch_id ?? existing.branch_id,
-      );
+      if (syncBranchId && existing.branch_id !== syncBranchId) throw new Error('Categoria pertence a outra filial.');
+      ensureEmployeeBranch(currentIdentity, category.branch_id ?? existing.branch_id);
 
       const { data: updated, error } = await supabase
         .from('partner_categories')
@@ -1459,7 +1311,7 @@ read('sales', () => fetchAllPages((from, to) => client
 
       return updated as PartnerCategory;
     },
-    [data.categories, requireIdentity],
+    [data.categories, requireIdentity, syncBranchId],
   );
 
   const deleteCategory = useCallback(
@@ -1478,10 +1330,8 @@ read('sales', () => fetchAllPages((from, to) => client
         throw new Error('Categoria não encontrada.');
       }
 
-      ensureEmployeeBranch(
-        currentIdentity,
-        existing.branch_id,
-      );
+      if (syncBranchId && existing.branch_id !== syncBranchId) throw new Error('Categoria pertence a outra filial.');
+      ensureEmployeeBranch(currentIdentity, existing.branch_id);
 
       const { error } = await supabase
         .from('partner_categories')
@@ -1501,7 +1351,7 @@ read('sales', () => fetchAllPages((from, to) => client
         ),
       }));
     },
-    [data.categories, requireIdentity],
+    [data.categories, requireIdentity, syncBranchId],
   );
 
   const addBranch = useCallback(

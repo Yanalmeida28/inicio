@@ -40,6 +40,68 @@ async function database() {
 const invoice=(key='1'.repeat(44),items=[{name:'Peça',sku:'P1',qty:2,cost:12.5,ncm:'12345678'}])=>({invoiceKey:key,supplier:{name:'Fornecedor',document:'12345678000199',phone:null},items});
 const importInvoice=(db,data,branchId=branch,operatorId=null,pin=null)=>db.query('SELECT import_partner_stock_xml($1,$2::jsonb,$3,$4) AS result',[branchId,JSON.stringify(data),operatorId,pin]);
 
+const retail='00000000-0000-0000-0000-000000000008';
+async function isolatedDatabase(){
+ const db=await database();
+ try {
+  await db.exec(`ALTER TABLE partner_branches ADD COLUMN name text, ADD COLUMN is_active boolean DEFAULT true;
+   ALTER TABLE partner_suppliers ADD COLUMN notes text, ADD COLUMN created_at timestamptz DEFAULT now();
+   ALTER TABLE partner_products ADD COLUMN category text;
+   ALTER TABLE partner_salespeople ADD COLUMN name text;
+   CREATE TABLE partner_audit_logs(id text,user_id uuid,actor_name text,actor_role text,action text,entity_type text,entity_id text,details text);
+   UPDATE partner_branches SET name='SAUNIER ELETRON ATACADO' WHERE id='${branch}';
+   INSERT INTO partner_branches(id,user_id,name) VALUES('${retail}','${owner}','SAUNIER ELETRON VAREJO');
+   CREATE FUNCTION partner_employee_can_access_branch(uuid,uuid) RETURNS boolean LANGUAGE sql SECURITY DEFINER SET search_path='' AS $$SELECT EXISTS(SELECT 1 FROM public.partner_salespeople WHERE user_id=$1 AND branch_id=$2 AND auth_user_id=auth.uid() AND active)$$;
+   ALTER TABLE partner_suppliers ENABLE ROW LEVEL SECURITY;
+   CREATE POLICY legacy_supplier_read ON partner_suppliers FOR SELECT TO authenticated USING(user_id=auth.uid() OR user_id='${owner}');
+   INSERT INTO partner_suppliers(user_id,name,payable_balance) VALUES('${owner}','Legado Atacado',0);
+   INSERT INTO partner_categories(user_id,name) VALUES('${owner}','Telas Atacado');`);
+  await db.exec(await readFile(new URL('../migrations/20261015191735_isolate_supplier_category_branches.sql',import.meta.url),'utf8'));
+  return db;
+ } catch(error){await db.close();throw error;}
+}
+const mutateSupplier=(db,branchId,id=null,name='Fornecedor',operatorId=null,pin=null)=>db.query('SELECT mutate_partner_branch_supplier($1,$2,$3,NULL,NULL,NULL,false,$4,$5) result',[branchId,id,name,operatorId,pin]);
+
+test('legacy Saunier directories belong to wholesale and new suppliers keep their branch',async()=>{
+ const db=await isolatedDatabase();try{
+  for(const table of ['partner_suppliers','partner_categories'])assert.equal((await db.query('SELECT branch_id FROM '+table)).rows[0].branch_id,branch);
+  const created=(await mutateSupplier(db,retail)).rows[0].result;
+  assert.equal(created.branch_id,retail);
+  await assert.rejects(mutateSupplier(db,branch,created.id),/não autorizado/);
+  await assert.rejects(db.query('UPDATE partner_suppliers SET branch_id=$1 WHERE id=$2',[branch,created.id]),/outra filial/);
+  await assert.rejects(db.query('INSERT INTO partner_categories(user_id,name) VALUES($1,$2)',[owner,'Sem filial']),/Selecione uma filial/);
+ }finally{await db.close();}
+});
+
+test('XML creates separate suppliers per branch even for the same document and blocks cross-branch product links',async()=>{
+ const db=await isolatedDatabase();try{
+  const wholesale=(await importInvoice(db,invoice())).rows[0].result;
+  const store=(await importInvoice(db,invoice(),retail)).rows[0].result;
+  assert.notEqual(wholesale.supplier_id,store.supplier_id);
+  const suppliers=(await db.query('SELECT branch_id FROM partner_suppliers WHERE document=$1',['12345678000199'])).rows;
+  assert.equal(suppliers.length,2);
+  await assert.rejects(db.query('INSERT INTO partner_products(user_id,branch_id,name,supplier_id) VALUES($1,$2,$3,$4)',[owner,branch,'Inválido',store.supplier_id]),/não pertence/);
+  await importInvoice(db,invoice(),retail);
+  assert.equal((await db.query('SELECT count(*)::int n FROM partner_suppliers WHERE document=$1',['12345678000199'])).rows[0].n,2);
+ }finally{await db.close();}
+});
+
+test('employees cannot read or mutate the other branch directories and anonymous cannot execute the new RPC',async()=>{
+ const db=await isolatedDatabase();try{
+  const supplier=(await mutateSupplier(db,retail)).rows[0].result;
+  await db.query('INSERT INTO partner_categories(user_id,branch_id,name) VALUES($1,$2,$3)',[owner,retail,'Categoria Varejo']);
+  await db.query("SELECT set_config('app.actor',$1,false)",[employee]);await db.exec('SET ROLE authenticated');
+  const rows=(await db.query('SELECT branch_id FROM partner_suppliers')).rows;
+  assert.ok(rows.length>0&&rows.every(row=>row.branch_id===branch));
+  assert.ok((await db.query('SELECT branch_id FROM partner_categories')).rows.every(row=>row.branch_id===branch));
+  await assert.rejects(mutateSupplier(db,retail,supplier.id,'Inválido',operator,'1234'),/Operador inválido/);
+  assert.equal((await mutateSupplier(db,branch,null,'Funcionário',operator,'1234')).rows[0].result.branch_id,branch);
+  await assert.rejects(db.query('INSERT INTO partner_categories(user_id,branch_id,name) VALUES($1,$2,$3)',[owner,retail,'Inválida']),/row-level security/);
+  await db.exec('RESET ROLE');
+  assert.equal((await db.query("SELECT has_function_privilege('anon','mutate_partner_branch_supplier(uuid,uuid,text,text,text,text,boolean,uuid,text)','EXECUTE') allowed")).rows[0].allowed,false);
+ }finally{await db.close();}
+});
+
 test('XML import is atomic, preserves prices, reconciles SKU per branch and replays without duplicate stock',async()=>{
  const db=await database();
  try {

@@ -53,7 +53,8 @@ type Props = {
   onReplenishStock: (productId: string, branchId: string, quantity: number, unitCost?: number | null, reason?: string) => Promise<{ newStock: number }>;
   onDeleteProduct: (id: string) => Promise<void>;
   onImportXml: (invoice: XmlStockImport, branchId: string) => Promise<void>;
-  onAddCategory: (name: string) => Promise<void>;
+  onAddCategory: (name: string, branchId?: string) => Promise<void>;
+  onUpdateCategory?: (id: string, updates: Partial<PartnerCategory>) => Promise<unknown>;
   onDeleteCategory: (id: string) => Promise<void>;
   onAddSupplier: (s: Omit<PartnerSupplier, 'id' | 'user_id' | 'created_at' | 'payable_balance'>) => Promise<PartnerSupplier>;
   onUpdateSupplier: (id: string, updates: Partial<PartnerSupplier>) => Promise<void>;
@@ -102,7 +103,7 @@ export function CadastrosModule({
   products, branches, selectedBranchId, categories, suppliers, salespeople, combos, modifiers, customers, sales,
   allSales, rmaRequests = [], segment, onAddProduct, onUpdateProduct, onDeleteProduct,
   onReplenishStock, onImportXml,
-  onAddCategory, onDeleteCategory, onAddSupplier, onUpdateSupplier, onDeleteSupplier, onAddSalesperson,
+  onAddCategory, onUpdateCategory, onDeleteCategory, onAddSupplier, onUpdateSupplier, onDeleteSupplier, onAddSalesperson,
   onUpdateSalesperson, onDeleteSalesperson,
   onAddCombo, onDeleteCombo, onAddModifier, onDeleteModifier, onAddCustomer,
   onUpdateCustomer, onLoadCustomer, onDeleteCustomer,
@@ -170,7 +171,7 @@ export function CadastrosModule({
         )}
         {(adminTarget ? subTab === 'categorias' : visitedSubTabs.has('categorias')) && (
           <div hidden={subTab !== 'categorias'}>
-          <CategoriesSubTab categories={categories} products={filteredProducts} onAdd={onAddCategory} onDelete={onDeleteCategory} />
+          <CategoriesSubTab categories={categories} branches={branches} selectedBranchId={selectedBranchId} products={filteredProducts} onAdd={onAddCategory} onAssign={onUpdateCategory} onDelete={onDeleteCategory} />
           </div>
         )}
         {(adminTarget ? subTab === 'xml' : visitedSubTabs.has('xml')) && <div hidden={subTab !== 'xml'}><XmlSubTab selectedBranchId={selectedBranchId} onImport={onImportXml} /></div>}
@@ -203,7 +204,7 @@ export function CadastrosModule({
         )}
         {(adminTarget ? subTab === 'fornecedores' : visitedSubTabs.has('fornecedores')) && (
           <div hidden={subTab !== 'fornecedores'}>
-          <SuppliersSubTab suppliers={suppliers} onAdd={onAddSupplier} onUpdate={onUpdateSupplier} onDelete={onDeleteSupplier} />
+          <SuppliersSubTab suppliers={suppliers} branches={branches} selectedBranchId={selectedBranchId} onAdd={onAddSupplier} onUpdate={onUpdateSupplier} onDelete={onDeleteSupplier} />
           </div>
         )}
         {subTab === 'vendedores' && adminTarget === 'vendedores' && (
@@ -824,11 +825,14 @@ function ThermalLabelModal({ product, onClose }: {
   );
 }
 
-function CategoriesSubTab({ categories, products, onAdd, onDelete }: {
+function CategoriesSubTab({ categories, products, onAdd, onDelete, branches = [], selectedBranchId, onAssign }: {
   categories: PartnerCategory[];
   products: PartnerProduct[];
-  onAdd: (name: string) => Promise<void>;
+  onAdd: (name: string, branchId?: string) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
+  branches?: PartnerBranch[];
+  selectedBranchId?: string | null;
+  onAssign?: (id: string, updates: Partial<PartnerCategory>) => Promise<unknown>;
 }) {
   const actionLock = useRef(false);
   const [busy, setBusy] = useState(false);
@@ -842,6 +846,7 @@ function CategoriesSubTab({ categories, products, onAdd, onDelete }: {
   }
 
   const [name, setName] = useSessionDraftState('categories:name', '');
+  const [draftBranchId, setDraftBranchId] = useSessionDraftState('categories:branch', '');
   const [selectedCategoryId, setSelectedCategoryId] = useSessionDraftState<string | null>('categories:selected-id', null, undefined, value => value === null || typeof value === 'string');
   const selectedCategory = categories.find((category) => category.id === selectedCategoryId) ?? null;
   const categoryProducts = selectedCategory
@@ -851,7 +856,10 @@ function CategoriesSubTab({ categories, products, onAdd, onDelete }: {
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) return;
-    await runAction(async () => { await onAdd(name.trim());
+    await runAction(async () => {
+    const branchId = selectedBranchId || draftBranchId;
+    if (branches.length && !branches.some(branch => branch.id === branchId)) throw new Error('Selecione a filial da categoria.');
+    await onAdd(name.trim(), branchId || undefined);
     setName('');
     });
   }
@@ -859,6 +867,7 @@ function CategoriesSubTab({ categories, products, onAdd, onDelete }: {
     <div>
       {actionError && <p role="alert" className="otp-error-msg">{actionError}</p>}
       <form className="rma-form inline" onSubmit={handleAdd}>
+        {!selectedBranchId && branches.length > 0 && <label>Filial<select aria-label="Filial da categoria" value={draftBranchId} onChange={event => setDraftBranchId(event.target.value)} required><option value="">Selecione</option>{branches.map(branch => <option key={branch.id} value={branch.id}>{branch.name}</option>)}</select></label>}
         <label>
           Nova Categoria
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex: Displays / Telas" required />
@@ -884,6 +893,8 @@ function CategoriesSubTab({ categories, products, onAdd, onDelete }: {
                   <span>{category.name}</span>
                   <small>{productCount}</small>
                 </button>
+                {!selectedBranchId && !category.branch_id && onAssign && <select aria-label={`Definir filial de ${category.name}`} disabled={busy} value="" onChange={event => { const id = event.target.value; if (id) void runAction(async () => { await onAssign(category.id, { branch_id: id }); }); }}><option value="">Sem filial: definir</option>{branches.map(branch => <option key={branch.id} value={branch.id}>{branch.name}</option>)}</select>}
+                {!selectedBranchId && category.branch_id && <small>{branches.find(branch => branch.id === category.branch_id)?.name}</small>}
                 <button
                   type="button"
                   className="category-browser-delete"
@@ -1720,18 +1731,23 @@ function CustomerProfileModal({ customer, sales, rmaRequests, salespeople, onUpd
   );
 }
 
-function SuppliersSubTab({ suppliers, onAdd, onUpdate, onDelete }: {
+function SuppliersSubTab({ suppliers, onAdd, onUpdate, onDelete, branches = [], selectedBranchId }: {
   suppliers: PartnerSupplier[];
   onAdd: Props['onAddSupplier'];
   onUpdate: (id: string, updates: Partial<PartnerSupplier>) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
+  branches?: PartnerBranch[];
+  selectedBranchId?: string | null;
 }) {
   const [name, setName] = useSessionDraftState('suppliers:name', '');
   const [phone, setPhone] = useSessionDraftState('suppliers:phone', '');
   const [notes, setNotes] = useSessionDraftState('suppliers:notes', '');
+  const [draftBranchId, setDraftBranchId] = useSessionDraftState('suppliers:branch', '');
   const [editingId, setEditingId] = useSessionDraftState<string | null>('suppliers:editing-id', null, undefined, value => value === null || typeof value === 'string');
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const existingBranch = suppliers.find(supplier => supplier.id === editingId)?.branch_id;
+  const targetBranch = existingBranch || selectedBranchId || draftBranchId;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -1739,11 +1755,12 @@ function SuppliersSubTab({ suppliers, onAdd, onUpdate, onDelete }: {
     setSaving(true);
     setFormError(null);
     try {
+      if (branches.length && !branches.some(branch => branch.id === targetBranch)) throw new Error('Selecione a filial do fornecedor.');
       if (editingId) {
-        await onUpdate(editingId, { name: name.trim(), phone: phone || null, notes: notes || null });
+        await onUpdate(editingId, { name: name.trim(), phone: phone || null, notes: notes || null, branch_id: targetBranch || null });
       } else {
         await onAdd({
-          name, phone: phone || null, notes: notes || null,
+          name, phone: phone || null, notes: notes || null, branch_id: targetBranch || null,
           status: undefined,
           zip_code: undefined,
           state: undefined
@@ -1772,6 +1789,7 @@ function SuppliersSubTab({ suppliers, onAdd, onUpdate, onDelete }: {
   return (
     <div>
       <form className="rma-form" onSubmit={handleSubmit}>
+        {!selectedBranchId && branches.length > 0 && <label>Filial do fornecedor<select aria-label="Filial do fornecedor" value={targetBranch} disabled={Boolean(existingBranch) || saving} onChange={event => setDraftBranchId(event.target.value)} required><option value="">Selecione</option>{branches.map(branch => <option key={branch.id} value={branch.id}>{branch.name}</option>)}</select></label>}
         <div className="form-row">
           <label>
             Nome do Fornecedor
@@ -1798,7 +1816,7 @@ function SuppliersSubTab({ suppliers, onAdd, onUpdate, onDelete }: {
             ) : (
               suppliers.map((s) => (
                 <tr key={s.id}>
-                  <td><strong>{s.name}</strong></td>
+                  <td><strong>{s.name}</strong>{!selectedBranchId && <small style={{ display: 'block' }}>{branches.find(branch => branch.id === s.branch_id)?.name || 'Sem filial: editar para definir'}</small>}</td>
                   <td>{s.phone ?? '—'}</td>
                   <td>{money.format(s.payable_balance)}</td>
                   <td className="supplier-actions-cell"><div className="row-action-group"><button type="button" className="rma-advance-btn" onClick={() => startEdit(s)}><Pencil size={14} /> Editar</button><button type="button" className="rma-advance-btn danger" onClick={async () => { if (!window.confirm(`Excluir o fornecedor "${s.name}"?`)) return; try { await onDelete(s.id); } catch (error) { window.alert(error instanceof Error ? error.message : 'Não foi possível excluir o fornecedor.'); } }}><Trash2 size={14} /> Excluir</button></div></td>

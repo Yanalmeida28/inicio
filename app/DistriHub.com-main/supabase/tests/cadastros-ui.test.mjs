@@ -12,7 +12,7 @@ const xmlModule={};
 vm.runInNewContext(compile(await readFile(new URL('../../src/lib/cadastroXml.ts',import.meta.url),'utf8')),{exports:xmlModule,Error});
 const invoice={invoiceKey:'1'.repeat(44),supplier:{name:'Fornecedor',document:'12345678000199'},items:[{name:'Produto',sku:'P1',qty:2,cost:12.5}]};
 const exports={};
-vm.runInNewContext(compile(await readFile(new URL('../../src/components/partner/CadastrosModule.tsx',import.meta.url),'utf8')+'\nexports.Xml=XmlSubTab;exports.Categories=CategoriesSubTab;exports.Combos=CombosSubTab;exports.Profile=CustomerProfileModal;'),{
+vm.runInNewContext(compile(await readFile(new URL('../../src/components/partner/CadastrosModule.tsx',import.meta.url),'utf8')+'\nexports.Suppliers=SuppliersSubTab;exports.Xml=XmlSubTab;exports.Categories=CategoriesSubTab;exports.Combos=CombosSubTab;exports.Profile=CustomerProfileModal;'),{
  exports,Error,require(name){
   if(name==='../../lib/cadastroXml')return {parseStockXml:()=>invoice};
   if(name==='./CustomerPhoto')return {CustomerPhoto:()=>null};
@@ -26,6 +26,15 @@ let renderer;
 afterEach(async()=>{if(renderer)await act(async()=>renderer.unmount());renderer=null;});
 const rendered=()=>JSON.stringify(renderer.toJSON());
 const submit=()=>renderer.root.findByType('form').props.onSubmit({preventDefault(){}});
+
+test('consolidated supplier form requires a branch and sends its explicit selection',async()=>{
+ let saved;
+ await act(async()=>{renderer=TestRenderer.create(React.createElement(exports.Suppliers,{suppliers:[],branches:[{id:'atacado',name:'Atacado'},{id:'varejo',name:'Varejo'}],selectedBranchId:null,onAdd:async value=>{saved=value;},onUpdate:async()=>{},onDelete:async()=>{}}));});
+ await act(async()=>renderer.root.findAllByType('input')[0].props.onChange({target:{value:'Fornecedor Varejo'}}));
+ await act(async()=>submit());assert.equal(saved,undefined);assert.match(rendered(),/Selecione a filial/);
+ await act(async()=>renderer.root.findByProps({'aria-label':'Filial do fornecedor'}).props.onChange({target:{value:'varejo'}}));
+ await act(async()=>submit());assert.equal(saved.branch_id,'varejo');
+});
 
 test('XML decimals preserve dots and reject ambiguous locale values',()=>{
  assert.equal(xmlModule.parseXmlDecimal('12.50'),12.5);
