@@ -175,7 +175,9 @@ test('master recovery announces only a requested link, never a changed password'
 
 test('executive PDF escapes names, SKU and category; executive CSV protects formulas and separators', async () => {
   const output = [], blobs = [];
+  const dashboardDates = await load('lib/adminDashboard.ts');
   const { ExecutiveDashboard } = await load('components/partner/AdminModule.tsx', {
+    '../../lib/adminDashboard': dashboardDates, '../../hooks/useFinancialMovements': {}, '../../lib/financialFlow': {},
     '../../lib/pdv': { saleRevenuePayments: sale => [{ method: 'pix', amount: sale.total }], salePaymentDescription: () => 'PIX' },
     '../../lib/exportSafety': safety, '../../lib/reportMetrics': metrics, '../../utils': { money }, './ReportsModule': {},
     '../../hooks/useStagnantStock': { useStagnantStock: () => ({}) }, '../../hooks/usePayables': {}, './AccountsModule': {},

@@ -1637,6 +1637,7 @@ export function PartnerPanel({
   }
 
   function renderCadastros(target?: AdminCadastrosTarget) {
+    if (target !== 'vendedores' && (blockedTabs.includes('cadastros') || !canUseSaasFeature(saas.subscription, 'cadastros'))) return <p role="alert">Acesso a Cadastros indisponível para este usuário ou assinatura.</p>;
     if (target === 'vendedores' && (blockedTabs.includes('administrativo') || !['administrador', 'gerente'].includes(effectiveRole))) {
       return <p role="alert">A gestão de colaboradores está disponível somente no Administrativo para administradores e gerentes.</p>;
     }
@@ -2294,6 +2295,7 @@ export function PartnerPanel({
               <div hidden={activeTab !== 'administrativo'}>
               {renderTab('administrativo',
               <AdminModule
+                allowedModules={['cadastros', 'relatorios', 'fiscal', 'financeiro', 'configuracoes'].filter(module => !blockedTabs.includes(module as Tab) && canUseSaasFeature(saas.subscription, module))}
                 contextKey={[identity?.authUserId, identity?.companyUserId, activeSalesperson?.id].join(':')}
                 isActive={activeTab === 'administrativo'}
                 recoveries={partner.financialRecoveries}

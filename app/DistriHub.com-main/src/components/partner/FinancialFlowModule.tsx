@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { PartnerInvoice, PartnerSale, StockMovement } from '../../types';
 import type { PayableAccount } from '../../lib/accounts';
-import { actualFinancialFlow, projectedFinancialFlow, localDate, type InvoiceReceipt, type PayablePayment, type FinancialRefund } from '../../lib/financialFlow';
-import { supabase } from '../../lib/supabase';
+import { actualFinancialFlow, projectedFinancialFlow, localDate } from '../../lib/financialFlow';
+import { useFinancialMovements } from '../../hooks/useFinancialMovements';
 import { money } from '../../utils';
 
 type Props = { isActive?: boolean; userId?: string; branchId: string; invoices: PartnerInvoice[]; payables: PayableAccount[]; sales: PartnerSale[]; movements: StockMovement[]; payablesUnavailable: boolean };
@@ -13,42 +13,7 @@ export function FinancialFlowModule({ userId, branchId, invoices, payables, sale
   const [mode, setMode] = useState<'realizado' | 'previsto'>('realizado');
   const [start, setStart] = useState(() => shifted(-29));
   const [end, setEnd] = useState(today);
-  const [receipts, setReceipts] = useState<InvoiceReceipt[]>([]);
-  const [payments, setPayments] = useState<PayablePayment[]>([]);
-  const [refunds, setRefunds] = useState<FinancialRefund[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [revision, setRevision] = useState(0);
-  useEffect(() => {
-    if (!isActive) return;
-    let active = true;
-    setLoading(true); setError(''); setReceipts([]); setPayments([]); setRefunds([]);
-    async function load() {
-      const client = supabase;
-      if (!client || !userId) throw new Error('Loja não conectada.');
-      const { data: auth, error: failure } = await client.auth.getUser();
-      if (failure || auth.user?.id !== userId) throw new Error('O Fluxo Financeiro é administrado pelo proprietário da loja.');
-      async function pages(table: string) {
-        const all: unknown[] = [];
-        for (let offset = 0; ; offset += 500) {
-          const columns = table === 'rma_requests_v2' ? 'id,user_id,branch_id,customer_name,refund_amount,refund_request_id,refunded_at' : '*';
-          const result = await client!.from(table).select(columns).eq('user_id', userId!).order('id').range(offset, offset + 499);
-          if (!active) return [];
-          if (result.error) throw new Error(result.error.message);
-          all.push(...result.data);
-          if (result.data.length < 500) return all;
-        }
-      }
-      const [receiptRows, paymentRows, refundRows] = await Promise.all([pages('partner_invoice_receipts'), pages('partner_payable_payments'), pages('rma_requests_v2')]);
-      if (active) {
-        setReceipts((receiptRows as InvoiceReceipt[]).filter(r => !branchId || r.branch_id === branchId)); setPayments(paymentRows as PayablePayment[]);
-        setRefunds((refundRows as FinancialRefund[]).filter(r => r.user_id === userId && (!branchId || r.branch_id === branchId)));
-      }
-    }
-    void load().catch(cause => { if (active) setError(cause instanceof Error ? cause.message : 'Falha ao consultar movimentos.'); })
-      .finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
-  }, [userId, branchId, invoices, payables, revision, isActive]);
+  const { receipts, payments, refunds, loading, error, reload } = useFinancialMovements(userId, branchId, invoices, payables, isActive);
 
   const scopedSales = sales.filter(s => !branchId || s.branch_id === branchId);
   const records = mode === 'realizado' ? actualFinancialFlow(scopedSales, movements, receipts, payments, payables, invoices, refunds) : projectedFinancialFlow(invoices, payables);
@@ -70,7 +35,7 @@ export function FinancialFlowModule({ userId, branchId, invoices, payables, sale
       {(['realizado', 'previsto'] as const).map(value => <button key={value} type="button" className={`rma-advance-btn ${mode === value ? 'active' : ''}`} onClick={() => { setMode(value); setStart(value === 'realizado' ? shifted(-29) : today()); setEnd(value === 'realizado' ? today() : shifted(29)); }}>{value === 'realizado' ? 'Realizado' : 'Previsto'}</button>)}
       <label>De <input type="date" value={start} onChange={e => setStart(e.target.value)} /></label>
       <label>Até <input type="date" value={end} onChange={e => setEnd(e.target.value)} /></label>
-      <button type="button" className="rma-advance-btn" disabled={loading} onClick={() => setRevision(r => r + 1)}>Atualizar</button>
+      <button type="button" className="rma-advance-btn" disabled={loading} onClick={reload}>Atualizar</button>
     </div>
     {loading && <p role="status">Carregando movimentações…</p>}
     {error && <p role="alert">{error}</p>}

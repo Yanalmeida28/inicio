@@ -19,6 +19,9 @@ import { FinancialFlowModule } from './FinancialFlowModule';
 import type { AdminCadastrosTarget } from '../../lib/cadastrosNavigation';
 import { AdminFiscalModule } from './AdminFiscalModule';
 import { AdminDataExports, AdminDeviceRegistry } from './AdminSettingsTools';
+import { useFinancialMovements } from '../../hooks/useFinancialMovements';
+import { actualFinancialFlow } from '../../lib/financialFlow';
+import { getAdminPeriodRange, adminChartBuckets, adminSaleDate, type AdminPeriod } from '../../lib/adminDashboard';
 import { financialAccounts, type PayableAccount } from '../../lib/accounts';
 import { legacyCostSalesCount } from '../../lib/reportMetrics';
 import type { FinancialRecovery } from '../../lib/invoicePayments';
@@ -60,6 +63,7 @@ class AdminErrorBoundary extends Component<
 }
 
 type Props = {
+  allowedModules?: string[];
   contextKey?: string;
   isActive?: boolean;
   recoveries?: FinancialRecovery[];
@@ -87,7 +91,7 @@ type AdminSection = 'dashboard' | 'cadastros' | 'relatorios' | 'fiscal' | 'finan
 type AdminTab = 'dashboard' | 'cadastros' | 'relatorios' | 'fiscal' | 'financeiro' | 'permissoes' | 'auditoria' | 'dispositivos' | 'senha-liberacao' | 'gestao-dados' | 'configuracoes';
 type AdminPage = AdminTab;
 
-type TimePeriod = 'hoje' | '7dias' | '30dias' | 'mes' | 'custom';
+type TimePeriod = AdminPeriod;
 
 const roleLabels: Record<SalespersonRole, string> = {
   administrador: 'Administrador / Proprietário',
@@ -172,13 +176,13 @@ const sidebarSections: {
 export function AdminModule({
   renderSettings,
   renderCadastros,
-  invoices = [], onReceiveInvoice, contextKey, isActive = true, recoveries, recoveryError,
+  invoices = [], onReceiveInvoice, allowedModules = [], contextKey, isActive = true, recoveries, recoveryError,
   userId, sales = [], products = [], movements = [], salespeople = [], branches = [], customers = [], suppliers = [], categories = [],
   selectedBranchId = '', onSelectBranch, onNavigate, ownerView = false,
 }: Props) {
   return (
     <AdminErrorBoundary>
-      <AdminModuleInner key={contextKey} contextKey={contextKey} isActive={isActive} recoveries={recoveries} recoveryError={recoveryError}
+      <AdminModuleInner allowedModules={allowedModules} key={contextKey} contextKey={contextKey} isActive={isActive} recoveries={recoveries} recoveryError={recoveryError}
         renderSettings={renderSettings}
         renderCadastros={renderCadastros}
         invoices={invoices}
@@ -204,13 +208,17 @@ export function AdminModule({
 function AdminModuleInner({
   renderSettings,
   renderCadastros,
-  invoices = [], onReceiveInvoice, contextKey, isActive = true, recoveries, recoveryError,
+  invoices = [], onReceiveInvoice, allowedModules = [], contextKey, isActive = true, recoveries, recoveryError,
   userId, sales, products, movements = [], salespeople, branches = [], customers = [], suppliers = [], categories = [],
   selectedBranchId = '', onSelectBranch, ownerView = false,
 }: Props) {
+  const allowed = (module: string) => module === 'dashboard' || allowedModules.includes(module);
+  const visibleSections = sidebarSections.filter(section => allowed(section.id) && (section.id !== 'configuracoes' || ownerView));
   const [expandedSection, setExpandedSection] = useState<AdminSection>('dashboard');
   const [activeAdminTab, setActiveAdminTab] = useState<AdminTab>('dashboard');
   const [activeItemId, setActiveItemId] = useState('visao-geral');
+  const currentModule = ['dashboard', 'cadastros', 'relatorios', 'fiscal', 'financeiro'].includes(activeAdminTab) ? activeAdminTab : 'configuracoes';
+  const canViewCurrent = allowed(currentModule) && (currentModule !== 'configuracoes' || ownerView);
   const [branchFilter, setBranchFilter] = useState(selectedBranchId);
   const [reportsInitialTab, setReportsInitialTab] = useState<'vendas' | 'sem-giro'>('vendas');
   const payables = usePayables(userId);
@@ -227,6 +235,8 @@ function AdminModuleInner({
   }
 
   function handleItemClick(item: { id: string; label: string; tab?: string; page?: AdminPage }) {
+    const module = item.tab ?? (item.page === 'dashboard' ? 'dashboard' : 'configuracoes');
+    if (!allowed(module) || (module === 'configuracoes' && !ownerView)) return;
     setActiveItemId(item.id);
     if (item.tab === 'relatorios') setReportsInitialTab('vendas');
     if (item.tab) {
@@ -238,7 +248,7 @@ function AdminModuleInner({
 
   function toggleSection(section: AdminSection) {
     setExpandedSection(section);
-    const firstItem = sidebarSections.find((entry) => entry.id === section)?.items[0];
+    const firstItem = visibleSections.find((entry) => entry.id === section)?.items[0];
     if (firstItem) handleItemClick(firstItem);
   }
 
@@ -256,7 +266,7 @@ function AdminModuleInner({
       <div className="admin-sidebar-content-wrapper">
         <nav className="admin-top-navigation" aria-label="Navegação do Administrativo">
           <div className="admin-top-sections">
-          {sidebarSections.map((section) => {
+          {visibleSections.map((section) => {
             const isExpanded = expandedSection === section.id;
             const SectionIcon = section.icon;
             return (
@@ -275,7 +285,7 @@ function AdminModuleInner({
           })}
           </div>
           <div className="admin-top-items" aria-label="Opções da seção selecionada">
-            {sidebarSections.find((section) => section.id === expandedSection)?.items.map((item) => (
+            {visibleSections.find((section) => section.id === expandedSection)?.items.map((item) => (
               <button
                 key={item.id}
                 type="button"
@@ -290,6 +300,7 @@ function AdminModuleInner({
         </nav>
 
         <div className="admin-content-area">
+          {!canViewCurrent ? <p role="alert">Acesso a esta seção indisponível para este usuário ou assinatura. Selecione outra seção.</p> : <>
           {activeAdminTab === 'dashboard' && (
             <ExecutiveDashboard
               sales={sales}
@@ -328,6 +339,10 @@ function AdminModuleInner({
             {payables.error && <p role="alert">{payables.error}</p>}
             {activeItemId !== 'pagar' && activeItemId !== 'receber' && activeItemId !== 'cliente-fiado' && activeItemId !== 'fluxo' && (
             <AdminFinancialSummary
+              key={[contextKey, branchFilter].join(':')}
+              userId={userId}
+              isActive={isActive}
+              movements={movements}
               invoices={scopedInvoices}
               payables={scopedPayables}
               payablesUnavailable={payables.loading || Boolean(payables.error)}
@@ -380,12 +395,13 @@ function AdminModuleInner({
           )}
           {activeAdminTab === 'permissoes' && (ownerView ? <><p>Gerencie a equipe, os acessos aos módulos, a função, a filial e o PIN de cada usuário. Clique em Editar para marcar os módulos permitidos e salve as alterações. As ações continuam limitadas pela função.</p>{renderCadastros?.('vendedores')}</> : <p role="alert">Somente o proprietário pode administrar os acessos.</p>)}
           {activeAdminTab === 'auditoria' && <AuditTrail sales={sales} salespeople={salespeople} />}
-          {activeAdminTab === 'dispositivos' && (ownerView ? <AdminDeviceRegistry userId={userId} branchId={branchFilter} branches={branches} /> : <p role="alert">Somente o proprietário pode consultar os terminais da loja.</p>)}
+          {activeAdminTab === 'dispositivos' && (ownerView ? <AdminDeviceRegistry isActive={isActive} userId={userId} branchId={branchFilter} branches={branches} /> : <p role="alert">Somente o proprietário pode consultar os terminais da loja.</p>)}
           {activeAdminTab === 'senha-liberacao' && (ownerView ? <><p>As operações protegidas usam o PIN individual de administrador ou gerente. Configure ou altere o PIN em Usuários e permissões.</p><button type="button" className="rma-advance-btn" onClick={() => handleItemClick({ id: 'usuarios', label: 'Usuários e permissões', page: 'permissoes' })}>Abrir Usuários e permissões</button></> : <p role="alert">Somente o proprietário pode alterar os PINs dos colaboradores.</p>)}
           {activeAdminTab === 'gestao-dados' && (ownerView ? <AdminDataExports products={products} sales={sales} customers={customers} branchId={branchFilter} extra={{ branches, suppliers, categories, invoices: scopedInvoices, stock_movements: movements, payables: scopedPayables }} /> : <p role="alert">Somente o proprietário pode exportar os dados administrativos.</p>)}
           {activeAdminTab === 'configuracoes' && (
             ownerView ? renderSettings?.() : <p role="alert">Somente o proprietário pode alterar os dados do negócio.</p>
           )}
+          </>}
         </div>
       </div>
     </div>
@@ -394,39 +410,8 @@ function AdminModuleInner({
 
 /* ============ Date Range Helpers ============ */
 
-function getPeriodRange(period: TimePeriod, customStart?: string, customEnd?: string): { start: Date; end: Date; prevStart: Date; prevEnd: Date } {
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-
-  let start: Date, end: Date;
-  switch (period) {
-    case 'hoje':
-      start = today;
-      end = new Date(today.getTime() + 86400000);
-      break;
-    case '7dias':
-      end = new Date(today.getTime() + 86400000);
-      start = new Date(today.getTime() - 6 * 86400000);
-      break;
-    case '30dias':
-      end = new Date(today.getTime() + 86400000);
-      start = new Date(today.getTime() - 29 * 86400000);
-      break;
-    case 'mes':
-      start = new Date(now.getFullYear(), now.getMonth(), 1);
-      end = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-      break;
-    case 'custom':
-      start = customStart ? new Date(customStart) : new Date(today.getTime() - 30 * 86400000);
-      end = customEnd ? new Date(customEnd + 'T23:59:59') : new Date(today.getTime() + 86400000);
-      break;
-  }
-
-  const duration = end.getTime() - start.getTime();
-  const prevEnd = new Date(start.getTime());
-  const prevStart = new Date(start.getTime() - duration);
-
-  return { start, end, prevStart, prevEnd };
+function getPeriodRange(period: TimePeriod, customStart?: string, customEnd?: string) {
+  return getAdminPeriodRange(period, customStart, customEnd);
 }
 
 function growthPct(current: number, previous: number): number | null {
@@ -477,14 +462,14 @@ function ExecutiveDashboard({
 
   const currentSales = useMemo(() => {
     return branchFilteredSales.filter((s) => {
-      const d = new Date(s.created_at);
+      const d = new Date(adminSaleDate(s));
       return d >= range.start && d < range.end;
     });
   }, [branchFilteredSales, range]);
 
   const previousSales = useMemo(() => {
     return branchFilteredSales.filter((s) => {
-      const d = new Date(s.created_at);
+      const d = new Date(adminSaleDate(s));
       return d >= range.prevStart && d < range.prevEnd;
     });
   }, [branchFilteredSales, range]);
@@ -521,12 +506,11 @@ function ExecutiveDashboard({
   // Daily revenue line chart data
   const dailyData = useMemo(() => {
     const days: { date: Date; gross: number; net: number }[] = [];
-    const dayCount = Math.min(Math.ceil((range.end.getTime() - range.start.getTime()) / 86400000), 90);
-    for (let i = 0; i < dayCount; i++) {
-      const dayStart = new Date(range.start.getTime() + i * 86400000);
-      const dayEnd = new Date(dayStart.getTime() + 86400000);
+    for (const bucket of adminChartBuckets(range.start, range.end)) {
+      const dayStart = bucket.start;
+      const dayEnd = bucket.end;
       const daySales = currentSales.filter((s) => {
-        const d = new Date(s.created_at);
+        const d = new Date(adminSaleDate(s));
         return d >= dayStart && d < dayEnd;
       });
       const gross = daySales.reduce((s, x) => s + (x.total ?? 0), 0);
@@ -597,13 +581,13 @@ function ExecutiveDashboard({
   // CRM metrics
   const crmMetrics = useMemo(() => {
     const customerRevenue: Record<string, { name: string; total: number; count: number; lastPurchase: Date }> = {};
-    for (const sale of currentSales) {
+    for (const sale of branchFilteredSales) {
       const key = sale.customer_id ?? sale.customer_name ?? 'Consumidor';
       const name = sale.customer_name ?? 'Consumidor';
       if (!customerRevenue[key]) customerRevenue[key] = { name, total: 0, count: 0, lastPurchase: new Date(0) };
       customerRevenue[key].total += (sale.total ?? 0);
       customerRevenue[key].count += 1;
-      const d = new Date(sale.created_at);
+      const d = new Date(adminSaleDate(sale));
       if (d > customerRevenue[key].lastPurchase) customerRevenue[key].lastPurchase = d;
     }
 
@@ -620,8 +604,8 @@ function ExecutiveDashboard({
       return daysSince > 30;
     });
 
-    return { topCustomers, avgLtv, inactiveCount: inactiveCustomers.length, totalActive: sorted.length };
-  }, [currentSales, customers]);
+    return { topCustomers, avgLtv, inactiveCount: inactiveCustomers.length, totalActive: sorted.filter(customer => (now.getTime() - customer.lastPurchase.getTime()) / 86400000 <= 30).length };
+  }, [branchFilteredSales, customers]);
 
   // Seller performance
   const sellerPerf = useMemo(() => {
@@ -644,7 +628,7 @@ function ExecutiveDashboard({
       let cost = 0;
       for (const item of safeItems(s)) cost += (s.cost_snapshot?.[item.product_id] ?? productCostMap[item.product_id] ?? 0) * item.quantity;
       return [
-        new Date(s.created_at).toLocaleString('pt-BR'),
+        new Date(adminSaleDate(s)).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }),
         s.customer_name ?? '—',
         (s.total ?? 0).toFixed(2),
         cost.toFixed(2),
@@ -675,7 +659,7 @@ function ExecutiveDashboard({
       .kpi strong{font-size:24px;display:block}.kpi small{color:#888}</style></head>
       <body><h1>Relatório Executivo — DistriHub</h1>
       <p>${legacyCostSalesCount(currentSales, products)} venda(s) sem custo histórico completo. Nesses casos, CMV e margem são estimativas pelo cadastro atual.</p>
-      <p>Período: ${range.start.toLocaleDateString('pt-BR')} a ${range.prevEnd.toLocaleDateString('pt-BR')}</p>
+      <p>Período: ${range.start.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })} a ${new Date(range.end.getTime() - 1).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })}</p>
       <div>
         <div class="kpi"><small>Receita Bruta</small><strong>${money.format(current.grossRevenue)}</strong></div>
         <div class="kpi"><small>Custo dos Produtos</small><strong>${money.format(current.totalCost)}</strong></div>
@@ -735,15 +719,17 @@ function ExecutiveDashboard({
               <input type="date" value={customEnd} onChange={(e) => setCustomEnd(e.target.value)} className="admin-date-input" />
             </>
           )}
-          <button className="admin-export-btn" onClick={exportPDF}>
+          <button className="admin-export-btn" disabled={Boolean(range.error)} onClick={exportPDF}>
             <FileText size={14} /> PDF
           </button>
-          <button className="admin-export-btn" onClick={exportCSV}>
+          <button className="admin-export-btn" disabled={Boolean(range.error)} onClick={exportCSV}>
             <Download size={14} /> Excel
           </button>
         </div>
       </div>
 
+      {range.error && <p role="alert">{range.error}</p>}
+      <div hidden={Boolean(range.error)}>
       {stagnant.count > 0 && onOpenStagnantStock ? (
         <button
           type="button"
@@ -816,6 +802,7 @@ function ExecutiveDashboard({
 
       {/* Daily Revenue Line Chart */}
       <h4 className="report-section-title"><LineChartIcon size={16} /> Faturamento × Lucro bruto estimado</h4>
+      {range.end.getTime() - range.start.getTime() > 90 * 86400000 && <p>Período agrupado em até 90 intervalos. Cada ponto soma todas as vendas do intervalo, cobrindo o período inteiro.</p>}
       <DailyRevenueChart data={dailyData} grossTotal={current.grossRevenue} profitTotal={current.netRevenue} />
       <p className="admin-empty-hint">Lucro bruto estimado = faturamento menos o custo dos produtos vendidos. Não desconta impostos e despesas operacionais.</p>
 
@@ -900,9 +887,10 @@ function ExecutiveDashboard({
 
         <div className="admin-dashboard-card">
           <h4 className="report-section-title"><Users size={16} /> CRM — Clientes & LTV</h4>
+          <p>Histórico de compras disponível nesta filial. Inatividade considera a última compra em todo esse histórico.</p>
           <div className="report-cards admin-crm-metrics">
             <div className="report-card">
-              <small>LTV Médio</small>
+              <small>LTV Médio (histórico)</small>
               <strong>{money.format(crmMetrics.avgLtv)}</strong>
             </div>
             <div className="report-card">
@@ -1010,6 +998,7 @@ function ExecutiveDashboard({
           </tbody>
         </table>
       </div>
+      </div>
     </div>
   );
 }
@@ -1094,7 +1083,7 @@ function DailyRevenueChart({ data, grossTotal, profitTotal }: { data: { date: Da
           const x = padding.left + i * stepX;
           return (
             <text key={i} x={x} y={height - 8} textAnchor="middle" fill="#6e8799" fontSize="10">
-              {d.date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
+              {d.date.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit' })}
             </text>
           );
         })}
@@ -1107,7 +1096,7 @@ function DailyRevenueChart({ data, grossTotal, profitTotal }: { data: { date: Da
             <g key={i} className="chart-tooltip-group">
               <circle cx={x} cy={yGross} r="3" fill="#3b9bed" className="chart-dot" />
               <circle cx={x} cy={yNet} r="3" fill="#5bbc87" className="chart-dot" />
-              <title>{`${d.date.toLocaleDateString('pt-BR')} — Faturamento: ${money.format(d.gross)} | Lucro bruto estimado: ${money.format(d.net)}`}</title>
+              <title>{`${d.date.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })} — Faturamento: ${money.format(d.gross)} | Lucro bruto estimado: ${money.format(d.net)}`}</title>
             </g>
           );
         })}
@@ -1285,9 +1274,13 @@ function AuditTrail({ sales, salespeople }: { sales: PartnerSale[]; salespeople:
 /* ============ Inline Financial Summary ============ */
 
 function AdminFinancialSummary({
+  userId, isActive = true, movements = [],
   invoices, payables, payablesUnavailable,
   sales, products, branches, branchFilter, onBranchChange,
 }: {
+  userId?: string;
+  isActive?: boolean;
+  movements?: StockMovement[];
   invoices: PartnerInvoice[];
   payables: PayableAccount[];
   payablesUnavailable: boolean;
@@ -1322,10 +1315,15 @@ function AdminFinancialSummary({
   const accounts = financialAccounts(invoices, payables);
   const accountsReceivable = accounts.receivable;
   const accountsPayable = accounts.payable;
-  const billedSaleIds = new Set(invoices.filter(invoice => invoice.status !== 'cancelada').map(invoice => invoice.sale_id));
-  const immediateReceipts = completed.filter(sale => sale.payment_method !== 'faturado' && !billedSaleIds.has(sale.id))
-    .reduce((sum, sale) => sum + saleRevenuePayments(sale).filter(payment => payment.method !== 'rma' && payment.method !== 'faturado').reduce((amount, payment) => amount + payment.amount, 0), 0);
-  const cashBalance = immediateReceipts + accounts.received - accounts.paid;
+  const ledger = useFinancialMovements(userId, branchFilter, invoices, payables, isActive);
+  const records = actualFinancialFlow(completed, movements, ledger.receipts, ledger.payments, payables, invoices, ledger.refunds);
+  const sum = (prefix: string) => records.filter(row => row.id.startsWith(prefix)).reduce((cents, row) => cents + Math.round(row.amount * 100), 0) / 100;
+  const immediateReceipts = sum('sale-');
+  const received = sum('receipt-');
+  const paid = -sum('payment-');
+  const refunded = -sum('rma-refund-');
+  const cashBalance = (Math.round(immediateReceipts * 100) + Math.round(received * 100) - Math.round(paid * 100) - Math.round(refunded * 100)) / 100;
+  const movementsUnavailable = payablesUnavailable || ledger.loading || Boolean(ledger.error);
 
   const dreRows = [
     { label: 'Receita Bruta de Vendas', value: grossRevenue, bold: true },
@@ -1342,13 +1340,16 @@ function AdminFinancialSummary({
   const cashFlowRows = [
     { label: 'Saldo Inicial', value: 0, bold: false },
     { label: '(+) Vendas à vista', value: immediateReceipts, bold: false },
-    { label: '(+) Recebimentos de Faturas', value: accounts.received, bold: false },
-    { label: '(-) Pagamentos de Contas Registrados', value: -accounts.paid, bold: false },
+    { label: '(+) Recebimentos de Faturas', value: received, bold: false },
+    { label: '(-) Pagamentos de Contas Registrados', value: -paid, bold: false },
+    { label: '(-) Reembolsos de Devoluções', value: -refunded, bold: false },
     { label: 'Saldo dos Movimentos Registrados', value: cashBalance, bold: true },
   ];
 
   return (
     <div className="admin-financial-summary">
+      {ledger.loading && <p role="status">Carregando movimentos confirmados…</p>}
+      {ledger.error && <p role="alert">{ledger.error} <button type="button" onClick={ledger.reload}>Tentar novamente</button></p>}
       <div className="admin-filter-bar">
         <h4 className="admin-section-heading"><Wallet size={16} /> Resumo Financeiro Executivo</h4>
         {branches.length > 0 && (
@@ -1387,7 +1388,7 @@ function AdminFinancialSummary({
         </div>
         <div className="report-card admin-kpi-card">
           <small><Wallet size={13} /> Saldo dos Movimentos</small>
-          <strong>{payablesUnavailable ? 'Indisponível' : money.format(cashBalance)}</strong>
+          <strong>{movementsUnavailable ? 'Indisponível' : money.format(cashBalance)}</strong>
           <small>vendas e baixas registradas</small>
         </div>
       </div>
@@ -1419,7 +1420,7 @@ function AdminFinancialSummary({
                 {cashFlowRows.map((row, i) => (
                   <tr key={i} className={row.bold ? 'admin-dre-bold' : ''}>
                     <td>{row.label}</td>
-                    <td>{money.format(row.value)}</td>
+                    <td>{movementsUnavailable ? 'Indisponível' : money.format(row.value)}</td>
                   </tr>
                 ))}
               </tbody>

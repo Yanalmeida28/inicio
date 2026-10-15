@@ -49,48 +49,71 @@ export function AdminDataExports({ products, sales, customers, branchId, extra }
 }
 
 type Device = { id: string; device_key: string; name: string; branch_id: string | null; last_seen: string };
-export function AdminDeviceRegistry({ userId, branchId, branches }: { userId?: string; branchId: string; branches: PartnerBranch[] }) {
+type DeviceProps = { userId?: string; branchId: string; branches: PartnerBranch[]; isActive?: boolean };
+export function AdminDeviceRegistry(props: DeviceProps) {
+  return <DeviceRegistryScreen key={[props.userId, props.branchId].join(':')} {...props} />;
+}
+function DeviceRegistryScreen({ userId, branchId, branches, isActive = true }: DeviceProps) {
   const [devices, setDevices] = useState<Device[]>([]);
   const [name, setName] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const lock = useRef(false);
+  const alive = useRef(true);
+  const activeRef = useRef(isActive); activeRef.current = isActive;
+  const revision = useRef(0);
+  const invalidate = useCallback(() => { ++revision.current; }, []);
+  const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(Date.now());
   const load = useCallback(async () => {
-    if (!userId || !supabase) { setError('Loja não conectada.'); return; }
+    if (!isActive || !alive.current) return;
+    const request = ++revision.current;
+    const current = () => alive.current && activeRef.current && request === revision.current;
+    setLoading(true); setError('');
+    try {
+    if (!userId || !supabase) throw new Error('Loja não conectada.');
     const all: Device[] = [];
     for (let offset = 0; ; offset += 500) {
       let query = supabase.from('partner_devices').select('id,device_key,name,branch_id,last_seen').eq('user_id', userId).order('id').range(offset, offset + 499);
       if (branchId) query = query.eq('branch_id', branchId);
       const { data, error: failure } = await query;
-      if (failure) { setError(failure.message); return; }
+      if (!current()) return;
+      if (failure) throw new Error(failure.message);
+      if (!Array.isArray(data)) throw new Error('Resposta de terminais inválida.');
       all.push(...data as Device[]); if (data.length < 500) break;
     }
-    setDevices(all); setNow(Date.now()); setError('');
-  }, [userId, branchId]);
+    if (current()) { setDevices(all); setNow(Date.now()); setError(''); }
+    } catch (cause) { if (current()) { setDevices([]); setError(cause instanceof Error ? cause.message : 'Não foi possível carregar os terminais.'); } }
+    finally { if (current()) setLoading(false); }
+  }, [userId, branchId, isActive]);
   useEffect(() => {
+    alive.current = true;
+    if (!isActive) return;
     setDevices([]); void load();
     try { if (userId) setName(deviceIdentity(userId).name); } catch { setError('O navegador bloqueou o armazenamento necessário para identificar este terminal.'); }
     const timer = window.setInterval(() => void load(), 60_000);
-    return () => window.clearInterval(timer);
-  }, [load, userId]);
+    return () => { alive.current = false; invalidate(); window.clearInterval(timer); };
+  }, [load, userId, isActive, invalidate]);
+  useEffect(() => () => { alive.current = false; }, []);
   async function register(event: React.FormEvent) {
-    event.preventDefault(); if (lock.current) return;
+    event.preventDefault(); if (!isActive || lock.current) return;
     lock.current = true; setBusy(true); setError('');
     try {
       if (!userId || !supabase || !name.trim()) throw new Error('Informe o nome deste terminal.');
       const device = deviceIdentity(userId);
       const { error: failure } = await supabase.rpc('touch_partner_device', { p_device_key: device.id, p_name: name.trim(), p_branch_id: branchId || null });
       if (failure) throw new Error(failure.message);
-      localStorage.setItem(device.nameKey, name.trim()); await load();
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Não foi possível registrar o terminal.'); }
-    finally { lock.current = false; setBusy(false); }
+      localStorage.setItem(device.nameKey, name.trim());
+      if (alive.current && activeRef.current) await load();
+    } catch (cause) { if (alive.current && activeRef.current) setError(cause instanceof Error ? cause.message : 'Não foi possível registrar o terminal.'); }
+    finally { lock.current = false; if (alive.current) setBusy(false); }
   }
   return <section className="module-card"><h4>Dispositivos / Terminais</h4>
     <p>Cada navegador conectado registra sua última conexão a cada minuto. “Sem contato recente” indica ausência de atualização por dois minutos; não confirma que o aparelho está desligado.</p>
-    <form onSubmit={register}><label>Nome deste terminal <input required maxLength={100} value={name} disabled={busy} onChange={e => setName(e.target.value)} /></label> <button className="module-submit-btn" disabled={busy}>{busy ? 'Salvando…' : 'Registrar / renomear este terminal'}</button></form>
-    <button type="button" className="module-action-btn" onClick={() => void load()}>Atualizar lista</button>
+    <form onSubmit={register}><label>Nome deste terminal <input required maxLength={100} value={name} disabled={busy || !isActive} onChange={e => setName(e.target.value)} /></label> <button className="module-submit-btn" disabled={busy || !isActive}>{busy ? 'Salvando…' : 'Registrar / renomear este terminal'}</button></form>
+    <button type="button" className="module-action-btn" disabled={!isActive || loading} onClick={() => void load()}>Atualizar lista</button>
+    {loading && <p role="status">Carregando terminais…</p>}
     {error && <p role="alert">{error}</p>}
-    <div className="stock-table-wrap"><table className="rma-table"><thead><tr><th>Terminal</th><th>Filial</th><th>Contato</th><th>Última conexão</th></tr></thead><tbody>{devices.length === 0 ? <tr><td colSpan={4}>Nenhum terminal registrado nesta visão.</td></tr> : devices.map(device => <tr key={device.id}><td>{device.name}</td><td>{branches.find(b => b.id === device.branch_id)?.name ?? 'Não selecionada'}</td><td>{now - new Date(device.last_seen).getTime() <= 120_000 ? 'Contato recente' : 'Sem contato recente'}</td><td>{new Date(device.last_seen).toLocaleString('pt-BR')}</td></tr>)}</tbody></table></div>
+    <div className="stock-table-wrap"><table className="rma-table"><thead><tr><th>Terminal</th><th>Filial</th><th>Contato</th><th>Última conexão</th></tr></thead><tbody>{devices.length === 0 ? <tr><td colSpan={4}>{loading || error ? 'Consulta de terminais ainda não confirmada.' : 'Nenhum terminal registrado nesta visão.'}</td></tr> : devices.map(device => <tr key={device.id}><td>{device.name}</td><td>{branches.find(b => b.id === device.branch_id)?.name ?? 'Não selecionada'}</td><td>{now - new Date(device.last_seen).getTime() <= 120_000 ? 'Contato recente' : 'Sem contato recente'}</td><td>{new Date(device.last_seen).toLocaleString('pt-BR')}</td></tr>)}</tbody></table></div>
   </section>;
 }
