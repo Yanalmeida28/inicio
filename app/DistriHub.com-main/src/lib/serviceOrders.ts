@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { PendingPhoto } from './operationAttempts';
 export type ServiceOrderPayload = {
   branch_id: string; customer_id: string | null; segment: string; equipment_type: string;
+  manual_customer?: { name: string; email: string; address: string; phone: string };
   identification: string; serial: string; accessories: string; condition: string; damage: string;
   notes: string; labor_total: number; items: { product_id: string | null; quantity: number; unit_price: number; name?: string; manual_id?: string }[];
   photo_ids?: { id: string; type: 'entry' | 'exit'; label: string }[];

@@ -48,6 +48,7 @@ type DraftItem = {
   is_service: boolean;
 };
 const draftItemKey = (item: DraftItem) => item.manual_id ?? item.product_id ?? item.name;
+const manualCustomerOption = '__manual__';
 
 type Photo = {
   id: string;
@@ -120,6 +121,10 @@ function ServiceOrdersContent({
   const scopeRef = useRef(attemptScope); scopeRef.current = attemptScope;
 
   const [customerId, setCustomerId] = useSessionDraftState('service-order:customer-id', '');
+  const [manualCustomerName, setManualCustomerName] = useSessionDraftState('service-order:manual-customer-name', '');
+  const [manualCustomerEmail, setManualCustomerEmail] = useSessionDraftState('service-order:manual-customer-email', '');
+  const [manualCustomerAddress, setManualCustomerAddress] = useSessionDraftState('service-order:manual-customer-address', '');
+  const [manualCustomerPhone, setManualCustomerPhone] = useSessionDraftState('service-order:manual-customer-phone', '');
   const [equipmentType, setEquipmentType] = useSessionDraftState('service-order:equipment-type', '');
   const [identification, setIdentification] = useSessionDraftState('service-order:identification', '');
   const [serial, setSerial] = useSessionDraftState('service-order:serial', '');
@@ -198,7 +203,12 @@ function ServiceOrdersContent({
     : [['screen', 'Equipamento identificado'], ['touch', 'Estado externo registrado'], ['camera', 'Acessórios conferidos']] as const;
   const checklistComplete = Object.values(preRepairChecklist).every(Boolean);
   function restorePayload(payload: ServiceOrderPayload) {
-    setCustomerId(payload.customer_id ?? ''); setEquipmentType(payload.equipment_type); setIdentification(payload.identification);
+    setCustomerId(payload.manual_customer ? manualCustomerOption : payload.customer_id ?? '');
+    setManualCustomerName(payload.manual_customer?.name ?? '');
+    setManualCustomerEmail(payload.manual_customer?.email ?? '');
+    setManualCustomerAddress(payload.manual_customer?.address ?? '');
+    setManualCustomerPhone(payload.manual_customer?.phone ?? '');
+    setEquipmentType(payload.equipment_type); setIdentification(payload.identification);
     setSerial(payload.serial); setAccessories(payload.accessories); setCondition(payload.condition); setDamage(payload.damage);
     setNotes(payload.draft_notes ?? payload.notes); setLabor(String(payload.labor_total));
     setItems(payload.items.map(item => ({ ...item, name: item.product_id ? products.find(p => p.id === item.product_id)?.name ?? 'Peça' : item.name ?? 'Peça manual', stock: products.find(p => p.id === item.product_id)?.stock ?? 0, is_service: Boolean(products.find(p => p.id === item.product_id)?.is_service) })));
@@ -354,6 +364,10 @@ function ServiceOrdersContent({
 
     setOpen(false);
     setCustomerId('');
+    setManualCustomerName('');
+    setManualCustomerEmail('');
+    setManualCustomerAddress('');
+    setManualCustomerPhone('');
     setEquipmentType('');
     setIdentification('');
     setSerial('');
@@ -461,6 +475,9 @@ function ServiceOrdersContent({
     if (!checklistComplete || !customerAcknowledged) { setSaveError('Complete a vistoria e confirme as condições de entrada.'); return; }
     if (!equipmentType.trim() && !identification.trim() && !serial.trim()) { setSaveError('Informe o equipamento ou identificação.'); return; }
     if (!Number.isFinite(Number(labor || 0)) || Number(labor || 0) < 0) { setSaveError('Informe um valor de mão de obra válido.'); return; }
+    if (customerId === manualCustomerOption && !manualCustomerName.trim()) { setSaveError('Informe o nome do cliente.'); return; }
+    if (customerId === manualCustomerOption && (manualCustomerName.trim().length > 200 || manualCustomerEmail.trim().length > 320 || manualCustomerAddress.trim().length > 1000 || manualCustomerPhone.trim().length > 50)) { setSaveError('Confira os dados do cliente: nome, e-mail, endereço ou telefone excedem o limite permitido.'); return; }
+    if (customerId === manualCustomerOption && manualCustomerEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(manualCustomerEmail.trim())) { setSaveError('Informe um e-mail válido para o cliente.'); return; }
     if (manualName.trim() || manualPrice.trim()) { setSaveError('Adicione a peça manual à lista antes de salvar a OS ou limpe seus campos.'); return; }
     if (items.length > 100 || items.some(item => !Number.isInteger(item.quantity) || item.quantity < 1 || !Number.isFinite(item.unit_price) || item.unit_price < 0 || Math.abs(item.unit_price * 100 - Math.round(item.unit_price * 100)) > 0.00001 || (!item.product_id && (!item.name.trim() || item.name.trim().length > 200 || item.quantity > 999 || item.unit_price > 9999999.99)))) { setSaveError('Confira a descrição, quantidade e preço das peças.'); return; }
     saveLock.current = true; setSaving(true); setSaveError(null);
@@ -473,7 +490,9 @@ function ServiceOrdersContent({
       attempts = new OperationAttempts(window.localStorage);
       wasPending = !!attempts.pending(currentScope, 'service-order');
       const payload: ServiceOrderPayload = {
-        branch_id: selectedBranchId, customer_id: customerId || null, segment, equipment_type: equipmentType,
+        branch_id: selectedBranchId, customer_id: customerId && customerId !== manualCustomerOption ? customerId : null,
+        ...(customerId === manualCustomerOption ? { manual_customer: { name: manualCustomerName.trim(), email: manualCustomerEmail.trim(), address: manualCustomerAddress.trim(), phone: manualCustomerPhone.trim() } } : {}),
+        segment, equipment_type: equipmentType,
         identification, serial, accessories, condition, damage,
         draft_notes: notes,
         notes: pendingAttempt?.payload.notes ?? notes.trim() + String.fromCharCode(10, 10) + 'Checklist pré-reparo: ' + checklistLabels.map(([, label]) => label).join('; ') + '.' + String.fromCharCode(10) + 'Cliente ciente das condições de entrada: sim.',
@@ -637,6 +656,7 @@ function ServiceOrdersContent({
                 style={{ ...inputDarkStyle, WebkitAppearance: 'none', appearance: 'none' }}
               >
                 <option value="" style={{ backgroundColor: '#102638', color: '#edf5fc' }}>Sem cliente</option>
+                <option value={manualCustomerOption} style={{ backgroundColor: '#102638', color: '#edf5fc' }}>Informar cliente manualmente</option>
                 {branchCustomers.map((item) => (
                   <option key={item.id} value={item.id} style={{ backgroundColor: '#102638', color: '#edf5fc' }}>
                     {item.name}
@@ -644,6 +664,32 @@ function ServiceOrdersContent({
                 ))}
               </select>
             </label>
+            {customerId === manualCustomerOption && (
+              <section
+                aria-label="Dados do cliente manual"
+                style={{ gridColumn: '1 / -1', padding: 14, borderRadius: 10, backgroundColor: '#102638', border: '1px solid #29465f' }}
+              >
+                <h3 style={{ margin: '0 0 12px', color: '#edf5fc', fontSize: 15 }}>Dados do cliente</h3>
+                <div className="service-order-fields" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: 12 }}>
+                  <label style={labelDarkStyle}>
+                    Nome *
+                    <input required maxLength={200} value={manualCustomerName} onChange={event => setManualCustomerName(event.target.value)} style={inputDarkStyle} autoComplete="name" />
+                  </label>
+                  <label style={labelDarkStyle}>
+                    E-mail
+                    <input type="email" maxLength={320} value={manualCustomerEmail} onChange={event => setManualCustomerEmail(event.target.value)} style={inputDarkStyle} autoComplete="email" />
+                  </label>
+                  <label style={labelDarkStyle}>
+                    Endereço
+                    <input maxLength={1000} value={manualCustomerAddress} onChange={event => setManualCustomerAddress(event.target.value)} style={inputDarkStyle} autoComplete="street-address" />
+                  </label>
+                  <label style={labelDarkStyle}>
+                    Telefone
+                    <input type="tel" maxLength={50} value={manualCustomerPhone} onChange={event => setManualCustomerPhone(event.target.value)} style={inputDarkStyle} autoComplete="tel" />
+                  </label>
+                </div>
+              </section>
+            )}
             {selectedCustomer && (
               <section
                 aria-label="Dados do cliente"

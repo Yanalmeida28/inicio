@@ -586,6 +586,9 @@ export interface ServiceOrder {
 
   customer_id: string | null;
   customer_name: string | null;
+  customer_email?: string | null;
+  customer_address?: string | null;
+  customer_phone?: string | null;
 
   service_segment: string;
 

@@ -29,7 +29,7 @@ async function harness({orders=[],read,rpc,invoice=null,blocked=false,values=new
   const result=rpc?.(name,args);if(result!==undefined)return result;
   return {data:name==='create_service_order_once'?args.p_request_id:{...orderA,id:args.p_order_id,user_id:'owner',customer_id:args.p_clear_customer?null:args.p_customer_id},error:null};
  },from(table){const args={table};const q={select(){return q;},eq(k,v){args[k]=v;return q;},order(){return q;},
-  single(){return Promise.resolve({data:{...orderA,id:args.id,branch_id:lastCreate?.p_payload.branch_id??'branch-a'},error:null});},
+  single(){const manual=lastCreate?.p_payload.manual_customer;return Promise.resolve({data:{...orderA,id:args.id,branch_id:lastCreate?.p_payload.branch_id??'branch-a',customer_id:lastCreate?.p_payload.customer_id??null,customer_name:manual?.name??orderA.customer_name,customer_email:manual?.email??null,customer_address:manual?.address??null,customer_phone:manual?.phone??null},error:null});},
   maybeSingle(){return Promise.resolve({data:invoice?{id:invoice}:null,error:null});},
   then(done,fail){queries.push({...args});const result=read?.(args)??{data:table==='service_orders'?orders:[],error:null};return Promise.resolve(result).then(done,fail);}};return q;
  },storage:{from:()=>({createSignedUrl:async()=>({data:{signedUrl:'photo'},error:null})})}};
@@ -71,7 +71,7 @@ test('new OS shows the selected customer contact details and only offers custome
  const otherBranchCustomer={...customer,id:'client-b',name:'Cliente B',branch_id:'branch-b'};
  const h=await harness({customers:[{...customer,branch_id:'branch-a'},otherBranchCustomer]});
  const selector=view.root.findAllByType('select')[0];
- assert.deepEqual(selector.findAllByType('option').map(option=>option.children.join('')),['Sem cliente','Cliente A']);
+ assert.deepEqual(selector.findAllByType('option').map(option=>option.children.join('')),['Sem cliente','Informar cliente manualmente','Cliente A']);
  await act(async()=>selector.props.onChange({target:{value:'client-a'}}));
  assert.match(rendered(),/Dados do cliente/);
  for(const value of ['cliente@example.com','Rua A, 42, Centro, São Paulo, SP, 01000-000','(11) 99999-0000'])assert.match(rendered(),new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')));
@@ -83,6 +83,34 @@ test('OS details show contact details from the customer linked to the same branc
  const text=rendered();
  for(const value of ['Dados do cliente','cliente@example.com','Rua A, 42, Centro, São Paulo, SP, 01000-000','(11) 99999-0000'])assert.match(text,new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')));
  assert.doesNotMatch(text,/wrong@example\.com/);
+});
+test('manual customer can be entered, is saved to the OS and shown after creation',async()=>{
+ const h=await harness();
+ const selector=view.root.findAllByType('select')[0];
+ await act(async()=>selector.props.onChange({target:{value:'__manual__'}}));
+ const field=placeholder=>view.root.findAllByType('input').find(input=>input.props.autoComplete===placeholder);
+ await act(async()=>field('name').props.onChange({target:{value:'Cliente sem cadastro'}}));
+ await act(async()=>field('email').props.onChange({target:{value:'manual@example.com'}}));
+ await act(async()=>field('street-address').props.onChange({target:{value:'Rua das Flores, 123'}}));
+ await act(async()=>field('tel').props.onChange({target:{value:'(11) 98888-7777'}}));
+ await act(async()=>save().props.onClick());
+ const payload=h.calls.find(call=>call.name==='create_service_order_once').args.p_payload;
+ assert.equal(payload.customer_id,null);
+ assert.deepEqual({...payload.manual_customer},{name:'Cliente sem cadastro',email:'manual@example.com',address:'Rua das Flores, 123',phone:'(11) 98888-7777'});
+ for(const value of ['Cliente sem cadastro','manual@example.com','Rua das Flores, 123','(11) 98888-7777'])assert.match(rendered(),new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')));
+});
+test('manual customer requires a name and validates provided email',async()=>{
+ const h=await harness();
+ await act(async()=>view.root.findAllByType('select')[0].props.onChange({target:{value:'__manual__'}}));
+ const field=autocomplete=>view.root.findAllByType('input').find(input=>input.props.autoComplete===autocomplete);
+ await act(async()=>field('email').props.onChange({target:{value:'bad-email'}}));
+ await act(async()=>save().props.onClick());
+ assert.equal(h.calls.filter(call=>call.name==='create_service_order_once').length,0);
+ assert.match(rendered(),/Informe o nome do cliente/);
+ await act(async()=>field('name').props.onChange({target:{value:'Cliente'}}));
+ await act(async()=>save().props.onClick());
+ assert.equal(h.calls.filter(call=>call.name==='create_service_order_once').length,0);
+ assert.match(rendered(),/Informe um e-mail válido/);
 });
 test('list failure is visible, never announces confirmed empty data, and retry loads the orders',async()=>{
  let failed=true;const h=await harness({read:args=>args.table==='service_orders'?{data:failed?null:[orderA],error:failed?{message:'Falha de rede'}:null}:undefined});

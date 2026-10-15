@@ -49,6 +49,7 @@ before(async () => {
   await db.exec(await read('../migrations/20261012201545_close_legacy_operation_paths.sql'));
   await db.exec(await read('../migrations/20261015010204_fix_service_order_customer_and_billing.sql'));
   await db.exec(await read('../migrations/20261015184249_service_order_manual_parts.sql'));
+  await db.exec(await read('../migrations/20261015205000_service_order_manual_customer.sql'));
 });
 after(() => db.close());
 test('reposição: mesma tentativa soma uma vez; tentativa diferente é uma nova entrada; outros dados são rejeitados', async () => {
@@ -77,6 +78,22 @@ test('manual OS parts persist names and prices, charge exactly once and never co
   for(let i=0;i<2;i++)await sql("SELECT update_service_order_workflow($1,'cancelada','','aguardando_aprovacao','Cliente desistiu',$2)",[id,customer]);
   assert.equal(Number((await sql('SELECT stock FROM partner_products WHERE id=$1',[product])).rows[0].stock),stock);
   assert.equal((await sql('SELECT count(*)::int n FROM stock_movements')).rows[0].n,movements);
+});
+
+test('manual OS customer details persist without a registered customer and invalid details are rejected',async()=>{
+ await login(owner);
+ const id=randomUUID();
+ const payload={...osPayload(),customer_id:null,manual_customer:{name:'Cliente avulso',email:'avulso@example.com',address:'Rua das Flores, 123',phone:'(11) 98888-7777'}};
+ await sql('SELECT create_service_order_once($1,$2::jsonb)',[id,JSON.stringify(payload)]);
+ await sql('SELECT create_service_order_once($1,$2::jsonb)',[id,JSON.stringify(payload)]);
+ const order=(await sql('SELECT customer_id,customer_name,customer_email,customer_address,customer_phone FROM service_orders WHERE id=$1',[id])).rows[0];
+ assert.equal(order.customer_id,null);
+ assert.deepEqual([order.customer_name,order.customer_email,order.customer_address,order.customer_phone],['Cliente avulso','avulso@example.com','Rua das Flores, 123','(11) 98888-7777']);
+ for(const manual of [{name:''},{name:'x'.repeat(201)},{name:'Cliente',email:'invalido'}]){
+  const invalidId=randomUUID();
+  await assert.rejects(sql('SELECT create_service_order_once($1,$2::jsonb)',[invalidId,JSON.stringify({...osPayload(),customer_id:null,manual_customer:manual})]));
+  assert.equal((await sql('SELECT count(*)::int n FROM service_orders WHERE id=$1',[invalidId])).rows[0].n,0);
+ }
 });
 
 test('mixed OS invoices include manual parts while cancellation returns only catalog pieces',async()=>{

@@ -96,10 +96,10 @@ function ServiceOrderDetailsContent({ order, customers, onClose, onChanged }: Pr
     <section aria-label="Dados do cliente" style={{ padding: 14, borderRadius: 10, border: '1px solid rgba(127,127,127,.25)' }}>
       <h4 style={{ margin: '0 0 10px' }}>Dados do cliente</h4>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: 10 }}>
-        <p style={{ margin: 0 }}><strong>Nome:</strong> {selectedCustomer?.name || (customerId ? order.customer_name : '') || 'Não informado'}</p>
-        <p style={{ margin: 0 }}><strong>E-mail:</strong> {selectedCustomer?.email || 'Não informado'}</p>
-        <p style={{ margin: 0 }}><strong>Endereço:</strong> {customerAddress || 'Não informado'}</p>
-        <p style={{ margin: 0 }}><strong>Telefone:</strong> {selectedCustomer?.phone || 'Não informado'}</p>
+        <p style={{ margin: 0 }}><strong>Nome:</strong> {selectedCustomer?.name || order.customer_name || 'Não informado'}</p>
+        <p style={{ margin: 0 }}><strong>E-mail:</strong> {selectedCustomer?.email || order.customer_email || 'Não informado'}</p>
+        <p style={{ margin: 0 }}><strong>Endereço:</strong> {customerAddress || order.customer_address || 'Não informado'}</p>
+        <p style={{ margin: 0 }}><strong>Telefone:</strong> {selectedCustomer?.phone || order.customer_phone || 'Não informado'}</p>
       </div>
     </section>
     <p style={{ whiteSpace: 'pre-wrap' }}>{order.entry_notes}</p>
