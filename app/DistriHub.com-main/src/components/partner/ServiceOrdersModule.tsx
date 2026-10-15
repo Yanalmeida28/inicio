@@ -35,6 +35,7 @@ type Props = {
   selectedBranchId: string | null;
   warrantyTerms?: string;
   onUpdateWarrantyTerms?: (value: string) => void;
+  isActive?: boolean;
 };
 
 type DraftItem = {
@@ -81,7 +82,11 @@ const labelDarkStyle: React.CSSProperties = {
   fontSize: 14,
 };
 
-export function ServiceOrdersModule({
+export function ServiceOrdersModule(props: Props) {
+  return <ServiceOrdersContent key={`${props.authUserId ?? props.userId}:${props.userId}:${props.selectedBranchId}`} {...props} />;
+}
+
+function ServiceOrdersContent({
   userId,
   authUserId,
   onChanged,
@@ -91,12 +96,21 @@ export function ServiceOrdersModule({
   products,
   selectedBranchId,
   warrantyTerms,
+  isActive = true,
 }: Props) {
   const [orders, setOrders] = useState<ServiceOrder[]>([]);
   const [open, setOpen] = useSessionDraftState('service-order:open', false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const [loadingOrders, setLoadingOrders] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [readVersion, setReadVersion] = useState(0);
+  const [preparingPhotos, setPreparingPhotos] = useState(false);
+  const readGeneration = useRef(0);
+  const photoLock = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const saveLock = useRef(false);
   const [pendingAttempt, setPendingAttempt] = useState<OperationAttempt<ServiceOrderPayload> | null>(null);
   const [details, setDetails] = useState<ServiceOrder | null>(null);
@@ -122,6 +136,9 @@ export function ServiceOrdersModule({
   const [photoError, setPhotoError] = useState<string | null>(null);
 
   const photos = [...entryPhotos, ...exitPhotos];
+  const photosRef = useRef(photos); photosRef.current = photos;
+  useEffect(() => () => { photosRef.current.forEach(photo => URL.revokeObjectURL(photo.preview)); }, []);
+  useEffect(() => { if (!isActive) setDetails(null); }, [isActive]);
 
   const entryFileRef = useRef<HTMLInputElement>(null);
   const exitFileRef = useRef<HTMLInputElement>(null);
@@ -193,11 +210,16 @@ export function ServiceOrdersModule({
   )));
 
   useEffect(() => {
+    let active = true;
     async function loadOrders() {
+      const request = ++readGeneration.current;
+      if (!isActive) return;
       if (!supabase || !userId) {
+        setLoadError('Conecte-se para carregar as Ordens de Serviço.');
         return;
       }
-
+      setLoadingOrders(true); setLoadError(null);
+      try {
       let query = supabase
         .from('service_orders')
         .select('*')
@@ -213,18 +235,18 @@ export function ServiceOrdersModule({
       const { data, error } = await query;
 
       if (error) {
-        console.error(
-          'Erro ao carregar Ordens de Serviço:',
-          error
-        );
-        return;
+        throw error;
       }
 
-      setOrders((data as ServiceOrder[]) ?? []);
+      if (active && request === readGeneration.current) setOrders((data as ServiceOrder[]) ?? []);
+      } catch (cause) {
+        if (active && request === readGeneration.current) setLoadError(cause && typeof cause === 'object' && 'message' in cause ? String(cause.message) : 'Não foi possível carregar as Ordens de Serviço.');
+      } finally { if (active && request === readGeneration.current) setLoadingOrders(false); }
     }
 
     loadOrders();
-  }, [userId, selectedBranchId]);
+    return () => { active = false; };
+  }, [userId, selectedBranchId, isActive, readVersion]);
 
   const filteredOrders = orders.filter((order) =>
     `${order.customer_name ?? ''} ${
@@ -235,6 +257,7 @@ export function ServiceOrdersModule({
   );
 
   function addProduct(product: PartnerProduct) {
+    if (saveLock.current || photoLock.current) return;
     setItems((current) => {
       const existing = current.find(
         (item) => item.product_id === product.id
@@ -279,6 +302,7 @@ export function ServiceOrdersModule({
   }
 
   function removeProduct(productId: string) {
+    if (saveLock.current || photoLock.current) return;
     setItems((current) =>
       current.filter(
         (item) => item.product_id !== productId
@@ -349,7 +373,7 @@ export function ServiceOrdersModule({
   }
 
   async function addPhotos(files: FileList | null, type: 'entry' | 'exit') {
-    if (!files) {
+    if (!files || saveLock.current || photoLock.current) {
       return;
     }
     setPhotoError(null);
@@ -369,12 +393,14 @@ export function ServiceOrdersModule({
     );
 
     let compressedFiles: File[];
+    photoLock.current = true; setPreparingPhotos(true);
     try {
       compressedFiles = await Promise.all(selectedFiles.map((file) => compressPhoto(file)));
     } catch (error) {
-      setPhotoError(error instanceof Error ? error.message : 'Não foi possível preparar a foto para upload.');
+      if (mounted.current) setPhotoError(error instanceof Error ? error.message : 'Não foi possível preparar a foto para upload.');
       return;
-    }
+    } finally { photoLock.current = false; if (mounted.current) setPreparingPhotos(false); }
+    if (!mounted.current) return;
     const newPhotos: Photo[] = compressedFiles.map(
       (file, index) => ({
         id: pendingAttempt?.payload.photo_ids?.filter(meta => meta.type === type && !photos.some(photo => photo.id === meta.id))[index]?.id ?? crypto.randomUUID(),
@@ -392,17 +418,19 @@ export function ServiceOrdersModule({
   }
 
   async function saveOrder() {
-    if (saveLock.current) return;
+    if (saveLock.current || photoLock.current) return;
     if (!supabase || !userId || !selectedBranchId) { setSaveError('Selecione uma filial e entre na conta.'); return; }
     if (!checklistComplete || !customerAcknowledged) { setSaveError('Complete a vistoria e confirme as condições de entrada.'); return; }
     if (!equipmentType.trim() && !identification.trim() && !serial.trim()) { setSaveError('Informe o equipamento ou identificação.'); return; }
     if (!Number.isFinite(Number(labor || 0)) || Number(labor || 0) < 0) { setSaveError('Informe um valor de mão de obra válido.'); return; }
     saveLock.current = true; setSaving(true); setSaveError(null);
     const currentScope = attemptScope;
-    const attempts = new OperationAttempts(window.localStorage);
+    let attempts: OperationAttempts | null = null;
     let startedCreation = false;
     let wasPending = false;
+    let createdAttempt = false;
     try {
+      attempts = new OperationAttempts(window.localStorage);
       wasPending = !!attempts.pending(currentScope, 'service-order');
       const payload: ServiceOrderPayload = {
         branch_id: selectedBranchId, customer_id: customerId || null, segment, equipment_type: equipmentType,
@@ -414,24 +442,29 @@ export function ServiceOrdersModule({
         photo_ids: pendingAttempt?.payload.photo_ids ?? photos.map(p => ({ id: p.id, type: p.type, label: p.label })),
       };
       const attempt = attempts.get(currentScope, 'service-order', payload);
+      createdAttempt = !wasPending;
       setPendingAttempt(attempt);
       if ((attempt.payload.photo_ids?.length ?? 0) !== photos.length || attempt.payload.photo_ids?.some(meta => !photos.some(photo => photo.id === meta.id))) throw new Error('Selecione novamente as fotos pendentes para recuperar esta OS.');
       await pendingPhotos(currentScope + ':' + attempt.id, photos.map(({ id, file, type, label }) => ({ id, file, type, label })));
       startedCreation = true;
       const orderId = await createServiceOrder(supabase, attempt.id, attempt.payload);
       const { data: saved, error: readError } = await supabase.from('service_orders').select('*').eq('id', orderId).single();
-      if (readError || !saved) throw new Error('OS criada, mas sua confirmação não pôde ser carregada. Recupere a mesma tentativa.');
+      if (readError || !saved || saved.id !== orderId || saved.user_id !== userId || saved.branch_id !== selectedBranchId) throw new Error('OS criada, mas sua confirmação não pôde ser carregada. Recupere a mesma tentativa.');
       await uploadServicePhotos(supabase, userId, orderId, photos);
       attempts.confirm(currentScope, 'service-order');
       try { await pendingPhotos(currentScope + ':' + attempt.id, null); } catch { /* Saved files can be cleared on the next successful attempt. */ }
-      if (scopeRef.current === currentScope) {
+      if (mounted.current && scopeRef.current === currentScope) {
+        readGeneration.current++; setLoadingOrders(false); setLoadError(null);
         setOrders(current => [saved as ServiceOrder, ...current.filter(order => order.id !== orderId)]);
         setPendingAttempt(null); resetForm(); setDetails(saved as ServiceOrder); onChanged?.();
       }
     } catch (cause) {
-      if ((!startedCreation || cause instanceof ServiceOrderRejected) && !wasPending) { attempts.confirm(currentScope, 'service-order'); setPendingAttempt(null); }
-      if (scopeRef.current === currentScope) setSaveError(cause instanceof Error ? cause.message : 'Não foi possível confirmar a OS. Recupere a mesma tentativa.');
-    } finally { saveLock.current = false; setSaving(false); }
+      if ((!startedCreation || cause instanceof ServiceOrderRejected) && createdAttempt && attempts) {
+        try { attempts.confirm(currentScope, 'service-order'); if (mounted.current && scopeRef.current === currentScope) setPendingAttempt(null); }
+        catch { /* Retain the pending identity when browser storage cannot be cleared. */ }
+      }
+      if (mounted.current && scopeRef.current === currentScope) setSaveError(cause instanceof Error ? cause.message : 'Não foi possível confirmar a OS. Recupere a mesma tentativa.');
+    } finally { saveLock.current = false; if (mounted.current) setSaving(false); }
   }
 
   return (
@@ -505,7 +538,9 @@ export function ServiceOrdersModule({
       )}
 
       {pendingAttempt && <div className="module-card"><p>Existe uma OS aguardando confirmação. Recupere esta tentativa antes de cadastrar outra.</p><button type="button" disabled={saving} onClick={() => restorePayload(pendingAttempt.payload)}>Restaurar dados enviados</button></div>}
-      {details && <ServiceOrderDetails order={details} customers={customers} onClose={() => setDetails(null)} onChanged={order => { setDetails(order); setOrders(current => current.map(existing => existing.id === order.id ? order : existing)); onChanged?.(); }} />}
+      {loadError && <div role="alert"><p>{loadError}</p><button type="button" className="rma-advance-btn" disabled={loadingOrders} onClick={() => setReadVersion(value => value + 1)}>Tentar carregar OS novamente</button></div>}
+      {loadingOrders && <p role="status">Carregando Ordens de Serviço...</p>}
+      {details && <ServiceOrderDetails order={details} customers={customers} onClose={() => setDetails(null)} onChanged={order => { if (!mounted.current) return; readGeneration.current++; setLoadingOrders(false); setLoadError(null); setDetails(order); setOrders(current => current.map(existing => existing.id === order.id ? order : existing)); onChanged?.(); }} />}
       {open && (
         <div
           className="partner-card service-order-form"
@@ -514,6 +549,7 @@ export function ServiceOrdersModule({
             marginBottom: 24,
           }}
         >
+          <fieldset disabled={saving || preparingPhotos} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
           <div
             className="service-order-form-header"
             style={{
@@ -1097,6 +1133,7 @@ export function ServiceOrdersModule({
                 : pendingAttempt ? 'Recuperar OS e anexos' : 'Salvar'}
             </button>
           </div>
+          </fieldset>
         </div>
       )}
 
@@ -1130,7 +1167,7 @@ export function ServiceOrdersModule({
           />
         </div>
 
-        {filteredOrders.length > 0 ? (
+        {loadingOrders || loadError ? null : filteredOrders.length > 0 ? (
           filteredOrders.map((order) => (
             <div
               key={order.id}
@@ -1164,7 +1201,7 @@ export function ServiceOrdersModule({
                 </small>
               </span>
 
-              <div><b>{money(order.total)}</b><p>{order.status}</p><button type="button" className="rma-advance-btn" onClick={() => setDetails(order)}>Abrir OS</button></div>
+              <div><b>{money(order.total)}</b><p>{order.status}</p><button type="button" className="rma-advance-btn" disabled={saving || preparingPhotos} onClick={() => { if (!saveLock.current && !photoLock.current) setDetails(order); }}>Abrir OS</button></div>
             </div>
           ))
         ) : (

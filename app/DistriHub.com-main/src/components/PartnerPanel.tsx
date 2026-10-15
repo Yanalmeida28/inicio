@@ -2188,6 +2188,7 @@ export function PartnerPanel({
               <div hidden={activeTab !== 'os'}>
               {renderTab('os',
               <ServiceOrdersModule
+                isActive={activeTab === 'os'}
                 authUserId={user?.id}
                 onChanged={() => { void partner.refreshCollections(['products', 'movements', 'invoices']); }}
                 userId={
@@ -2231,6 +2232,8 @@ export function PartnerPanel({
                 salesHistory={!blockedTabs.includes('pdv') ? <SalesHistoryModule
                   companyId={identity?.companyUserId}
                   branchId={effectiveBranchId}
+                  currentRole={effectiveRole}
+                  operatorKey={`${user?.id}:${identity?.salespersonId}:${activeSalesperson?.id ?? ''}`}
                   isActive={activeTab === 'historico'}
                   onPageLoaded={partner.mergeHistorySales}
                   rmaRequests={partner.rmas}
@@ -2239,8 +2242,10 @@ export function PartnerPanel({
                   salespeople={filteredSalespeople}
                   segment={segment}
                   receiptDetails={{ settings: storeSettings, companyName: partner.profile?.account_name || partner.profile?.name, companyDocument: partner.profile?.document, companyAddress: partner.branches.find((branch) => branch.id === effectiveBranchId)?.address }}
-                  onCancelSale={handleCancelSale}
-                  onDeleteSale={handleDeleteSale}
+                  onCancelSale={async (id, supervisorId, supervisorPin) => {
+                    const { operatorId, operatorPin } = getOperatorContext();
+                    await partner.cancelHistorySale(id, effectiveBranchId, operatorId, operatorPin, supervisorId, supervisorPin);
+                  }}
                 /> : undefined}
                 orders={
                   filteredOrders

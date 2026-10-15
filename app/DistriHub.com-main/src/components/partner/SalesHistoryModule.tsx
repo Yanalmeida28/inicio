@@ -1,7 +1,7 @@
 import { salePaymentDescription } from '../../lib/pdv';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Ban, Lock, Trash2, X } from 'lucide-react';
+import { Ban, Lock, X } from 'lucide-react';
 import type { PartnerSale, PartnerCustomer, PartnerSalesperson, RmaRequest } from '../../types';
 import { saleReturnLabel, saleItemDescription } from '../../lib/saleReturns';
 import { SaleActionsMenu } from './SaleActionsMenu';
@@ -14,6 +14,8 @@ type Props = {
   companyId?: string;
   branchId?: string | null;
   isActive?: boolean;
+  currentRole?: string;
+  operatorKey?: string;
   onPageLoaded?: (sales: PartnerSale[]) => void;
   sales: PartnerSale[];
   rmaRequests?: RmaRequest[];
@@ -22,15 +24,24 @@ type Props = {
   segment: string;
   receiptDetails?: ReceiptDetails;
   onCancelSale: (id: string, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
-  onDeleteSale: (id: string, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
 };
 
 function localDate(value: string | Date) {
   const date = new Date(value);
-  return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
+  if (!Number.isFinite(date.getTime())) return '';
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
 }
 
-export function SalesHistoryModule({ companyId, branchId = null, isActive = true, onPageLoaded, sales, rmaRequests = [], customers, salespeople, segment, receiptDetails, onCancelSale, onDeleteSale }: Props) {
+export function SalesHistoryModule(props: Props) {
+  return <SalesHistoryContent key={JSON.stringify([props.companyId, props.branchId, props.operatorKey, props.currentRole])} {...props} />;
+}
+
+function SalesHistoryContent({ companyId, branchId = null, isActive = true, currentRole, onPageLoaded, sales, rmaRequests = [], customers, salespeople, segment, receiptDetails, onCancelSale }: Props) {
+  const mounted = useRef(true);
+  const active = useRef(isActive); active.current = isActive;
+  const actionInFlight = useRef(false);
+  const actionVersion = useRef(0);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const [search, setSearch] = useState('');
   const [startDate, setStartDate] = useState(() => localDate(new Date()));
   const [endDate, setEndDate] = useState(() => localDate(new Date()));
@@ -123,41 +134,58 @@ export function SalesHistoryModule({ companyId, branchId = null, isActive = true
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState<string | null>(null);
   const [isVerifyingPin, setIsVerifyingPin] = useState(false);
-  const managers = salespeople.filter((s) => s.role === 'administrador' || s.role === 'gerente');
+  const canSelfAuthorize = currentRole === 'administrador' || currentRole === 'gerente';
+  const managersFor = (saleBranch?: string | null) => salespeople.filter((s) =>
+    (s.active ?? s.is_active) !== false && !s.blocked_modules?.includes('pdv') &&
+    (s.role === 'administrador' || (s.role === 'gerente' && (s.branch_id === saleBranch || (!companyId && !s.branch_id)))));
+  const managers = managersFor(cancelTarget?.branch_id ?? branchId);
+  useEffect(() => {
+    if (!isActive) {
+      actionVersion.current += 1;
+      setCancelTarget(null); setSupervisorId(''); setPinInput(''); setPinError(null);
+    }
+  }, [isActive]);
+  function closeCancel() {
+    if (actionInFlight.current) return;
+    setCancelTarget(null); setSupervisorId(''); setPinInput(''); setPinError(null);
+  }
   function requestCancelSale(sale: PartnerSale) {
+    if (!active.current || actionInFlight.current) return;
     setCancelTarget(sale);
-    setSupervisorId(managers[0]?.id ?? '');
+    setSupervisorId(managersFor(sale.branch_id)[0]?.id ?? '');
     setPinInput('');
     setPinError(null);
   }
 
-  async function verifyPinAndCancel(action: 'cancel' | 'delete') {
-    if (!cancelTarget) return;
-    if (!supervisorId) {
+  async function verifyPinAndCancel() {
+    if (!cancelTarget || !active.current || actionInFlight.current) return;
+    if (!canSelfAuthorize && !supervisorId) {
       setPinError('Selecione o responsável (Administrador ou Gerente).');
       return;
     }
-    if (!pinInput) {
+    if (!canSelfAuthorize && !pinInput) {
       setPinError('Digite o PIN do responsável selecionado.');
       return;
     }
+    actionInFlight.current = true;
+    const version = actionVersion.current;
+    const canApply = () => mounted.current && active.current && actionVersion.current === version;
     setIsVerifyingPin(true);
     setPinError(null);
     try {
-      if (action === 'cancel') {
-        await onCancelSale(cancelTarget.id, supervisorId, pinInput);
-      } else {
-        await onDeleteSale(cancelTarget.id, supervisorId, pinInput);
-      }
+      await onCancelSale(cancelTarget.id, canSelfAuthorize ? null : supervisorId, canSelfAuthorize ? null : pinInput);
+      if (!canApply()) return;
       setHistoryVersion(value => value + 1);
       setCancelTarget(null);
       setSupervisorId('');
       setPinInput('');
       setPinError(null);
     } catch (error) {
+      if (!canApply()) return;
       setPinError(error instanceof Error ? error.message : 'Não foi possível autorizar. Verifique o PIN.');
     } finally {
-      setIsVerifyingPin(false);
+      actionInFlight.current = false;
+      if (mounted.current) setIsVerifyingPin(false);
     }
   }
 
@@ -228,16 +256,17 @@ export function SalesHistoryModule({ companyId, branchId = null, isActive = true
 
 
       {cancelTarget && (
-        <div className="modal-backdrop" onClick={() => setCancelTarget(null)}>
+        <div className="modal-backdrop" onClick={closeCancel}>
           <form id="sales-history-cancel-authorization" autoComplete="off" className="modal-content" onSubmit={e => e.preventDefault()} onClick={(e) => e.stopPropagation()} style={{ maxWidth: '380px' }}>
             <div className="modal-header">
               <h3><Lock size={18} style={{ display: 'inline', marginRight: '6px' }} /> Confirmação Necessária</h3>
-              <button type="button" onClick={() => setCancelTarget(null)}><X size={18} /></button>
+              <button type="button" disabled={isVerifyingPin} onClick={closeCancel}><X size={18} /></button>
             </div>
             <p className="otp-description">
-              Cancelar ou apagar uma venda requer permissão de Administrador ou Gerente. Selecione o responsável e digite o PIN dele para continuar.
+              {canSelfAuthorize ? 'Confirme o cancelamento com sua permissão de gerente ou proprietário.' : 'Selecione o responsável e digite o PIN dele para autorizar o cancelamento.'}
             </p>
-            {managers.length === 0 ? (
+            <p>Venda #{cancelTarget.sale_number ? String(cancelTarget.sale_number).padStart(6, '0') : cancelTarget.id.slice(0, 8)} — {cancelTarget.customer_name || 'Cliente não informado'}</p>
+            {!canSelfAuthorize && (managers.length === 0 ? (
               <p className="otp-error-msg">Nenhum Administrador ou Gerente cadastrado com PIN. Cadastre um em Colaboradores antes de continuar.</p>
             ) : (
               <>
@@ -245,6 +274,7 @@ export function SalesHistoryModule({ companyId, branchId = null, isActive = true
                   <strong>Responsável</strong>
                   <select
                     value={supervisorId}
+                    disabled={isVerifyingPin}
                     onChange={(e) => { setSupervisorId(e.target.value); setPinError(null); }}
                     style={{ width: '100%', marginTop: '6px' }}
                   >
@@ -255,6 +285,7 @@ export function SalesHistoryModule({ companyId, branchId = null, isActive = true
                   <strong>PIN do responsável</strong>
                   <input
                     type="password"
+                    disabled={isVerifyingPin}
                     name="sales-cancellation-supervisor-pin"
                     autoComplete="new-password"
                     data-lpignore="true"
@@ -268,13 +299,10 @@ export function SalesHistoryModule({ companyId, branchId = null, isActive = true
                   />
                 </label>
               </>
-            )}
+            ))}
             {pinError && <p className="otp-error-msg">{pinError}</p>}
             <div className="otp-actions">
-              <button type="button" className="rma-advance-btn danger" onClick={() => verifyPinAndCancel('delete')} disabled={isVerifyingPin || managers.length === 0}>
-                <Trash2 size={16} /> {isVerifyingPin ? 'Verificando...' : 'Apagar Venda'}
-              </button>
-              <button type="button" className="module-submit-btn" onClick={() => verifyPinAndCancel('cancel')} disabled={isVerifyingPin || managers.length === 0}>
+              <button type="button" className="module-submit-btn" onClick={verifyPinAndCancel} disabled={isVerifyingPin || (!canSelfAuthorize && managers.length === 0)}>
                 <Ban size={16} /> {isVerifyingPin ? 'Verificando...' : 'Cancelar Venda'}
               </button>
             </div>

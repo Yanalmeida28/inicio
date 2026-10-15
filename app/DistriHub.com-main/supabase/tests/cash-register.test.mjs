@@ -57,6 +57,14 @@ before(async () => {
   await db.exec(await read('../migrations/20261009211459_add_split_sale_payments.sql'));
   await db.exec(await read('../migrations/20261014224645_fix_cash_supervision_recovery_and_balance.sql'));
   await db.exec(await read('../migrations/20261014230708_fix_open_order_authorization.sql'));
+  await db.exec(`CREATE TABLE rma_requests_v2(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),user_id uuid,sale_id uuid,sale_item_index integer,quantity integer);
+    CREATE VIEW public.partner_stock_movements AS SELECT * FROM stock_movements;
+    CREATE FUNCTION partner_subscription_private.require_access(uuid,text) RETURNS void LANGUAGE sql AS $$ SELECT $$;
+    CREATE SCHEMA partner_operations_private;
+    CREATE FUNCTION partner_operations_private.authorize_branch(uuid,text) RETURNS uuid LANGUAGE sql AS $$ SELECT user_id FROM public.partner_branches WHERE id=$1 $$;`);
+  await db.exec('CREATE SCHEMA partner_rma_private');
+  await db.exec(await read('../migrations/20261013202052_readable_sale_numbers.sql'));
+  await db.exec(await read('../migrations/20261015013718_fix_sales_history_cancellation_and_completion.sql'));
 });
 after(() => db.close());
 
@@ -184,6 +192,7 @@ test('invalid freight is rejected atomically without stock or cash writes', asyn
   assert.equal((await sql('SELECT count(*)::int AS n FROM partner_cash_movements')).rows[0].n,0);
 });
 beforeEach(async () => {
+  await db.exec('RESET ROLE; TRUNCATE rma_requests_v2');
   await db.exec('RESET ROLE; TRUNCATE partner_plan_change_requests,fiscal_documents,fiscal_tax_rules,fiscal_inutilizations,partner_cash_movements,partner_cash_sessions,partner_audit_logs,stock_movements,partner_invoices,partner_sales,partner_products,partner_customers,partner_salespeople,partner_branches,partner_profiles CASCADE; TRUNCATE auth.users CASCADE');
   [owner,other,branch,foreignBranch,employee,employeeAuth,manager,product]=Array.from({length:8},()=>randomUUID());
   await sql('INSERT INTO auth.users(id) VALUES($1),($2)',[owner,other]);
@@ -780,4 +789,81 @@ test('new open-order actions cannot delete or cancel completed/paid orders or fi
  await assert.rejects(actOnQuote(quote.id),/exige o fluxo de estorno/);
  assert.equal((await sql('SELECT count(*)::int n FROM partner_cash_movements WHERE session_id=$1',[session])).rows[0].n,1);
  await db.exec('SET ROLE anon');await assert.rejects(actOnQuote(quote.id),/permission denied/);
+});
+
+const cancelHistory=(id,supervisor=null,pin=null,targetBranch=branch)=>sql('SELECT cancel_partner_history_sale($1,$2,NULL,NULL,$3,$4) id',[id,targetBranch,supervisor,pin]);
+test('history owner cancels without registered supervisor and retry reverses split cash and stock once',async()=>{
+ await sql('DELETE FROM partner_salespeople WHERE id=$1',[manager]);await mutate('abrir',0);const sold=await splitSale();
+ await cancelHistory(sold.id);await cancelHistory(sold.id);
+ assert.equal((await sql('SELECT stock FROM partner_products WHERE id=$1',[product])).rows[0].stock,10);
+ assert.equal((await sql("SELECT count(*)::int n FROM partner_cash_movements WHERE sale_id=$1 AND kind='estorno'",[sold.id])).rows[0].n,2);
+ assert.equal((await sql("SELECT count(*)::int n FROM partner_audit_logs WHERE action='cancelamento_historico_autorizado'")).rows[0].n,1);
+});
+test('history cashier uses supervisor PIN without impersonating the manager',async()=>{
+ await login(employeeAuth);await mutate('abrir',0);const sold=await sale();
+ await assert.rejects(cancelHistory(sold.id),/autorização/);
+ await assert.rejects(cancelHistory(sold.id,manager,'bad'),/PIN/);
+ await cancelHistory(sold.id,manager,'9876');
+ const log=(await sql("SELECT actor_name,actor_role,details FROM partner_audit_logs WHERE action='cancelamento_historico_autorizado'")).rows[0];
+ assert.equal(log.actor_name,employee);assert.equal(log.actor_role,'caixa');assert.ok(log.details.includes(manager));
+ assert.equal((await sql('SELECT stock FROM partner_products WHERE id=$1',[product])).rows[0].stock,10);
+});
+test('history cancellation rejects inactive supervisor, foreign supervisor, branch mismatch and closed original cash',async()=>{
+ await login(employeeAuth);const session=await mutate('abrir',0);const sold=await sale();
+ await sql('UPDATE partner_salespeople SET active=false WHERE id=$1',[manager]);await assert.rejects(cancelHistory(sold.id,manager,'9876'),/PIN/);
+ await sql('UPDATE partner_salespeople SET active=true,user_id=$2 WHERE id=$1',[manager,other]);await assert.rejects(cancelHistory(sold.id,manager,'9876'),/PIN/);
+ await sql('UPDATE partner_salespeople SET user_id=$2,branch_id=$3 WHERE id=$1',[manager,owner,foreignBranch]);await assert.rejects(cancelHistory(sold.id,manager,'9876'),/PIN/);
+ await login(owner);await assert.rejects(cancelHistory(sold.id,null,null,foreignBranch),/Filial|encontrada/);
+ await sql('UPDATE partner_salespeople SET branch_id=$2 WHERE id=$1',[manager,branch]);
+ await login(employeeAuth);await mutate('fechar',100,{session});
+ await login(owner);await assert.rejects(cancelHistory(sold.id),/caixa fechado/);
+ assert.equal((await sql('SELECT stock FROM partner_products WHERE id=$1',[product])).rows[0].stock,9);
+});
+test('history cancellation preserves returned sales and denies anonymous and private API access',async()=>{
+ await mutate('abrir',0);const sold=await sale();
+ await sql('INSERT INTO rma_requests_v2(user_id,sale_id,sale_item_index,quantity) VALUES($1,$2,0,1)',[owner,sold.id]);
+ await assert.rejects(cancelHistory(sold.id),/devolução/);
+ await login(null);await assert.rejects(cancelHistory(sold.id),/autenticado/);
+ await login(owner);await db.exec('SET ROLE anon');await assert.rejects(cancelHistory(sold.id),/permission denied/);
+ await db.exec('RESET ROLE; SET ROLE authenticated');
+ assert.equal((await sql("SELECT has_function_privilege('authenticated','partner_history_private.resolve_cancel_operator(uuid,text,uuid,uuid,text)','EXECUTE') allowed")).rows[0].allowed,false);
+});
+test('service presale completion is immutable, independent of stock, and appears on completion day',async()=>{
+ await sql('UPDATE partner_products SET is_service=true WHERE id=$1',[product]);await mutate('abrir',0);
+ const sold=await sale({status:'pre_venda'});await sql("UPDATE partner_sales SET created_at=now()-interval '5 days' WHERE id=$1",[sold.id]);
+ await sale({...sold,status:'concluida'});
+ const completed=(await sql('SELECT completed_at FROM partner_sales WHERE id=$1',[sold.id])).rows[0].completed_at;assert.ok(completed);
+ assert.equal((await sql('SELECT count(*)::int n FROM stock_movements')).rows[0].n,0);
+ const today=(await sql("SELECT read_partner_sales_history($1,$2,(now() AT TIME ZONE 'America/Sao_Paulo')::date,(now() AT TIME ZONE 'America/Sao_Paulo')::date,'all','',0) result",[owner,branch])).rows[0].result;
+ assert.equal(Number(today.total),1);assert.equal(today.sales[0].id,sold.id);
+ const numbered=(await sql("SELECT read_partner_sales_history($1,$2,NULL,NULL,'all',lpad($3::text,6,'0'),0) result",[owner,branch,today.sales[0].sale_number])).rows[0].result;
+ assert.equal(Number(numbered.total),1);assert.equal(numbered.sales[0].id,sold.id);
+ await sql("UPDATE partner_sales SET completed_at=now()-interval '1 year' WHERE id=$1",[sold.id]);await cancelHistory(sold.id);
+ assert.equal(new Date((await sql('SELECT completed_at FROM partner_sales WHERE id=$1',[sold.id])).rows[0].completed_at).toISOString(),new Date(completed).toISOString());
+});
+
+test('history cancellation cancels unpaid invoice but preserves partially received invoices atomically',async()=>{
+ await mutate('abrir',0);const customer=randomUUID();
+ await sql('INSERT INTO partner_customers(id,user_id,branch_id,allow_credit,credit_limit) VALUES($1,$2,$3,true,1000)',[customer,owner,branch]);
+ const unpaid=await freightSale({customer,method:'faturado'});await cancelHistory(unpaid.id);
+ assert.equal((await sql('SELECT status FROM partner_invoices WHERE sale_id=$1',[unpaid.id])).rows[0].status,'cancelada');
+ const paid=await freightSale({customer,method:'faturado'});
+ await sql("UPDATE partner_invoices SET paid_amount=50,status='parcial' WHERE sale_id=$1",[paid.id]);
+ await assert.rejects(cancelHistory(paid.id),/recebimentos|estorno/);
+ assert.equal((await sql('SELECT status FROM partner_sales WHERE id=$1',[paid.id])).rows[0].status,'concluida');
+ assert.equal((await sql('SELECT stock FROM partner_products WHERE id=$1',[product])).rows[0].stock,9);
+ assert.equal((await sql("SELECT count(*)::int n FROM partner_cash_movements WHERE sale_id=$1 AND kind='estorno'",[paid.id])).rows[0].n,0);
+});
+test('completion backfill recovers cash evidence for legacy services and leaves unknown dates unguessed',async()=>{
+ await sql('UPDATE partner_products SET is_service=true WHERE id=$1',[product]);await mutate('abrir',0);const sold=await sale();const unknown=(await sale()).id;
+ // Simulate a legacy service sale for which no completion evidence survived.
+ await sql('DELETE FROM partner_cash_movements WHERE sale_id=$1',[unknown]);
+ await db.exec('ALTER TABLE partner_sales DISABLE TRIGGER partner_sale_completion');
+ await sql("UPDATE partner_sales SET completed_at=NULL,created_at=now()-interval '10 days'");
+ await sql("INSERT INTO stock_movements(user_id,branch_id,type,quantity,reason) VALUES($1,$2,'saida',1,$3)",[other,foreignBranch,'Saida por venda '+unknown]);
+ const migration=await read('../migrations/20261015013718_fix_sales_history_cancellation_and_completion.sql');
+ const update=migration.slice(migration.indexOf('UPDATE public.partner_sales s SET'),migration.indexOf('\n\nCREATE FUNCTION'));
+ await db.exec(update);await db.exec('ALTER TABLE partner_sales ENABLE TRIGGER partner_sale_completion');
+ const rows=(await sql('SELECT id,completed_at FROM partner_sales')).rows;
+ assert.ok(rows.find(r=>r.id===sold.id).completed_at);assert.equal(rows.find(r=>r.id===unknown).completed_at,null);
 });

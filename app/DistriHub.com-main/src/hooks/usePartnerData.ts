@@ -2100,6 +2100,34 @@ read('sales', () => fetchAllPages((from, to) => client
     } finally { saleInFlight.current = false; }
   }, [data.sales, requireIdentity]);
 
+  const cancelHistorySale = useCallback(async (id: string, expectedBranchId: string | null, operatorId?: string | null, operatorPin?: string | null, supervisorId?: string | null, supervisorPin?: string | null) => {
+    if (saleInFlight.current) throw new Error('Aguarde a operação de venda em andamento.');
+    saleInFlight.current = true;
+    try {
+      const currentIdentity = requireIdentity();
+      const sale = data.sales.find(item => item.id === id);
+      if (!sale?.branch_id || (expectedBranchId && sale.branch_id !== expectedBranchId)) throw new Error('Venda não encontrada nesta filial. Atualize o Histórico.');
+      ensureEmployeeBranch(currentIdentity, sale.branch_id);
+      if (!supabase || !isSupabaseConfigured) throw new Error('Conecte-se para autorizar o cancelamento.');
+      const { data: confirmed, error } = await supabase.rpc('cancel_partner_history_sale', {
+        p_sale_id: id, p_branch_id: sale.branch_id,
+        p_salesperson_id: operatorId ?? null, p_pin: operatorPin ?? null,
+        p_supervisor_id: supervisorId ?? null, p_supervisor_pin: supervisorPin ?? null,
+      });
+      if (error) throw new Error(pdvErrorMessage(error));
+      if (confirmed !== id) throw new Error('Resultado não confirmado. Atualize o Histórico antes de tentar novamente.');
+      if (!mountedRef.current || identityScopeRef.current !== `${currentIdentity.authUserId}:${currentIdentity.companyUserId}`) return;
+      dataRevisionRef.current.invalidate(['sales', 'invoices', 'products', 'movements']);
+      setData(previous => ({ ...previous,
+        sales: previous.sales.map(item => item.id === id ? { ...item, status: 'cancelada',
+          payment_status: item.status === 'aberta' || item.payment_method === 'faturado' ? 'cancelado' : item.payment_status } : item),
+        invoices: previous.invoices.map(invoice => invoice.sale_id === id && invoice.status === 'aberta' && Number(invoice.paid_amount ?? 0) === 0
+          ? { ...invoice, status: 'cancelada' } : invoice),
+      }));
+      await syncConfirmedSale(sale.branch_id);
+    } finally { saleInFlight.current = false; }
+  }, [data.sales, requireIdentity, syncConfirmedSale]);
+
   const cancelSale = useCallback(
     async (
       id: string,
@@ -4091,6 +4119,7 @@ read('sales', () => fetchAllPages((from, to) => client
     updateDelivery,
     finalizePreSale,
     mutateOpenOrder,
+    cancelHistorySale,
     cancelSale,
     deleteSale,
 

@@ -47,6 +47,7 @@ before(async () => {
   `);
   await db.exec(await read('../migrations/20261012195624_fix_audited_operations.sql'));
   await db.exec(await read('../migrations/20261012201545_close_legacy_operation_paths.sql'));
+  await db.exec(await read('../migrations/20261015010204_fix_service_order_customer_and_billing.sql'));
 });
 after(() => db.close());
 test('reposição: mesma tentativa soma uma vez; tentativa diferente é uma nova entrada; outros dados são rejeitados', async () => {
@@ -99,4 +100,36 @@ test('RLS: outra empresa não lê OS ou pedidos; escrita direta dos totais B2B f
     assert.equal((await sql('SELECT id FROM catalog_orders')).rows.length, 0);
     await assert.rejects(sql('INSERT INTO b2b_orders(id,user_id) VALUES($1,$2)', [randomUUID(), other]), /permission denied/);
   } finally { await db.exec('RESET ROLE'); }
+});
+
+test('OS: checked workflow clears the customer explicitly, old NULL calls preserve it, and another branch cannot assign it',async()=>{
+ await login(owner);const id=randomUUID();await sql('SELECT create_service_order_once($1,$2::jsonb)',[id,JSON.stringify(osPayload())]);
+ await sql("SELECT update_service_order_workflow($1,'aberta','','aguardando_aprovacao','',NULL)",[id]);
+ assert.equal((await sql('SELECT customer_id FROM service_orders WHERE id=$1',[id])).rows[0].customer_id,customer);
+ await sql("SELECT update_service_order_workflow_checked($1,'aberta','','aguardando_aprovacao','',NULL,true)",[id]);
+ const cleared=(await sql('SELECT customer_id,customer_name FROM service_orders WHERE id=$1',[id])).rows[0];assert.equal(cleared.customer_id,null);assert.equal(cleared.customer_name,'');
+ await sql("SELECT update_service_order_workflow_checked($1,'aberta','','aguardando_aprovacao','',$2,false)",[id,customer]);
+ assert.equal((await sql('SELECT customer_id FROM service_orders WHERE id=$1',[id])).rows[0].customer_id,customer);
+ await assert.rejects(sql("SELECT update_service_order_workflow_checked($1,'aberta','','aguardando_aprovacao','',$2,true)",[id,customer]),/inconsistente/);
+ await login(other);await assert.rejects(sql("SELECT update_service_order_workflow_checked($1,'aberta','','aguardando_aprovacao','',NULL,true)",[id]),/Filial não autorizada/);
+});
+test('OS: both old and checked APIs protect billed customer identity and preserve invoice, stock and receipts',async()=>{
+ await login(owner);const id=randomUUID(),secondCustomer=randomUUID();
+ await sql('INSERT INTO partner_customers(id,user_id,branch_id,name) VALUES($1,$2,$3,$4)',[secondCustomer,owner,branch,'Segundo']);
+ await sql('SELECT create_service_order_once($1,$2::jsonb)',[id,JSON.stringify(osPayload())]);
+ await sql("SELECT update_service_order_workflow($1,'pronta','Técnico','aprovado','Concluído',$2)",[id,customer]);
+ await sql("SELECT bill_service_order_once($1,'2026-10-30')",[id]);
+ const stock=(await sql('SELECT stock FROM partner_products WHERE id=$1',[product])).rows[0].stock;
+ await assert.rejects(sql("SELECT update_service_order_workflow($1,'pronta','Técnico','aprovado','Troca',$2)",[id,secondCustomer]),/já faturada/);
+ await assert.rejects(sql("SELECT update_service_order_workflow_checked($1,'pronta','Técnico','aprovado','Troca',$2,false)",[id,secondCustomer]),/já faturada/);
+ await assert.rejects(sql("SELECT update_service_order_workflow_checked($1,'pronta','Técnico','aprovado','Limpar',NULL,true)",[id]),/já faturada/);
+ await sql("SELECT update_service_order_workflow_checked($1,'pronta','Técnico B','aprovado','Atualização',$2,false)",[id,customer]);
+ assert.equal((await sql('SELECT customer_id FROM partner_invoices WHERE service_order_id=$1',[id])).rows[0].customer_id,customer);
+ assert.equal((await sql('SELECT stock FROM partner_products WHERE id=$1',[product])).rows[0].stock,stock);
+ await sql("UPDATE partner_invoices SET paid_amount=10,status='parcial' WHERE service_order_id=$1",[id]);
+ await assert.rejects(sql("SELECT update_service_order_workflow_checked($1,'cancelada','Técnico B','aprovado','Desistência',$2,false)",[id,customer]),/recebimentos/);
+});
+test('OS: new workflow public API is invoker-only and unavailable to anonymous callers',async()=>{
+ const row=(await sql("SELECT prosecdef,has_function_privilege('anon',oid,'EXECUTE') anon FROM pg_proc WHERE oid='public.update_service_order_workflow_checked(uuid,text,text,text,text,uuid,boolean)'::regprocedure")).rows[0];
+ assert.equal(row.prosecdef,false);assert.equal(row.anon,false);
 });

@@ -589,3 +589,22 @@ test('collection cache deduplicates in-flight reads and never shares them betwee
   const reads=h.queries.length;await h.setScope('caixa');
   assert.equal(h.queries.length,reads);assert.equal(h.current.resourcesReady,true);
  });
+
+test('history hook separates supervisor approval, validates branch and changes state only after confirmation',async()=>{
+ const sold={...payload(),id:'history-sale',user_id:'owner',status:'concluida'};const calls=[];let fail=true;
+ const h=await harness({initialSales:[sold],rpc:async(name,args)=>{
+  calls.push({name,args});if(name==='get_partner_pdv_snapshot')return {data:snapshot({sales:[{...sold,status:'cancelada'}]}),error:null};
+  return fail?{error:{message:'PIN incorreto'}}:{data:args.p_sale_id,error:null};
+ }});
+ await act(async()=>assert.rejects(h.current.cancelHistorySale(sold.id,'other-branch',null,null,'manager','9876'),/filial/));assert.equal(calls.length,0);
+ await act(async()=>assert.rejects(h.current.cancelHistorySale(sold.id,'branch',null,null,'manager','9876'),/PIN incorreto/));assert.equal(h.current.sales[0].status,'concluida');
+ fail=false;await act(async()=>h.current.cancelHistorySale(sold.id,'branch',null,null,'manager','9876'));
+ const mutation=calls.find(c=>c.name==='cancel_partner_history_sale');assert.equal(mutation.args.p_salesperson_id,null);assert.equal(mutation.args.p_supervisor_id,'manager');assert.equal(mutation.args.p_supervisor_pin,'9876');
+ assert.equal(h.current.sales[0].status,'cancelada');
+});
+test('history hook serializes requests and rejects an unconfirmed sale ID',async()=>{
+ const sold={...payload(),id:'history-sale',user_id:'owner',status:'concluida'};let release;
+ const h=await harness({initialSales:[sold],rpc:()=>new Promise(resolve=>{release=resolve;})});
+ let pending;await act(async()=>{pending=h.current.cancelHistorySale(sold.id,'branch');await assert.rejects(h.current.cancelHistorySale(sold.id,'branch'),/Aguarde/);});
+ await act(async()=>{release({data:'other-sale',error:null});await assert.rejects(pending,/não confirmado/);});assert.equal(h.current.sales[0].status,'concluida');
+});
