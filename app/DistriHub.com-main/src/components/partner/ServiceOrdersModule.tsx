@@ -21,7 +21,7 @@ import type {
 import { supabase } from '../../lib/supabase';
 import { useSessionDraftState } from '../../hooks/useSessionDraft';
 import { OperationAttempts, pendingPhotos, type OperationAttempt } from '../../lib/operationAttempts';
-import { ServiceOrderRejected, createServiceOrder, uploadServicePhotos, type ServiceOrderPayload } from '../../lib/serviceOrders';
+import { ServiceOrderRejected, createServiceOrder, servicePartPrice, uploadServicePhotos, type ServiceOrderPayload } from '../../lib/serviceOrders';
 import { ServiceOrderDetails } from './ServiceOrderDetails';
 
 type Props = {
@@ -39,13 +39,15 @@ type Props = {
 };
 
 type DraftItem = {
-  product_id: string;
+  product_id: string | null;
+  manual_id?: string;
   name: string;
   quantity: number;
   unit_price: number;
   stock: number;
   is_service: boolean;
 };
+const draftItemKey = (item: DraftItem) => item.manual_id ?? item.product_id ?? item.name;
 
 type Photo = {
   id: string;
@@ -131,6 +133,9 @@ function ServiceOrdersContent({
 
   const [productSearch, setProductSearch] = useSessionDraftState('service-order:product-search', '');
   const [items, setItems] = useSessionDraftState<DraftItem[]>('service-order:items', []);
+  const [manualName, setManualName] = useSessionDraftState('service-order:manual-name', '');
+  const [manualPrice, setManualPrice] = useSessionDraftState('service-order:manual-price', '');
+  const [manualQuantity, setManualQuantity] = useSessionDraftState('service-order:manual-quantity', '1');
   const [entryPhotos, setEntryPhotos] = useState<Photo[]>([]);
   const [exitPhotos, setExitPhotos] = useState<Photo[]>([]);
   const [photoError, setPhotoError] = useState<string | null>(null);
@@ -181,7 +186,7 @@ function ServiceOrdersContent({
     setCustomerId(payload.customer_id ?? ''); setEquipmentType(payload.equipment_type); setIdentification(payload.identification);
     setSerial(payload.serial); setAccessories(payload.accessories); setCondition(payload.condition); setDamage(payload.damage);
     setNotes(payload.draft_notes ?? payload.notes); setLabor(String(payload.labor_total));
-    setItems(payload.items.map(item => ({ ...item, name: products.find(p => p.id === item.product_id)?.name ?? 'Peça', stock: products.find(p => p.id === item.product_id)?.stock ?? 0, is_service: Boolean(products.find(p => p.id === item.product_id)?.is_service) })));
+    setItems(payload.items.map(item => ({ ...item, name: item.product_id ? products.find(p => p.id === item.product_id)?.name ?? 'Peça' : item.name ?? 'Peça manual', stock: products.find(p => p.id === item.product_id)?.stock ?? 0, is_service: Boolean(products.find(p => p.id === item.product_id)?.is_service) })));
     setPreRepairChecklist({ screen: true, touch: true, camera: true }); setCustomerAcknowledged(true); setOpen(true);
   }
   useEffect(() => {
@@ -301,11 +306,24 @@ function ServiceOrdersContent({
     });
   }
 
-  function removeProduct(productId: string) {
+  function addManualPart() {
+    if (saveLock.current || photoLock.current) return;
+    const price = servicePartPrice(manualPrice);
+    const quantity = Number(manualQuantity);
+    if (!manualName.trim() || manualName.trim().length > 200 || !Number.isFinite(price) || !Number.isInteger(quantity) || quantity < 1 || quantity > 999) {
+      setSaveError('Informe a descrição da peça, quantidade de 1 a 999 e preço unitário válido (ex.: 150,00).');
+      return;
+    }
+    if (items.length >= 100) { setSaveError('A OS permite até 100 itens.'); return; }
+    setItems(current => [...current, { product_id: null, manual_id: crypto.randomUUID(), name: manualName.trim(), quantity, unit_price: price, stock: 0, is_service: false }]);
+    setManualName(''); setManualPrice(''); setManualQuantity('1'); setSaveError(null);
+  }
+
+  function removeProduct(itemKey: string) {
     if (saveLock.current || photoLock.current) return;
     setItems((current) =>
       current.filter(
-        (item) => item.product_id !== productId
+        (item) => draftItemKey(item) !== itemKey
       )
     );
   }
@@ -329,6 +347,7 @@ function ServiceOrdersContent({
     setCustomerAcknowledged(false);
     setProductSearch('');
     setItems([]);
+    setManualName(''); setManualPrice(''); setManualQuantity('1');
     setEntryPhotos([]);
     setExitPhotos([]);
     setPhotoError(null);
@@ -423,6 +442,8 @@ function ServiceOrdersContent({
     if (!checklistComplete || !customerAcknowledged) { setSaveError('Complete a vistoria e confirme as condições de entrada.'); return; }
     if (!equipmentType.trim() && !identification.trim() && !serial.trim()) { setSaveError('Informe o equipamento ou identificação.'); return; }
     if (!Number.isFinite(Number(labor || 0)) || Number(labor || 0) < 0) { setSaveError('Informe um valor de mão de obra válido.'); return; }
+    if (manualName.trim() || manualPrice.trim()) { setSaveError('Adicione a peça manual à lista antes de salvar a OS ou limpe seus campos.'); return; }
+    if (items.length > 100 || items.some(item => !Number.isInteger(item.quantity) || item.quantity < 1 || !Number.isFinite(item.unit_price) || item.unit_price < 0 || Math.abs(item.unit_price * 100 - Math.round(item.unit_price * 100)) > 0.00001 || (!item.product_id && (!item.name.trim() || item.name.trim().length > 200 || item.quantity > 999 || item.unit_price > 9999999.99)))) { setSaveError('Confira a descrição, quantidade e preço das peças.'); return; }
     saveLock.current = true; setSaving(true); setSaveError(null);
     const currentScope = attemptScope;
     let attempts: OperationAttempts | null = null;
@@ -438,7 +459,7 @@ function ServiceOrdersContent({
         draft_notes: notes,
         notes: pendingAttempt?.payload.notes ?? notes.trim() + String.fromCharCode(10, 10) + 'Checklist pré-reparo: ' + checklistLabels.map(([, label]) => label).join('; ') + '.' + String.fromCharCode(10) + 'Cliente ciente das condições de entrada: sim.',
         labor_total: Math.round(Number(labor || 0) * 100) / 100,
-        items: items.map(item => ({ product_id: item.product_id, quantity: item.quantity, unit_price: item.unit_price })),
+        items: items.map(item => ({ product_id: item.product_id, quantity: item.quantity, unit_price: item.unit_price, ...(!item.product_id ? { name: item.name, manual_id: item.manual_id } : {}) })),
         photo_ids: pendingAttempt?.payload.photo_ids ?? photos.map(p => ({ id: p.id, type: p.type, label: p.label })),
       };
       const attempt = attempts.get(currentScope, 'service-order', payload);
@@ -980,13 +1001,21 @@ function ServiceOrdersContent({
                     </button>
                   ))}
                 </div>
+                <section aria-label="Peça manual ou de terceiros" style={{ marginTop: 18 }}>
+                  <h4>Peça manual / comprada de terceiros</h4>
+                  <p>Inclua a peça e o valor cobrado no orçamento, sem movimentar o estoque da loja.</p>
+                  <label style={labelDarkStyle}>Descrição da peça<input aria-label="Descrição da peça manual" maxLength={200} value={manualName} onChange={event => setManualName(event.target.value)} style={inputDarkStyle} /></label>
+                  <label style={labelDarkStyle}>Quantidade<input aria-label="Quantidade da peça manual" type="number" min={1} max={999} step={1} value={manualQuantity} onChange={event => setManualQuantity(event.target.value)} style={inputDarkStyle} /></label>
+                  <label style={labelDarkStyle}>Preço unitário cobrado (R$)<input aria-label="Preço da peça manual" inputMode="decimal" placeholder="Ex.: 150,00" value={manualPrice} onChange={event => setManualPrice(event.target.value)} style={inputDarkStyle} /></label>
+                  <button type="button" className="partner-primary-btn" onClick={addManualPart}>Adicionar peça manual</button>
+                </section>
               </div>
 
               <div>
                 {items.length > 0 ? (
                   items.map((item) => (
                     <div
-                      key={item.product_id}
+                      key={draftItemKey(item)}
                       className="service-order-item-row"
                       style={{
                         display: 'grid',
@@ -1006,7 +1035,7 @@ function ServiceOrdersContent({
                             opacity: 0.6,
                           }}
                         >
-                          {item.is_service
+                          {!item.product_id ? 'Peça manual / terceiros — sem baixa de estoque' : item.is_service
                             ? 'Serviço'
                             : `Estoque: ${item.stock}`}
                         </small>
@@ -1016,21 +1045,21 @@ function ServiceOrdersContent({
                         aria-label={`Quantidade de ${item.name}`}
                         type="number"
                         min={1}
-                        max={item.is_service ? undefined : item.stock}
+                        max={!item.product_id || item.is_service ? 999 : item.stock}
                         value={item.quantity}
                         onChange={(event) => {
                           const value = Number(event.target.value);
 
                           setItems((current) =>
                             current.map((currentItem) =>
-                              currentItem.product_id === item.product_id
+                              draftItemKey(currentItem) === draftItemKey(item)
                                 ? {
                                     ...currentItem,
                                     quantity: Math.max(
                                       1,
                                       Math.min(
                                         value,
-                                        currentItem.is_service ? 999 : currentItem.stock
+                                        !currentItem.product_id || currentItem.is_service ? 999 : currentItem.stock
                                       )
                                     ),
                                   }
@@ -1052,7 +1081,7 @@ function ServiceOrdersContent({
 
                           setItems((current) =>
                             current.map((currentItem) =>
-                              currentItem.product_id === item.product_id
+                              draftItemKey(currentItem) === draftItemKey(item)
                                 ? {
                                     ...currentItem,
                                     unit_price: value,
@@ -1069,7 +1098,7 @@ function ServiceOrdersContent({
                         aria-label={`Remover ${item.name}`}
                         onClick={() =>
                           removeProduct(
-                            item.product_id
+                            draftItemKey(item)
                           )
                         }
                       >

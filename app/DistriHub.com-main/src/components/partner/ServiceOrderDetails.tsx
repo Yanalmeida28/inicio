@@ -99,7 +99,7 @@ function ServiceOrderDetailsContent({ order, customers, onClose, onChanged }: Pr
       {status === 'cancelada' && <p>O cancelamento devolve as peças baixadas ao estoque e cancela a fatura sem recebimentos. OS com valores recebidos exige conciliação financeira.</p>}
       <button type="submit" className="module-submit-btn">{busy ? 'Salvando...' : 'Salvar situação'}</button>
     </fieldset></form>
-    <h4>Peças e serviços</h4>{parts.map(p => <p key={p.id}>{p.product_name} · {p.quantity} × {money.format(Number(p.unit_price))}</p>)}
+    <h4>Peças e serviços</h4>{parts.map(p => <p key={p.id}>{p.product_name}{!p.product_id && ' (peça manual / terceiros)'} · {p.quantity} × {money.format(Number(p.unit_price))}</p>)}
     <h4>Fotos de entrada e saída</h4><div className="service-order-photos">{photos.map(photo => <a key={photo.id} href={photo.url} target="_blank" rel="noopener noreferrer"><img src={photo.url} alt={photo.label} loading="lazy" /><span>{photo.photo_type === 'entry' ? 'Entrada' : 'Saída'} · {photo.label}</span></a>)}</div>
     <div className="rma-form inline"><label>Tipo de foto<select disabled={busy || loading} value={photoType} onChange={e => setPhotoType(e.target.value as 'entry' | 'exit')}><option value="entry">Entrada</option><option value="exit">Saída</option></select></label><label>Adicionar fotos<input type="file" accept="image/*" multiple disabled={busy || loading || order.status === 'cancelada'} onChange={e => {
       const files = Array.from(e.target.files ?? []); e.target.value = '';

@@ -85,6 +85,48 @@ test('blocked browser storage releases the submission lock, preserves the form, 
  const h=await harness({blocked:true});await act(async()=>save().props.onClick());assert.equal(save().props.disabled,false);assert.match(rendered(),/Armazenamento bloqueado/);assert.equal(h.calls.length,0);
  h.unblock();await act(async()=>save().props.onClick());assert.equal(h.calls.filter(c=>c.name==='create_service_order_once').length,1);assert.equal(h.values.size,0);
 });
+
+test('manual parts accept Brazilian prices, remain independent and reach the saved OS without a stock product',async()=>{
+ const h=await harness();
+ const change=async(label,value)=>act(async()=>view.root.findByProps({'aria-label':label}).props.onChange({target:{value}}));
+ await change('Descrição da peça manual','Tela de terceiros');await change('Quantidade da peça manual','2');await change('Preço da peça manual','R$ 125,50');
+ await act(async()=>button('Adicionar peça manual').props.onClick());
+ await change('Descrição da peça manual','Conector externo');await change('Preço da peça manual','10,00');
+ await act(async()=>button('Adicionar peça manual').props.onClick());
+ assert.equal(view.root.findByProps({'aria-label':'Quantidade de Tela de terceiros'}).props.max,999);
+ await change('Preço unitário de Tela de terceiros','130.50');
+ assert.equal(view.root.findByProps({'aria-label':'Preço unitário de Conector externo'}).props.value,10);
+ await act(async()=>save().props.onClick());
+ const items=h.calls[0].args.p_payload.items;
+ assert.equal(items.length,2);assert.equal(items[0].product_id,null);assert.equal(items[0].name,'Tela de terceiros');assert.equal(items[0].quantity,2);assert.equal(items[0].unit_price,130.5);
+ assert.notEqual(items[0].manual_id,items[1].manual_id);
+});
+
+test('manual part removal does not remove other manual rows and unfinished or invalid values block saving',async()=>{
+ const h=await harness();
+ const change=async(label,value)=>act(async()=>view.root.findByProps({'aria-label':label}).props.onChange({target:{value}}));
+ await change('Descrição da peça manual','Primeira');await change('Preço da peça manual','10,00');
+ await act(async()=>save().props.onClick());assert.equal(h.calls.length,0);
+ await act(async()=>button('Adicionar peça manual').props.onClick());
+ await change('Descrição da peça manual','Segunda');await change('Preço da peça manual','-1');
+ await act(async()=>button('Adicionar peça manual').props.onClick());assert.equal(view.root.findAllByProps({'aria-label':'Quantidade de Segunda'}).length,0);
+ await change('Preço da peça manual','20');await act(async()=>button('Adicionar peça manual').props.onClick());
+ await act(async()=>view.root.findByProps({'aria-label':'Remover Primeira'}).props.onClick());
+ assert.equal(view.root.findAllByProps({'aria-label':'Quantidade de Primeira'}).length,0);assert.equal(view.root.findAllByProps({'aria-label':'Quantidade de Segunda'}).length,1);
+ await act(async()=>save().props.onClick());assert.equal(h.calls[0].args.p_payload.items.length,1);assert.equal(h.calls[0].args.p_payload.items[0].name,'Segunda');
+});
+
+test('manual piece description and request identity survive a lost creation reply and remount',async()=>{
+ const values=new Map();const h=await harness({values,rpc:(name)=>name==='create_service_order_once'?{error:{code:'08006',message:'Resposta perdida'}}:undefined});
+ for(const [label,value] of [['Descrição da peça manual','Peça comprada'],['Preço da peça manual','1.234,56']])await act(async()=>view.root.findByProps({'aria-label':label}).props.onChange({target:{value}}));
+ await act(async()=>button('Adicionar peça manual').props.onClick());await act(async()=>save().props.onClick());
+ const original=h.calls[0].args;
+ await act(async()=>view.unmount());view=null;
+ const recovered=await harness({values});
+ assert.equal(view.root.findByProps({'aria-label':'Preço unitário de Peça comprada'}).props.value,1234.56);
+ await act(async()=>save().props.onClick());
+ assert.equal(recovered.calls[0].args.p_request_id,original.p_request_id);assert.equal(JSON.stringify(recovered.calls[0].args.p_payload),JSON.stringify(original.p_payload));
+});
 test('creation locks the whole form synchronously, sends once, and uses the original immutable payload',async()=>{
  let complete;const h=await harness({rpc:(name,args)=>name==='create_service_order_once'?new Promise(resolve=>{complete=()=>resolve({data:args.p_request_id,error:null});}):undefined});
  const start=save().props.onClick;let request;await act(async()=>{request=start();start();});

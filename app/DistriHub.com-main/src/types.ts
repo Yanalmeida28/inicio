@@ -631,7 +631,7 @@ export interface ServiceOrderItem {
   id: string;
   service_order_id: string;
   user_id: string;
-  product_id: string;
+  product_id: string | null;
   branch_id: string;
   product_name: string;
   quantity: number;

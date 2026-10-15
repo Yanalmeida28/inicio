@@ -48,6 +48,7 @@ before(async () => {
   await db.exec(await read('../migrations/20261012195624_fix_audited_operations.sql'));
   await db.exec(await read('../migrations/20261012201545_close_legacy_operation_paths.sql'));
   await db.exec(await read('../migrations/20261015010204_fix_service_order_customer_and_billing.sql'));
+  await db.exec(await read('../migrations/20261015183456_service_order_manual_parts.sql'));
 });
 after(() => db.close());
 test('reposição: mesma tentativa soma uma vez; tentativa diferente é uma nova entrada; outros dados são rejeitados', async () => {
@@ -61,6 +62,48 @@ test('reposição: mesma tentativa soma uma vez; tentativa diferente é uma nova
   assert.equal(Number((await sql('SELECT stock FROM partner_products WHERE id=$1', [product])).rows[0].stock), initial + 20);
 });
 const osPayload = () => ({ branch_id: branch, customer_id: customer, equipment_type: 'Celular', identification: 'Teste', serial: '', segment: 'assistencia', accessories: '', condition: '', damage: '', notes: 'Vistoria', labor_total: 30, items: [{ product_id: product, quantity: 2, unit_price: 25 }] });
+
+test('manual OS parts persist names and prices, charge exactly once and never consume or return stock',async()=>{
+  await login(employee);
+  const id=randomUUID();const payload={...osPayload(),items:[{product_id:null,name:'Tela comprada de terceiros',quantity:2,unit_price:125.50},{product_id:null,name:'Conector avulso',quantity:1,unit_price:10}]};
+  const stock=Number((await sql('SELECT stock FROM partner_products WHERE id=$1',[product])).rows[0].stock);
+  const movements=(await sql('SELECT count(*)::int n FROM stock_movements')).rows[0].n;
+  for(let i=0;i<2;i++)await sql('SELECT create_service_order_once($1,$2::jsonb)',[id,JSON.stringify(payload)]);
+  const parts=(await sql('SELECT product_id,product_name,quantity,unit_price,stock_consumed FROM service_order_items WHERE service_order_id=$1 ORDER BY product_name',[id])).rows;
+  assert.equal(parts.length,2);assert.equal(parts[1].product_name,'Tela comprada de terceiros');assert.equal(Number(parts[1].unit_price),125.5);
+  assert.ok(parts.every(part=>part.product_id===null&&part.stock_consumed===false));
+  assert.equal(Number((await sql('SELECT total FROM service_orders WHERE id=$1',[id])).rows[0].total),291);
+  await assert.rejects(sql('SELECT create_service_order_once($1,$2::jsonb)',[id,JSON.stringify({...payload,items:[{...payload.items[0],name:'Outra peça'}]})]),/outra OS/);
+  for(let i=0;i<2;i++)await sql("SELECT update_service_order_workflow($1,'cancelada','','aguardando_aprovacao','Cliente desistiu',$2)",[id,customer]);
+  assert.equal(Number((await sql('SELECT stock FROM partner_products WHERE id=$1',[product])).rows[0].stock),stock);
+  assert.equal((await sql('SELECT count(*)::int n FROM stock_movements')).rows[0].n,movements);
+});
+
+test('mixed OS invoices include manual parts while cancellation returns only catalog pieces',async()=>{
+  await login(owner);const id=randomUUID();const payload=osPayload();payload.items.push({product_id:null,name:'Peça externa',quantity:2,unit_price:15.25});
+  const stock=Number((await sql('SELECT stock FROM partner_products WHERE id=$1',[product])).rows[0].stock);
+  await sql('SELECT create_service_order_once($1,$2::jsonb)',[id,JSON.stringify(payload)]);
+  assert.equal(Number((await sql('SELECT stock FROM partner_products WHERE id=$1',[product])).rows[0].stock),stock-2);
+  await sql("SELECT update_service_order_workflow($1,'pronta','Técnico','aprovado','Concluído',$2)",[id,customer]);
+  for(let i=0;i<2;i++)await sql("SELECT bill_service_order_once($1,'2026-10-30')",[id]);
+  const invoices=(await sql('SELECT amount FROM partner_invoices WHERE service_order_id=$1',[id])).rows;
+  assert.equal(invoices.length,1);assert.equal(Number(invoices[0].amount),110.5);
+  await sql("SELECT update_service_order_workflow($1,'cancelada','Técnico','aprovado','Cliente desistiu',$2)",[id,customer]);
+  assert.equal(Number((await sql('SELECT stock FROM partner_products WHERE id=$1',[product])).rows[0].stock),stock);
+});
+
+test('invalid manual parts roll back the entire OS and stock; other branches remain forbidden',async()=>{
+  await login(owner);
+  const stock=Number((await sql('SELECT stock FROM partner_products WHERE id=$1',[product])).rows[0].stock);
+  for(const item of [{name:''},{name:'x'.repeat(201)},{quantity:0},{quantity:1.5},{quantity:1000},{unit_price:-1},{unit_price:0.001},{unit_price:'NaN'}]){
+    const id=randomUUID();const payload=osPayload();payload.items.push({product_id:null,name:'Peça manual',quantity:1,unit_price:10,...item});
+    await assert.rejects(sql('SELECT create_service_order_once($1,$2::jsonb)',[id,JSON.stringify(payload)]));
+    assert.equal((await sql('SELECT count(*)::int n FROM service_orders WHERE id=$1',[id])).rows[0].n,0);
+    assert.equal(Number((await sql('SELECT stock FROM partner_products WHERE id=$1',[product])).rows[0].stock),stock);
+  }
+  await login(other);
+  await assert.rejects(sql('SELECT create_service_order_once($1,$2::jsonb)',[randomUUID(),JSON.stringify({...osPayload(),items:[{product_id:null,name:'Peça externa',quantity:1,unit_price:1}]})]),/Filial não autorizada/);
+});
 test('OS: colaborador autorizado cria uma vez, baixa peças uma vez e uma repetição com dados diferentes é rejeitada', async () => {
   await login(employee); const request = randomUUID(); const payload = osPayload();
   const initial = Number((await sql('SELECT stock FROM partner_products WHERE id=$1', [product])).rows[0].stock);

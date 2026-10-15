@@ -3,10 +3,17 @@ import type { PendingPhoto } from './operationAttempts';
 export type ServiceOrderPayload = {
   branch_id: string; customer_id: string | null; segment: string; equipment_type: string;
   identification: string; serial: string; accessories: string; condition: string; damage: string;
-  notes: string; labor_total: number; items: { product_id: string; quantity: number; unit_price: number }[];
+  notes: string; labor_total: number; items: { product_id: string | null; quantity: number; unit_price: number; name?: string; manual_id?: string }[];
   photo_ids?: { id: string; type: 'entry' | 'exit'; label: string }[];
   draft_notes?: string;
 };
+export function servicePartPrice(value: string): number {
+  const normalized = value.trim().replace(/^R\$\s*/i, '').replace(/\s/g, '');
+  const decimal = normalized.includes(',') ? normalized.replace(/\./g, '').replace(',', '.') : normalized;
+  if (!/^\d+(?:\.\d{1,2})?$/.test(decimal)) return NaN;
+  const result = Number(decimal);
+  return Number.isFinite(result) && result <= 9999999.99 ? result : NaN;
+}
 export class ServiceOrderRejected extends Error {}
 export async function createServiceOrder(client: SupabaseClient, requestId: string, payload: ServiceOrderPayload): Promise<string> {
   const { data, error } = await client.rpc('create_service_order_once', { p_request_id: requestId, p_payload: payload });
