@@ -12,11 +12,12 @@ const require = createRequire(import.meta.url);
 const source = await readFile(new URL('../../src/components/partner/WhiteLabelModule.tsx', import.meta.url), 'utf8');
 const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX } }).outputText;
 const module = { exports: {} };
+const receiptPreviews = [];
 const theme = { exports: {} };
 vm.runInNewContext(ts.transpileModule(await readFile(new URL('../../src/lib/storeTheme.ts', import.meta.url), 'utf8'), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
 }).outputText, { exports: theme.exports });
-vm.runInNewContext(compiled, { exports: module.exports, require: name => name === '../../lib/personalization' ? personalizationHelpers : name === '../../lib/storeTheme' ? theme.exports : require(name) });
+vm.runInNewContext(compiled, { exports: module.exports, require: name => name === '../../lib/salePrint' ? { printSale(...args) { receiptPreviews.push(args); } } : name === '../../lib/personalization' ? personalizationHelpers : name === '../../lib/storeTheme' ? theme.exports : require(name) });
 const Component = module.exports.WhiteLabelModule;
 const settings = {
   id: 'settings', user_id: 'owner', logo_url: null, banner_url: null,
@@ -28,6 +29,24 @@ const settings = {
 let renderer;
 afterEach(async () => { if (renderer) await act(async () => renderer.unmount()); renderer = null; });
 const saveButton = () => renderer.root.findAllByType('button').find(button => button.props.className === 'module-save-btn');
+
+test('receipt preview renders the current customization through the production renderer', async () => {
+  const frame = {};
+  receiptPreviews.length = 0;
+  await act(async () => { renderer = TestRenderer.create(React.createElement(Component, { settings, onUpdate: async () => {}, receiptDetails: { companyName: 'Saunier Atacado', companyAddress: 'Store address' } }), {
+    createNodeMock: node => node.type === 'iframe' ? { contentWindow: frame } : null,
+  }); });
+  await act(async () => renderer.root.findAllByType('button').find(button => button.children.includes('Cupom e termos')).props.onClick());
+  assert.ok(receiptPreviews.length > 0);
+  const preview = receiptPreviews.at(-1);
+  assert.equal(preview[1], 'receipt');
+  assert.equal(preview[2].companyName, 'Saunier Atacado');
+  assert.equal(preview[2].companyAddress, 'Store address');
+  assert.equal(preview[3], frame);
+  assert.equal(preview[4].previewOnly, true);
+  await act(async () => renderer.root.findByProps({ 'aria-label': 'Mensagem no cabeçalho do cupom' }).props.onChange({ target: { value: 'Current draft' } }));
+  assert.equal(receiptPreviews.at(-1)[2].settings.personalization.receipt.header_text, 'Current draft');
+});
 
 test('personalization saves multiline service terms independently and reloads the saved text', async () => {
   let submitted;

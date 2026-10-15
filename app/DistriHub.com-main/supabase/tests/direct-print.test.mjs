@@ -71,6 +71,11 @@ test('printer setup requires physical confirmation and changing paper invalidate
     await act(async () => button('Imprimir cupom de teste').props.onClick());
     await act(async () => button('O cupom saiu corretamente').props.onClick());
     assert.equal(saved.length, 1); assert.equal(saved[0].width, '58');
+    assert.equal(saved[0].mode, 'personalized');
+    await act(async () => button('Usar texto simples').props.onClick());
+    assert.equal(saved[1].mode, 'text');
+    await act(async () => button('Usar cupom personalizado').props.onClick());
+    assert.equal(saved[2].mode, 'personalized');
     assert.equal(sends, 2);
   } finally { if (renderer) await act(async () => renderer.unmount()); }
 });

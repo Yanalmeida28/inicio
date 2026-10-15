@@ -1,20 +1,34 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Check, ImagePlus, Palette, Printer, Upload, Wand2 } from 'lucide-react';
-import type { StoreSettings, StorePersonalization } from '../../types';
+import type { PartnerCustomer, StoreSettings, StorePersonalization } from '../../types';
+import { printSale, type ReceiptDetails } from '../../lib/salePrint';
 import { normalizeColor, storeTheme } from '../../lib/storeTheme';
 import { receiptPreferences, panelPreferences, panelStyle, catalogPreferences, catalogWhatsappUrl } from '../../lib/personalization';
 
 type WhiteLabelModuleProps = {
   settings: StoreSettings;
   onUpdate: (settings: Partial<StoreSettings>) => Promise<unknown>;
+  receiptDetails?: ReceiptDetails;
 };
 
 const presetColors = ['#3193e5', '#2563eb', '#199863', '#0f766e', '#7c3aed', '#a21caf', '#be185d', '#e3829b', '#c2410c', '#e6a06d', '#ca8a04', '#5fd0d1', '#475569', '#97aabc'];
 const navigationColors = ['#0f2747', '#0f172a', '#1e293b', '#14532d', '#134e4a', '#3b0764', '#4c0519', '#ffffff'];
 
-export function WhiteLabelModule({ settings: initialSettings, onUpdate: persist }: WhiteLabelModuleProps) {
+export function WhiteLabelModule({ settings: initialSettings, onUpdate: persist, receiptDetails }: WhiteLabelModuleProps) {
   const [settings, setSettings] = useState(initialSettings);
   const [activeTab, setActiveTab] = useState<'visual' | 'painel' | 'cupom' | 'catalogo' | 'pdv'>('visual');
+  const receiptFrame = useRef<HTMLIFrameElement>(null);
+  const renderReceiptPreview = useCallback(() => {
+    const frame = receiptFrame.current?.contentWindow;
+    if (!frame) return;
+    printSale({ sale_number: undefined, customer_name: 'Cliente de exemplo', customer_id: null, branch_id: null, salesperson_id: null,
+      items: [{ product_id: 'example', name: 'Produto de exemplo', quantity: 1, unit_price: 100 }], total: 100, freight_fee: 15,
+      imei: null, serial_number: null, payment_method: 'pix', payment_splits: [], status: 'concluida', created_at: '2026-01-01T12:00:00Z' }, 'receipt', {
+      ...receiptDetails, companyName: receiptDetails?.companyName || 'Sua loja', settings, salespersonName: 'Equipe',
+      customer: { phone: '(11) 99999-9999', document: '000.000.000-00', address: 'Rua de exemplo', address_number: '100', city: 'Cidade de exemplo', state: 'SP' } as PartnerCustomer,
+    }, frame, { previewOnly: true });
+  }, [settings, receiptDetails]);
+  useEffect(() => { if (activeTab === 'cupom') renderReceiptPreview(); }, [activeTab, renderReceiptPreview]);
   const receipt = receiptPreferences(settings.personalization?.receipt);
   const panel = panelPreferences(settings.personalization?.panel);
   const catalog = catalogPreferences(settings.personalization?.catalog);
@@ -261,16 +275,10 @@ export function WhiteLabelModule({ settings: initialSettings, onUpdate: persist 
             <div className="print-toggle-list">
               {([{ key: 'show_phone', label: 'Telefone do cliente' }, { key: 'show_address', label: 'Endereço do cliente' }, { key: 'show_document', label: 'CPF/CNPJ do cliente' }, { key: 'show_salesperson', label: 'Nome do colaborador' }] as const).map(option => <label className="print-toggle-item" key={option.key}><input type="checkbox" aria-label={option.label} checked={receipt[option.key]} onChange={e => updatePreference('receipt', { ...receipt, [option.key]: e.target.checked })} /><span>{option.label}</span></label>)}
             </div>
-            <p className="otp-description">Use a mesma largura configurada na impressora.</p>
+            <p className="otp-description">Salve a personalização para aplicá-la às vendas. O modo personalizado usa a janela do navegador: escolha o mesmo papel, escala de 100% e desative os cabeçalhos e rodapés do navegador. O modo texto simples do conector não preserva este desenho.</p>
           </div>
           <div className="personalization-receipt-stage"><span>Prévia ilustrativa</span>
-            <div className="personalization-receipt-preview" style={{ width: receipt.paper_width === '58' ? '50mm' : '72mm', fontSize: receipt.font_size }}>
-              {settings.show_logo_on_receipt && logoPreview && <img src={logoPreview} alt="Logo no cupom" />}
-              <h4>Sua loja</h4>{receipt.header_text && <p>{receipt.header_text}</p>}
-              {settings.show_cnpj_on_receipt && <p>CNPJ/Endereço da loja</p>}<h4>CUPOM NÃO FISCAL</h4>
-              <p><b>Cliente: Cliente de exemplo</b></p>{receipt.show_phone && <p><b>Telefone: (11) 99999-9999</b></p>}{receipt.show_document && <p><b>CPF/CNPJ do cliente</b></p>}{receipt.show_address && <p><b>Endereço: Rua de exemplo, 100</b></p>}
-              <p><b>Produtos/Serviços</b></p><hr /><p>Produto de exemplo</p><p>1 × R$ 100,00 = R$ 100,00</p><hr /><p>Frete terceirizado: R$ 15,00</p><h4>TOTAL: R$ 115,00</h4><p>Pagamento: PIX</p>{receipt.show_salesperson && <p>Colaborador: Equipe</p>}{settings.receipt_footer_text && <p>{settings.receipt_footer_text}</p>}
-            </div>
+            <iframe ref={receiptFrame} title="Cupom personalizado" onLoad={renderReceiptPreview} style={{ width: receipt.paper_width === '58' ? '58mm' : '80mm', maxWidth: '100%', height: 720, border: 0, background: 'white' }} />
           </div>
         </div>
       {/* Section 2: Impressão & Cupom Não Fiscal */}

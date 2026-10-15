@@ -57,7 +57,7 @@ test('browser and direct receipts preserve saved text and identify the sale bran
     document.implementation={createHTMLDocument:()=>document};
     let sent='';
     const print=await load('salePrint',{open:()=>({document,requestAnimationFrame(){},focus(){},print(){}})},
-      {printerPreferences:()=>direct?{printerName:'test'}:null,sendReceipt:async text=>{sent=text;}},document);
+      {printerPreferences:()=>direct?{name:'test',width:'80',mode:'text'}:null,sendReceipt:async text=>{sent=text;}},document);
     await print.printSale({...sale,branch_id:branch.id},'receipt',{
       companyName:'Company account',companyAddress:'Wrong selected branch',branches,
       settings:{show_cnpj_on_receipt:true,receipt_footer_text:'Footer\nSecond line',personalization:{receipt:{header_text:'Custom header'}}},
@@ -77,6 +77,38 @@ test('unknown sale branch never falls back to another unit address',async()=>{
   print.printSale(sale,'receipt',{companyName:'Company',companyAddress:'Other unit address',branches:[],settings:{show_cnpj_on_receipt:true}});
   const texts=node=>[node.textContent,...node.children.flatMap(texts)];
   assert.ok(!texts(document.body).join('\n').includes('Other unit address'));
+});
+
+test('connected printers default to the personalized document without submitting a text job',async()=>{
+  for(const mode of [undefined,'personalized','invalid']) {
+    function element(tag){return {tagName:tag.toUpperCase(),children:[],style:{},append(...nodes){this.children.push(...nodes);},textContent:''};}
+    const document={head:element('head'),body:element('body'),documentElement:{},createElement:element,images:[]};
+    let opened=0, sent=0;
+    const popup={document,requestAnimationFrame(){},focus(){},print(){}};
+    const print=await load('salePrint',{open:()=>{opened++;return popup;}},
+      {printerPreferences:()=>({name:'Connected thermal printer',width:'80',mode}),sendReceipt:async()=>{sent++;}});
+    assert.equal(print.directReceiptEnabled(),false);
+    print.printSale(sale,'receipt',{companyName:'Store',settings:{show_logo_on_receipt:true,logo_url:'data:image/png;base64,test',receipt_footer_text:'Footer',personalization:{receipt:{paper_width:'58',font_size:16,header_text:'Header'}}}});
+    assert.equal(opened,1);assert.equal(sent,0);
+    const css=document.head.children[0].textContent;
+    assert.ok(css.includes('width: 50mm'));assert.ok(css.includes('font: 16px'));
+    assert.ok(document.body.children[0].children.some(node=>node.tagName==='IMG'&&node.src==='data:image/png;base64,test'));
+  }
+});
+
+test('personalization preview uses the receipt renderer without printing even in text mode',async()=>{
+  function element(tag){return {tagName:tag.toUpperCase(),children:[],style:{},append(...nodes){this.children.push(...nodes);},replaceChildren(){this.children=[];},textContent:''};}
+  const document={head:element('head'),body:element('body'),documentElement:{},createElement:element,images:[]};
+  let sent=0,printed=0,opened=0;
+  const frame={document,requestAnimationFrame(){printed++;},print(){printed++;},focus(){}};
+  const print=await load('salePrint',{open(){opened++;return frame;}},
+    {printerPreferences:()=>({name:'Printer',width:'80',mode:'text'}),sendReceipt:async()=>{sent++;}});
+  assert.equal(print.directReceiptEnabled(),true);
+  await print.printSale(sale,'receipt',{settings:{receipt_footer_text:'Saved footer'}},frame,{previewOnly:true});
+  assert.equal(sent,0);assert.equal(printed,0);assert.equal(opened,0);
+  const texts=node=>[node.textContent,...node.children.flatMap(texts)];
+  assert.ok(texts(document.body).includes('Saved footer'));
+  assert.ok(!document.body.children.some(node=>node.tagName==='BUTTON'));
 });
 test('freight is charged in exact cents, remains in a pending retry and changes its immutable request key',()=>{
   assert.equal(pdvHelpers.saleChargeTotal(sale),115);

@@ -1,6 +1,6 @@
 const endpoint = 'http://localhost:17891';
 const storageKey = 'distrihub:receipt-printer:v1';
-export type PrinterPreferences = { name: string; width: '58' | '80' };
+export type PrinterPreferences = { name: string; width: '58' | '80'; mode?: 'personalized' | 'text' };
 export function printerPreferences(): PrinterPreferences | null {
   try {
     const value = JSON.parse(localStorage.getItem(storageKey) ?? 'null');
