@@ -219,6 +219,12 @@ function ServiceOrdersContent({
     async function loadOrders() {
       const request = ++readGeneration.current;
       if (!isActive) return;
+      if (!selectedBranchId) {
+        setOrders([]);
+        setLoadError(null);
+        setLoadingOrders(false);
+        return;
+      }
       if (!supabase || !userId) {
         setLoadError('Conecte-se para carregar as Ordens de Serviço.');
         return;
@@ -233,9 +239,7 @@ function ServiceOrdersContent({
           ascending: false,
         });
 
-      if (selectedBranchId) {
-        query = query.eq('branch_id', selectedBranchId);
-      }
+      query = query.eq('branch_id', selectedBranchId);
 
       const { data, error } = await query;
 

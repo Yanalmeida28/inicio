@@ -59,6 +59,13 @@ test('late branch list response is discarded and inactive module performs no new
  await act(async()=>pending[0].resolve({data:[orderA],error:null}));assert.match(rendered(),/Cliente B/);assert.doesNotMatch(rendered(),/Cliente A/);
  await h.update({isActive:false});assert.equal(pending.length,2);
 });
+test('no branch selection shows no service orders and does not query across branches',async()=>{
+ const h=await harness({orders:[orderA]});
+ assert.match(rendered(),/Cliente A/);
+ await h.update({selectedBranchId:null});
+ assert.doesNotMatch(rendered(),/Cliente A/);
+ assert.deepEqual(h.queries.filter(query=>query.table==='service_orders').map(query=>query.branch_id),['branch-a']);
+});
 test('list failure is visible, never announces confirmed empty data, and retry loads the orders',async()=>{
  let failed=true;const h=await harness({read:args=>args.table==='service_orders'?{data:failed?null:[orderA],error:failed?{message:'Falha de rede'}:null}:undefined});
  assert.match(rendered(),/Falha de rede/);assert.doesNotMatch(rendered(),/Nenhuma OS encontrada/);failed=false;
