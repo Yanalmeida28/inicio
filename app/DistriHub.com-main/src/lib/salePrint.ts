@@ -1,4 +1,4 @@
-import { printerPreferences, sendReceipt } from './directPrint';
+import { printerPreferences, requireImageConnector, sendReceipt, sendReceiptImage } from './directPrint';
 import type { PartnerBranch, PartnerCustomer, PartnerSale, StoreSettings } from '../types';
 import { money } from '../utils';
 import { saleChargeTotal, salePaymentDescription } from './pdv';
@@ -10,7 +10,8 @@ export type ReceiptDetails = { customer?: PartnerCustomer; salespersonName?: str
 
 // Older connector preferences must not silently discard the saved design.
 // Plain text printing is available only after an explicit choice.
-export function directReceiptEnabled() { return printerPreferences()?.mode === 'text'; }
+export function directReceiptEnabled() { const mode = printerPreferences()?.mode; return mode === 'text' || mode === 'image'; }
+const imageReceiptJobs = new Map<string, Promise<void>>();
 
 export function printSale(sale: PrintableSale, format: 'receipt' | 'label', details: ReceiptDetails = {}, preparedWindow?: Window, options: { previewOnly?: boolean } = {}) {
   // Reprints must identify the sale's branch even in consolidated views.
@@ -19,6 +20,22 @@ export function printSale(sale: PrintableSale, format: 'receipt' | 'label', deta
     details = { ...details, companyName: branch?.name || details.companyName, companyAddress: branch?.address };
   }
   const preferences = format === 'receipt' && !options.previewOnly ? printerPreferences() : null;
+  if (preferences?.mode === 'image') {
+    preparedWindow?.close();
+    const key = JSON.stringify([sale, details, preferences]);
+    const existing = imageReceiptJobs.get(key);
+    if (existing) return existing;
+    const job = (async () => {
+      const width = receiptPreferences(details.settings?.personalization?.receipt).paper_width;
+      if (preferences.width !== width) throw new Error('O papel da impressora está diferente da personalização. Ajuste a largura em Configurações antes de imprimir.');
+      await requireImageConnector();
+      const { renderReceiptImage } = await import('./receiptImage');
+      const image = await renderReceiptImage(target => { printSale(sale, format, details, target, { previewOnly: true }); }, width);
+      await sendReceiptImage(image, preferences);
+    })().finally(() => imageReceiptJobs.delete(key));
+    imageReceiptJobs.set(key, job);
+    return job;
+  }
   const direct = preferences?.mode === 'text' ? preferences : null;
   const popup = direct ? null : preparedWindow ?? window.open('', '_blank', 'width=440,height=700');
   if (!direct && !popup) throw new Error('Permita pop-ups neste navegador para imprimir o cupom ou a etiqueta.');

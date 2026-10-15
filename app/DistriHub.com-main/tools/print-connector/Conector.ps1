@@ -6,11 +6,45 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Printing;
+using System.IO;
 public static class DistriHubPrinter {
  public static string[] Printers() {
   var names = new List<string>();
   foreach(string name in PrinterSettings.InstalledPrinters) names.Add(name);
   return names.ToArray();
+ }
+ public static void PrintImage(string name, int width, string png, int pixelWidth, int pixelHeight) {
+  var bytes = Convert.FromBase64String(png);
+  // Check PNG dimensions before decoding to bound bitmap allocation.
+  if(bytes.Length < 24 || bytes.Length > 6000000 || bytes[0] != 137 || bytes[1] != 80 || bytes[2] != 78 || bytes[3] != 71 || bytes[4] != 13 || bytes[5] != 10 || bytes[6] != 26 || bytes[7] != 10 || bytes[12] != 73 || bytes[13] != 72 || bytes[14] != 68 || bytes[15] != 82) throw new Exception("Imagem PNG invalida.");
+  long w = ((long)bytes[16]<<24) | ((long)bytes[17]<<16) | ((long)bytes[18]<<8) | bytes[19];
+  long h = ((long)bytes[20]<<24) | ((long)bytes[21]<<16) | ((long)bytes[22]<<8) | bytes[23];
+  if(w != pixelWidth || h != pixelHeight || w < 1 || w > 1024 || h < 1 || h > 30000 || w*h > 22000000) throw new Exception("Dimensoes do cupom invalidas.");
+  using(var stream = new MemoryStream(bytes))
+  using(var image = Image.FromStream(stream, true, true))
+  using(var document = new PrintDocument()) {
+   document.PrinterSettings.PrinterName = name;
+   if(!document.PrinterSettings.IsValid) throw new Exception("Impressora nao encontrada no Windows.");
+   document.DocumentName = "Cupom personalizado DistriHub";
+   document.PrintController = new StandardPrintController();
+   document.DefaultPageSettings.Margins = new Margins(0,0,0,0);
+   int paperWidth = (int)Math.Round(width / 25.4 * 100);
+   int paperHeight = (int)Math.Min(1100, Math.Max(100, Math.Ceiling((double)image.Height * paperWidth / image.Width + 16)));
+   document.DefaultPageSettings.PaperSize = new PaperSize("Cupom", paperWidth, paperHeight);
+   int cursor = 0;
+   document.PrintPage += (sender, page) => {
+    float availableWidth = Math.Min(page.PageBounds.Width - 2 * page.PageSettings.HardMarginX, page.PageSettings.PrintableArea.Width);
+    float availableHeight = Math.Min(page.PageBounds.Height - 2 * page.PageSettings.HardMarginY, page.PageSettings.PrintableArea.Height);
+    if(availableWidth <= 0 || availableHeight <= 0) throw new Exception("Area de impressao invalida. Confira o driver.");
+    float ratio = availableWidth / image.Width;
+    int slice = Math.Min(image.Height - cursor, (int)Math.Floor(availableHeight / ratio));
+    if(slice < 1) throw new Exception("Papel insuficiente para o cupom.");
+    page.Graphics.DrawImage(image, new RectangleF(0,0,availableWidth,slice*ratio), new RectangleF(0,cursor,image.Width,slice), GraphicsUnit.Pixel);
+    cursor += slice;
+    page.HasMorePages = cursor < image.Height;
+   };
+   document.Print();
+  }
  }
  public static void Print(string name, int width, string text) {
   using(var document = new PrintDocument()) {
@@ -67,19 +101,27 @@ while ($listener.IsListening) {
   if ($context.Request.HttpMethod -eq 'OPTIONS') { $response.StatusCode = 204; continue }
   $path = $context.Request.Url.AbsolutePath
   if ($path -eq '/printers' -and $context.Request.HttpMethod -eq 'GET') {
-   $result = @{ printers = @([DistriHubPrinter]::Printers()); version = 1 }
+   $result = @{ printers = @([DistriHubPrinter]::Printers()); version = 2; capabilities = @('receipt-png-v1') }
   } elseif ($path -eq '/print' -and $context.Request.HttpMethod -eq 'POST') {
-   if ($context.Request.ContentType -notmatch '^application/json' -or $context.Request.ContentLength64 -lt 1 -or $context.Request.ContentLength64 -gt 131072) { $response.StatusCode = 400; throw 'Pedido de impressao invalido.' }
+   if ($context.Request.ContentType -notmatch '^application/json' -or $context.Request.ContentLength64 -lt 1 -or $context.Request.ContentLength64 -gt 8100000) { $response.StatusCode = 400; throw 'Pedido de impressao invalido.' }
    $reader = New-Object System.IO.StreamReader($context.Request.InputStream, [System.Text.Encoding]::UTF8)
    try { $payload = $reader.ReadToEnd() | ConvertFrom-Json } finally { $reader.Dispose() }
    $jobId = [guid]::Empty
-   if (-not [guid]::TryParse([string]$payload.id, [ref]$jobId) -or $payload.width -notin @(58,80) -or $payload.text -isnot [string] -or $payload.text.Length -gt 50000 -or $payload.printer -notin @([DistriHubPrinter]::Printers())) { $response.StatusCode = 400; throw 'Confira a impressora e o tamanho do cupom.' }
+   if (-not [guid]::TryParse([string]$payload.id, [ref]$jobId) -or $payload.width -notin @(58,80) -or $payload.printer -notin @([DistriHubPrinter]::Printers())) { $response.StatusCode = 400; throw 'Confira a impressora e o tamanho do cupom.' }
+   $imageMode = $payload.format -eq 'receipt-png-v1'
+   if ($imageMode) {
+    if ($payload.png -isnot [string] -or $payload.png.Length -gt 8000000 -or $payload.pixelWidth -lt 1 -or $payload.pixelWidth -gt 1024 -or $payload.pixelHeight -lt 1 -or $payload.pixelHeight -gt 30000) { $response.StatusCode = 400; throw 'Imagem do cupom invalida.' }
+   } elseif ($payload.format -or $payload.text -isnot [string] -or $payload.text.Length -gt 50000) { $response.StatusCode = 400; throw 'Formato de cupom invalido.' }
    if ($jobs.ContainsKey($payload.id)) {
     if ($jobs[$payload.id].status -ne 'queued') { $response.StatusCode = 409; throw 'Impressao anterior sem confirmacao. Confira o cupom antes de reenviar.' }
    } else {
     if ($jobs.Count -ge 10000) { $response.StatusCode = 503; throw 'Reinicie o conector antes de imprimir novos cupons.' }
     $jobs[$payload.id] = @{ status = 'uncertain' }
-    [DistriHubPrinter]::Print($payload.printer, [int]$payload.width, $payload.text)
+    if ($imageMode) {
+     [DistriHubPrinter]::PrintImage($payload.printer, [int]$payload.width, $payload.png, [int]$payload.pixelWidth, [int]$payload.pixelHeight)
+    } else {
+     [DistriHubPrinter]::Print($payload.printer, [int]$payload.width, $payload.text)
+    }
     $jobs[$payload.id] = @{ status = 'queued' }
    }
    $result = @{ status = 'queued' }

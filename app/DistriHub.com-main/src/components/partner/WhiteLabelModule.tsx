@@ -275,7 +275,7 @@ export function WhiteLabelModule({ settings: initialSettings, onUpdate: persist,
             <div className="print-toggle-list">
               {([{ key: 'show_phone', label: 'Telefone do cliente' }, { key: 'show_address', label: 'Endereço do cliente' }, { key: 'show_document', label: 'CPF/CNPJ do cliente' }, { key: 'show_salesperson', label: 'Nome do colaborador' }] as const).map(option => <label className="print-toggle-item" key={option.key}><input type="checkbox" aria-label={option.label} checked={receipt[option.key]} onChange={e => updatePreference('receipt', { ...receipt, [option.key]: e.target.checked })} /><span>{option.label}</span></label>)}
             </div>
-            <p className="otp-description">Salve a personalização para aplicá-la às vendas. O modo personalizado usa a janela do navegador: escolha o mesmo papel, escala de 100% e desative os cabeçalhos e rodapés do navegador. O modo texto simples do conector não preserva este desenho.</p>
+            <p className="otp-description">Salve a personalização para aplicá-la às vendas. Para imprimir este desenho sem abrir a janela do navegador, instale o Conector v2 e teste o modo Personalizado direto em Configurações. Use o mesmo papel nos dois locais. A impressão pelo navegador continua disponível; o modo texto simples não preserva este desenho.</p>
           </div>
           <div className="personalization-receipt-stage"><span>Prévia ilustrativa</span>
             <iframe ref={receiptFrame} title="Cupom personalizado" onLoad={renderReceiptPreview} style={{ width: receipt.paper_width === '58' ? '58mm' : '80mm', maxWidth: '100%', height: 720, border: 0, background: 'white' }} />

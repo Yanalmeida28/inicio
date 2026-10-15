@@ -1,6 +1,6 @@
 const endpoint = 'http://localhost:17891';
 const storageKey = 'distrihub:receipt-printer:v1';
-export type PrinterPreferences = { name: string; width: '58' | '80'; mode?: 'personalized' | 'text' };
+export type PrinterPreferences = { name: string; width: '58' | '80'; mode?: 'personalized' | 'text' | 'image' };
 export function printerPreferences(): PrinterPreferences | null {
   try {
     const value = JSON.parse(localStorage.getItem(storageKey) ?? 'null');
@@ -30,6 +30,12 @@ export async function listReceiptPrinters(): Promise<string[]> {
   if (!Array.isArray(result.printers) || !result.printers.every((name: unknown) => typeof name === 'string')) throw new Error('Resposta inválida do conector.');
   return result.printers;
 }
+export async function requireImageConnector(): Promise<void> {
+  const result = await request('/printers');
+  if (typeof result.version !== 'number' || result.version < 2 || !Array.isArray(result.capabilities) || !result.capabilities.includes('receipt-png-v1')) {
+    throw new Error('Atualize o Conector DistriHub neste computador para imprimir a personalização sem abrir a janela do navegador.');
+  }
+}
 const pendingReceipts = new Map<string, Promise<void>>();
 export function sendReceipt(text: string, preferences = printerPreferences()): Promise<void> {
   if (!preferences) return Promise.reject(new Error('Escolha uma impressora em Configurações.'));
@@ -37,6 +43,24 @@ export function sendReceipt(text: string, preferences = printerPreferences()): P
   const existing = pendingReceipts.get(key);
   if (existing) return existing;
   const job = request('/print', { id: crypto.randomUUID(), printer: preferences.name, width: Number(preferences.width), text }).then(result => {
+    if (result.status !== 'queued') throw new Error('A impressão não foi confirmada. Confira a impressora antes de reimprimir.');
+  }).finally(() => pendingReceipts.delete(key));
+  pendingReceipts.set(key, job);
+  return job;
+}
+
+export function sendReceiptImage(image: { png: string; pixelWidth: number; pixelHeight: number }, preferences = printerPreferences()): Promise<void> {
+  if (!preferences) return Promise.reject(new Error('Escolha uma impressora em Configurações.'));
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(image.png) || image.png.length > 8000000 || !Number.isInteger(image.pixelWidth) || !Number.isInteger(image.pixelHeight) || image.pixelWidth < 1 || image.pixelWidth > 1024 || image.pixelHeight < 1 || image.pixelHeight > 30000) {
+    return Promise.reject(new Error('Imagem do cupom inválida.'));
+  }
+  const key = JSON.stringify(['image', preferences, image]);
+  const existing = pendingReceipts.get(key);
+  if (existing) return existing;
+  const job = requireImageConnector().then(() => request('/print', {
+    id: crypto.randomUUID(), printer: preferences.name, width: Number(preferences.width),
+    format: 'receipt-png-v1', ...image,
+  })).then(result => {
     if (result.status !== 'queued') throw new Error('A impressão não foi confirmada. Confira a impressora antes de reimprimir.');
   }).finally(() => pendingReceipts.delete(key));
   pendingReceipts.set(key, job);

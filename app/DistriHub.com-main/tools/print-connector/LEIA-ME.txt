@@ -1,13 +1,14 @@
-CONECTOR DISTRiHUB - WINDOWS
+CONECTOR DISTRiHUB v2 - WINDOWS
 
 1. Instale o driver da impressora no Windows e confira se ela imprime uma pagina de teste.
 2. Extraia todos os arquivos deste ZIP. Abra Instalar.cmd e aceite a permissao do Windows.
-3. No DistriHub, abra Configuracoes > Impressora de cupons. Busque a impressora, selecione o papel e clique em Imprimir cupom de teste.
+3. No DistriHub, abra Configuracoes > Impressora de cupons. Busque a impressora, selecione o mesmo papel de Personalizacao (58 ou 80 mm) e o modo Personalizado direto. Clique em Imprimir cupom de teste.
 4. Confira se o cupom saiu corretamente. So entao clique em O cupom saiu corretamente: salvar impressora. A configuracao fica salva neste navegador/computador.
 
 O conector inicia com o Windows. Para abrir novamente, use Conector DistriHub na pasta Inicializar do Windows (Win+R, shell:startup).
 Se o navegador pedir acesso a rede local, permita para distrihub.com.br.
-O cupom direto usa texto, sem logotipo. Corte automatico e tamanho de papel dependem do driver da impressora. Etiquetas usam a impressao normal do navegador.
+O modo Personalizado direto imprime a imagem do cupom com logo, fonte e disposicao da personalizacao salva, sem janela do navegador. O modo Texto simples continua disponivel sem logo ou formatacao. Corte automatico e area fisica imprimivel dependem do driver. Cupons longos sao divididos em paginas. Etiquetas usam a impressao normal do navegador.
+Para atualizar uma instalacao anterior, extraia este pacote e execute Instalar.cmd novamente. O instalador encerra somente o conector instalado neste caminho e inicia a nova versao. Faca um novo teste grafico antes de salvar a impressora. O app bloqueia imagens em conectores antigos.
 O envio a fila do Windows nao confirma que o papel saiu. Em caso de erro ou falta de confirmacao, confira a impressora antes de reenviar.
 Para voltar a impressao normal, clique em Usar impressao pelo navegador no app.
 Para desativar o conector, remova somente o atalho Conector DistriHub da pasta Inicializar e reinicie o Windows.
