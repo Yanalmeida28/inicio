@@ -32,8 +32,7 @@ test('customer actions open and close the enlarged saved photo without entering 
  let writes=0;
  const full={...customer,photo_url:'owner/customer/photo.png'};
  await act(async()=>{renderer=TestRenderer.create(React.createElement(exports.Customers,{customers:[customer],branches:[],sales:[],salespeople:[],rmaRequests:[],onAdd:async()=>{writes++;},onUpdate:async()=>{writes++;},onDelete:async()=>{},onLoadCustomer:async()=>full}));});
- await act(async()=>renderer.root.findByProps({'aria-label':'Ações de Cliente'}).props.onClick({currentTarget:{getBoundingClientRect:()=>({right:500,top:100,bottom:140})}}));
- await act(async()=>renderer.root.findAllByType('button').find(node=>node.children.includes(' Visualizar foto')).props.onClick());
+ await act(async()=>renderer.root.findByProps({'aria-label':'Visualizar foto de Cliente'}).props.onClick());
  assert.equal(renderer.root.findByType('photo-viewer').props.path,full.photo_url);
  assert.equal(renderer.root.findAllByType('form').length,0);
  assert.equal(writes,0);

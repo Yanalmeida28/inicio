@@ -5,7 +5,7 @@ import {
   Boxes, FileText, Package, Plus, Tag, Trash2, Upload, Users,
   Building2, Layers, QrCode, X, History,
   IdCard, MapPin, Wallet, Phone, Save, UserCircle, MoreVertical, Pencil,
-  Check, TrendingUp, AlertTriangle, Activity, Eye,
+  Check, TrendingUp, AlertTriangle, Activity, Image as PhotoIcon,
 } from 'lucide-react';
 import type {
   PartnerProduct, PartnerCategory, PartnerSupplier,
@@ -1509,14 +1509,14 @@ function CustomersSubTab({ isActive = true, customers, branches, sales, rmaReque
                     <td data-label="Bairro/Cidade">{[c.neighborhood, c.city].filter(Boolean).join(', ') || '—'}</td>
                     <td data-label="Aniversário">{c.birthday ? formatCivilDate(c.birthday) : '—'}</td>
                     <td className="customer-actions-cell" data-label="Ações">
-                      <div className="product-actions-menu">
-                        <button type="button" className="product-actions-trigger" onClick={(event) => { setOpenCustomerActionId(openCustomerActionId === c.id ? null : c.id); setCustomerActionPosition(openCustomerActionId === c.id ? null : getActionPopoverPosition(event, 245, 264)); }} aria-label={`Ações de ${c.name}`} aria-expanded={openCustomerActionId === c.id}>
+                      <div className="product-actions-menu customer-row-actions">
+                        <button type="button" className="customer-photo-view-btn" title="Visualizar foto" aria-label={`Visualizar foto de ${c.name}`} onClick={async () => { setOpenCustomerActionId(null); try { setPhotoCustomer(await onLoadCustomer(c.id)); } catch (error) { window.alert(error instanceof Error ? error.message : 'Não foi possível carregar a foto do cliente.'); } }}><PhotoIcon size={20} aria-hidden="true" /></button>
+                        <button type="button" className="product-actions-trigger" onClick={(event) => { setOpenCustomerActionId(openCustomerActionId === c.id ? null : c.id); setCustomerActionPosition(openCustomerActionId === c.id ? null : getActionPopoverPosition(event, 245, 204)); }} aria-label={`Ações de ${c.name}`} aria-expanded={openCustomerActionId === c.id}>
                           <MoreVertical size={18} />
                         </button>
                         {openCustomerActionId === c.id && customerActionPosition && createPortal(
                           <div className="product-actions-popover customer-actions-popover" style={customerActionPosition} role="menu">
                             <button type="button" onClick={() => { openEditForm(c); setOpenCustomerActionId(null); }}><Pencil size={15} /> Editar</button>
-                            <button type="button" onClick={async () => { setOpenCustomerActionId(null); try { setPhotoCustomer(await onLoadCustomer(c.id)); } catch (error) { window.alert(error instanceof Error ? error.message : 'Não foi possível carregar a foto do cliente.'); } }}><Eye size={15} /> Visualizar foto</button>
                             <button type="button" onClick={async () => { setOpenCustomerActionId(null); try { await onLoadCustomer(c.id); setProfileCustomerId(c.id); } catch (error) { window.alert(error instanceof Error ? error.message : 'Não foi possível carregar os dados do cliente.'); } }}><UserCircle size={15} /> Detalhes</button>
                             <button type="button" onClick={() => { setHistoryCustomerId(c.id); setOpenCustomerActionId(null); }}><History size={15} /> Histórico de Compras / Extrato</button>
                             <button type="button" className="danger" onClick={async () => { setOpenCustomerActionId(null); if (!window.confirm(`Deseja excluir o cliente "${c.name}"?`)) return; try { await onDelete(c.id); } catch (error) { window.alert(error instanceof Error ? error.message : 'Não foi possível excluir o cliente.'); } }}><Trash2 size={15} /> Excluir</button>
