@@ -1475,7 +1475,7 @@ function CustomersSubTab({ isActive = true, customers, branches, sales, rmaReque
       )}
 
       <div className="stock-table-wrap customer-list-wrap">
-        <table className="rma-table customer-list-table">
+        <table className="rma-table customer-list-table" aria-label="Clientes cadastrados">
           <colgroup><col className="customer-col-name" /><col className="customer-col-document" /><col className="customer-col-phone" /><col className="customer-col-location" /><col className="customer-col-birthday" /><col className="customer-col-actions" /></colgroup>
           <thead><tr><th>Nome</th><th>CPF/CNPJ</th><th>WhatsApp</th><th>Bairro/Cidade</th><th>Aniversário</th><th className="customer-actions-heading">Ações</th></tr></thead>
           <tbody>

@@ -926,8 +926,8 @@ function ExecutiveDashboard({
       {sellerPerf.length === 0 ? (
         <p className="admin-empty-hint">Sem vendas registradas no período.</p>
       ) : (
-        <div className="stock-table-wrap">
-          <table className="rma-table">
+        <div className="stock-table-wrap admin-compact-wrap">
+          <table className="rma-table admin-compact-table" aria-label="Performance de vendedores">
             <thead><tr><th>Vendedor</th><th>Vendas</th><th>Receita</th><th>Ticket Médio</th><th>Participação</th></tr></thead>
             <tbody>
               {sellerPerf.map((s, i) => {
@@ -935,11 +935,11 @@ function ExecutiveDashboard({
                 const share = (s.revenue / totalRev) * 100;
                 return (
                   <tr key={i}>
-                    <td><strong>{s.name}</strong></td>
-                    <td>{s.count}</td>
-                    <td><strong>{money.format(s.revenue)}</strong></td>
-                    <td>{money.format(s.revenue / Math.max(s.count, 1))}</td>
-                    <td>
+                    <td className="admin-compact-title"><strong>{s.name}</strong></td>
+                    <td data-label="Vendas">{s.count}</td>
+                    <td data-label="Receita"><strong>{money.format(s.revenue)}</strong></td>
+                    <td data-label="Ticket médio">{money.format(s.revenue / Math.max(s.count, 1))}</td>
+                    <td data-label="Participação">
                       <div className="admin-bar-track" style={{ maxWidth: '120px' }}>
                         <div className="admin-bar-fill" style={{ width: `${share}%`, background: '#3b9bed' }} />
                       </div>
@@ -955,45 +955,45 @@ function ExecutiveDashboard({
 
       {/* Operational Summary */}
       <h4 className="report-section-title">Resumo Operacional</h4>
-      <div className="stock-table-wrap">
-        <table className="rma-table">
+      <div className="stock-table-wrap admin-compact-wrap">
+        <table className="rma-table admin-compact-table admin-operational-table" aria-label="Resumo operacional">
           <thead><tr><th>Indicador</th><th>Período Atual</th><th>Período Anterior</th><th>Variação</th></tr></thead>
           <tbody>
             <tr>
-              <td>Receita Bruta</td>
-              <td><strong>{money.format(current.grossRevenue)}</strong></td>
-              <td>{money.format(previous.grossRevenue)}</td>
-              <td>{revenueGrowth !== null ? <span className={revenueGrowth >= 0 ? 'text-green' : 'text-red'}>{revenueGrowth >= 0 ? '+' : ''}{revenueGrowth.toFixed(1)}%</span> : '—'}</td>
+              <td className="admin-compact-title">Receita Bruta</td>
+              <td data-label="Período atual"><strong>{money.format(current.grossRevenue)}</strong></td>
+              <td data-label="Período anterior">{money.format(previous.grossRevenue)}</td>
+              <td data-label="Variação">{revenueGrowth !== null ? <span className={revenueGrowth >= 0 ? 'text-green' : 'text-red'}>{revenueGrowth >= 0 ? '+' : ''}{revenueGrowth.toFixed(1)}%</span> : '—'}</td>
             </tr>
             <tr>
-              <td>Custo de Mercadorias (CMV)</td>
-              <td>{money.format(current.totalCost)}</td>
-              <td>{money.format(previous.totalCost)}</td>
-              <td>{costGrowth !== null ? <span className={costGrowth <= 0 ? 'text-green' : 'text-red'}>{costGrowth >= 0 ? '+' : ''}{costGrowth.toFixed(1)}%</span> : '—'}</td>
+              <td className="admin-compact-title">Custo de Mercadorias (CMV)</td>
+              <td data-label="Período atual">{money.format(current.totalCost)}</td>
+              <td data-label="Período anterior">{money.format(previous.totalCost)}</td>
+              <td data-label="Variação">{costGrowth !== null ? <span className={costGrowth <= 0 ? 'text-green' : 'text-red'}>{costGrowth >= 0 ? '+' : ''}{costGrowth.toFixed(1)}%</span> : '—'}</td>
             </tr>
             <tr>
-              <td>Lucro Bruto</td>
-              <td><strong className="text-green">{money.format(current.netRevenue)}</strong></td>
-              <td>{money.format(previous.netRevenue)}</td>
-              <td>{profitGrowth !== null ? <span className={profitGrowth >= 0 ? 'text-green' : 'text-red'}>{profitGrowth >= 0 ? '+' : ''}{profitGrowth.toFixed(1)}%</span> : '—'}</td>
+              <td className="admin-compact-title">Lucro Bruto</td>
+              <td data-label="Período atual"><strong className="text-green">{money.format(current.netRevenue)}</strong></td>
+              <td data-label="Período anterior">{money.format(previous.netRevenue)}</td>
+              <td data-label="Variação">{profitGrowth !== null ? <span className={profitGrowth >= 0 ? 'text-green' : 'text-red'}>{profitGrowth >= 0 ? '+' : ''}{profitGrowth.toFixed(1)}%</span> : '—'}</td>
             </tr>
             <tr>
-              <td>Margem de Lucro (%)</td>
-              <td><strong>{current.profitMargin.toFixed(1)}%</strong></td>
-              <td>{previous.profitMargin.toFixed(1)}%</td>
-              <td>{marginGrowth !== null ? <span className={marginGrowth >= 0 ? 'text-green' : 'text-red'}>{marginGrowth >= 0 ? '+' : ''}{marginGrowth.toFixed(1)}pp</span> : '—'}</td>
+              <td className="admin-compact-title">Margem de Lucro (%)</td>
+              <td data-label="Período atual"><strong>{current.profitMargin.toFixed(1)}%</strong></td>
+              <td data-label="Período anterior">{previous.profitMargin.toFixed(1)}%</td>
+              <td data-label="Variação">{marginGrowth !== null ? <span className={marginGrowth >= 0 ? 'text-green' : 'text-red'}>{marginGrowth >= 0 ? '+' : ''}{marginGrowth.toFixed(1)}pp</span> : '—'}</td>
             </tr>
             <tr>
-              <td>Ticket Médio</td>
-              <td><strong>{money.format(current.averageTicket)}</strong></td>
-              <td>{money.format(previous.averageTicket)}</td>
-              <td>{ticketGrowth !== null ? <span className={ticketGrowth >= 0 ? 'text-green' : 'text-red'}>{ticketGrowth >= 0 ? '+' : ''}{ticketGrowth.toFixed(1)}%</span> : '—'}</td>
+              <td className="admin-compact-title">Ticket Médio</td>
+              <td data-label="Período atual"><strong>{money.format(current.averageTicket)}</strong></td>
+              <td data-label="Período anterior">{money.format(previous.averageTicket)}</td>
+              <td data-label="Variação">{ticketGrowth !== null ? <span className={ticketGrowth >= 0 ? 'text-green' : 'text-red'}>{ticketGrowth >= 0 ? '+' : ''}{ticketGrowth.toFixed(1)}%</span> : '—'}</td>
             </tr>
             <tr>
-              <td>Número de Vendas</td>
-              <td><strong>{current.count}</strong></td>
-              <td>{previous.count}</td>
-              <td>{previous.count > 0 ? <span className={current.count >= previous.count ? 'text-green' : 'text-red'}>{current.count >= previous.count ? '+' : ''}{current.count - previous.count}</span> : '—'}</td>
+              <td className="admin-compact-title">Número de Vendas</td>
+              <td data-label="Período atual"><strong>{current.count}</strong></td>
+              <td data-label="Período anterior">{previous.count}</td>
+              <td data-label="Variação">{previous.count > 0 ? <span className={current.count >= previous.count ? 'text-green' : 'text-red'}>{current.count >= previous.count ? '+' : ''}{current.count - previous.count}</span> : '—'}</td>
             </tr>
           </tbody>
         </table>

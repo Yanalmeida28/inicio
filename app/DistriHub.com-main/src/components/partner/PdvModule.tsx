@@ -1464,8 +1464,8 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
       {/* Pending Pre-Sales List */}
       <div className="pdv-recent-sales pdv-presale-pending">
         <h4>Pré-Vendas Pendentes ({preSales.length})</h4>
-        <div className="stock-table-wrap">
-          <table className="rma-table">
+        <div className="stock-table-wrap directory-card-wrap">
+          <table className="rma-table directory-card-table" aria-label="Pré-vendas pendentes">
             <thead><tr><th>Cliente</th><th>Itens</th><th>Total</th><th>{traceabilityLabel}</th><th>Pagamento</th><th>Data</th><th>Ações</th></tr></thead>
             <tbody>
               {preSales.length === 0 ? (
@@ -1473,16 +1473,16 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
               ) : (
                 preSales.map((s) => (
                   <tr key={s.id}>
-                    <td><strong>{s.customer_name ?? '—'}</strong></td>
-                    <td>{s.items.length} {s.items.length === 1 ? 'item' : 'itens'}</td>
-                    <td>{money.format(saleChargeTotal(s))}</td>
-                    <td>{s.imei ?? s.serial_number ?? '—'}</td>
-                    <td>
+                    <td className="directory-card-title"><strong>{s.customer_name ?? '—'}</strong></td>
+                    <td data-label="Itens">{s.items.length} {s.items.length === 1 ? 'item' : 'itens'}</td>
+                    <td data-label="Total">{money.format(saleChargeTotal(s))}</td>
+                    <td data-label={traceabilityLabel}>{s.imei ?? s.serial_number ?? '—'}</td>
+                    <td data-label="Pagamento">
                       <span>{s.payment_method || 'A definir'}</span>
                       <small className="open-order-secondary">Pendente</small>
                     </td>
-                    <td>{new Date(s.created_at).toLocaleDateString('pt-BR')}</td>
-                    <td>
+                    <td data-label="Data">{new Date(s.created_at).toLocaleDateString('pt-BR')}</td>
+                    <td className="directory-card-actions" data-label="Ações">
                       <div className="row-action-group">
                         {canCheckout && <button className="rma-advance-btn" onClick={() => onPullToPdv(s)}>Resgatar para PDV</button>}
                         {canCheckout ? (
@@ -1496,6 +1496,7 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
                         )}
                         <button className="rma-advance-btn" onClick={() => requestCancel(s)} title="Cancelar/Apagar">
                           <Ban size={14} />
+                          <span className="presale-action-label">Cancelar</span>
                         </button>
                       </div>
                     </td>

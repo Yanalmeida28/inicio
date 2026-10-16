@@ -135,7 +135,7 @@ function FinancialScreen({ invoices, creditLimit, creditUsed, onPayInvoice, rmaR
   }
 
   return (
-    <div className="panel-module">
+    <div className="panel-module financial-scope">
       {!creditInvoice && <FinancialRecoveryPanel actions={recoveries} error={recoveryError} disabled={submitting} />}
       {rmaRequests.some(rma => Number(rma.refund_amount) > 0) && <details className="module-card">
         <summary>Reembolsos de devoluções · {money.format(rmaRequests.reduce((sum, rma) => sum + Math.round(Number(rma.refund_amount ?? 0) * 100), 0) / 100)}</summary>
@@ -238,8 +238,8 @@ function FinancialScreen({ invoices, creditLimit, creditUsed, onPayInvoice, rmaR
         </div>
 
         {success && <p className="sent-message" role="status"><Check size={14} /> {success}</p>}
-        <div className="stock-table-wrap">
-          <table className="rma-table">
+        <div className="stock-table-wrap directory-card-wrap">
+          <table className="rma-table directory-card-table" aria-label="Faturas">
             <thead>
               <tr><th>Cliente</th><th>Venda/Título</th><th>Original</th><th>Liquidado</th><th>Saldo</th><th>Vencimento</th><th>Status</th><th>Ação</th></tr>
             </thead>
@@ -249,18 +249,18 @@ function FinancialScreen({ invoices, creditLimit, creditUsed, onPayInvoice, rmaR
               ) : (
                 visibleInvoices.map((inv) => (
                   <tr key={inv.id}>
-                    <td>{inv.customer_name || '—'}</td>
-                    <td>{inv.number || inv.sale_id?.slice(0, 8) || '—'}</td>
-                    <td><strong>{money.format(inv.amount)}</strong></td>
-                    <td>{money.format(paidAmount(inv))}{Number(inv.return_credit_amount) > 0 && <small style={{ display: 'block' }}>Inclui crédito RMA: {money.format(Number(inv.return_credit_amount))}</small>}</td>
-                    <td>{money.format(balance(inv))}</td>
-                    <td>{inv.due_date ? new Date(inv.due_date.slice(0, 10) + 'T12:00:00').toLocaleDateString('pt-BR') : '—'}</td>
-                    <td>
+                    <td className="directory-card-title"><strong>{inv.customer_name || '—'}</strong></td>
+                    <td data-label="Venda / título">{inv.number || inv.sale_id?.slice(0, 8) || '—'}</td>
+                    <td data-label="Valor original"><strong>{money.format(inv.amount)}</strong></td>
+                    <td data-label="Liquidado">{money.format(paidAmount(inv))}{Number(inv.return_credit_amount) > 0 && <small style={{ display: 'block' }}>Inclui crédito RMA: {money.format(Number(inv.return_credit_amount))}</small>}</td>
+                    <td data-label="Saldo">{money.format(balance(inv))}</td>
+                    <td data-label="Vencimento">{inv.due_date ? new Date(inv.due_date.slice(0, 10) + 'T12:00:00').toLocaleDateString('pt-BR') : '—'}</td>
+                    <td data-label="Status">
                       <span className={`rma-status-badge status-${inv.status === 'paga' ? 'success' : inv.status === 'cancelada' ? 'danger' : 'warning'}`}>
                         {inv.status === 'paga' ? 'Paga' : inv.status === 'parcial' ? 'Parcialmente paga' : inv.status === 'cancelada' ? 'Cancelada' : 'Em Aberto'}
                       </span>
                     </td>
-                    <td className="financial-title-actions">
+                    <td className="financial-title-actions directory-card-actions" data-label="Ações">
                       <button type="button" className="rma-advance-btn" title="Histórico de recebimentos" aria-label="Histórico de recebimentos" onClick={()=>setReceiptInvoiceId(receiptInvoiceId === inv.id ? null : inv.id)}>Histórico</button>
                       {receiptInvoiceId === inv.id && <InvoiceReceipts invoice={inv} />}
                       {isOpen(inv) && (

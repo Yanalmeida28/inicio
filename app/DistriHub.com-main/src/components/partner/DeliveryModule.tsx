@@ -176,7 +176,7 @@ function DeliveryScreen({ sales: fallbackSales, salespeople, customers = [], sel
   };
 
   return (
-    <div className="panel-module">
+    <div className="panel-module delivery-scope">
       <div className="module-header">
         <span className="module-icon"><Truck size={20} /></span>
         <div>
@@ -281,8 +281,8 @@ function DeliveryScreen({ sales: fallbackSales, salespeople, customers = [], sel
         ))}
       </div>
 
-      <div className="stock-table-wrap">
-        <table className="rma-table">
+      <div className="stock-table-wrap directory-card-wrap">
+        <table className="rma-table directory-card-table" aria-label="Entregas">
           <thead>
             <tr>
               <th>Cliente</th><th>Itens</th><th>Total</th><th>Entregador</th><th>Status</th><th>Ações</th>
@@ -297,17 +297,18 @@ function DeliveryScreen({ sales: fallbackSales, salespeople, customers = [], sel
                 const isSaving = !isActive || savingSaleIds.has(d.saleId) || pendingIds.has(d.saleId);
                 return (
                   <tr key={d.saleId}>
-                    <td>
+                    <td className="directory-card-title">
                       <strong>{d.customerName}</strong><small>Pedido #{d.number}</small>
                       {!d.address && <small>Endereço não informado — abra os detalhes</small>}
                       {d.contact && <small>{d.contact}</small>}
                       {d.details.scheduled_date && <small>Previsão: {d.details.scheduled_date.split('-').reverse().join('/')}</small>}
                       {d.address && <small><MapPin size={10} /> {d.address}</small>}
                     </td>
-                    <td>{d.items} {d.items === 1 ? 'item' : 'itens'}</td>
-                    <td>{money.format(d.total)}</td>
-                    <td>
+                    <td data-label="Itens">{d.items} {d.items === 1 ? 'item' : 'itens'}</td>
+                    <td data-label="Total">{money.format(d.total)}</td>
+                    <td data-label="Entregador" className="delivery-driver-cell">
                       <select
+                        aria-label={`Entregador do pedido ${d.number}`}
                         value={d.driverId ?? ''}
                         onChange={(e) => saveDelivery(d.saleId, d.status, e.target.value || null)}
                         disabled={isSaving || !canAssign || d.status === 'entregue'}
@@ -320,13 +321,13 @@ function DeliveryScreen({ sales: fallbackSales, salespeople, customers = [], sel
                         ))}
                       </select>
                     </td>
-                    <td>
+                    <td data-label="Status">
                       <span className={`rma-status-badge status-${d.status === 'entregue' ? 'success' : d.status === 'falhou' ? 'danger' : d.status === 'em_rota' ? 'info' : 'warning'}`}>
                         <cfg.icon size={11} style={{ display: 'inline', marginRight: '4px' }} />
                         {cfg.label}
                       </span>
                     </td>
-                    <td>
+                    <td className="directory-card-actions" data-label="Ações">
                       <div className="row-action-group">
                         {pendingIds.has(d.saleId) && <button type="button" disabled={!isActive || savingSaleIds.has(d.saleId)} onClick={() => void persist(d.saleId, {}, undefined, true)}>Repetir ação pendente</button>}
                         <button type="button" className="rma-advance-btn" disabled={isSaving} onClick={() => editDelivery(d.saleId)}>Detalhes</button>
@@ -337,7 +338,7 @@ function DeliveryScreen({ sales: fallbackSales, salespeople, customers = [], sel
                             disabled={isSaving}
                             title="Marcar Em Rota"
                           >
-                            <Navigation size={14} />
+                            <Navigation size={14} /><span className="delivery-action-label">Em rota</span>
                           </button>
                         )}
                         {d.status === 'em_rota' && (
@@ -347,7 +348,7 @@ function DeliveryScreen({ sales: fallbackSales, salespeople, customers = [], sel
                             disabled={isSaving}
                             title="Marcar Entregue"
                           >
-                            <Check size={14} />
+                            <Check size={14} /><span className="delivery-action-label">Entregue</span>
                           </button>
                         )}
                         {d.status !== 'falhou' && d.status !== 'entregue' && (
@@ -357,7 +358,7 @@ function DeliveryScreen({ sales: fallbackSales, salespeople, customers = [], sel
                             disabled={isSaving}
                             title="Marcar Falha"
                           >
-                            <X size={14} />
+                            <X size={14} /><span className="delivery-action-label">Falhou</span>
                           </button>
                         )}
                       </div>
