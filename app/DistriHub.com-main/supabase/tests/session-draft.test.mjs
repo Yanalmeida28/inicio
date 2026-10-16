@@ -24,13 +24,14 @@ test('operator drafts migrate once into the branch workspace and do not reappear
  await act(async()=>renderer.update(screen('cashier','another-branch')));
  assert.equal(renderer.root.findByType('input').props.value,'[]');
  await act(async()=>renderer.unmount());
- storage.set('distrihub:draft:user:company:cashier:branch:checkout:cart',JSON.stringify([{product_id:'stale-other-operator'}]));
- await act(async()=>{renderer=TestRenderer.create(screen('cashier'));});
- assert.equal(renderer.root.findByType('input').props.value,'[]');
- await act(async()=>renderer.unmount());
  exports.clearConfirmedPdvDraft(scope,'checkout');
  assert.equal(storage.has('distrihub:draft:'+scope+':checkout:cart'),false);
  await act(async()=>{renderer=TestRenderer.create(screen('manager'));});
+ assert.equal(renderer.root.findByType('input').props.value,'[]');
+ await act(async()=>renderer.unmount());
+ storage.set('distrihub:draft:user:company:cashier:branch:checkout:cart',JSON.stringify([{product_id:'stale-other-operator'}]));
+ exports.clearConfirmedPdvDraft(scope,'checkout');
+ await act(async()=>{renderer=TestRenderer.create(screen('cashier'));});
  assert.equal(renderer.root.findByType('input').props.value,'[]');
  await act(async()=>renderer.unmount());
 });
