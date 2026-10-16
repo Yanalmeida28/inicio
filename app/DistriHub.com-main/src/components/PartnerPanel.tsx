@@ -410,7 +410,7 @@ export function PartnerPanel({
     try {
       const { operatorId, operatorPin } = getOperatorContext();
       const confirmed = await partner.retryPendingSale(operatorId, operatorPin);
-      const sourceScope = confirmed.draft_scope ?? `${identity?.authUserId}:${identity?.companyUserId}:${currentSalespersonId ?? 'owner'}:${confirmed.branch_id}:pdv:${confirmed.branch_id}:${currentSalespersonId ?? 'owner'}`;
+      const sourceScope = confirmed.draft_scope ?? `${identity?.authUserId}:${identity?.companyUserId}:workspace:${confirmed.branch_id}:pdv:${confirmed.branch_id}`;
       clearConfirmedPdvDraft(sourceScope, confirmed.status === 'pre_venda' ? 'presale' : 'checkout');
       setRecoveredSaleNotice(`${confirmed.status === 'pre_venda' ? 'Pré-venda' : 'Venda'} #${confirmed.sale_number ?? confirmed.id.slice(0, 8).toUpperCase()} recuperada e confirmada. O rascunho desta operação foi limpo.`);
       setPdvReadError(null);
@@ -2060,8 +2060,9 @@ export function PartnerPanel({
           )}
 
           <SessionDraftProvider
-            key={`${identity?.authUserId ?? user?.id ?? 'pending'}:${identity?.companyUserId ?? 'pending'}:${currentSalespersonId ?? 'owner'}:${effectiveBranchId || 'all'}`}
-            scope={`${identity?.authUserId ?? user?.id ?? 'pending'}:${identity?.companyUserId ?? 'pending'}:${currentSalespersonId ?? 'owner'}:${effectiveBranchId || 'all'}`}
+            key={`${identity?.authUserId ?? user?.id ?? 'pending'}:${identity?.companyUserId ?? 'pending'}:workspace:${effectiveBranchId || 'all'}`}
+            scope={`${identity?.authUserId ?? user?.id ?? 'pending'}:${identity?.companyUserId ?? 'pending'}:workspace:${effectiveBranchId || 'all'}`}
+            legacyScope={`${identity?.authUserId ?? user?.id ?? 'pending'}:${identity?.companyUserId ?? 'pending'}:${currentSalespersonId ?? 'owner'}:${effectiveBranchId || 'all'}`}
           >
           <div className="partner-content">
             {storeSettings.internal_notice && <div role="note" className="store-internal-notice">{storeSettings.internal_notice}</div>}
@@ -2108,7 +2109,7 @@ export function PartnerPanel({
                   setShowOperatorModal(true);
                 } : undefined}
                 canEditPrice={effectiveRole === 'gerente' || (!isEmployeeRestricted && effectiveRole === 'administrador')}
-                key={`${pdvRevision}:${effectiveBranchId}:${activeSalesperson?.id ?? 'owner'}`}
+                key={`${pdvRevision}:${effectiveBranchId}`}
                 hasPendingSale={Boolean(partner.pendingSale)}
                 barcodeScannerEnabled={storeSettings.personalization?.pdv?.barcode_scanner_enabled !== false}
                 cameraScannerEnabled={storeSettings.personalization?.pdv?.camera_scanner_enabled === true}
@@ -2185,7 +2186,7 @@ export function PartnerPanel({
               {renderTab('pedidos', <CatalogOrdersModule companyId={identity?.companyUserId ?? null} branchId={effectiveBranchId} />, ':catalog')}
               {renderTab('pedidos',
               <OpenOrdersModule
-                key={`${identity?.authUserId}:${identity?.companyUserId}:${effectiveBranchId}:${activeSalesperson?.id ?? 'owner'}`}
+                key={`${identity?.authUserId}:${identity?.companyUserId}:${effectiveBranchId}`}
                 isActive={activeTab === 'pedidos'}
                 onPullToPdv={(sale) => {
                   if (sale.status !== 'pre_venda' || !sale.branch_id || blockedTabs.includes('pdv')) return;
@@ -2343,7 +2344,7 @@ export function PartnerPanel({
               {renderTab('administrativo',
               <AdminModule
                 allowedModules={['cadastros', 'relatorios', 'fiscal', 'financeiro', 'configuracoes'].filter(module => !blockedTabs.includes(module as Tab) && canUseSaasFeature(saas.subscription, module))}
-                contextKey={[identity?.authUserId, identity?.companyUserId, activeSalesperson?.id].join(':')}
+                contextKey={[identity?.authUserId, identity?.companyUserId].join(':')}
                 isActive={activeTab === 'administrativo'}
                 recoveries={partner.financialRecoveries}
                 recoveryError={partner.financialRecoveryError}
@@ -2432,7 +2433,7 @@ export function PartnerPanel({
               <div hidden={activeTab !== 'financeiro'}>
               {renderTab('financeiro',
               <FinancialModule
-                contextKey={[identity?.authUserId, identity?.companyUserId, effectiveBranchId, activeSalesperson?.id].join(':')}
+                contextKey={[identity?.authUserId, identity?.companyUserId, effectiveBranchId].join(':')}
                 isActive={activeTab === 'financeiro'}
                 recoveries={partner.financialRecoveries}
                 recoveryError={partner.financialRecoveryError}

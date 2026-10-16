@@ -6,6 +6,34 @@ import vm from 'node:vm';
 import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
 import ts from '../../node_modules/typescript/lib/typescript.js';
+test('operator drafts migrate once into the branch workspace and do not reappear after confirmed clearing',async()=>{
+ const storage=new Map([['distrihub:draft:user:company:manager:branch:checkout:cart',JSON.stringify([{product_id:'old-cart'}])]]);
+ const exports={};
+ const sessionStorage={getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key),get length(){return storage.size;},key:index=>[...storage.keys()][index]??null};
+ vm.runInNewContext(ts.transpileModule(await readFile(new URL('../../src/hooks/useSessionDraft.tsx',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,target:ts.ScriptTarget.ES2020}}).outputText,{exports,require:createRequire(import.meta.url),console,window:{sessionStorage}});
+ function Form(){const [cart]=exports.useSessionDraftState('checkout:cart',[]);const [note,setNote]=React.useState('');return React.createElement('input',{value:JSON.stringify(cart)+note,onChange:e=>setNote(e.target.value)});}
+ const scope='user:company:workspace:branch';
+ const screen=(operator,branch='branch')=>React.createElement(exports.SessionDraftProvider,{key:branch,scope:'user:company:workspace:'+branch,legacyScope:'user:company:'+operator+':'+branch},React.createElement(Form));
+ let renderer;
+ await act(async()=>{renderer=TestRenderer.create(screen('manager'));});
+ assert.match(renderer.root.findByType('input').props.value,/old-cart/);
+ assert.equal(storage.has('distrihub:draft:user:company:manager:branch:checkout:cart'),false);
+ await act(async()=>renderer.root.findByType('input').props.onChange({target:{value:'unsaved note'}}));
+ await act(async()=>renderer.update(screen('cashier')));
+ assert.match(renderer.root.findByType('input').props.value,/old-cart.*unsaved note/);
+ await act(async()=>renderer.update(screen('cashier','another-branch')));
+ assert.equal(renderer.root.findByType('input').props.value,'[]');
+ await act(async()=>renderer.unmount());
+ storage.set('distrihub:draft:user:company:cashier:branch:checkout:cart',JSON.stringify([{product_id:'stale-other-operator'}]));
+ await act(async()=>{renderer=TestRenderer.create(screen('cashier'));});
+ assert.equal(renderer.root.findByType('input').props.value,'[]');
+ await act(async()=>renderer.unmount());
+ exports.clearConfirmedPdvDraft(scope,'checkout');
+ assert.equal(storage.has('distrihub:draft:'+scope+':checkout:cart'),false);
+ await act(async()=>{renderer=TestRenderer.create(screen('manager'));});
+ assert.equal(renderer.root.findByType('input').props.value,'[]');
+ await act(async()=>renderer.unmount());
+});
 
 test('rascunhos sobrevivem à remontagem e permanecem separados por usuário e filial', async () => {
   const storage = new Map();

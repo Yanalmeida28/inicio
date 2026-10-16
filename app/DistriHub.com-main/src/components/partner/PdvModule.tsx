@@ -362,7 +362,8 @@ export function PdvModule({
   activeSalespersonId, activeBranchName, receiptDetails, currentRole, canEditPrice, onCreateSale, onCreatePreSale, onFinalizePreSale, onCancelSale, onDeleteSale,
 }: Props) {
   const parentDraftScope = useSessionDraftScope();
-  const contextKey = `${selectedBranchId ?? 'all'}:${activeSalespersonId ?? 'owner'}`;
+  const legacyParentDraftScope = useSessionDraftScope(true);
+  const contextKey = `${selectedBranchId ?? 'all'}`;
   const [subTab, setSubTab] = useSessionDraftState<PdvSubTab>(`pdv:active-subtab:${contextKey}`, 'pdv');
   const [visitedSubTabs, setVisitedSubTabs] = useState<Set<PdvSubTab>>(() => new Set(['pdv', subTab]));
   const [checkoutPreSale, setCheckoutPreSale] = useState<PartnerSale | null>(null);
@@ -405,6 +406,7 @@ export function PdvModule({
     <SessionDraftProvider
       key={`${parentDraftScope}:pdv:${contextKey}`}
       scope={`${parentDraftScope}:pdv:${contextKey}`}
+      legacyScope={`${legacyParentDraftScope}:pdv:${contextKey}:${activeSalespersonId ?? 'owner'}`}
     >
     <div ref={moduleRef} className={`panel-module pdv-workspace${subTab === 'pdv' ? ' pdv-workspace-checkout' : ''}`}>
       <div className="module-header">

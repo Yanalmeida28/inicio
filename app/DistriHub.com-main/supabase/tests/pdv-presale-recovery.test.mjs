@@ -33,6 +33,21 @@ const product={id:'product',name:'Produto A',sku:'A',stock:10,branch_id:'branch'
 const base={products:[product],customers:[],salespeople:[],credits:[],sales:[],selectedBranchId:'branch',segment:'assistencia',canCheckout:true,canEditPrice:false,onCreatePreSale:async()=>{},onFinalizePreSale:async()=>{},onCancelSale:async()=>{},onDeleteSale:async()=>{},onPullToPdv(){}};
 const wrapped=(component,props,scope,key='before')=>React.createElement(drafts.SessionDraftProvider,{scope},React.createElement(component,{...props,key}));
 const add=async()=>act(async()=>view.root.findAllByType('button').find(node=>node.props.className==='pdv-product-card').props.onClick());
+test('operator switch preserves PDV tab and cart while updating price permission',async()=>{
+ const scope='operator-switch:company:workspace:branch';
+ const screen=(operator,role)=>wrapped(components.PdvModule,{...base,currentRole:role,activeSalespersonId:operator,canEditPrice:role==='gerente'},scope);
+ await act(async()=>{view=TestRenderer.create(screen('manager','gerente'));});
+ await act(async()=>view.root.findAllByType('button').find(node=>node.props.className==='pdv-subtab '&&node.children.some(child=>typeof child==='string'&&child.includes('Pré-vendas'))).props.onClick());
+ const presale=()=>view.root.findAll(node=>typeof node.type==='function'&&node.type.name==='PreVendaTab')[0];
+ await act(async()=>presale().findAllByType('button').find(node=>node.props.className==='pdv-product-card').props.onClick());
+ assert.match(storage.get('distrihub:draft:'+scope+':pdv:branch:presale:cart'),/product/);
+ await act(async()=>view.update(screen('cashier','caixa')));
+ assert.equal(view.root.findAllByType('button').find(node=>node.props.className==='pdv-subtab active').children.some(child=>child===' Pré-vendas'),true);
+ assert.match(storage.get('distrihub:draft:'+scope+':pdv:branch:presale:cart'),/product/);
+ assert.equal(view.root.findAll(node=>typeof node.type==='function'&&node.type.name==='PreVendaTab')[0].props.canEditPrice,false);
+ await act(async()=>view.update(screen('manager','gerente')));
+ assert.match(storage.get('distrihub:draft:'+scope+':pdv:branch:presale:cart'),/product/);
+});
 
 test('confirmed recovery clears only the original checkout draft and cannot resubmit it',async()=>{
  let sale;
