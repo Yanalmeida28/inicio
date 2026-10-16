@@ -52,7 +52,7 @@ test('product photo rejects unsupported files, uploads to the current user folde
  const Field=await component('ProductPhotoField',{auth:{getUser:async()=>({data:{user:{id:owner}}})},storage:{from:bucket=>({upload:async(path,file)=>{uploads.push([bucket,path,file]);return {};},getPublicUrl:path=>({data:{publicUrl:`https://storage.test/${path}`}})})}});
  let view;act(()=>{view=TestRenderer.create(React.createElement(Field,{value:null,onChange:value=>changes.push(value),disabled:false,onBusyChange:value=>busy.push(value)}));});
  try {
-  assert.equal(view.root.findAllByType('input').length,0);
+  assert.equal(view.root.findAllByType('input').filter(input=>!input.props.hidden).length,0);
   const select=async file=>act(async()=>view.root.findByProps({className:'product-photo-control'}).props.onPaste({preventDefault(){},clipboardData:{files:[file]}}));
   await select({name:'bad.svg',type:'image/svg+xml',size:10});assert.equal(uploads.length,0);
   await select({name:'large.png',type:'image/png',size:3*1024*1024});assert.equal(uploads.length,0);
@@ -64,22 +64,45 @@ test('product photo rejects unsupported files, uploads to the current user folde
  } finally {act(()=>view.unmount());}
 });
 
-test('product camera pastes from the clipboard, exposes only paste/remove and never renders a file selector',async()=>{
+test('product photo offers capture, gallery, paste and removal without visible file selectors',async()=>{
  const uploads=[],changes=[];
  const file=new File(['photo'],'copied.png',{type:'image/png'});
  const Field=await component('ProductPhotoField',{auth:{getUser:async()=>({data:{user:{id:owner}}})},storage:{from:()=>({upload:async(path,file)=>{uploads.push(file);return {};},getPublicUrl:()=>({data:{publicUrl:'https://storage.test/photo.png'}})})}},{File,navigator:{clipboard:{read:async()=>[{types:['image/png'],getType:async()=>file}]}}});
  let view;
  await act(async()=>{view=TestRenderer.create(React.createElement(Field,{value:null,onChange:value=>changes.push(value),disabled:false,onBusyChange(){}}));});
  try {
-  assert.equal(view.root.findAllByType('input').length,0);
+  assert.equal(view.root.findAllByType('input').length,2);
+  assert.ok(view.root.findAllByType('input').every(input=>input.props.hidden));
+  assert.equal(view.root.findByProps({'aria-label':'Tirar foto do produto'}).props.capture,'environment');
+  assert.equal(view.root.findByProps({'aria-label':'Escolher foto nos arquivos ou galeria'}).props.capture,undefined);
   await act(async()=>view.root.findByProps({'aria-label':'Opções da foto do produto'}).props.onClick());
-  assert.equal(view.root.findAllByProps({role:'menuitem'}).length,2);
+  assert.equal(view.root.findAllByProps({role:'menuitem'}).length,4);
   await act(async()=>view.root.findAllByProps({role:'menuitem'}).find(button=>button.children.includes('Colar foto')).props.onClick());
   assert.equal(uploads.length,1);assert.equal(uploads[0].type,'image/png');
   assert.deepEqual(changes,['https://storage.test/photo.png']);
   assert.equal(view.root.findAllByProps({role:'menu'}).length,0);
  } finally {await act(async()=>view.unmount());}
 });
+test('product camera and gallery open separate pickers and send selected photos through the authenticated upload',async()=>{
+ const uploads=[],changes=[],opened=[];
+ const Field=await component('ProductPhotoField',{auth:{getUser:async()=>({data:{user:{id:owner}}})},storage:{from:()=>({upload:async(path,file)=>{uploads.push({path,file});return {};},getPublicUrl:path=>({data:{publicUrl:`https://storage.test/${path}`}})})}});
+ let view;
+ await act(async()=>{view=TestRenderer.create(React.createElement(Field,{value:null,onChange:value=>changes.push(value),disabled:false,onBusyChange(){}}),{createNodeMock:element=>element.type==='input'?{click(){opened.push(element.props.capture?'camera':'gallery');}}:null});});
+ try {
+  for(const [action,label,type] of [['Tirar foto','Tirar foto do produto','image/jpeg'],['Arquivos / Galeria','Escolher foto nos arquivos ou galeria','image/png']]) {
+   await act(async()=>view.root.findByProps({'aria-label':'Opções da foto do produto'}).props.onClick());
+   await act(async()=>view.root.findAllByProps({role:'menuitem'}).find(button=>button.children.includes(action)).props.onClick());
+   const target={files:[{name:'photo',type,size:100}],value:'selected'};
+   await act(async()=>view.root.findByProps({'aria-label':label}).props.onChange({currentTarget:target}));
+   assert.equal(target.value,'');
+  }
+  assert.deepEqual(opened,['camera','gallery']);assert.equal(uploads.length,2);assert.equal(changes.length,2);
+  assert.ok(uploads.every(row=>row.path.startsWith(owner+'/')));
+  await act(async()=>view.root.findByProps({'aria-label':'Tirar foto do produto'}).props.onChange({currentTarget:{files:[],value:''}}));
+  assert.equal(uploads.length,2);
+ } finally {await act(async()=>view.unmount());}
+});
+
 test('RMA multiple photos preserve file identities after a failed save and block duplicate submissions',async()=>{
  const Form=await component('RmaPhotoUpload');let view,fail=true;const calls=[];
  act(()=>{view=TestRenderer.create(React.createElement(Form,{rma:{id:rma,product_name:'Peça',attachments:[]},onClose(){},onSave:async(id,files)=>{calls.push([id,files]);if(fail)throw new Error('Falha de conexão');}}));});
