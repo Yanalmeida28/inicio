@@ -27,6 +27,7 @@ before(async()=>{
   await login(baselineOwner);
   await assert.rejects(save({id:baselineCustomer}),/E necessario informar uma filial valida/);
   await db.exec(await read('../migrations/20261009192448_fix_shared_customer_credit_updates.sql'));
+  await db.exec(await read('../migrations/20261016001415_fix_admin_customer_branch_context.sql'));
 });
 after(()=>db.close());
 beforeEach(async()=>{
@@ -77,4 +78,23 @@ test('new customers still require a valid branch and negative credit limits are 
   await assert.rejects(save({id:null}),/filial valida/);
   await assert.rejects(save({limit:-1}),/nao pode ser negativo/);
   assert.equal((await sql('SELECT count(*)::int AS n FROM partner_customers')).rows[0].n,1);
+});
+
+test('administrator without assigned branch creates customers in the selected branch',async()=>{
+  await sql("UPDATE partner_salespeople SET role='administrador',branch_id=NULL WHERE id=$1",[manager]);
+  for (const context of [branch,secondBranch]) {
+    const id=(await save({id:null,context,operator:manager,pin:'1234'})).rows[0].id;
+    const row=(await sql('SELECT user_id,branch_id FROM partner_customers WHERE id=$1',[id])).rows[0];
+    assert.equal(row.user_id,owner); assert.equal(row.branch_id,context);
+  }
+  await assert.rejects(save({id:null,context:foreignBranch,operator:manager,pin:'1234'}),/Filial invalida/);
+  await assert.rejects(save({id:null,operator:manager,pin:'1234'}),/filial valida/);
+  await assert.rejects(save({id:null,context:branch,operator:manager,pin:'bad'}),/Operador invalido/);
+});
+
+test('administrator assigned elsewhere uses explicit selected branch; manager remains restricted',async()=>{
+  await assert.rejects(save({id:null,context:secondBranch,operator:manager,pin:'1234'}),/filial/);
+  await sql("UPDATE partner_salespeople SET role='administrador' WHERE id=$1",[manager]);
+  const id=(await save({id:null,context:secondBranch,operator:manager,pin:'1234'})).rows[0].id;
+  assert.equal((await sql('SELECT branch_id FROM partner_customers WHERE id=$1',[id])).rows[0].branch_id,secondBranch);
 });
