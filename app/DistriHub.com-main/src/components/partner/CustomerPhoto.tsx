@@ -20,5 +20,5 @@ export function CustomerPhoto({ path, file, removed }: { path?: string | null; f
     }
     return () => { active = false; };
   }, [path, file, removed]);
-  return url ? <img src={url} alt="Foto do cliente" /> : <Camera size={24} />;
+  return url ? <img src={url} alt="Foto do cliente" onError={() => setUrl(null)} /> : <Camera size={32} aria-hidden="true" />;
 }

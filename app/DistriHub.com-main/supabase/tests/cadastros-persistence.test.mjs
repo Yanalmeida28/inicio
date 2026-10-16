@@ -5,6 +5,25 @@ import { PGlite } from '@electric-sql/pglite';
 const migration = await readFile(new URL('../migrations/20261014201623_fix_cadastros_xml_customer_and_permissions.sql',import.meta.url),'utf8');
 const owner='00000000-0000-0000-0000-000000000001', branch='00000000-0000-0000-0000-000000000002', employee='00000000-0000-0000-0000-000000000003', operator='00000000-0000-0000-0000-000000000004', other='00000000-0000-0000-0000-000000000005', foreignBranch='00000000-0000-0000-0000-000000000006', customer='00000000-0000-0000-0000-000000000007';
 const textFields=['name','document','phone','email','address','neighborhood','city','device_model','notes','trade_name','rg','municipal_registration','state_registration','suframa_id','sex','address_number','zip_code','state','complement','reference_point','country','customer_group','price_table','phone_commercial_1','phone_commercial_2','photo_url'];
+test('owner edits a manager customer with a linked administrator PIN, preserving company and branch restrictions',async()=>{
+ const db=await database();
+ try {
+  await db.exec(`ALTER TABLE partner_salespeople ADD COLUMN pin_hash text;
+   UPDATE partner_salespeople SET role='administrador',pin_hash='1234';
+   CREATE FUNCTION verify_partner_salesperson_pin(text,text) RETURNS boolean LANGUAGE sql AS $$SELECT $1=$2$$;`);
+  const save=(pin='1234')=>db.query('SELECT update_partner_customer_profile($1,$2::jsonb,$3,$4,$5) AS result',[customer,JSON.stringify({name:'Editado pelo administrador'}),operator,pin,branch]);
+  await assert.rejects(save(),/Operador/);
+  await db.exec(await readFile(new URL('../migrations/20261016143832_fix_customer_profile_owner_operator.sql',import.meta.url),'utf8'));
+  assert.equal((await save()).rows[0].result.name,'Editado pelo administrador');
+  await assert.rejects(save('0000'),/PIN incorreto/);
+  await db.query('UPDATE partner_salespeople SET active=false WHERE id=$1',[operator]);
+  await assert.rejects(save(),/PIN incorreto/);
+  await db.query('UPDATE partner_salespeople SET active=true,user_id=$1 WHERE id=$2',[other,operator]);
+  await assert.rejects(save(),/PIN incorreto/);
+  await db.query("UPDATE partner_salespeople SET user_id=$1,role='gerente',branch_id=$2 WHERE id=$3",[owner,foreignBranch,operator]);
+  await assert.rejects(save(),/Acesso negado a filial/);
+ } finally {await db.close();}
+});
 async function database() {
  const db=new PGlite();
  try {

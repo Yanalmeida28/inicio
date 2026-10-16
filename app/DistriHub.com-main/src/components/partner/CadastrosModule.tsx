@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import {
   Boxes, FileText, Package, Plus, Tag, Trash2, Upload, Users,
   Building2, Layers, QrCode, X, History,
-  IdCard, MapPin, Wallet, Phone, Save, Camera, UserCircle, MoreVertical, Pencil,
+  IdCard, MapPin, Wallet, Phone, Save, UserCircle, MoreVertical, Pencil,
   Check, TrendingUp, AlertTriangle, Activity,
 } from 'lucide-react';
 import type {
@@ -1641,7 +1641,7 @@ function CustomerProfileModal({ customer, sales, rmaRequests, salespeople, onUpd
       setSuccess(true);
       onClose();
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : 'Não foi possível salvar o cliente.');
+      setError(saveError instanceof Error ? saveError.message : (saveError && typeof saveError === 'object' && 'message' in saveError && typeof saveError.message === 'string' ? saveError.message : 'Não foi possível salvar o cliente.'));
     } finally {
       setIsSaving(false);
     }
@@ -1656,10 +1656,21 @@ function CustomerProfileModal({ customer, sales, rmaRequests, salespeople, onUpd
         </div>
         <div className="customer-profile-header">
           <div className="customer-avatar">
-            <CustomerPhoto path={customer.photo_url} file={photoFile} removed={removePhoto} />
-            <small>{photoFile ? 'Nova foto' : 'Foto'}</small>
-            <label className="customer-photo-picker"><Camera size={13} /> Adicionar foto<input type="file" accept="image/*" onChange={(event) => { setPhotoFile(event.target.files?.[0] ?? null); setRemovePhoto(false); }} /></label>
-            {customer.photo_url && <button type="button" onClick={() => { setRemovePhoto(true); setPhotoFile(null); }}>Remover</button>}
+            <label className="customer-photo-picker" title="Adicionar ou trocar foto do cliente">
+              <CustomerPhoto path={customer.photo_url} file={photoFile} removed={removePhoto} />
+              <input aria-label="Adicionar ou trocar foto do cliente" type="file" accept="image/jpeg,image/png,image/webp" disabled={isSaving} onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (!file) return;
+                if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 2 * 1024 * 1024) {
+                  setError('Use uma foto JPG, PNG ou WebP de até 2 MB.');
+                  event.target.value = '';
+                  return;
+                }
+                setPhotoFile(file); setRemovePhoto(false); setSuccess(false); setError(null);
+                event.target.value = '';
+              }} />
+            </label>
+            {!removePhoto && (customer.photo_url || photoFile) && <button type="button" disabled={isSaving} onClick={() => { setRemovePhoto(true); setPhotoFile(null); setSuccess(false); }}>Remover foto</button>}
           </div>
           <div className="customer-profile-summary">
             <strong>{form.name}</strong>

@@ -18,7 +18,7 @@ vm.runInNewContext(ts.transpileModule(source+'\nexports.CustomerProfile=Customer
   if(name==='./ImportExportModule')return {ExportButtons:()=>null};
   if(name==='./ProductProfitPreview')return {ProductProfitPreview:()=>null};
   if(name==='./ProductPhotoField')return {ProductPhotoField:()=>null};
-  if(name==='./CustomerPhoto')return {CustomerPhoto:()=>null};
+  if(name==='./CustomerPhoto')return {CustomerPhoto:props=>React.createElement('photo-preview',props)};
   if(name==='../../lib/cadastroXml')return {};
   if(name==='../../lib/saleReturns')return {};
   return require(name);
@@ -26,6 +26,25 @@ vm.runInNewContext(ts.transpileModule(source+'\nexports.CustomerProfile=Customer
 let renderer;
 afterEach(async()=>{if(renderer)await act(async()=>renderer.unmount());renderer=null;draftInitialValues.clear();});
 const customer={id:'customer',name:'Cliente',user_id:'owner',branch_id:null,person_type:'PF',customer_type:'varejo',credit_limit:0,allow_credit:false};
+test('camera selection previews the chosen photo, preserves it when cancelled and saves it',async()=>{
+ let saved;
+ await open(async(id,updates)=>{saved=updates;});
+ const picker=()=>renderer.root.findByProps({'aria-label':'Adicionar ou trocar foto do cliente'});
+ const file={type:'image/png',size:1024,name:'foto.png'};
+ await act(async()=>picker().props.onChange({target:{files:[file],value:'foto.png'}}));
+ assert.equal(renderer.root.findByType('photo-preview').props.file,file);
+ await act(async()=>picker().props.onChange({target:{files:[],value:''}}));
+ assert.equal(renderer.root.findByType('photo-preview').props.file,file);
+ await act(async()=>renderer.root.findByType('form').props.onSubmit({preventDefault(){}}));
+ assert.equal(saved.photo_file,file);
+});
+test('invalid photos show a useful error and retain the current photo',async()=>{
+ await open(async()=>{});
+ const picker=renderer.root.findByProps({'aria-label':'Adicionar ou trocar foto do cliente'});
+ await act(async()=>picker.props.onChange({target:{files:[{type:'image/png',size:3*1024*1024}],value:'large.png'}}));
+ assert.equal(renderer.root.findByType('photo-preview').props.file,null);
+ assert.ok(renderer.root.findAllByType('p').some(p=>p.children.join('').includes('até 2 MB')));
+});
 async function open(onUpdate,onClose=()=>{}){
   await act(async()=>{renderer=TestRenderer.create(React.createElement(exports.CustomerProfile,{customer,sales:[],salespeople:[],rmaRequests:[],onUpdate,onClose}));});
   await act(async()=>renderer.root.findAllByType('button').find(b=>b.children.includes('Dados Financeiros')).props.onClick());
