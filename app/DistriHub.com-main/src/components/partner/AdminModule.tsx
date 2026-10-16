@@ -88,7 +88,7 @@ type Props = {
 };
 
 type AdminSection = 'dashboard' | 'cadastros' | 'relatorios' | 'fiscal' | 'financeiro' | 'configuracoes';
-type AdminTab = 'dashboard' | 'cadastros' | 'relatorios' | 'fiscal' | 'financeiro' | 'permissoes' | 'auditoria' | 'dispositivos' | 'senha-liberacao' | 'gestao-dados' | 'configuracoes';
+type AdminTab = 'dashboard' | 'cadastros' | 'relatorios' | 'fiscal' | 'financeiro' | 'permissoes' | 'auditoria' | 'dispositivos' | 'gestao-dados' | 'configuracoes';
 type AdminPage = AdminTab;
 
 type TimePeriod = AdminPeriod;
@@ -168,7 +168,6 @@ const sidebarSections: {
       { id: 'gestao-dados', label: 'Exportar Dados', page: 'gestao-dados' },
       { id: 'usuarios', label: 'Usuários e permissões', page: 'permissoes' },
       { id: 'dispositivos', label: 'Dispositivos/Terminais', page: 'dispositivos' },
-      { id: 'senha-liberacao', label: 'PIN de Autorização', page: 'senha-liberacao' },
     ],
   },
 ];
@@ -396,7 +395,6 @@ function AdminModuleInner({
           {activeAdminTab === 'permissoes' && (ownerView ? <><p>Gerencie a equipe, os acessos aos módulos, a função, a filial e o PIN de cada usuário. Clique em Editar para marcar os módulos permitidos e salve as alterações. As ações continuam limitadas pela função.</p>{renderCadastros?.('vendedores')}</> : <p role="alert">Somente o proprietário pode administrar os acessos.</p>)}
           {activeAdminTab === 'auditoria' && <AuditTrail sales={sales} salespeople={salespeople} />}
           {activeAdminTab === 'dispositivos' && (ownerView ? <AdminDeviceRegistry isActive={isActive} userId={userId} branchId={branchFilter} branches={branches} /> : <p role="alert">Somente o proprietário pode consultar os terminais da loja.</p>)}
-          {activeAdminTab === 'senha-liberacao' && (ownerView ? <><p>As operações protegidas usam o PIN individual de administrador ou gerente. Configure ou altere o PIN em Usuários e permissões.</p><button type="button" className="rma-advance-btn" onClick={() => handleItemClick({ id: 'usuarios', label: 'Usuários e permissões', page: 'permissoes' })}>Abrir Usuários e permissões</button></> : <p role="alert">Somente o proprietário pode alterar os PINs dos colaboradores.</p>)}
           {activeAdminTab === 'gestao-dados' && (ownerView ? <AdminDataExports products={products} sales={sales} customers={customers} branchId={branchFilter} extra={{ branches, suppliers, categories, invoices: scopedInvoices, stock_movements: movements, payables: scopedPayables }} /> : <p role="alert">Somente o proprietário pode exportar os dados administrativos.</p>)}
           {activeAdminTab === 'configuracoes' && (
             ownerView ? renderSettings?.() : <p role="alert">Somente o proprietário pode alterar os dados do negócio.</p>
