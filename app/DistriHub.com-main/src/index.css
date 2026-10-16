@@ -916,7 +916,9 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
 .customer-profile-modal .customer-avatar img { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
 .customer-profile-modal .customer-photo-picker { position: relative; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 64px; height: 64px; padding: 0; overflow: hidden; border: 1px solid var(--dh-blue); border-radius: 10px; background: #102638; color: var(--dh-text); cursor: pointer; }
 .customer-profile-modal .customer-photo-picker:focus-within { outline: 2px solid var(--dh-blue); outline-offset: 3px; }
-.customer-profile-modal .customer-photo-picker input[type="file"] { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.customer-profile-modal .customer-avatar .customer-photo-picker { width: 64px; height: 64px; padding: 0; border-radius: 10px; }
+.customer-profile-modal .customer-photo-menu { position: absolute; top: 70px; left: 50%; transform: translateX(-50%); z-index: 30; display: grid; gap: 4px; min-width: 160px; padding: 6px; border: 1px solid var(--dh-border); border-radius: 8px; background: var(--dh-surface); box-shadow: 0 6px 20px #0005; }
+.customer-profile-modal .customer-avatar .customer-photo-menu button { min-height: 44px; padding: 8px 12px; text-align: left; font-size: 13px; }
 .customer-profile-modal .customer-avatar button { padding: 3px 6px; border: 1px solid var(--dh-border); border-radius: 4px; background: #102638; color: var(--dh-text); font-size: 11px; }
 .customer-profile-modal .fiscal-modal-actions { flex: 0 0 auto; position: sticky; bottom: 0; background: var(--dh-surface); z-index: 2; }
 .customer-profile-header { display: flex; align-items: center; gap: 16px; padding: 16px; border: 1px solid #1d3445; border-radius: 8px; background: #0e1d2b; margin-bottom: 16px; }

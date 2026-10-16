@@ -9,10 +9,11 @@ import ts from '../../node_modules/typescript/lib/typescript.js';
 const require=createRequire(import.meta.url);
 const exports={};
 const draftInitialValues=new Map();
+const clipboard={read:async()=>[]};
 const source=await readFile(new URL('../../src/components/partner/CadastrosModule.tsx',import.meta.url),'utf8');
 vm.runInNewContext(ts.transpileModule(source+'\nexports.CustomerProfile=CustomerProfileModal; exports.Customers=CustomersSubTab;',{
   compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,target:ts.ScriptTarget.ES2020},
-}).outputText,{exports,Error,window:{alert(){}},require(name){
+}).outputText,{exports,Error,File,navigator:{clipboard},window:{alert(){}},require(name){
   if(name==='../../utils')return {money:new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}),formatCpf:v=>v??'',formatCnpj:v=>v??'',normalizeDocument:v=>v??''};
   if(name==='../../hooks/useSessionDraft')return { useSessionDraftState: (key, initial) => React.useState(draftInitialValues.has(key)?draftInitialValues.get(key):initial) };
   if(name==='./ImportExportModule')return {ExportButtons:()=>null};
@@ -26,24 +27,54 @@ vm.runInNewContext(ts.transpileModule(source+'\nexports.CustomerProfile=Customer
 let renderer;
 afterEach(async()=>{if(renderer)await act(async()=>renderer.unmount());renderer=null;draftInitialValues.clear();});
 const customer={id:'customer',name:'Cliente',user_id:'owner',branch_id:null,person_type:'PF',customer_type:'varejo',credit_limit:0,allow_credit:false};
-test('camera selection previews the chosen photo, preserves it when cancelled and saves it',async()=>{
+test('camera exposes only paste/remove, previews the pasted photo and saves it',async()=>{
  let saved;
  await open(async(id,updates)=>{saved=updates;});
- const picker=()=>renderer.root.findByProps({'aria-label':'Adicionar ou trocar foto do cliente'});
- const file={type:'image/png',size:1024,name:'foto.png'};
- await act(async()=>picker().props.onChange({target:{files:[file],value:'foto.png'}}));
- assert.equal(renderer.root.findByType('photo-preview').props.file,file);
- await act(async()=>picker().props.onChange({target:{files:[],value:''}}));
- assert.equal(renderer.root.findByType('photo-preview').props.file,file);
+ const picker=()=>renderer.root.findByProps({'aria-label':'Opções da foto do cliente'});
+ assert.equal(renderer.root.findAllByProps({type:'file'}).length,0);
+ assert.equal(renderer.root.findAllByProps({role:'menu'}).length,0);
+ await act(async()=>picker().props.onClick());
+ assert.equal(renderer.root.findAllByProps({role:'menuitem'}).length,2);
+ const file=new File(['photo'],'foto.png',{type:'image/png'});
+ clipboard.read=async()=>[{types:['image/png'],getType:async()=>file}];
+ await act(async()=>renderer.root.findAllByProps({role:'menuitem'}).find(node=>node.children.includes('Colar foto')).props.onClick());
+ const pasted=renderer.root.findByType('photo-preview').props.file;
+ assert.equal(pasted.type,'image/png');
+ assert.equal(pasted.size,file.size);
+ assert.equal(renderer.root.findAllByProps({role:'menu'}).length,0);
+ await act(async()=>picker().props.onClick());
+ await act(async()=>picker().props.onClick());
  await act(async()=>renderer.root.findByType('form').props.onSubmit({preventDefault(){}}));
- assert.equal(saved.photo_file,file);
+ assert.equal(saved.photo_file,pasted);
 });
 test('invalid photos show a useful error and retain the current photo',async()=>{
  await open(async()=>{});
- const picker=renderer.root.findByProps({'aria-label':'Adicionar ou trocar foto do cliente'});
- await act(async()=>picker.props.onChange({target:{files:[{type:'image/png',size:3*1024*1024}],value:'large.png'}}));
+ const avatar=renderer.root.findByProps({className:'customer-avatar'});
+ await act(async()=>avatar.props.onPaste({preventDefault(){},clipboardData:{files:[{type:'image/png',size:3*1024*1024}]}}));
  assert.equal(renderer.root.findByType('photo-preview').props.file,null);
  assert.ok(renderer.root.findAllByType('p').some(p=>p.children.join('').includes('até 2 MB')));
+});
+test('camera pastes with the keyboard and removes the preview without submitting the form',async()=>{
+ let saved;
+ await open(async(id,updates)=>{saved=updates;});
+ const file=new File(['photo'],'foto.png',{type:'image/png'});
+ await act(async()=>renderer.root.findByProps({className:'customer-avatar'}).props.onPaste({preventDefault(){},clipboardData:{files:[file]}}));
+ assert.equal(renderer.root.findByType('photo-preview').props.file,file);
+ await act(async()=>renderer.root.findByProps({'aria-label':'Opções da foto do cliente'}).props.onClick());
+ await act(async()=>renderer.root.findAllByProps({role:'menuitem'}).find(node=>node.children.includes('Remover foto')).props.onClick());
+ assert.equal(renderer.root.findByType('photo-preview').props.removed,true);
+ assert.equal(saved,undefined);
+ await act(async()=>renderer.root.findByType('form').props.onSubmit({preventDefault(){}}));
+ assert.equal(saved.remove_photo,true);
+ assert.equal(saved.photo_file,null);
+});
+test('clipboard permission failure displays a paste alternative and keeps the dialog open',async()=>{
+ await open(async()=>{});
+ clipboard.read=async()=>{const error=new Error('denied');error.name='NotAllowedError';throw error;};
+ await act(async()=>renderer.root.findByProps({'aria-label':'Opções da foto do cliente'}).props.onClick());
+ await act(async()=>renderer.root.findAllByProps({role:'menuitem'}).find(node=>node.children.includes('Colar foto')).props.onClick());
+ assert.ok(renderer.root.findAllByType('p').some(node=>node.children.join('').includes('Ctrl+V')));
+ assert.equal(renderer.root.findByType('photo-preview').props.file,null);
 });
 async function open(onUpdate,onClose=()=>{}){
   await act(async()=>{renderer=TestRenderer.create(React.createElement(exports.CustomerProfile,{customer,sales:[],salespeople:[],rmaRequests:[],onUpdate,onClose}));});

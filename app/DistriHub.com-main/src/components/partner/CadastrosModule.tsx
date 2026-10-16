@@ -1593,6 +1593,8 @@ function CustomerProfileModal({ customer, sales, rmaRequests, salespeople, onUpd
     convenio: customer.convenio === true || String(customer.convenio) === 'true',
   }));
   const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoMenuOpen, setPhotoMenuOpen] = useState(false);
+  const [photoPasting, setPhotoPasting] = useState(false);
   const [creditLimitInput, setCreditLimitInput] = useState(() => String(customer.credit_limit ?? 0));
   const [removePhoto, setRemovePhoto] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -1630,6 +1632,7 @@ function CustomerProfileModal({ customer, sales, rmaRequests, salespeople, onUpd
 
   async function handleSave(event: React.FormEvent) {
     event.preventDefault();
+    if (isSaving || photoPasting) return;
     const creditLimit = Number(creditLimitInput || 0);
     if (!form.name?.trim()) { setError('Nome ou razão social é obrigatório.'); return; }
     if (!Number.isFinite(creditLimit) || creditLimit < 0) { setError('O limite de crédito não pode ser negativo.'); return; }
@@ -1647,6 +1650,33 @@ function CustomerProfileModal({ customer, sales, rmaRequests, salespeople, onUpd
     }
   }
 
+  function pastePhoto(file: File) {
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 2 * 1024 * 1024) {
+      setError('Cole uma foto JPG, PNG ou WebP de até 2 MB.');
+      return;
+    }
+    setPhotoFile(file); setRemovePhoto(false); setSuccess(false); setError(null); setPhotoMenuOpen(false);
+  }
+
+  async function readPhotoClipboard() {
+    if (isSaving || photoPasting) return;
+    setPhotoPasting(true); setError(null);
+    try {
+      if (!navigator.clipboard?.read) throw new Error('Copie uma imagem e use Ctrl+V sobre o ícone da câmera.');
+      const items = await navigator.clipboard.read();
+      for (const item of items) {
+        const type = item.types.find(value => ['image/png', 'image/jpeg', 'image/webp'].includes(value));
+        if (!type) continue;
+        const blob = await item.getType(type);
+        pastePhoto(new File([blob], 'foto-colada.' + (type === 'image/jpeg' ? 'jpg' : type.split('/')[1]), { type }));
+        return;
+      }
+      setError('Nenhuma imagem encontrada. Copie a foto e tente colar novamente.');
+    } catch (cause) {
+      setError(cause instanceof Error && cause.name !== 'NotAllowedError' ? cause.message : 'Não foi possível acessar a imagem copiada. Use Ctrl+V sobre o ícone da câmera.');
+    } finally { setPhotoPasting(false); }
+  }
+
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <form className="modal-content customer-profile-modal" onClick={(event) => event.stopPropagation()} onSubmit={handleSave}>
@@ -1655,22 +1685,20 @@ function CustomerProfileModal({ customer, sales, rmaRequests, salespeople, onUpd
           <button type="button" onClick={onClose}><X size={18} /></button>
         </div>
         <div className="customer-profile-header">
-          <div className="customer-avatar">
-            <label className="customer-photo-picker" title="Adicionar ou trocar foto do cliente">
+          <div className="customer-avatar" onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setPhotoMenuOpen(false); }} onKeyDown={event => { if (event.key === 'Escape') { event.stopPropagation(); setPhotoMenuOpen(false); } }} onPaste={event => {
+            if (isSaving || photoPasting) return;
+            event.preventDefault();
+            const file = Array.from(event.clipboardData.files).find(item => item.type.startsWith('image/'));
+            if (file) pastePhoto(file);
+            else setError('Copie uma imagem para colar a foto do cliente.');
+          }}>
+            <button type="button" className="customer-photo-picker" aria-label="Opções da foto do cliente" aria-haspopup="menu" aria-expanded={photoMenuOpen} title="Foto do cliente: colar ou remover" disabled={isSaving || photoPasting} onClick={() => setPhotoMenuOpen(open => !open)}>
               <CustomerPhoto path={customer.photo_url} file={photoFile} removed={removePhoto} />
-              <input aria-label="Adicionar ou trocar foto do cliente" type="file" accept="image/jpeg,image/png,image/webp" disabled={isSaving} onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (!file) return;
-                if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 2 * 1024 * 1024) {
-                  setError('Use uma foto JPG, PNG ou WebP de até 2 MB.');
-                  event.target.value = '';
-                  return;
-                }
-                setPhotoFile(file); setRemovePhoto(false); setSuccess(false); setError(null);
-                event.target.value = '';
-              }} />
-            </label>
-            {!removePhoto && (customer.photo_url || photoFile) && <button type="button" disabled={isSaving} onClick={() => { setRemovePhoto(true); setPhotoFile(null); setSuccess(false); }}>Remover foto</button>}
+            </button>
+            {photoMenuOpen && <div className="customer-photo-menu" role="menu" aria-label="Ações da foto do cliente">
+              <button type="button" role="menuitem" disabled={isSaving || photoPasting} onClick={() => void readPhotoClipboard()}>{photoPasting ? 'Colando...' : 'Colar foto'}</button>
+              <button type="button" role="menuitem" disabled={isSaving || photoPasting || removePhoto || (!customer.photo_url && !photoFile)} onClick={() => { setRemovePhoto(true); setPhotoFile(null); setSuccess(false); setPhotoMenuOpen(false); }}>Remover foto</button>
+            </div>}
           </div>
           <div className="customer-profile-summary">
             <strong>{form.name}</strong>
@@ -1737,7 +1765,7 @@ function CustomerProfileModal({ customer, sales, rmaRequests, salespeople, onUpd
         </div>
         {error && <p className="otp-error-msg">{error}</p>}
         {success && <p style={{ color: '#15803D' }}>Cliente salvo com sucesso.</p>}
-        <div className="fiscal-modal-actions"><button type="button" className="rma-advance-btn" onClick={onClose} disabled={isSaving}>Cancelar</button><button type="submit" className="module-submit-btn" disabled={isSaving}><Save size={16} /> {isSaving ? 'Salvando...' : 'Salvar Alterações'}</button></div>
+        <div className="fiscal-modal-actions"><button type="button" className="rma-advance-btn" onClick={onClose} disabled={isSaving}>Cancelar</button><button type="submit" className="module-submit-btn" disabled={isSaving || photoPasting}><Save size={16} /> {isSaving ? 'Salvando...' : 'Salvar Alterações'}</button></div>
       </form>
     </div>
   );
