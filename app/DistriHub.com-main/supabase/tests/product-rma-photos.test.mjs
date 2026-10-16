@@ -52,14 +52,33 @@ test('product photo rejects unsupported files, uploads to the current user folde
  const Field=await component('ProductPhotoField',{auth:{getUser:async()=>({data:{user:{id:owner}}})},storage:{from:bucket=>({upload:async(path,file)=>{uploads.push([bucket,path,file]);return {};},getPublicUrl:path=>({data:{publicUrl:`https://storage.test/${path}`}})})}});
  let view;act(()=>{view=TestRenderer.create(React.createElement(Field,{value:null,onChange:value=>changes.push(value),disabled:false,onBusyChange:value=>busy.push(value)}));});
  try {
-  const select=async file=>act(async()=>view.root.findByType('input').props.onChange({target:{files:[file],value:'file'}}));
+  assert.equal(view.root.findAllByType('input').length,0);
+  const select=async file=>act(async()=>view.root.findByProps({className:'product-photo-control'}).props.onPaste({preventDefault(){},clipboardData:{files:[file]}}));
   await select({name:'bad.svg',type:'image/svg+xml',size:10});assert.equal(uploads.length,0);
   await select({name:'large.png',type:'image/png',size:3*1024*1024});assert.equal(uploads.length,0);
   await select({name:'ok.png',type:'image/png',size:100});assert.equal(uploads.length,1);assert.equal(uploads[0][0],'product-photos');assert.equal(uploads[0][1],`${owner}/photo-1.png`);
   assert.deepEqual(busy,[true,false]);assert.equal(changes.length,1);
   act(()=>view.update(React.createElement(Field,{value:changes[0],onChange:value=>changes.push(value),disabled:false,onBusyChange(){}})));
-  act(()=>view.root.findByType('button').props.onClick());assert.equal(changes[1],null);
+  act(()=>view.root.findByProps({'aria-label':'Opções da foto do produto'}).props.onClick());
+  act(()=>view.root.findAllByProps({role:'menuitem'}).find(button=>button.children.includes('Remover foto')).props.onClick());assert.equal(changes[1],null);
  } finally {act(()=>view.unmount());}
+});
+
+test('product camera pastes from the clipboard, exposes only paste/remove and never renders a file selector',async()=>{
+ const uploads=[],changes=[];
+ const file=new File(['photo'],'copied.png',{type:'image/png'});
+ const Field=await component('ProductPhotoField',{auth:{getUser:async()=>({data:{user:{id:owner}}})},storage:{from:()=>({upload:async(path,file)=>{uploads.push(file);return {};},getPublicUrl:()=>({data:{publicUrl:'https://storage.test/photo.png'}})})}},{File,navigator:{clipboard:{read:async()=>[{types:['image/png'],getType:async()=>file}]}}});
+ let view;
+ await act(async()=>{view=TestRenderer.create(React.createElement(Field,{value:null,onChange:value=>changes.push(value),disabled:false,onBusyChange(){}}));});
+ try {
+  assert.equal(view.root.findAllByType('input').length,0);
+  await act(async()=>view.root.findByProps({'aria-label':'Opções da foto do produto'}).props.onClick());
+  assert.equal(view.root.findAllByProps({role:'menuitem'}).length,2);
+  await act(async()=>view.root.findAllByProps({role:'menuitem'}).find(button=>button.children.includes('Colar foto')).props.onClick());
+  assert.equal(uploads.length,1);assert.equal(uploads[0].type,'image/png');
+  assert.deepEqual(changes,['https://storage.test/photo.png']);
+  assert.equal(view.root.findAllByProps({role:'menu'}).length,0);
+ } finally {await act(async()=>view.unmount());}
 });
 test('RMA multiple photos preserve file identities after a failed save and block duplicate submissions',async()=>{
  const Form=await component('RmaPhotoUpload');let view,fail=true;const calls=[];

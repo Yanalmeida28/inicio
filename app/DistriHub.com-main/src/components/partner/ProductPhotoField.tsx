@@ -1,9 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
+import { Camera } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
 export function ProductPhotoField({ value, onChange, disabled, onBusyChange }: { value: string | null; onChange: (value: string | null) => void; disabled: boolean; onBusyChange: (busy: boolean) => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [pasting, setPasting] = useState(false);
+  const clipboardLock = useRef(false);
   const mounted = useRef(true);
   const lock = useRef(false);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
@@ -21,16 +25,45 @@ export function ProductPhotoField({ value, onChange, disabled, onBusyChange }: {
       const { error: uploadError } = await supabase.storage.from('product-photos').upload(path,file,{contentType:file.type,upsert:false});
       if (uploadError) throw uploadError;
       const { data: photo } = supabase.storage.from('product-photos').getPublicUrl(path);
-      if (mounted.current) onChange(photo.publicUrl);
+      if (mounted.current) { onChange(photo.publicUrl); setMenuOpen(false); }
     } catch (failure) { if (mounted.current) setError(failure && typeof failure==='object' && 'message' in failure ? String(failure.message) : 'Não foi possível enviar a foto.'); }
     finally { lock.current=false;if (mounted.current) { setBusy(false);onBusyChange(false); } }
   }
+  async function pasteClipboard() {
+    if (disabled || lock.current || clipboardLock.current) return;
+    clipboardLock.current=true;setPasting(true);setError('');onBusyChange(true);
+    try {
+      if (!navigator.clipboard?.read) throw new Error('Copie uma imagem e use Ctrl+V sobre a câmera.');
+      const items=await navigator.clipboard.read();
+      if (!mounted.current) return;
+      for (const item of items) {
+        const type=item.types.find(value=>['image/png','image/jpeg','image/webp'].includes(value));
+        if (!type) continue;
+        const blob=await item.getType(type);
+        if (!mounted.current) return;
+        await upload(new File([blob],'foto-colada.'+(type==='image/jpeg'?'jpg':type.split('/')[1]),{type}));
+        return;
+      }
+      setError('Nenhuma imagem encontrada. Copie a foto e tente novamente.');
+    } catch (cause) {
+      if (mounted.current) setError(cause instanceof Error && cause.name!=='NotAllowedError' ? cause.message : 'Não foi possível acessar a imagem copiada. Use Ctrl+V sobre a câmera.');
+    } finally { clipboardLock.current=false;if(mounted.current){setPasting(false);onBusyChange(false);} }
+  }
   return <section className="product-form-section">
     <h4>Foto do produto</h4>
-    {value && <img src={value} alt="Foto do produto" style={{width:120,height:120,objectFit:'contain',borderRadius:8}} />}
-    <label className="upload-label">{busy?'Enviando foto...':value?'Trocar foto':'Adicionar foto'}<input aria-label="Foto do produto" type="file" accept="image/jpeg,image/png,image/webp" disabled={disabled||busy} onChange={event=>{const file=event.target.files?.[0];event.target.value='';if(file)void upload(file);}} /></label>
-    <p>JPG, PNG ou WebP, até 2 MB. A foto acompanha o produto no catálogo público quando habilitado. Salve o cadastro para confirmar.</p>
-    {value && <button type="button" className="rma-advance-btn" disabled={disabled||busy} onClick={()=>onChange(null)}>Remover foto do cadastro</button>}
+    <div className="product-photo-control" onBlur={event=>{if(!event.currentTarget.contains(event.relatedTarget))setMenuOpen(false);}} onKeyDown={event=>{if(event.key==='Escape'){event.stopPropagation();setMenuOpen(false);}}} onPaste={event=>{
+      if(disabled||lock.current||clipboardLock.current)return;
+      event.preventDefault();
+      const file=Array.from(event.clipboardData.files).find(item=>item.type.startsWith('image/'));
+      if(file)void upload(file);else setError('Copie uma imagem para colar a foto do produto.');
+    }}>
+      <button type="button" className="product-photo-camera" aria-label="Opções da foto do produto" title="Foto do produto: colar ou remover" aria-haspopup="menu" aria-expanded={menuOpen} disabled={disabled||busy||pasting} onClick={()=>setMenuOpen(open=>!open)}>{value ? <img src={value} alt="Foto do produto" /> : <Camera size={32} aria-hidden="true" />}</button>
+      {menuOpen && <div className="product-photo-menu" role="menu" aria-label="Ações da foto do produto">
+        <button type="button" role="menuitem" disabled={disabled||busy||pasting} onClick={()=>void pasteClipboard()}>Colar foto</button>
+        <button type="button" role="menuitem" disabled={disabled||busy||pasting||!value} onClick={()=>{onChange(null);setMenuOpen(false);setError('');}}>Remover foto</button>
+      </div>}
+    </div>
+    {(busy||pasting) && <p role="status">Enviando foto...</p>}
     {error && <p role="alert" className="form-error-msg">{error}</p>}
   </section>;
 }
