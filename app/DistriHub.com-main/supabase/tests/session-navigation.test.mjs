@@ -100,7 +100,7 @@ test('a delayed initial session cannot overwrite login, token refresh preserves 
   const authSource = await readFile(new URL('../../src/hooks/useAuth.ts', import.meta.url), 'utf8');
   vm.runInNewContext(ts.transpileModule(authSource, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText, {
     exports, Error, window: { setTimeout: callback => callback() },
-    require: name => name === '../lib/supabase' ? { supabase: client, isSupabaseConfigured: true } : require(name),
+    require: name => name === '../utils' ? {} : name === '../lib/supabase' ? { supabase: client, isSupabaseConfigured: true } : require(name),
   });
   function Probe() { current = exports.useAuth(); return null; }
   let renderer;

@@ -127,6 +127,8 @@ function App() {
   }
 
   async function handleSignUp(data: {
+    document: string;
+    personType: 'PF' | 'PJ';
     businessName: string;
     whatsapp: string;
     email: string;

@@ -520,8 +520,8 @@ function ProductsSubTab({ defaultIsService = false, isActive = true, products, a
           aria-label="Pesquisar produto, modelo ou SKU"
         />
       </div>
-      <div className="stock-table-wrap">
-        <table className="rma-table">
+      <div className="stock-table-wrap directory-card-wrap">
+        <table className="rma-table directory-card-table" aria-label={defaultIsService ? 'Serviços cadastrados' : 'Produtos cadastrados'}>
           <thead>
             <tr>
               <th>Nome</th><th>SKU</th><th>Custo</th><th>Varejo</th><th>Atacado</th><th>Estoque</th><th>Status</th><th></th>
@@ -533,13 +533,14 @@ function ProductsSubTab({ defaultIsService = false, isActive = true, products, a
             ) : (
               matchingProducts.map((p) => (
                 <tr key={p.id}>
-                  <td>{p.image_url && <img src={p.image_url} alt={p.name} loading="lazy" style={{width:48,height:48,objectFit:'contain',borderRadius:6,display:'block',marginBottom:4}} />}<strong>{p.name}</strong>{p.is_service && <small className="tag-service">Serviço</small>}</td>
-                  <td>{p.sku ?? '—'}</td>
-                  <td>{money.format(p.cost_price)}</td>
-                  <td>{money.format(p.sale_price)}</td>
-                  <td>{p.wholesale_price > 0 ? money.format(p.wholesale_price) : '—'}</td>
-                  <td>{p.is_service ? '—' : p.stock}</td>
-                  <td>
+                  <td className="directory-card-title">{p.image_url && <img src={p.image_url} alt={p.name} loading="lazy" style={{width:48,height:48,objectFit:'contain',borderRadius:6,display:'block',marginBottom:4}} />}<strong>{p.name}</strong>{p.is_service && <small className="tag-service">Serviço</small>}</td>
+                  <td data-label="SKU">{p.sku ?? '—'}</td>
+                  <td data-label="Custo">{money.format(p.cost_price)}</td>
+                  <td data-label="Varejo">{money.format(p.sale_price)}</td>
+                  <td data-label="Atacado">{p.wholesale_price > 0 ? money.format(p.wholesale_price) : '—'}</td>
+                  <td data-label="Estoque">{p.is_service ? 'Não se aplica' : p.stock}</td>
+                  <td data-label="Status">
+                    {p.is_service && <span className="rma-status-badge">Serviço</span>}
                     {!p.is_service && p.stock <= (p.min_stock || 0) && p.stock > 0 && (
                       <span className="rma-status-badge stock-low">Estoque baixo</span>
                     )}
@@ -550,7 +551,7 @@ function ProductsSubTab({ defaultIsService = false, isActive = true, products, a
                       <span className="rma-status-badge stock-ok">OK</span>
                     )}
                   </td>
-                  <td className="product-actions-cell">
+                  <td className="product-actions-cell directory-card-actions" data-label="Ações">
                     <div className="product-actions-menu">
                       <button type="button" className="product-actions-trigger" onClick={(event) => { setOpenActionId(openActionId === p.id ? null : p.id); setProductActionPosition(openActionId === p.id ? null : getActionPopoverPosition(event, 220, 190)); }} aria-label={`Ações de ${p.name}`} aria-expanded={openActionId === p.id}>
                         <MoreVertical size={18} />
@@ -1807,8 +1808,8 @@ function SuppliersSubTab({ suppliers, onAdd, onUpdate, onDelete, branches = [], 
         {formError && <p className="form-error-msg" style={{ color: '#e3829b', fontSize: '13px' }}>{formError}</p>}
         <div className="supplier-form-actions"><button type="submit" className="module-submit-btn" disabled={saving}>{saving ? 'Salvando...' : editingId ? <><Save size={16} /> Salvar alterações</> : <><Plus size={16} /> Adicionar fornecedor</>}</button>{editingId && <button type="button" className="rma-advance-btn" onClick={cancelEdit} disabled={saving}>Cancelar</button>}</div>
       </form>
-      <div className="stock-table-wrap">
-        <table className="rma-table">
+      <div className="stock-table-wrap directory-card-wrap">
+        <table className="rma-table directory-card-table" aria-label="Fornecedores cadastrados">
           <thead><tr><th>Fornecedor</th><th>Telefone</th><th>Contas a Pagar</th><th className="supplier-actions-heading">Ações</th></tr></thead>
           <tbody>
             {suppliers.length === 0 ? (
@@ -1816,10 +1817,10 @@ function SuppliersSubTab({ suppliers, onAdd, onUpdate, onDelete, branches = [], 
             ) : (
               suppliers.map((s) => (
                 <tr key={s.id}>
-                  <td><strong>{s.name}</strong>{!selectedBranchId && <small style={{ display: 'block' }}>{branches.find(branch => branch.id === s.branch_id)?.name || 'Sem filial: editar para definir'}</small>}</td>
-                  <td>{s.phone ?? '—'}</td>
-                  <td>{money.format(s.payable_balance)}</td>
-                  <td className="supplier-actions-cell"><div className="row-action-group"><button type="button" className="rma-advance-btn" onClick={() => startEdit(s)}><Pencil size={14} /> Editar</button><button type="button" className="rma-advance-btn danger" onClick={async () => { if (!window.confirm(`Excluir o fornecedor "${s.name}"?`)) return; try { await onDelete(s.id); } catch (error) { window.alert(error instanceof Error ? error.message : 'Não foi possível excluir o fornecedor.'); } }}><Trash2 size={14} /> Excluir</button></div></td>
+                  <td className="directory-card-title"><strong>{s.name}</strong>{!selectedBranchId && <small style={{ display: 'block' }}>{branches.find(branch => branch.id === s.branch_id)?.name || 'Sem filial: editar para definir'}</small>}</td>
+                  <td data-label="Telefone">{s.phone ?? '—'}</td>
+                  <td data-label="Contas a pagar">{money.format(s.payable_balance)}</td>
+                  <td className="supplier-actions-cell directory-card-actions" data-label="Ações"><div className="row-action-group"><button type="button" className="rma-advance-btn" onClick={() => startEdit(s)}><Pencil size={14} /> Editar</button><button type="button" className="rma-advance-btn danger" onClick={async () => { if (!window.confirm(`Excluir o fornecedor "${s.name}"?`)) return; try { await onDelete(s.id); } catch (error) { window.alert(error instanceof Error ? error.message : 'Não foi possível excluir o fornecedor.'); } }}><Trash2 size={14} /> Excluir</button></div></td>
                 </tr>
               ))
             )}

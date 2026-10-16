@@ -2331,6 +2331,25 @@ html, body {
 .partner-panel .cadastros-scope .admin-empty-hint { color: var(--dh-text-secondary); }
 
 /* --- Clientes: modal de perfil e histórico --- */
+@media (max-width: 768px) {
+  .partner-panel .cadastros-scope .directory-card-wrap { overflow: visible; border: 0; background: transparent; min-width: 0; }
+  .partner-panel .cadastros-scope .directory-card-table { display: block; width: 100%; min-width: 0; table-layout: auto; }
+  .partner-panel .cadastros-scope .directory-card-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .partner-panel .cadastros-scope .directory-card-table tbody { display: grid; gap: 12px; width: 100%; }
+  .partner-panel .cadastros-scope .directory-card-table tbody tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 12px; padding: 14px; border: 1px solid var(--dh-border); border-radius: 12px; background: var(--dh-surface); min-width: 0; }
+  .partner-panel .cadastros-scope .directory-card-table td { display: block; min-width: 0; width: auto; max-width: 100%; border: 0; padding: 8px 0; white-space: normal; overflow-wrap: anywhere; text-align: left; }
+  .partner-panel .cadastros-scope .directory-card-table td[data-label]::before { content: attr(data-label); display: block; margin-bottom: 4px; color: var(--dh-text-secondary); font-size: 11px; font-weight: 600; }
+  .partner-panel .cadastros-scope .directory-card-table .directory-card-title { grid-column: 1 / -1; padding-top: 0; padding-bottom: 12px; border-bottom: 1px solid var(--dh-border); font-size: 15px; }
+  .partner-panel .cadastros-scope .directory-card-table .directory-card-actions { grid-column: 1 / -1; padding-top: 10px; margin-top: 4px; border-top: 1px solid var(--dh-border); }
+  .partner-panel .cadastros-scope .directory-card-actions .row-action-group { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-start; }
+  .partner-panel .cadastros-scope .directory-card-actions .rma-advance-btn,
+  .partner-panel .cadastros-scope .directory-card-actions .product-actions-trigger { min-height: 44px; min-width: 44px; }
+  .partner-panel .cadastros-scope .directory-card-actions .product-actions-trigger { width: 100%; gap: 8px; justify-content: center; }
+  .partner-panel .cadastros-scope .directory-card-actions .product-actions-menu { display: block; width: 100%; }
+  .partner-panel .cadastros-scope .directory-card-actions .product-actions-trigger::after { content: 'Opções'; }
+  .partner-panel .cadastros-scope .directory-card-table .empty-row { grid-column: 1 / -1; text-align: center; padding: 16px 0; }
+}
+
 .partner-panel .cadastros-scope .customer-profile-header { padding: 12px 14px; margin-bottom: 12px; }
 .partner-panel .cadastros-scope .customer-profile-summary strong { color: var(--dh-text); }
 .partner-panel .cadastros-scope .customer-profile-tabs { gap: 2px; margin-bottom: 10px; }

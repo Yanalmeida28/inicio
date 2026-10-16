@@ -17,6 +17,7 @@ async function load(path, dependencies = {}, globals = {}, extra = '') {
     require: name => dependencies[name] ?? require(name), ...globals });
   return exports;
 }
+const documentUtils = await load('utils.ts', { './data': {} });
 const safety = await load('lib/exportSafety.ts');
 const catalog = await load('lib/catalogOrders.ts');
 const metrics = await load('lib/reportMetrics.ts', { './pdv': { salePaymentDescription: () => 'PIX' } });
@@ -119,16 +120,17 @@ test('signup with email confirmation makes no anonymous profile write; confirmat
     async getUser() { return { data: { user }, error: null }; },
     async signUp(args) { signupArgs = args; user = { id: 'owner', user_metadata: args.options.data }; return { data: { user, session: null }, error: null }; },
   } };
-  const { useAuth } = await load('hooks/useAuth.ts', { '../lib/supabase': { supabase: client, isSupabaseConfigured: true } }, {
+  const { useAuth } = await load('hooks/useAuth.ts', { '../utils': documentUtils, '../lib/supabase': { supabase: client, isSupabaseConfigured: true } }, {
     window: { location: { origin: 'https://app.example' }, setTimeout: callback => callback() },
   });
   function Probe() { current = useAuth(); return null; }
   let renderer, result;
   await act(async () => { renderer = TestRenderer.create(React.createElement(Probe)); });
-  await act(async () => { result = await current.signUp({ email: 'owner@example.com', password: 'secret', businessName: ' Loja ', whatsapp: '5511999999999' }); });
+  await act(async () => { result = await current.signUp({ email: 'owner@example.com', password: 'secret', businessName: ' Loja ', whatsapp: '5511999999999', document: '529.982.247-25', personType: 'PF' }); });
   assert.equal(result.error, null); assert.equal(result.needsEmailConfirmation, true); assert.equal(writes, 0);
   assert.equal(signupArgs.options.data.business_name, 'Loja'); assert.equal(signupArgs.options.data.role, undefined);
   await act(async () => { listener('SIGNED_IN', { user }); });
+  assert.equal(current.profile.document, '52998224725');
   assert.equal(writes, 1); assert.equal(current.profile.business_name, 'Loja'); assert.equal(current.identity.companyUserId, 'owner');
   await act(async () => { listener('SIGNED_IN', { user }); });
   assert.equal(writes, 1);
@@ -147,14 +149,43 @@ test('signup with immediate session completes a profile without choosing roles o
     async getUser() { return { data: { user }, error: null }; },
     async signUp(args) { user = { id: 'owner', user_metadata: args.options.data }; return { data: { user, session: { user } }, error: null }; },
   } };
-  const { useAuth } = await load('hooks/useAuth.ts', { '../lib/supabase': { supabase: client, isSupabaseConfigured: true } }, { window: { location: { origin: 'https://app.example' } } });
+  const { useAuth } = await load('hooks/useAuth.ts', { '../utils': documentUtils, '../lib/supabase': { supabase: client, isSupabaseConfigured: true } }, { window: { location: { origin: 'https://app.example' } } });
   function Probe() { current = useAuth(); return null; }
   let renderer, result;
   await act(async () => { renderer = TestRenderer.create(React.createElement(Probe)); });
-  await act(async () => { result = await current.signUp({ email: 'owner@example.com', password: 'secret', businessName: 'Loja', whatsapp: '5511999999999' }); });
+  for (const document of ['', '00000000000', '11222333000180']) {
+    await act(async () => { result = await current.signUp({ email: 'owner@example.com', password: 'secret', businessName: 'Loja', whatsapp: '5511999999999', document, personType: 'PJ' }); });
+    assert.ok(result.error); assert.equal(writes, 0); assert.equal(user, undefined);
+  }
+  await act(async () => { result = await current.signUp({ email: 'owner@example.com', password: 'secret', businessName: 'Loja', whatsapp: '5511999999999', document: '11.222.333/0001-81', personType: 'PJ' }); });
   assert.equal(result.error, null); assert.equal(result.needsEmailConfirmation, undefined); assert.equal(writes, 1);
+  assert.equal(profile.document, '11222333000181');
   assert.equal(profile.subscription_plan, undefined); assert.equal(profile.role, undefined);
   assert.equal(current.identity.companyUserId, 'owner');
+  await act(async () => renderer.unmount());
+});
+
+test('signup form selects CPF or CNPJ, blocks invalid document and submits normalized digits', async () => {
+  const { AuthScreen } = await load('components/AuthScreen.tsx', { '../utils': documentUtils });
+  const calls = [];
+  let renderer;
+  await act(async () => { renderer = TestRenderer.create(React.createElement(AuthScreen, {
+    onBack() {}, onSignIn: async () => ({error:null}), onSignUp: async data => { calls.push(data); return {error:null}; },
+    onRequestPasswordReset: async () => ({error:null}), onUpdatePassword: async () => ({error:null}),
+  })); });
+  await act(async () => renderer.root.findAllByType('button').find(n => n.children.includes('Cadastrar')).props.onClick());
+  const change = async (node, value) => act(async () => node.props.onChange({target:{value}}));
+  await change(renderer.root.findAllByType('input').find(n=>n.props.placeholder==='Ex: Conserta Tudo Celulares'), 'Loja');
+  await change(renderer.root.findAllByType('input').find(n=>n.props.placeholder==='(11) 99999-9999'), '11999999999');
+  const submit = () => act(async () => renderer.root.findByType('form').props.onSubmit({preventDefault(){}}));
+  await change(renderer.root.findByProps({'aria-label':'CNPJ'}), '00000000000000');
+  await submit(); assert.equal(calls.length, 0);
+  await change(renderer.root.findByProps({'aria-label':'CNPJ'}), '11.222.333/0001-81');
+  await submit(); assert.equal(calls[0].document, '11222333000181'); assert.equal(calls[0].personType, 'PJ');
+  await change(renderer.root.findByProps({'aria-label':'Tipo de cadastro'}), 'PF');
+  assert.equal(renderer.root.findByProps({'aria-label':'CPF'}).props.value, '');
+  await change(renderer.root.findByProps({'aria-label':'CPF'}), '529.982.247-25');
+  await submit(); assert.equal(calls[1].document, '52998224725'); assert.equal(calls[1].personType, 'PF');
   await act(async () => renderer.unmount());
 });
 

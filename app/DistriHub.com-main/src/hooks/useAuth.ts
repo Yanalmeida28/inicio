@@ -2,6 +2,7 @@ import { useCallback, useEffect, useReducer, useRef } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import type { PartnerIdentity, PartnerProfile, PartnerSalesperson } from '../types';
+import { isValidCpf, isValidCnpj, normalizeDocument } from '../utils';
 
 type AuthState = {
   session: Session | null;
@@ -14,6 +15,8 @@ type AuthState = {
 };
 
 type SignUpData = {
+  document: string;
+  personType: 'PF' | 'PJ';
   businessName: string;
   whatsapp: string;
   email: string;
@@ -135,6 +138,8 @@ export function useAuth(): UseAuthReturn {
       }
       const { error: createError } = await supabase.from('partner_profiles').upsert({
         id: authUserId, business_name: metadata.business_name.trim(), whatsapp: metadata.whatsapp.trim(), segment: 'assistencia',
+        ...(typeof metadata.document === 'string' && (isValidCpf(metadata.document) || isValidCnpj(metadata.document))
+          ? { document: normalizeDocument(metadata.document) } : {}),
       }, { onConflict: 'id', ignoreDuplicates: true });
       if (createError) throw new Error(`Não foi possível concluir o cadastro: ${createError.message}`);
     }
@@ -277,6 +282,10 @@ export function useAuth(): UseAuthReturn {
 
   const signUp = useCallback(async (data: SignUpData): Promise<{ error: string | null; needsEmailConfirmation?: boolean }> => {
     if (!isSupabaseConfigured || !supabase) return { error: 'Supabase não configurado.' };
+    if (!['PF', 'PJ'].includes(data.personType) || typeof data.document !== 'string'
+      || (data.personType === 'PF' ? !isValidCpf(data.document) : !isValidCnpj(data.document))) {
+      return { error: 'Informe um CPF/CNPJ válido para o tipo de cadastro selecionado.' };
+    }
 
     signupInProgressRef.current = true;
     try {
@@ -284,7 +293,8 @@ export function useAuth(): UseAuthReturn {
         email: data.email,
         password: data.password,
         options: {
-          data: { business_name: data.businessName.trim(), whatsapp: data.whatsapp.trim() },
+          data: { business_name: data.businessName.trim(), whatsapp: data.whatsapp.trim(),
+            document: normalizeDocument(data.document), person_type: data.personType },
           emailRedirectTo: `${window.location.origin}/`,
         },
       });

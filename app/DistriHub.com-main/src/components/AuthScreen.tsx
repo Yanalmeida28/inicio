@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { ArrowLeft, Building2, Lock, Mail, Phone, Check, KeyRound } from 'lucide-react';
+import { formatCpf, formatCnpj, isValidCpf, isValidCnpj, normalizeDocument } from '../utils';
 
 type AuthScreenProps = {
   onBack: () => void;
@@ -9,6 +10,8 @@ type AuthScreenProps = {
     whatsapp: string;
     email: string;
     password: string;
+    document: string;
+    personType: 'PF' | 'PJ';
   }) => Promise<{ error: string | null; needsEmailConfirmation?: boolean }>;
   onRequestPasswordReset: (email: string) => Promise<{ error: string | null }>;
   onUpdatePassword: (password: string) => Promise<{ error: string | null }>;
@@ -25,6 +28,8 @@ export function AuthScreen({ onBack, onSignIn, onSignUp, onRequestPasswordReset,
   const [password, setPassword] = useState('');
   const [businessName, setBusinessName] = useState('');
   const [whatsapp, setWhatsapp] = useState('');
+  const [personType, setPersonType] = useState<'PF' | 'PJ'>('PJ');
+  const [document, setDocument] = useState('');
 
   // Password recovery state
   const [showRecovery, setShowRecovery] = useState(false);
@@ -59,7 +64,11 @@ export function AuthScreen({ onBack, onSignIn, onSignUp, onRequestPasswordReset,
           setLoading(false);
           return;
         }
-        const result = await onSignUp({ businessName, whatsapp, email, password });
+        if (personType === 'PF' ? !isValidCpf(document) : !isValidCnpj(document)) {
+          setError(`Informe um ${personType === 'PF' ? 'CPF' : 'CNPJ'} válido.`);
+          return;
+        }
+        const result = await onSignUp({ businessName, whatsapp, email, password, document: normalizeDocument(document), personType });
         if (result.error) setError(result.error);
         else if (result.needsEmailConfirmation) {
           setSignupInfo('Confira seu e-mail para confirmar a conta. Depois, faça login para concluir o cadastro.');
@@ -185,8 +194,24 @@ export function AuthScreen({ onBack, onSignIn, onSignUp, onRequestPasswordReset,
           {mode === 'signup' && (
             <>
               <label className="flex flex-col gap-1.5">
+                <span className="text-sm font-medium text-slate-300">Tipo de cadastro</span>
+                <select aria-label="Tipo de cadastro" className={inputClass} value={personType}
+                  onChange={event => { setPersonType(event.target.value as 'PF' | 'PJ'); setDocument(''); setError(null); }}>
+                  <option value="PF">Pessoa física — CPF</option>
+                  <option value="PJ">Pessoa jurídica — CNPJ</option>
+                </select>
+              </label>
+              <label className="flex flex-col gap-1.5">
+                <span className="text-sm font-medium text-slate-300">{personType === 'PF' ? 'CPF' : 'CNPJ'}</span>
+                <input aria-label={personType === 'PF' ? 'CPF' : 'CNPJ'} className={inputClass} inputMode="numeric"
+                  value={personType === 'PF' ? formatCpf(document) : formatCnpj(document)}
+                  onChange={event => setDocument(normalizeDocument(event.target.value).slice(0, personType === 'PF' ? 11 : 14))}
+                  placeholder={personType === 'PF' ? '000.000.000-00' : '00.000.000/0000-00'}
+                  maxLength={personType === 'PF' ? 14 : 18} required />
+              </label>
+              <label className="flex flex-col gap-1.5">
                 <span className="flex items-center gap-2 text-sm font-medium text-slate-300">
-                  <Building2 size={15} /> Nome da Empresa
+                  <Building2 size={15} /> {personType === 'PF' ? 'Nome completo / nome da loja' : 'Nome da empresa / razão social'}
                 </span>
                 <input
                   className={inputClass}
