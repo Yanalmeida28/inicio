@@ -544,20 +544,19 @@ function ProductsSubTab({ defaultIsService = false, isActive = true, products, a
         />
       </div>
       <div className="stock-table-wrap directory-card-wrap">
-        <table className="rma-table directory-card-table" aria-label={defaultIsService ? 'Serviços cadastrados' : 'Produtos cadastrados'}>
+        <table className="rma-table directory-card-table product-list-table" aria-label={defaultIsService ? 'Serviços cadastrados' : 'Produtos cadastrados'}>
           <thead>
             <tr>
-              <th>Nome</th><th>SKU</th><th>Custo</th><th>Varejo</th><th>Atacado</th><th>Estoque</th><th>Status</th><th></th>
+              <th>Produto / SKU</th><th>Custo</th><th>Varejo</th><th>Atacado</th><th>Estoque</th><th>Status</th><th></th>
             </tr>
           </thead>
           <tbody>
             {matchingProducts.length === 0 ? (
-              <tr><td colSpan={8} className="empty-row">Nenhum produto encontrado.</td></tr>
+              <tr><td colSpan={7} className="empty-row">Nenhum produto encontrado.</td></tr>
             ) : (
               matchingProducts.map((p) => (
-                <tr key={p.id}>
-                  <td className="directory-card-title">{p.image_url && <img className="product-list-photo" src={p.image_url} alt={p.name} loading="lazy" />}<strong>{p.name}</strong>{p.is_service && <small className="tag-service">Serviço</small>}</td>
-                  <td data-label="SKU">{p.sku ?? '—'}</td>
+                <tr key={p.id} className={p.image_url ? 'product-with-photo' : undefined}>
+                  <td className="directory-card-title"><div className="product-identity">{p.image_url && <img className="product-list-photo" src={p.image_url} alt={p.name} loading="lazy" />}<div className="product-identity-text"><strong>{p.name}</strong><small>SKU: {p.sku ?? '—'}</small>{p.is_service && <small className="tag-service">Serviço</small>}</div></div></td>
                   <td data-label="Custo">{money.format(p.cost_price)}</td>
                   <td data-label="Varejo">{money.format(p.sale_price)}</td>
                   <td data-label="Atacado">{p.wholesale_price > 0 ? money.format(p.wholesale_price) : '—'}</td>

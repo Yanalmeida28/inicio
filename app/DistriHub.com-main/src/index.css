@@ -921,6 +921,13 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
 .product-photo-control { position: relative; width: 144px; }
 .partner-panel .product-photo-camera { display: flex; align-items: center; justify-content: center; width: 144px; height: 144px; padding: 0; overflow: hidden; border: 1px solid var(--dh-border); border-radius: 10px; background: var(--dh-surface); color: var(--dh-text); cursor: pointer; }
 .product-list-photo { width: 144px; height: 144px; max-width: 100%; object-fit: contain; border-radius: 8px; display: block; margin-bottom: 8px; }
+.product-list-table .product-identity { display: flex; align-items: flex-start; gap: 12px; min-width: 0; }
+.product-list-table .product-identity-text { min-width: 0; overflow-wrap: anywhere; }
+.product-list-table .product-identity-text strong,
+.product-list-table .product-identity-text small { display: block; }
+.product-list-table .product-identity-text small { margin-top: 4px; color: var(--dh-text-secondary); }
+.product-list-table .product-list-photo { flex: 0 0 144px; margin-bottom: 0; }
+.product-list-table td { vertical-align: top; }
 .partner-panel .cadastros-scope .directory-card-actions .product-actions-menu.product-photo-actions { display: flex; align-items: center; gap: 8px; }
 .partner-panel .cadastros-scope .directory-card-actions .product-photo-actions > button { flex: 0 0 var(--product-photo-action-size, 36px); width: var(--product-photo-action-size, 36px); height: var(--product-photo-action-size, 36px); min-width: var(--product-photo-action-size, 36px); min-height: var(--product-photo-action-size, 36px); padding: 0; border-radius: 7px; }
 .partner-panel .product-photo-actions > button svg { width: 18px; height: 18px; }
@@ -2950,6 +2957,19 @@ body, .app-shell { background: #091724; color: #edf5fc; }
   .partner-panel .cadastros-scope .customer-list-table .product-actions-trigger::after { content: 'Opções'; margin-left: 6px; }
 }
 
+@media screen and (max-width: 768px) {
+  .partner-panel .cadastros-scope .product-list-table tbody tr.product-with-photo { grid-template-columns: 144px minmax(0, 1fr); align-items: start; }
+  .partner-panel .cadastros-scope .product-list-table .product-with-photo > .directory-card-title,
+  .partner-panel .cadastros-scope .product-list-table .product-with-photo .product-identity { display: contents; }
+  .partner-panel .cadastros-scope .product-list-table .product-with-photo .product-list-photo { grid-column: 1; grid-row: 1 / span 4; align-self: start; }
+  .partner-panel .cadastros-scope .product-list-table .product-with-photo .product-identity-text { grid-column: 2; grid-row: 1; }
+  .partner-panel .cadastros-scope .product-list-table .product-with-photo > td:nth-child(2) { grid-column: 2; grid-row: 2; }
+  .partner-panel .cadastros-scope .product-list-table .product-with-photo > td:nth-child(3) { grid-column: 2; grid-row: 3; }
+  .partner-panel .cadastros-scope .product-list-table .product-with-photo > td:nth-child(4) { grid-column: 2; grid-row: 4; }
+  .partner-panel .cadastros-scope .product-list-table .product-with-photo > td:nth-child(5) { grid-column: 1; grid-row: 5; }
+  .partner-panel .cadastros-scope .product-list-table .product-with-photo > td:nth-child(6) { grid-column: 2; grid-row: 5; }
+  .partner-panel .cadastros-scope .product-list-table .product-with-photo > td.directory-card-actions { grid-column: 1 / -1; grid-row: 6; }
+}
 /* Denser registration cards, retaining readable values and 44px touch targets. */
 @media screen and (max-width: 768px) {
   .partner-panel .cadastros-scope :is(.directory-card-table, .customer-list-table) tbody { gap: 8px; }
