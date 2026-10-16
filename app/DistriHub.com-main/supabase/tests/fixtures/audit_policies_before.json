@@ -1,0 +1,173 @@
+[
+  {
+    "tablename": "partner_categories",
+    "policyname": "delete_own_categories",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "DELETE",
+    "qual": "(( SELECT auth.uid() AS uid) = user_id)",
+    "with_check": null
+  },
+  {
+    "tablename": "partner_categories",
+    "policyname": "directory_branch_scope",
+    "permissive": "RESTRICTIVE",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "((user_id = ( SELECT auth.uid() AS uid)) OR ((branch_id IS NOT NULL) AND partner_employee_can_access_branch(user_id, branch_id)))",
+    "with_check": "((user_id = ( SELECT auth.uid() AS uid)) OR ((branch_id IS NOT NULL) AND partner_employee_can_access_branch(user_id, branch_id)))"
+  },
+  {
+    "tablename": "partner_categories",
+    "policyname": "employee_category_write",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "partner_cadastros_private.can_manage(user_id)",
+    "with_check": "partner_cadastros_private.can_manage(user_id)"
+  },
+  {
+    "tablename": "partner_categories",
+    "policyname": "insert_own_categories",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "(( SELECT auth.uid() AS uid) = user_id)"
+  },
+  {
+    "tablename": "partner_categories",
+    "policyname": "saas_entitlement",
+    "permissive": "RESTRICTIVE",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "partner_has_saas_access(user_id, 'cadastros'::text)",
+    "with_check": "partner_has_saas_access(user_id, 'cadastros'::text)"
+  },
+  {
+    "tablename": "partner_categories",
+    "policyname": "select_own_categories",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "((user_id = ( SELECT auth.uid() AS uid)) OR partner_rma_company_access(user_id))",
+    "with_check": null
+  },
+  {
+    "tablename": "partner_categories",
+    "policyname": "update_own_categories",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "UPDATE",
+    "qual": "(( SELECT auth.uid() AS uid) = user_id)",
+    "with_check": "(( SELECT auth.uid() AS uid) = user_id)"
+  },
+  {
+    "tablename": "partner_combos",
+    "policyname": "delete_own_combos",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "DELETE",
+    "qual": "(( SELECT auth.uid() AS uid) = user_id)",
+    "with_check": null
+  },
+  {
+    "tablename": "partner_combos",
+    "policyname": "employee_combo_write",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "partner_cadastros_private.can_manage_combo(user_id, items)",
+    "with_check": "partner_cadastros_private.can_manage_combo(user_id, items)"
+  },
+  {
+    "tablename": "partner_combos",
+    "policyname": "insert_own_combos",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "(( SELECT auth.uid() AS uid) = user_id)"
+  },
+  {
+    "tablename": "partner_combos",
+    "policyname": "saas_entitlement",
+    "permissive": "RESTRICTIVE",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "partner_has_saas_access(user_id, 'cadastros'::text)",
+    "with_check": "partner_has_saas_access(user_id, 'cadastros'::text)"
+  },
+  {
+    "tablename": "partner_combos",
+    "policyname": "select_own_combos",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "((user_id = ( SELECT auth.uid() AS uid)) OR partner_rma_company_access(user_id))",
+    "with_check": null
+  },
+  {
+    "tablename": "partner_combos",
+    "policyname": "update_own_combos",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "UPDATE",
+    "qual": "(( SELECT auth.uid() AS uid) = user_id)",
+    "with_check": "(( SELECT auth.uid() AS uid) = user_id)"
+  },
+  {
+    "tablename": "partner_modifiers",
+    "policyname": "delete_own_modifiers",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "DELETE",
+    "qual": "(( SELECT auth.uid() AS uid) = user_id)",
+    "with_check": null
+  },
+  {
+    "tablename": "partner_modifiers",
+    "policyname": "employee_modifier_write",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "(EXISTS ( SELECT 1\n   FROM partner_products p\n  WHERE ((p.id = partner_modifiers.product_id) AND (p.user_id = partner_modifiers.user_id) AND partner_cadastros_private.can_manage(p.user_id, p.branch_id))))",
+    "with_check": "(EXISTS ( SELECT 1\n   FROM partner_products p\n  WHERE ((p.id = partner_modifiers.product_id) AND (p.user_id = partner_modifiers.user_id) AND partner_cadastros_private.can_manage(p.user_id, p.branch_id))))"
+  },
+  {
+    "tablename": "partner_modifiers",
+    "policyname": "insert_own_modifiers",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "(( SELECT auth.uid() AS uid) = user_id)"
+  },
+  {
+    "tablename": "partner_modifiers",
+    "policyname": "saas_entitlement",
+    "permissive": "RESTRICTIVE",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "partner_has_saas_access(user_id, 'cadastros'::text)",
+    "with_check": "partner_has_saas_access(user_id, 'cadastros'::text)"
+  },
+  {
+    "tablename": "partner_modifiers",
+    "policyname": "select_own_modifiers",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "((user_id = ( SELECT auth.uid() AS uid)) OR partner_rma_company_access(user_id))",
+    "with_check": null
+  },
+  {
+    "tablename": "partner_modifiers",
+    "policyname": "update_own_modifiers",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "UPDATE",
+    "qual": "(( SELECT auth.uid() AS uid) = user_id)",
+    "with_check": "(( SELECT auth.uid() AS uid) = user_id)"
+  }
+]

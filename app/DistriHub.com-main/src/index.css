@@ -2313,6 +2313,19 @@ html, body {
   .admin-panel .admin-revenue-months strong { grid-column: 2; }
 }
 .replenishment-class-cards { display: none; }
+@media (max-width: 767px) {
+  .partner-panel .crm-customer-table-wrap { overflow: visible; }
+  .partner-panel .crm-customer-table { display: block; width: 100%; min-width: 0; }
+  .partner-panel .crm-customer-table thead { display: none; }
+  .partner-panel .crm-customer-table tbody { display: grid; gap: 12px; }
+  .partner-panel .crm-customer-table tbody tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding: 12px; border: 1px solid var(--dh-border); border-radius: 10px; }
+  .partner-panel .crm-customer-table tbody td { display: block; min-width: 0; padding: 0; border: 0; white-space: normal; overflow-wrap: anywhere; }
+  .partner-panel .crm-customer-table td[data-label]::before { content: attr(data-label); display: block; margin-bottom: 4px; color: var(--dh-text-secondary); font-size: 12px; }
+  .partner-panel .crm-customer-table td:first-child,
+  .partner-panel .crm-customer-table td:last-child { grid-column: 1 / -1; }
+  .partner-panel .crm-customer-table td:last-child::before { display: none; }
+  .partner-panel .crm-customer-table button { width: 100%; min-height: 44px; }
+}
 .replenishment-class-n { --replenishment-class-color: #64748b; }
 .public-catalog-checkout { margin-top: 32px; padding: 20px; border: 1px solid #29465f; border-radius: 14px; background: #0e1d2b; }
 .public-catalog-checkout form, .public-catalog-checkout fieldset { display: grid; gap: 14px; }
