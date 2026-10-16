@@ -323,6 +323,9 @@ function ProductsSubTab({ defaultIsService = false, isActive = true, products, a
   const [editProduct, setEditProduct] = useState<PartnerProduct | null>(null);
   const [openActionId, setOpenActionId] = useState<string | null>(null);
   const [productActionPosition, setProductActionPosition] = useState<React.CSSProperties | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deletingProductId, setDeletingProductId] = useState<string | null>(null);
+  const deleteLock = useRef(false);
   useEffect(() => {
     if (isActive) return;
     setOpenActionId(null);
@@ -335,6 +338,21 @@ function ProductsSubTab({ defaultIsService = false, isActive = true, products, a
   const [imageUrl, setImageUrl] = useSessionDraftState<string | null>('products:image-url', null);
   const [photoBusy, setPhotoBusy] = useState(false);
 
+  async function deleteProduct(product: PartnerProduct) {
+    if (deleteLock.current) return;
+    setOpenActionId(null); setDeleteError(null);
+    if (!window.confirm(`Excluir o produto "${product.name}"?`)) return;
+    deleteLock.current = true; setDeletingProductId(product.id);
+    try { await onDeleteProduct(product.id); }
+    catch (cause) {
+      const message = cause && typeof cause === 'object' && 'message' in cause ? String(cause.message) : 'Não foi possível excluir o produto. Tente novamente.';
+      if (message.includes('Produto com estoque')) {
+        setDeleteError(`Não foi possível excluir "${product.name}": o produto ainda tem saldo em estoque. Transfira o saldo ou registre a saída correspondente em Estoque antes de excluir.`);
+      } else if (cause && typeof cause === 'object' && 'code' in cause && cause.code === '23503') {
+        setDeleteError(`Não foi possível excluir "${product.name}": há registros vinculados ao produto, como devoluções ou ordens de serviço. O histórico precisa ser preservado.`);
+      } else setDeleteError(message);
+    } finally { deleteLock.current = false; setDeletingProductId(null); }
+  }
 
 
   async function handleSubmit(e: React.FormEvent) {
@@ -415,6 +433,8 @@ function ProductsSubTab({ defaultIsService = false, isActive = true, products, a
         </button>
         <ExportButtons target="produtos" products={products} customers={[]} />
       </div>
+      {deleteError && <p role="alert" className="otp-error-msg">{deleteError}</p>}
+      {deletingProductId && <p role="status">Excluindo produto...</p>}
       {showForm && (
         <form className="rma-form product-entry-form" onSubmit={handleSubmit}>
           <section className="product-form-section">
@@ -561,7 +581,7 @@ function ProductsSubTab({ defaultIsService = false, isActive = true, products, a
                           <button type="button" onClick={() => beginEdit(p)}><Pencil size={15} /> Editar</button>
                           <button type="button" onClick={() => { setLabelProductId(p.id); setOpenActionId(null); }}><QrCode size={15} /> Imprimir etiquetas</button>
                           <button type="button" onClick={() => { setAvailabilityProductId(p.id); setOpenActionId(null); }}><Building2 size={15} /> Consultar em outras filiais</button>
-                          <button type="button" className="danger" onClick={() => { setOpenActionId(null); if (window.confirm(`Excluir o produto "${p.name}"?`)) void onDeleteProduct(p.id); }}><Trash2 size={15} /> Excluir</button>
+                          <button type="button" className="danger" disabled={Boolean(deletingProductId)} onClick={() => void deleteProduct(p)}><Trash2 size={15} /> Excluir</button>
                         </div>, document.body
                       )}
                     </div>

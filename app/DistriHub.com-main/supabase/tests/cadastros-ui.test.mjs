@@ -12,8 +12,10 @@ const xmlModule={};
 vm.runInNewContext(compile(await readFile(new URL('../../src/lib/cadastroXml.ts',import.meta.url),'utf8')),{exports:xmlModule,Error});
 const invoice={invoiceKey:'1'.repeat(44),supplier:{name:'Fornecedor',document:'12345678000199'},items:[{name:'Produto',sku:'P1',qty:2,cost:12.5}]};
 const exports={};
-vm.runInNewContext(compile(await readFile(new URL('../../src/components/partner/CadastrosModule.tsx',import.meta.url),'utf8')+'\nexports.Suppliers=SuppliersSubTab;exports.Xml=XmlSubTab;exports.Categories=CategoriesSubTab;exports.Combos=CombosSubTab;exports.Profile=CustomerProfileModal;'),{
- exports,Error,require(name){
+vm.runInNewContext(compile(await readFile(new URL('../../src/components/partner/CadastrosModule.tsx',import.meta.url),'utf8')+'\nexports.Suppliers=SuppliersSubTab;exports.Xml=XmlSubTab;exports.Categories=CategoriesSubTab;exports.Combos=CombosSubTab;exports.Profile=CustomerProfileModal;exports.Products=ProductsSubTab;'),{
+ exports,Error,document:{body:{}},window:{confirm:()=>true,innerWidth:1024,innerHeight:768},require(name){
+  if(name==='react-dom')return {createPortal:children=>children};
+  if(name==='./ImportExportModule')return {ExportButtons:()=>null};
   if(name==='../../lib/cadastroXml')return {parseStockXml:()=>invoice};
   if(name==='./CustomerPhoto')return {CustomerPhoto:()=>null};
   if(name==='../../utils')return {money:new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}),normalizeDocument:value=>value.replace(/\D/g,''),isValidCpf:()=>true,isValidCnpj:()=>true};
@@ -26,6 +28,36 @@ let renderer;
 afterEach(async()=>{if(renderer)await act(async()=>renderer.unmount());renderer=null;});
 const rendered=()=>JSON.stringify(renderer.toJSON());
 const submit=()=>renderer.root.findByType('form').props.onSubmit({preventDefault(){}});
+async function productDeleteAction(onDeleteProduct) {
+ const product={id:'p',name:'Produto teste',stock:5,min_stock:1,sale_price:10,cost_price:5,branch_id:'branch'};
+ await act(async()=>{renderer=TestRenderer.create(React.createElement(exports.Products,{products:[product],allProducts:[product],branches:[],selectedBranchId:'branch',categories:[],suppliers:[],segment:'assistencia',onAddSupplier:async()=>{},onAddProduct:async()=>{},onUpdateProduct:async()=>{},onDeleteProduct}));});
+ await act(async()=>renderer.root.findByProps({'aria-label':'Ações de Produto teste'}).props.onClick({currentTarget:{getBoundingClientRect:()=>({right:500,top:100,bottom:140})}}));
+ return renderer.root.findAllByType('button').find(button=>button.children.includes(' Excluir')).props.onClick;
+}
+test('product deletion displays the stock rejection instead of silently ignoring it',async()=>{
+ let calls=0;
+ const remove=await productDeleteAction(async()=>{calls++;throw {message:'Produto com estoque nao pode ser excluido. Zere ou transfira o estoque primeiro.'};});
+ await act(async()=>remove());
+ assert.equal(calls,1);
+ assert.match(renderer.root.findByProps({role:'alert'}).children.join(''),/saldo em estoque/);
+ assert.match(rendered(),/Produto teste/);
+});
+test('product deletion explains linked-history restrictions and keeps the product',async()=>{
+ const remove=await productDeleteAction(async()=>{throw {code:'23503',message:'foreign key violation'};});
+ await act(async()=>remove());
+ assert.match(renderer.root.findByProps({role:'alert'}).children.join(''),/histórico precisa ser preservado/);
+});
+test('product deletion runs only once while a request is pending and clears busy state after success',async()=>{
+ let finish,calls=0;
+ const pending=new Promise(resolve=>{finish=resolve;});
+ const remove=await productDeleteAction(async()=>{calls++;await pending;});
+ await act(async()=>{remove();remove();});
+ assert.equal(calls,1);
+ assert.match(renderer.root.findByProps({role:'status'}).children.join(''),/Excluindo/);
+ await act(async()=>finish());
+ assert.equal(renderer.root.findAllByProps({role:'status'}).length,0);
+ assert.equal(renderer.root.findAllByProps({role:'alert'}).length,0);
+});
 
 test('consolidated supplier form requires a branch and sends its explicit selection',async()=>{
  let saved;
