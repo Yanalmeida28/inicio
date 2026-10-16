@@ -1,5 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
+import { OperatorPinInput } from './partner/OperatorPinInput';
+import { OperatorConfirmationGate } from '../lib/operatorConfirmation';
 import {
   ArrowLeft,
   Boxes,
@@ -317,9 +319,15 @@ export function PartnerPanel({
   const [operatorSelectionScope, setOperatorSelectionScope] = useState('');
 
   const [showOperatorModal, setShowOperatorModal] = useState(false);
+  const operatorConfirmation = useRef(new OperatorConfirmationGate());
+  const [operatorConfirming, setOperatorConfirming] = useState(false);
+  useEffect(() => () => operatorConfirmation.current.invalidate(), []);
   const [selectedOperatorId, setSelectedOperatorId] =
     useState<string>('owner');
   const [operatorPinInput, setOperatorPinInput] = useState('');
+  useEffect(() => {
+    if (!showOperatorModal) setOperatorPinInput('');
+  }, [showOperatorModal]);
   const [operatorPinError, setOperatorPinError] = useState('');
 
   useEffect(() => {
@@ -371,6 +379,13 @@ export function PartnerPanel({
 
   const effectiveBranchId =
     lockedBranchId ?? selectedBranchId;
+  const operatorContextRef = useRef('');
+  operatorContextRef.current = JSON.stringify([identity?.authUserId, identity?.companyUserId, effectiveBranchId, identity?.salespersonId]);
+  useEffect(() => {
+    operatorConfirmation.current.invalidate();
+    setOperatorConfirming(false);
+    setOperatorPinInput('');
+  }, [identity?.authUserId, identity?.companyUserId, effectiveBranchId, identity?.salespersonId]);
   useDeviceHeartbeat(identity?.companyUserId, effectiveBranchId);
 
   useEffect(() => {
@@ -1414,7 +1429,19 @@ export function PartnerPanel({
     }
   }
 
+  function invalidateOperatorConfirmation() {
+    operatorConfirmation.current.invalidate();
+    setOperatorConfirming(false);
+  }
+
+  function closeOperatorModal() {
+    invalidateOperatorConfirmation();
+    setOperatorPinInput('');
+    setShowOperatorModal(false);
+  }
+
   function openOperatorModal() {
+    invalidateOperatorConfirmation();
     if (isEmployeeRestricted) {
       setSelectedOperatorId(
         identity?.salespersonId ?? 'owner',
@@ -1528,6 +1555,10 @@ export function PartnerPanel({
       effectiveBranchId ??
       null;
 
+    const attempt = operatorConfirmation.current.begin(operatorContextRef.current);
+    if (!attempt) return;
+    setOperatorConfirming(true);
+    try {
     const {
       data: operator,
       error: operatorError,
@@ -1542,6 +1573,7 @@ export function PartnerPanel({
       },
     );
 
+    if (!operatorConfirmation.current.current(attempt, operatorContextRef.current)) return;
     if (operatorError) {
       console.error(
         'Erro ao validar operador:',
@@ -1579,7 +1611,17 @@ export function PartnerPanel({
       );
     }
 
-    setShowOperatorModal(false);
+    closeOperatorModal();
+    } catch (error) {
+      if (operatorConfirmation.current.current(attempt, operatorContextRef.current)) {
+        setOperatorPinError(error instanceof Error ? error.message : 'Falha ao confirmar operador.');
+      }
+    } finally {
+      if (operatorConfirmation.current.current(attempt, operatorContextRef.current)) {
+        operatorConfirmation.current.finish(attempt);
+        setOperatorConfirming(false);
+      }
+    }
   }
 
   const defaultSettings: StoreSettings = {
@@ -2557,7 +2599,7 @@ export function PartnerPanel({
         <div
           className="modal-backdrop"
           onClick={() =>
-            setShowOperatorModal(false)
+            closeOperatorModal()
           }
         >
           <div
@@ -2577,9 +2619,7 @@ export function PartnerPanel({
 
               <button
                 onClick={() =>
-                  setShowOperatorModal(
-                    false,
-                  )
+                  closeOperatorModal()
                 }
               >
                 <X size={18} />
@@ -2597,6 +2637,7 @@ export function PartnerPanel({
                     selectedOperatorId
                   }
                   onChange={(event) => {
+                    invalidateOperatorConfirmation();
                     setSelectedOperatorId(
                       event.target.value,
                     );
@@ -2672,33 +2713,10 @@ export function PartnerPanel({
                     />{' '}
                     PIN de Acesso
 
-                    <input
-                      type="password"
-                      inputMode="numeric"
-                      name="operator-pin"
-                      autoComplete="off"
-                      value={
-                        operatorPinInput
-                      }
-                      onChange={(
-                        event,
-                      ) => {
-                        const value =
-                          event.target.value.replace(
-                            /\D/g,
-                            '',
-                          );
-
-                        setOperatorPinInput(
-                          value,
-                        );
-
-                        setOperatorPinError(
-                          '',
-                        );
-                      }}
-                      maxLength={8}
-                      autoFocus
+                    <OperatorPinInput
+                      key={selectedOperatorId}
+                      value={operatorPinInput}
+                      onValueChange={value => { setOperatorPinInput(value); setOperatorPinError(''); }}
                     />
 
                     <small
@@ -2757,6 +2775,7 @@ export function PartnerPanel({
                 <button
                   type="button"
                   className="module-submit-btn"
+                  disabled={operatorConfirming}
                   onClick={
                     handleConfirmOperator
                   }
@@ -2771,9 +2790,7 @@ export function PartnerPanel({
                   type="button"
                   className="rma-advance-btn"
                   onClick={() =>
-                    setShowOperatorModal(
-                      false,
-                    )
+                    closeOperatorModal()
                   }
                 >
                   Cancelar

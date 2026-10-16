@@ -13,7 +13,7 @@ import type {
   PartnerSale, SalespersonRole, PartnerBranch,
   PersonType, RmaRequest,
 } from '../../types';
-import { formatCnpj, formatCpf, isValidCnpj, isValidCpf, money, normalizeDocument } from '../../utils';
+import { formatCivilDate, formatCnpj, formatCpf, isValidCnpj, isValidCpf, money, normalizeDocument } from '../../utils';
 import { parseStockXml, type XmlStockImport } from '../../lib/cadastroXml';
 import { CustomerPhoto } from './CustomerPhoto';
 import { ProductProfitPreview } from './ProductProfitPreview';
@@ -1505,7 +1505,7 @@ function CustomersSubTab({ isActive = true, customers, branches, sales, rmaReque
                     </td>
                     <td data-label="WhatsApp">{c.phone ?? '—'}</td>
                     <td data-label="Bairro/Cidade">{[c.neighborhood, c.city].filter(Boolean).join(', ') || '—'}</td>
-                    <td data-label="Aniversário">{c.birthday ? new Date(c.birthday).toLocaleDateString('pt-BR') : '—'}</td>
+                    <td data-label="Aniversário">{c.birthday ? formatCivilDate(c.birthday) : '—'}</td>
                     <td className="customer-actions-cell" data-label="Ações">
                       <div className="product-actions-menu">
                         <button type="button" className="product-actions-trigger" onClick={(event) => { setOpenCustomerActionId(openCustomerActionId === c.id ? null : c.id); setCustomerActionPosition(openCustomerActionId === c.id ? null : getActionPopoverPosition(event, 245, 204)); }} aria-label={`Ações de ${c.name}`} aria-expanded={openCustomerActionId === c.id}>

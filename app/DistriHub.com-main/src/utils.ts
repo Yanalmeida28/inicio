@@ -3,6 +3,11 @@ import { WHATSAPP_NUMBER } from './data';
 
 export const money = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 
+export function formatCivilDate(value: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : '—';
+}
+
 export function normalizeDocument(value: string): string {
   return value.replace(/\D/g, '');
 }

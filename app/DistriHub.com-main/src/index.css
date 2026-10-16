@@ -2866,6 +2866,27 @@ body, .app-shell { background: #091724; color: #edf5fc; }
   .partner-panel .cadastros-scope .customer-list-table .product-actions-trigger { width: 100%; min-height: 44px; }
   .partner-panel .cadastros-scope .customer-list-table .product-actions-trigger::after { content: 'Opções'; margin-left: 6px; }
 }
+
+/* Denser registration cards, retaining readable values and 44px touch targets. */
+@media screen and (max-width: 768px) {
+  .partner-panel .cadastros-scope :is(.directory-card-table, .customer-list-table) tbody { gap: 8px; }
+  .partner-panel .cadastros-scope .directory-card-table tbody tr { padding: 10px; column-gap: 10px; }
+  .partner-panel .cadastros-scope .directory-card-table td { padding: 4px 0; font-size: 12px; line-height: 1.4; }
+  .partner-panel .cadastros-scope .directory-card-table td strong { font-size: 13px; }
+  .partner-panel .cadastros-scope .directory-card-table td[data-label]::before { font-size: 10.5px; margin-bottom: 2px; }
+  .partner-panel .cadastros-scope .directory-card-table .directory-card-title { padding-bottom: 6px; font-size: 14px; }
+  .partner-panel .cadastros-scope .directory-card-table .directory-card-title strong { font-size: 14px; }
+  .partner-panel .cadastros-scope .directory-card-title img { width: 36px !important; height: 36px !important; }
+  .partner-panel .cadastros-scope .directory-card-table .directory-card-actions { margin-top: 2px; padding: 6px 0 0; }
+  .partner-panel .cadastros-scope .directory-card-table td.directory-card-actions[data-label]::before,
+  .partner-panel .cadastros-scope .customer-list-table .customer-actions-cell::before,
+  .partner-panel .cadastros-scope .customer-list-table td:first-child::before { display: none; }
+  .partner-panel .cadastros-scope .customer-list-table tr { padding: 10px; gap: 6px 10px; }
+  .partner-panel .cadastros-scope .customer-list-table td { font-size: 12px; line-height: 1.4; }
+  .partner-panel .cadastros-scope .customer-list-table td[data-label]::before { font-size: 10.5px; margin-bottom: 2px; }
+  .partner-panel .cadastros-scope :is(.directory-card-actions, .customer-actions-cell) .product-actions-trigger { display: flex; flex-direction: row; align-items: center; justify-content: center; min-height: 44px; padding: 8px; gap: 6px; }
+  .partner-panel .cadastros-scope :is(.directory-card-actions, .customer-actions-cell) .product-actions-trigger::after { margin: 0; }
+}
 @media screen and (max-width: 620px) {
   .hub-header-inner { display: grid; grid-template-columns: minmax(0, 1fr) 44px; gap: 10px; }
   .hub-header-inner > .brand-logo { grid-column: 1; grid-row: 1; }
@@ -2953,4 +2974,34 @@ body, .app-shell { background: #091724; color: #edf5fc; }
   .partner-panel .pdv-product-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
   .partner-panel .pdv-right { padding: 10px !important; }
   .partner-panel .pdv-subtab { padding: 10px 12px; font-size: 13px; }
+}
+
+/* Compact list cards on mobile; fields and touch targets remain available. */
+@media screen and (max-width: 768px) {
+  .partner-panel .financial-dashboard,
+  .partner-panel .orders-summary { gap: 8px !important; margin-top: 12px !important; margin-bottom: 12px !important; }
+  .partner-panel .fin-card { padding: 10px; gap: 6px; }
+  .partner-panel .fin-card .wallet-icon { width: 32px; height: 32px; min-width: 32px; border-radius: 8px; }
+  .partner-panel .fin-card .wallet-icon svg { width: 18px; height: 18px; }
+  .partner-panel .fin-card > div:not(.wallet-icon) { min-width: 0; }
+  .partner-panel .fin-card small { font-size: 11px; line-height: 1.35; }
+  .partner-panel .fin-card strong { font-size: 17px; line-height: 1.35; }
+  .partner-panel .orders-summary-card { padding: 10px !important; }
+  .partner-panel .orders-summary-card small { font-size: 11px; line-height: 1.35; }
+  .partner-panel .orders-summary-card strong { font-size: 17px !important; line-height: 1.35; margin-top: 3px !important; }
+  .partner-panel .admin-module-layout .report-card { padding: 10px 12px; }
+  .partner-panel .admin-module-layout .report-card strong { font-size: 18px; line-height: 1.35; }
+  .partner-panel .admin-module-layout .admin-compact-table tr { padding: 10px; gap: 6px 10px; }
+  .partner-panel .admin-module-layout .admin-compact-table .admin-compact-title { padding-bottom: 6px; }
+  .partner-panel .sales-history-list-table tbody { gap: 8px; }
+  .partner-panel .sales-history-list-table tr { padding: 10px; gap: 6px 10px; }
+  .partner-panel :is(.delivery-scope, .financial-scope, .pdv-presale-pending) .directory-card-table tbody { gap: 8px; }
+  .partner-panel :is(.delivery-scope, .financial-scope, .pdv-presale-pending) .directory-card-table tbody tr { padding: 10px; column-gap: 10px; }
+  .partner-panel :is(.delivery-scope, .financial-scope, .pdv-presale-pending) .directory-card-table td { padding: 4px 0; font-size: 13px; line-height: 1.4; }
+  .partner-panel :is(.delivery-scope, .financial-scope, .pdv-presale-pending) .directory-card-table td strong { font-size: 13px; }
+  .partner-panel :is(.delivery-scope, .financial-scope, .pdv-presale-pending) .directory-card-table td[data-label]::before { margin-bottom: 2px; }
+  .partner-panel :is(.delivery-scope, .financial-scope, .pdv-presale-pending) .directory-card-table .directory-card-title { padding-bottom: 6px; font-size: 14px; }
+  .partner-panel :is(.delivery-scope, .financial-scope, .pdv-presale-pending) .directory-card-table .directory-card-title strong { font-size: 14px; }
+  .partner-panel :is(.delivery-scope, .financial-scope, .pdv-presale-pending) .directory-card-table .directory-card-actions { padding: 6px 0 0; margin-top: 2px; }
+  .partner-panel :is(.delivery-scope, .financial-scope, .pdv-presale-pending) .directory-card-table td.directory-card-actions[data-label]::before { display: none; }
 }
