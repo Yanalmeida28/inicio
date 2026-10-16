@@ -440,6 +440,8 @@ function ProductsSubTab({ defaultIsService = false, isActive = true, products, a
       {deletingProductId && <p role="status">Excluindo produto...</p>}
       {showForm && (
         <form className="rma-form product-entry-form" onSubmit={handleSubmit}>
+          <div className="product-registration-header">
+          <ProductPhotoField value={imageUrl} onChange={setImageUrl} disabled={saving} onBusyChange={setPhotoBusy} />
           <section className="product-form-section">
             <h4>Identificação</h4>
           <div className="form-row product-form-row product-identity-row">
@@ -453,7 +455,7 @@ function ProductsSubTab({ defaultIsService = false, isActive = true, products, a
             </label>
           </div>
           </section>
-          <ProductPhotoField value={imageUrl} onChange={setImageUrl} disabled={saving} onBusyChange={setPhotoBusy} />
+          </div>
           <section className="product-form-section">
             <h4>Preços e rentabilidade</h4>
           <div className="form-row product-form-row">
@@ -737,8 +739,10 @@ function ProductEditModal({ product, categories, suppliers, onAddSupplier, savin
       <form className="modal-card product-edit-modal" onSubmit={submit} onClick={(event) => event.stopPropagation()}>
         <div className="modal-header"><h4>Editar produto</h4><button type="button" className="modal-close" onClick={onClose} aria-label="Fechar">×</button></div>
         <div className="product-edit-body">
+          <div className="product-registration-header">
           <ProductPhotoField value={imageUrl} onChange={setImageUrl} disabled={saving} onBusyChange={setPhotoBusy} />
-          <div className="form-row"><label>Nome<input value={name} onChange={(e) => setName(e.target.value)} required /></label><label>SKU<input value={sku} onChange={(e) => setSku(e.target.value)} /></label></div>
+          <div className="form-row product-registration-fields"><label>Nome<input value={name} onChange={(e) => setName(e.target.value)} required /></label><label>SKU<input value={sku} onChange={(e) => setSku(e.target.value)} /></label></div>
+          </div>
           <h4>Preços e rentabilidade</h4>
           <div className="form-row"><label>Preço de custo<input type="number" min="0" step="0.01" value={cost} onChange={(e) => setCost(e.target.value)} /></label><label>Preço varejo<input type="number" min="0" step="0.01" value={sale} onChange={(e) => setSale(e.target.value)} required /></label><label>Preço atacado<input type="number" min="0" step="0.01" value={wholesale} onChange={(e) => setWholesale(e.target.value)} /></label></div>
           <label>Preço Premium (opcional)<input aria-label="Preço Premium" type="number" min="0" max="99999999.99" step="0.01" value={premium} onChange={event => setPremium(event.target.value)} placeholder="Não configurado" /></label>

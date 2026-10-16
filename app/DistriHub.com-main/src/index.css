@@ -2229,6 +2229,14 @@ html, body {
 .partner-panel .product-form-section h4 { margin: 0; color: var(--dh-text-secondary); font-size: 11px; font-weight: 700; text-transform: uppercase; }
 .partner-panel .product-form-row { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
 .partner-panel .product-identity-row { grid-template-columns: minmax(0, 2fr) minmax(170px, 1fr); }
+.partner-panel .product-registration-header { display: grid; grid-template-columns: 144px minmax(0, 1fr); align-items: start; gap: 12px; min-width: 0; padding-bottom: 10px; }
+.partner-panel .product-registration-header > .product-form-section { min-width: 0; padding: 0; border: 0; gap: 8px; }
+.partner-panel .product-registration-header .product-identity-row,
+.partner-panel .product-registration-header .product-registration-fields { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; gap: 8px; }
+.partner-panel .product-registration-header label,
+.partner-panel .product-registration-header input { min-width: 0; width: 100%; }
+.partner-panel .product-entry-form > .product-form-section { padding: 10px 0; gap: 8px; }
+.partner-panel .product-edit-body { gap: 10px; }
 .partner-panel .product-stock-row { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
 .partner-panel .product-entry-form input:not([type="checkbox"]), .partner-panel .product-entry-form select { min-width: 0; min-height: 42px; border-radius: 6px !important; }
 .partner-panel .rma-history-selection { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
