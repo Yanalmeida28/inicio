@@ -319,6 +319,7 @@ function ProductsSubTab({ defaultIsService = false, isActive = true, products, a
   const [pisRate, setPisRate] = useSessionDraftState('products:pis-rate', '');
   const [cofinsRate, setCofinsRate] = useSessionDraftState('products:cofins-rate', '');
   const [labelProductId, setLabelProductId] = useState<string | null>(null);
+  const [photoProduct, setPhotoProduct] = useState<PartnerProduct | null>(null);
   const [availabilityProductId, setAvailabilityProductId] = useState<string | null>(null);
   const [editProduct, setEditProduct] = useState<PartnerProduct | null>(null);
   const [openActionId, setOpenActionId] = useState<string | null>(null);
@@ -330,6 +331,7 @@ function ProductsSubTab({ defaultIsService = false, isActive = true, products, a
     if (isActive) return;
     setOpenActionId(null);
     setProductActionPosition(null);
+    setPhotoProduct(null);
   }, [isActive]);
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -553,7 +555,7 @@ function ProductsSubTab({ defaultIsService = false, isActive = true, products, a
             ) : (
               matchingProducts.map((p) => (
                 <tr key={p.id}>
-                  <td className="directory-card-title">{p.image_url && <img src={p.image_url} alt={p.name} loading="lazy" style={{width:48,height:48,objectFit:'contain',borderRadius:6,display:'block',marginBottom:4}} />}<strong>{p.name}</strong>{p.is_service && <small className="tag-service">Serviço</small>}</td>
+                  <td className="directory-card-title">{p.image_url && <img className="product-list-photo" src={p.image_url} alt={p.name} loading="lazy" />}<strong>{p.name}</strong>{p.is_service && <small className="tag-service">Serviço</small>}</td>
                   <td data-label="SKU">{p.sku ?? '—'}</td>
                   <td data-label="Custo">{money.format(p.cost_price)}</td>
                   <td data-label="Varejo">{money.format(p.sale_price)}</td>
@@ -572,7 +574,8 @@ function ProductsSubTab({ defaultIsService = false, isActive = true, products, a
                     )}
                   </td>
                   <td className="product-actions-cell directory-card-actions" data-label="Ações">
-                    <div className="product-actions-menu">
+                    <div className="product-actions-menu product-photo-actions">
+                      <button type="button" className="customer-photo-view-btn" title="Visualizar foto" aria-label={`Visualizar foto de ${p.name}`} onClick={() => { setOpenActionId(null); setPhotoProduct(p); }}><PhotoIcon size={20} aria-hidden="true" /></button>
                       <button type="button" className="product-actions-trigger" onClick={(event) => { setOpenActionId(openActionId === p.id ? null : p.id); setProductActionPosition(openActionId === p.id ? null : getActionPopoverPosition(event, 220, 190)); }} aria-label={`Ações de ${p.name}`} aria-expanded={openActionId === p.id}>
                         <MoreVertical size={18} />
                       </button>
@@ -592,6 +595,8 @@ function ProductsSubTab({ defaultIsService = false, isActive = true, products, a
           </tbody>
         </table>
       </div>
+
+      {photoProduct && <CustomerPhotoViewer name={photoProduct.name} imageUrl={photoProduct.image_url ?? null} entityLabel="produto" onClose={() => setPhotoProduct(null)} />}
 
       {labelProductId && (
         <ThermalLabelModal

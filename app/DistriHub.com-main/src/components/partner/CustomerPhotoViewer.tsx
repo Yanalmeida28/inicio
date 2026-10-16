@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
-export function CustomerPhotoViewer({ name, path, onClose }: { name: string; path?: string | null; onClose: () => void }) {
+export function CustomerPhotoViewer({ name, path, imageUrl, entityLabel = 'cliente', onClose }: { name: string; path?: string | null; imageUrl?: string | null; entityLabel?: 'cliente' | 'produto'; onClose: () => void }) {
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -23,6 +23,7 @@ export function CustomerPhotoViewer({ name, path, onClose }: { name: string; pat
   useEffect(() => {
     let active = true;
     setUrl(null); setError(''); setLoading(Boolean(path));
+    if (imageUrl !== undefined) { setUrl(imageUrl); setLoading(false); return; }
     if (!path) return;
     async function load() {
       try {
@@ -35,13 +36,13 @@ export function CustomerPhotoViewer({ name, path, onClose }: { name: string; pat
     }
     void load();
     return () => { active = false; };
-  }, [path]);
+  }, [path, imageUrl]);
   return <div className="modal-backdrop customer-photo-viewer-backdrop" onClick={onClose}>
     <div className="modal-content customer-photo-viewer" role="dialog" aria-modal="true" aria-labelledby="customer-photo-viewer-title" onClick={event => event.stopPropagation()}>
       <div className="modal-header"><h3 id="customer-photo-viewer-title">Foto de {name}</h3><button ref={closeButton} type="button" aria-label="Fechar foto ampliada" onClick={onClose}><X size={22} /></button></div>
       <div className="customer-photo-viewer-content">
         {loading && <p role="status">Carregando foto...</p>}
-        {!path && <p>Este cliente ainda não possui foto.</p>}
+        {!path && !imageUrl && <p>Este {entityLabel} ainda não possui foto.</p>}
         {error && <p role="alert">{error}</p>}
         {url && !error && <img src={url} alt={`Foto ampliada de ${name}`} onError={() => { setUrl(null); setError('Não foi possível exibir a foto. Feche e tente novamente.'); }} />}
       </div>
