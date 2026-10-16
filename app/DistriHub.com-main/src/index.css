@@ -2568,6 +2568,30 @@ html, body {
 .partner-panel .admin-module-layout .admin-kpi-grid {
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)) !important;
 }
+/* The executive financial summary is also opened from Área PIX. */
+.partner-panel .admin-module-layout .admin-financial-summary { min-width: 0; max-width: 100%; }
+.partner-panel .admin-module-layout .admin-financial-summary .admin-kpi-grid,
+.partner-panel .admin-module-layout .admin-financial-summary .admin-dre-grid { display: grid; align-items: stretch; min-width: 0; gap: 12px; padding: 0; border: 0; }
+.partner-panel .admin-module-layout .admin-financial-summary .admin-dre-grid { grid-template-columns: minmax(0, 1fr); }
+.partner-panel .admin-module-layout .admin-financial-summary .admin-kpi-card,
+.partner-panel .admin-module-layout .admin-financial-summary .module-card { display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start; min-width: 0; gap: 8px; padding: 14px; border: 1px solid var(--dh-border); }
+.partner-panel .admin-module-layout .admin-financial-summary .admin-filter-bar { min-width: 0; gap: 10px; padding: 12px; }
+.partner-panel .admin-module-layout .admin-financial-summary .admin-branch-selector { min-width: 0; max-width: 100%; padding: 0; border: 0; }
+.partner-panel .admin-module-layout .admin-financial-summary .admin-branch-selector select { width: 100%; }
+.partner-panel .admin-module-layout .admin-financial-summary .stock-table-wrap { display: block; min-width: 0; padding: 0; }
+.partner-panel .admin-module-layout .admin-financial-summary .rma-table { width: 100%; min-width: 0; table-layout: fixed; }
+.partner-panel .admin-module-layout .admin-financial-summary .rma-table :is(th, td) { min-width: 0; padding: 10px 8px; white-space: normal; overflow-wrap: anywhere; }
+.partner-panel .admin-module-layout .admin-financial-summary .rma-table :is(th, td):first-child { width: 62%; }
+.partner-panel .admin-module-layout .admin-financial-summary .rma-table :is(th, td):last-child { width: 38%; text-align: right; }
+.partner-panel .admin-module-layout .admin-financial-summary :is(h4, p, small, strong) { min-width: 0; overflow-wrap: anywhere; }
+@container admin-layout (max-width: 520px) {
+  .partner-panel .admin-module-layout .admin-financial-summary .rma-table,
+  .partner-panel .admin-module-layout .admin-financial-summary .rma-table tbody { display: block; }
+  .partner-panel .admin-module-layout .admin-financial-summary .rma-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .partner-panel .admin-module-layout .admin-financial-summary .rma-table tr { display: grid; grid-template-columns: minmax(0, 1fr); padding: 10px; border-bottom: 1px solid var(--dh-border); }
+  .partner-panel .admin-module-layout .admin-financial-summary .rma-table :is(th, td):first-child,
+  .partner-panel .admin-module-layout .admin-financial-summary .rma-table :is(th, td):last-child { display: block; width: 100%; padding: 2px 0; border: 0; text-align: left; }
+}
 .partner-panel .admin-module-layout .admin-crm-metrics {
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr));
   margin-bottom: 14px;
