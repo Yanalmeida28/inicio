@@ -2304,219 +2304,168 @@ function SalespeopleSubTab({
                   salesperson.id
                 ) {
                   return (
-                    <tr
-                      key={salesperson.id}
-                    >
-                      <td>
-                        <input
-                          className="rma-edit-input"
-                          value={editName}
-                          onChange={(e) =>
-                            setEditName(
-                              e.target.value
-                            )
-                          }
-                          placeholder="Nome"
-                          style={{
-                            width: '100%',
-                          }}
-                        />
-                      </td>
-
-                      <td>
-                        <input
-                          className="rma-edit-input"
-                          type="email"
-                          value={editEmail}
-                          onChange={(e) =>
-                            setEditEmail(
-                              e.target.value
-                            )
-                          }
-                          style={{
-                            width: '100%',
-                          }}
-                        />
-                      </td>
-
-                      <td>
-                        <select
-                          className="rma-edit-input"
-                          value={editRole}
-                          onChange={(e) =>
-                            setEditRole(
-                              e.target
-                                .value as SalespersonRole
-                            )
-                          }
-                        >
-                          <option value="administrador">
-                            Administrador
-                          </option>
-                          <option value="gerente">
-                            Gerente
-                          </option>
-                          <option value="caixa">
-                            Caixa
-                          </option>
-                          <option value="vendedor">
-                            Vendedor / Balcão
-                          </option>
-                          <option value="tecnico">
-                            Técnico
-                          </option>
-                          <option value="atendente">
-                            Atendente
-                          </option>
-                          <option value="logistica">
-                            Logística / Entregador
-                          </option>
-                        </select>
-                      </td>
-
-                      <td>
-                        <select
-                          className="rma-edit-input"
-                          value={editBranchId}
-                          onChange={(e) =>
-                            setEditBranchId(
-                              e.target.value
-                            )
-                          }
-                        >
-                          <option value="">
-                            Todas as Filiais
-                          </option>
-
-                          {branches.map(
-                            (branch) => (
-                              <option
-                                key={branch.id}
-                                value={branch.id}
-                              >
-                                {branch.name}
-                              </option>
-                            )
-                          )}
-                        </select>
-                      </td>
-
-                      <td>
-                        <input
-                          className="rma-edit-input"
-                          type="number"
-                          step="0.01"
-                          value={editRate}
-                          onChange={(e) =>
-                            setEditRate(
-                              e.target.value
-                            )
-                          }
-                          style={{
-                            width: '60px',
-                          }}
-                        />
-                      </td>
-
-                      <td>
-                        <input
-                          className="rma-edit-input"
-                          type="password"
-                          inputMode="numeric"
-                          value={editPin}
-                          onChange={(e) =>
-                            setEditPin(
-                              e.target.value
-                                .replace(
-                                  /\D/g,
-                                  ''
-                                )
-                                .slice(0, 4)
-                            )
-                          }
-                          maxLength={4}
-                          style={{
-                            width: '60px',
-                          }}
-                        />
-                      </td>
-
-                      <td>
-                        <label
-                          className="checkbox-label"
-                          style={{
-                            display: 'flex',
-                            alignItems:
-                              'center',
-                            gap: '4px',
-                          }}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={editActive}
-                            onChange={(e) =>
-                              setEditActive(
-                                e.target.checked
-                              )
-                            }
-                          />
-
-                          {editActive
-                            ? 'Ativo'
-                            : 'Inativo'}
-                        </label>
-                        <details open>
-                          <summary>Acessos aos módulos</summary>
-                          <p className="otp-description">Marque os módulos liberados. Opções desabilitadas são restritas pela função; altere a função para habilitá-las.</p>
-                          {Object.entries({cadastros:'Cadastros',pdv:'PDV',caixa:'Caixa',pedidos:'Pedidos',os:'Ordens de Serviço',historico:'Histórico',suporte:'Suporte',fiscal:'Nota Fiscal',administrativo:'Administrativo',entregas:'Entregas',financeiro:'Financeiro',rma:'RMA e Devoluções',relatorios:'Relatórios', 'white-label':'Personalização',configuracoes:'Configurações'}).map(([module, label]) => (
-                            <label key={module} className="checkbox-label" style={{display:'flex',gap:6,marginTop:6}}>
-                              <input type="checkbox" aria-label={`Acesso a ${label}`} disabled={roleRestrictedModules[editRole].includes(module)} checked={!editBlockedModules.includes(module) && !roleRestrictedModules[editRole].includes(module)} onChange={event => setEditBlockedModules(previous => event.target.checked ? previous.filter(item => item !== module) : [...previous,module])} />
-                              {label}
+                    <tr key={salesperson.id} className="salesperson-edit-row">
+                      <td colSpan={8}>
+                        <div className="salesperson-edit-panel">
+                          <div className="salesperson-edit-fields">
+                            <label>
+                              Nome do colaborador
+                              <input
+                                className="rma-edit-input"
+                                value={editName}
+                                onChange={event => setEditName(event.target.value)}
+                                placeholder="Nome"
+                              />
                             </label>
-                          ))}
-                        </details>
-                      </td>
 
-                      <td>
-                        <div className="row-action-group">
-                          <button
-                            type="button"
-                            className="rma-advance-btn"
-                            onClick={() =>
-                              saveEdit(
-                                salesperson.id
-                              )
-                            }
-                            title="Salvar alterações"
-                          >
-                            <Check size={14} />
-                          </button>
+                            <label>
+                              E-mail de acesso
+                              <input
+                                className="rma-edit-input"
+                                type="email"
+                                value={editEmail}
+                                onChange={event => setEditEmail(event.target.value)}
+                              />
+                            </label>
 
-                          <button
-                            type="button"
-                            className="rma-advance-btn"
-                            onClick={
-                              cancelEdit
-                            }
-                            title="Cancelar"
-                          >
-                            <X size={14} />
-                          </button>
+                            <label>
+                              Função
+                              <select
+                                className="rma-edit-input"
+                                value={editRole}
+                                onChange={event => setEditRole(event.target.value as SalespersonRole)}
+                              >
+                                <option value="administrador">Administrador</option>
+                                <option value="gerente">Gerente</option>
+                                <option value="caixa">Caixa</option>
+                                <option value="vendedor">Vendedor / Balcão</option>
+                                <option value="tecnico">Técnico</option>
+                                <option value="atendente">Atendente</option>
+                                <option value="logistica">Logística / Entregador</option>
+                              </select>
+                            </label>
+
+                            <label>
+                              Filial vinculada
+                              <select
+                                className="rma-edit-input"
+                                value={editBranchId}
+                                onChange={event => setEditBranchId(event.target.value)}
+                              >
+                                <option value="">Todas as filiais</option>
+                                {branches.map(branch => (
+                                  <option key={branch.id} value={branch.id}>
+                                    {branch.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+
+                            <label>
+                              Taxa de comissão (%)
+                              <input
+                                className="rma-edit-input"
+                                type="number"
+                                step="0.01"
+                                value={editRate}
+                                onChange={event => setEditRate(event.target.value)}
+                              />
+                            </label>
+
+                            <label>
+                              PIN de acesso
+                              <input
+                                className="rma-edit-input"
+                                type="password"
+                                inputMode="numeric"
+                                value={editPin}
+                                onChange={event => setEditPin(event.target.value.replace(/\D/g, '').slice(0, 4))}
+                                maxLength={4}
+                              />
+                            </label>
+
+                            <label className="salesperson-edit-active">
+                              <input
+                                type="checkbox"
+                                checked={editActive}
+                                onChange={event => setEditActive(event.target.checked)}
+                              />
+                              Acesso {editActive ? 'ativo' : 'inativo'}
+                            </label>
+                          </div>
+
+                          <fieldset className="salesperson-edit-permissions">
+                            <legend>Acessos aos módulos</legend>
+                            <p className="otp-description">
+                              Marque os módulos liberados. Opções desabilitadas são restritas pela função; altere a função para habilitá-las.
+                            </p>
+                            <div className="salesperson-module-grid">
+                              {Object.entries({
+                                cadastros: 'Cadastros',
+                                pdv: 'PDV',
+                                caixa: 'Caixa',
+                                pedidos: 'Pedidos',
+                                os: 'Ordens de Serviço',
+                                historico: 'Histórico',
+                                suporte: 'Suporte',
+                                fiscal: 'Nota Fiscal',
+                                administrativo: 'Administrativo',
+                                entregas: 'Entregas',
+                                financeiro: 'Financeiro',
+                                rma: 'RMA e Devoluções',
+                                relatorios: 'Relatórios',
+                                'white-label': 'Personalização',
+                                configuracoes: 'Configurações',
+                              }).map(([module, label]) => {
+                                const restricted = roleRestrictedModules[editRole].includes(module);
+
+                                return (
+                                  <label
+                                    key={module}
+                                    className={`salesperson-module-option${restricted ? ' restricted' : ''}`}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      aria-label={`Acesso a ${label}`}
+                                      disabled={restricted}
+                                      checked={!editBlockedModules.includes(module) && !restricted}
+                                      onChange={event => setEditBlockedModules(previous => (
+                                        event.target.checked
+                                          ? previous.filter(item => item !== module)
+                                          : [...previous, module]
+                                      ))}
+                                    />
+                                    <span>{label}</span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </fieldset>
+
+                          {editError && (
+                            <p className="form-error-msg salesperson-edit-error" role="alert">
+                              {editError}
+                            </p>
+                          )}
+
+                          <div className="salesperson-edit-actions">
+                            <button
+                              type="button"
+                              className="rma-advance-btn"
+                              onClick={cancelEdit}
+                            >
+                              <X size={14} /> Cancelar
+                            </button>
+                            <button
+                              type="button"
+                              className="module-submit-btn"
+                              title="Salvar alterações"
+                              onClick={() => saveEdit(salesperson.id)}
+                            >
+                              <Check size={14} /> Salvar alterações
+                            </button>
+                          </div>
                         </div>
-
-                        {editError && (
-                          <p
-                            className="form-error-msg"
-                            style={{
-                              color:
-                                '#e3829b',
-                              fontSize:
-                                '12px',
-                            }}
-                          >
-                            {editError}
-                          </p>
-                        )}
                       </td>
                     </tr>
                   );

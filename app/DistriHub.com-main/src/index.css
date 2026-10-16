@@ -2185,6 +2185,23 @@ html, body {
 .partner-panel .cadastros-scope .action-row { margin-bottom: 10px; gap: 8px; }
 .partner-panel .cadastros-scope .rma-form { padding: 16px; gap: 12px; margin-bottom: 12px; }
 .partner-panel .cadastros-scope .form-row { gap: 10px; }
+.partner-panel .cadastros-scope .salesperson-edit-row > td { padding: 14px !important; background: var(--dh-blue-soft); }
+.partner-panel .cadastros-scope .salesperson-edit-panel { display: grid; gap: 14px; min-width: 0; }
+.partner-panel .cadastros-scope .salesperson-edit-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); gap: 12px; min-width: 0; }
+.partner-panel .cadastros-scope .salesperson-edit-fields > label { display: grid; align-content: start; gap: 6px; min-width: 0; color: var(--dh-text-secondary); font-size: 12px; font-weight: 600; }
+.partner-panel .cadastros-scope .salesperson-edit-fields .rma-edit-input { width: 100%; min-width: 0; min-height: 40px; }
+.partner-panel .cadastros-scope .salesperson-edit-active { display: flex !important; align-items: center; align-self: end; gap: 8px !important; min-height: 40px; padding: 8px 10px; border: 1px solid var(--dh-border); border-radius: var(--dh-radius-sm); background: var(--dh-surface); }
+.partner-panel .cadastros-scope .salesperson-edit-active input,
+.partner-panel .cadastros-scope .salesperson-module-option input { flex: 0 0 auto; margin: 0; }
+.partner-panel .cadastros-scope .salesperson-edit-permissions { min-width: 0; margin: 0; padding: 12px; border: 1px solid var(--dh-border); border-radius: var(--dh-radius-sm); }
+.partner-panel .cadastros-scope .salesperson-edit-permissions legend { padding: 0 6px; color: var(--dh-text); font-size: 13px; font-weight: 700; }
+.partner-panel .cadastros-scope .salesperson-edit-permissions .otp-description { margin: 0 0 10px; font-size: 12px; }
+.partner-panel .cadastros-scope .salesperson-module-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 155px), 1fr)); gap: 8px; min-width: 0; }
+.partner-panel .cadastros-scope .salesperson-module-option { display: flex; align-items: center; gap: 8px; min-width: 0; margin: 0; padding: 9px 10px; border: 1px solid var(--dh-border); border-radius: var(--dh-radius-sm); background: var(--dh-surface); color: var(--dh-text); font-size: 12px; overflow-wrap: anywhere; }
+.partner-panel .cadastros-scope .salesperson-module-option.restricted { opacity: .65; }
+.partner-panel .cadastros-scope .salesperson-edit-error { margin: 0; color: var(--dh-danger); font-size: 12px; }
+.partner-panel .cadastros-scope .salesperson-edit-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.partner-panel .cadastros-scope .salesperson-edit-actions button { min-height: 40px; }
 .partner-panel .cadastros-scope .product-gain-preview { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; padding: 10px 12px; border: 1px solid var(--dh-border); border-radius: var(--dh-radius-sm); background: var(--dh-surface); color: var(--dh-text-secondary); font-size: 13px; }
 .partner-panel .cadastros-scope .product-gain-preview strong { color: var(--dh-success); }
 .partner-panel .cadastros-scope .product-gain-preview strong.is-loss { color: var(--dh-danger); }
@@ -2431,6 +2448,7 @@ html, body {
   .partner-panel .cadastros-scope .rma-form { padding: 14px; }
   .partner-panel .cadastros-scope .rma-form.inline { flex-direction: column; align-items: stretch; }
   .partner-panel .cadastros-scope .rma-form.inline label { min-width: 0; }
+  .partner-panel .cadastros-scope .salesperson-edit-row > td { padding: 10px !important; }
   .partner-panel .cadastros-scope .row-action-group .rma-advance-btn { min-height: 34px; }
   .customer-profile-modal { width: calc(100vw - 16px); max-height: calc(100vh - 16px); padding: 14px !important; }
   .customer-profile-modal .customer-profile-header { align-items: flex-start; }
@@ -2440,6 +2458,8 @@ html, body {
 }
 
 @media (max-width: 480px) {
+  .partner-panel .cadastros-scope .salesperson-edit-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .partner-panel .cadastros-scope .salesperson-edit-actions button { justify-content: center; padding-inline: 8px; }
   .customer-profile-modal .customer-profile-header { flex-direction: column; }
   .customer-profile-modal .customer-avatar { align-self: center; }
   .customer-profile-modal .customer-profile-tabs .subtab { min-height: 40px; padding: 8px 10px; }
