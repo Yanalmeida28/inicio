@@ -20,6 +20,7 @@ vm.runInNewContext(ts.transpileModule(source+'\nexports.CustomerProfile=Customer
   if(name==='./ImportExportModule')return {ExportButtons:()=>null};
   if(name==='./ProductProfitPreview')return {ProductProfitPreview:()=>null};
   if(name==='./ProductPhotoField')return {ProductPhotoField:()=>null};
+  if(name==='./ProductLabelModal')return {ProductLabelModal:()=>null};
   if(name==='./CustomerPhoto')return {CustomerPhoto:props=>React.createElement('photo-preview',props),CustomerPhotoViewer:props=>React.createElement('photo-viewer',props)};
   if(name==='../../lib/cadastroXml')return {};
   if(name==='../../lib/saleReturns')return {};

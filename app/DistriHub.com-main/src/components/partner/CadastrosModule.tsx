@@ -18,6 +18,7 @@ import { parseStockXml, type XmlStockImport } from '../../lib/cadastroXml';
 import { CustomerPhoto, CustomerPhotoViewer } from './CustomerPhoto';
 import { ProductProfitPreview } from './ProductProfitPreview';
 import { ProductPhotoField } from './ProductPhotoField';
+import { ProductLabelModal as ThermalLabelModal } from './ProductLabelModal';
 import { ImportExportModule, ExportButtons } from './ImportExportModule';
 import { saleReturnLabel, saleItemDescription } from '../../lib/saleReturns';
 
@@ -812,44 +813,6 @@ function ProductBranchAvailabilityModal({
   );
 }
 
-
-function ThermalLabelModal({ product, onClose }: {
-  product: PartnerProduct | undefined;
-  onClose: () => void;
-}) {
-  const [size, setSize] = useState<'58' | '80'>('58');
-  if (!product) return null;
-
-  return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-content thermal-label-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h3>Imprimir Etiqueta</h3>
-          <button onClick={onClose}><X size={18} /></button>
-        </div>
-        <div className="thermal-size-toggle">
-          <button className={size === '58' ? 'active' : ''} onClick={() => setSize('58')}>58mm</button>
-          <button className={size === '80' ? 'active' : ''} onClick={() => setSize('80')}>80mm</button>
-        </div>
-        <div className={`thermal-label-preview size-${size}`}>
-          <div className="thermal-label-content">
-            <div className="thermal-qr-area">
-              <QrCode size={size === '58' ? 48 : 64} />
-            </div>
-            <div className="thermal-label-info">
-              <strong>{product.name}</strong>
-              <small>SKU: {product.sku ?? '—'}</small>
-              <small>{money.format(product.sale_price)}</small>
-            </div>
-          </div>
-        </div>
-        <button className="module-submit-btn" onClick={() => window.print()}>
-          <QrCode size={16} /> Imprimir
-        </button>
-      </div>
-    </div>
-  );
-}
 
 function CategoriesSubTab({ categories, products, onAdd, onDelete, branches = [], selectedBranchId, onAssign }: {
   categories: PartnerCategory[];

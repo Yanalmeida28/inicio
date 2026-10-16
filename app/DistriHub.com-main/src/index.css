@@ -921,9 +921,13 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
 .product-photo-control { position: relative; width: 144px; }
 .partner-panel .product-photo-camera { display: flex; align-items: center; justify-content: center; width: 144px; height: 144px; padding: 0; overflow: hidden; border: 1px solid var(--dh-border); border-radius: 10px; background: var(--dh-surface); color: var(--dh-text); cursor: pointer; }
 .product-list-photo { width: 144px; height: 144px; max-width: 100%; object-fit: contain; border-radius: 8px; display: block; margin-bottom: 8px; }
-.partner-panel .product-photo-actions .customer-photo-view-btn { flex-basis: 56px; width: 56px; height: 56px; }
-.partner-panel .product-photo-actions .customer-photo-view-btn svg { width: 28px; height: 28px; }
 .partner-panel .cadastros-scope .directory-card-actions .product-actions-menu.product-photo-actions { display: flex; align-items: center; gap: 8px; }
+.partner-panel .cadastros-scope .directory-card-actions .product-photo-actions > button { flex: 0 0 var(--product-photo-action-size, 36px); width: var(--product-photo-action-size, 36px); height: var(--product-photo-action-size, 36px); min-width: var(--product-photo-action-size, 36px); min-height: var(--product-photo-action-size, 36px); padding: 0; border-radius: 7px; }
+.partner-panel .product-photo-actions > button svg { width: 18px; height: 18px; }
+.partner-panel .cadastros-scope .directory-card-actions .product-photo-actions > .product-actions-trigger::after { display: none; }
+@media (max-width: 1024px) {
+  .product-photo-actions { --product-photo-action-size: 44px; }
+}
 .product-photo-camera img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .product-photo-menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 30; display: grid; gap: 4px; min-width: 160px; padding: 6px; border: 1px solid var(--dh-border); border-radius: 8px; background: var(--dh-surface); box-shadow: 0 6px 20px #0005; }
 .partner-panel .product-photo-menu button { min-height: 44px; padding: 8px 12px; text-align: left; border-radius: 4px; background: var(--dh-surface); color: var(--dh-text); font-size: 13px; }

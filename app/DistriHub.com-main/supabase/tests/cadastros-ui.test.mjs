@@ -20,7 +20,7 @@ vm.runInNewContext(compile(await readFile(new URL('../../src/components/partner/
   if(name==='./CustomerPhoto')return {CustomerPhoto:()=>null};
   if(name==='../../utils')return {money:new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}),normalizeDocument:value=>value.replace(/\D/g,''),isValidCpf:()=>true,isValidCnpj:()=>true};
   if(name==='../../hooks/useSessionDraft')return {useSessionDraftState:(_key,value)=>React.useState(value)};
-  if(['./ProductProfitPreview','./ProductPhotoField','./ImportExportModule','../../lib/saleReturns'].includes(name))return {};
+  if(['./ProductProfitPreview','./ProductPhotoField','./ProductLabelModal','./ImportExportModule','../../lib/saleReturns'].includes(name))return {};
   return require(name);
  },
 });

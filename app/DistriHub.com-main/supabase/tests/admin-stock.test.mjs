@@ -22,6 +22,7 @@ vm.runInNewContext(ts.transpileModule(await readFile(new URL('../../src/componen
     ? sessionDraftMocks
     : name === './ProductProfitPreview' ? { ProductProfitPreview: () => null }
     : name === './ProductPhotoField' ? { ProductPhotoField: () => null }
+    : name === './ProductLabelModal' ? { ProductLabelModal: () => null }
     : name === './CustomerPhoto' || name === '../../lib/cadastroXml' || name === '../../utils' || name === '../../lib/saleReturns' || name === './ImportExportModule'
       ? {}
       : require(name),
