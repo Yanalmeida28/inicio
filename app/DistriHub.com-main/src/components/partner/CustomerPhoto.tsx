@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Camera } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+export { CustomerPhotoViewer } from './CustomerPhotoViewer';
 
 export function CustomerPhoto({ path, file, removed }: { path?: string | null; file: File | null; removed: boolean }) {
   const [url, setUrl] = useState<string | null>(null);

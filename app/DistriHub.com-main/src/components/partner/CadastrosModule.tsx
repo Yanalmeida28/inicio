@@ -5,7 +5,7 @@ import {
   Boxes, FileText, Package, Plus, Tag, Trash2, Upload, Users,
   Building2, Layers, QrCode, X, History,
   IdCard, MapPin, Wallet, Phone, Save, UserCircle, MoreVertical, Pencil,
-  Check, TrendingUp, AlertTriangle, Activity,
+  Check, TrendingUp, AlertTriangle, Activity, Eye,
 } from 'lucide-react';
 import type {
   PartnerProduct, PartnerCategory, PartnerSupplier,
@@ -15,7 +15,7 @@ import type {
 } from '../../types';
 import { formatCivilDate, formatCnpj, formatCpf, isValidCnpj, isValidCpf, money, normalizeDocument } from '../../utils';
 import { parseStockXml, type XmlStockImport } from '../../lib/cadastroXml';
-import { CustomerPhoto } from './CustomerPhoto';
+import { CustomerPhoto, CustomerPhotoViewer } from './CustomerPhoto';
 import { ProductProfitPreview } from './ProductProfitPreview';
 import { ProductPhotoField } from './ProductPhotoField';
 import { ImportExportModule, ExportButtons } from './ImportExportModule';
@@ -1194,12 +1194,14 @@ function CustomersSubTab({ isActive = true, customers, branches, sales, rmaReque
   const [customerSearch, setCustomerSearch] = useSessionDraftState('customers:search', '');
   const [historyCustomerId, setHistoryCustomerId] = useState<string | null>(null);
   const [profileCustomerId, setProfileCustomerId] = useState<string | null>(null);
+  const [photoCustomer, setPhotoCustomer] = useState<PartnerCustomer | null>(null);
   const [openCustomerActionId, setOpenCustomerActionId] = useState<string | null>(null);
   const [customerActionPosition, setCustomerActionPosition] = useState<React.CSSProperties | null>(null);
   useEffect(() => {
     if (isActive) return;
     setOpenCustomerActionId(null);
     setCustomerActionPosition(null);
+    setPhotoCustomer(null);
   }, [isActive]);
 
   function resetForm() {
@@ -1508,12 +1510,13 @@ function CustomersSubTab({ isActive = true, customers, branches, sales, rmaReque
                     <td data-label="Aniversário">{c.birthday ? formatCivilDate(c.birthday) : '—'}</td>
                     <td className="customer-actions-cell" data-label="Ações">
                       <div className="product-actions-menu">
-                        <button type="button" className="product-actions-trigger" onClick={(event) => { setOpenCustomerActionId(openCustomerActionId === c.id ? null : c.id); setCustomerActionPosition(openCustomerActionId === c.id ? null : getActionPopoverPosition(event, 245, 204)); }} aria-label={`Ações de ${c.name}`} aria-expanded={openCustomerActionId === c.id}>
+                        <button type="button" className="product-actions-trigger" onClick={(event) => { setOpenCustomerActionId(openCustomerActionId === c.id ? null : c.id); setCustomerActionPosition(openCustomerActionId === c.id ? null : getActionPopoverPosition(event, 245, 264)); }} aria-label={`Ações de ${c.name}`} aria-expanded={openCustomerActionId === c.id}>
                           <MoreVertical size={18} />
                         </button>
                         {openCustomerActionId === c.id && customerActionPosition && createPortal(
                           <div className="product-actions-popover customer-actions-popover" style={customerActionPosition} role="menu">
                             <button type="button" onClick={() => { openEditForm(c); setOpenCustomerActionId(null); }}><Pencil size={15} /> Editar</button>
+                            <button type="button" onClick={async () => { setOpenCustomerActionId(null); try { setPhotoCustomer(await onLoadCustomer(c.id)); } catch (error) { window.alert(error instanceof Error ? error.message : 'Não foi possível carregar a foto do cliente.'); } }}><Eye size={15} /> Visualizar foto</button>
                             <button type="button" onClick={async () => { setOpenCustomerActionId(null); try { await onLoadCustomer(c.id); setProfileCustomerId(c.id); } catch (error) { window.alert(error instanceof Error ? error.message : 'Não foi possível carregar os dados do cliente.'); } }}><UserCircle size={15} /> Detalhes</button>
                             <button type="button" onClick={() => { setHistoryCustomerId(c.id); setOpenCustomerActionId(null); }}><History size={15} /> Histórico de Compras / Extrato</button>
                             <button type="button" className="danger" onClick={async () => { setOpenCustomerActionId(null); if (!window.confirm(`Deseja excluir o cliente "${c.name}"?`)) return; try { await onDelete(c.id); } catch (error) { window.alert(error instanceof Error ? error.message : 'Não foi possível excluir o cliente.'); } }}><Trash2 size={15} /> Excluir</button>
@@ -1528,6 +1531,8 @@ function CustomersSubTab({ isActive = true, customers, branches, sales, rmaReque
           </tbody>
         </table>
       </div>
+
+      {photoCustomer && <CustomerPhotoViewer name={photoCustomer.name} path={photoCustomer.photo_url} onClose={() => setPhotoCustomer(null)} />}
 
       {historyCustomerId && (
         <div className="modal-backdrop" onClick={() => setHistoryCustomerId(null)}>
