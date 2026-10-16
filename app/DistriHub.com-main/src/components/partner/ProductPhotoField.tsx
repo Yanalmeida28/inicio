@@ -57,7 +57,7 @@ export function ProductPhotoField({ value, onChange, disabled, onBusyChange }: {
       const file=Array.from(event.clipboardData.files).find(item=>item.type.startsWith('image/'));
       if(file)void upload(file);else setError('Copie uma imagem para colar a foto do produto.');
     }}>
-      <button type="button" className="product-photo-camera" aria-label="Opções da foto do produto" title="Foto do produto: colar ou remover" aria-haspopup="menu" aria-expanded={menuOpen} disabled={disabled||busy||pasting} onClick={()=>setMenuOpen(open=>!open)}>{value ? <img src={value} alt="Foto do produto" /> : <Camera size={44} aria-hidden="true" />}</button>
+      <button type="button" className="product-photo-camera" aria-label="Opções da foto do produto" title="Foto do produto: colar ou remover" aria-haspopup="menu" aria-expanded={menuOpen} disabled={disabled||busy||pasting} onClick={()=>setMenuOpen(open=>!open)}>{value ? <img src={value} alt="Foto do produto" /> : <Camera size={64} aria-hidden="true" />}</button>
       {menuOpen && <div className="product-photo-menu" role="menu" aria-label="Ações da foto do produto">
         <button type="button" role="menuitem" disabled={disabled||busy||pasting} onClick={()=>void pasteClipboard()}>Colar foto</button>
         <button type="button" role="menuitem" disabled={disabled||busy||pasting||!value} onClick={()=>{onChange(null);setMenuOpen(false);setError('');}}>Remover foto</button>
