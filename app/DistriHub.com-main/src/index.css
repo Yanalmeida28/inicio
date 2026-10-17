@@ -2539,6 +2539,12 @@ html, body {
 .partner-panel .cash-summary .cash-day-total strong { color: #fff; }
 .partner-panel .cash-summary .cash-day-total small { color: #bbf7d0; }
 .cash-day-total strong + small { margin-top: 5px; font-size: 10px; }
+.partner-panel .cash-card,
+.partner-panel .cash-summary > div { transition: border-color .15s; }
+@media (hover: hover) {
+  .partner-panel .cash-card:hover,
+  .partner-panel .cash-summary > div:hover { border-color: var(--dh-blue) !important; }
+}
 @media (max-width: 420px) { .cash-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
 /* Keep pre-sales compact even with a large catalog or many pending orders. */
