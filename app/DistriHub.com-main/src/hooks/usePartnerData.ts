@@ -1817,89 +1817,138 @@ read('sales', () => fetchAllPages((from, to) => client
       operatorPin?: string | null,
       paymentSplits?: SalePayment[],
       cashSessionId?: string | null,
+      edits?: Pick<PartnerSale, 'customer_id' | 'customer_name' | 'items' | 'total' | 'customer_type' | 'delivery_type'> & Partial<Pick<PartnerSale, 'freight_fee' | 'salesperson_id'>>,
     ) => {
-      const currentIdentity = requireIdentity();
+      if (saleInFlight.current) throw new Error('Aguarde a operação em andamento.');
+      saleInFlight.current = true;
+      try {
+        const currentIdentity = requireIdentity();
 
-      const sale = data.sales.find(
-        (currentSale) =>
-          currentSale.id === id,
-      );
-
-      if (!sale || !sale.branch_id) {
-        throw new Error(
-          'Pré-venda não encontrada ou sem filial válida.',
+        const savedSale = data.sales.find(
+          (currentSale) =>
+            currentSale.id === id,
         );
-      }
 
-      ensureEmployeeBranch(
-        currentIdentity,
-        sale.branch_id,
-      );
-
-      // Autorização da RPC: operador do modal (id + PIN) ou null para
-      // que a RPC resolva o operador pelo auth.uid() da sessão.
-      const effectiveOperatorId = operatorId ?? null;
-      const effectiveOperatorPin = operatorPin ?? null;
-
-      if (sale.status !== 'pre_venda') throw new Error('Esta pré-venda já foi finalizada ou cancelada.');
-      const parts = paymentMethod === 'misto' ? paymentSplits ?? [] : [];
-      if (paymentMethod === 'misto') {
-        const message = splitPaymentError(saleChargeTotal(sale), parts);
-        if (message) throw new Error(message);
-      }
-      if (paymentMethod === 'faturado') {
-        // Refresh first: another checkout may already have finalized this same sale.
-        const snapshot = await refreshPdv(sale.branch_id);
-        const persisted = snapshot.sales.find(item => item.id === id);
-        if (persisted?.status === 'concluida' && persisted.payment_method === paymentMethod) return;
-        const message = billedSaleError(snapshot.credits.find(c => c.customer_id === sale.customer_id), sale.customer_id, saleChargeTotal(sale));
-        if (message) throw new Error(message);
-      }
-
-      if (isSupabaseConfigured && supabase) {
-        const { error: rpcErr } =
-          await supabase.rpc(
-            cashSessionId ? 'supervised_execute_partner_sale_mutation' : 'execute_partner_sale_mutation',
-            {
-              ...(cashSessionId ? { p_cash_session_id: cashSessionId } : {}),
-              p_salesperson_id:
-                effectiveOperatorId,
-              p_pin: effectiveOperatorPin,
-              p_commercial_salesperson_id: sale.salesperson_id,
-              p_sale_id: id,
-              p_customer_id:
-                sale.customer_id ?? null,
-              p_customer_name:
-                sale.customer_name ?? '',
-              p_items: sale.items ?? [],
-              p_total: sale.total ?? 0,
-              p_freight_fee: sale.freight_fee ?? 0,
-              p_imei: sale.imei ?? null,
-              p_serial_number:
-                sale.serial_number ?? null,
-              p_payment_splits: parts,
-              p_payment_method: paymentMethod,
-              p_branch_id: sale.branch_id,
-              p_status: 'concluida',
-              p_origin:
-                sale.origin ?? 'pdv',
-              p_customer_type:
-                sale.customer_type ?? 'varejo',
-              p_delivery_type:
-                sale.delivery_type ?? 'balcao',
-            },
+        if (!savedSale || !savedSale.branch_id) {
+          throw new Error(
+            'Pré-venda não encontrada ou sem filial válida.',
           );
-
-        if (rpcErr) {
-          throw rpcErr;
         }
-      }
 
-      dataRevisionRef.current.invalidate(["sales"]);
-      setData(prev => ({ ...prev, sales: prev.sales.map(item => item.id === id
-        ? { ...item, status: 'concluida', completed_at: new Date().toISOString(), payment_method: paymentMethod, payment_splits: parts, payment_status: paymentMethod === 'faturado' ? 'pendente' : 'pago' }
-        : item) }));
-      if (isSupabaseConfigured && supabase) await syncConfirmedSale(sale.branch_id);
+        // Keep the original identity, branch and lifecycle. Only editable checkout fields
+        // may be changed; the server revalidates customer, prices and stock.
+        const branchId = savedSale.branch_id;
+        const sale = edits ? { ...savedSale,
+          customer_id: edits.customer_id, customer_name: edits.customer_name,
+          items: edits.items, total: edits.total, customer_type: edits.customer_type,
+          delivery_type: edits.delivery_type, freight_fee: edits.freight_fee ?? 0,
+          salesperson_id: edits.salesperson_id ?? null,
+        } : savedSale;
+        const quoteChanged = edits && (
+          sale.customer_id !== savedSale.customer_id || sale.customer_name !== savedSale.customer_name
+          || sale.total !== savedSale.total || (sale.freight_fee ?? 0) !== (savedSale.freight_fee ?? 0)
+          || sale.customer_type !== savedSale.customer_type || sale.delivery_type !== savedSale.delivery_type
+          || sale.salesperson_id !== savedSale.salesperson_id
+          || JSON.stringify(sale.items) !== JSON.stringify(savedSale.items)
+        );
+
+        ensureEmployeeBranch(
+          currentIdentity,
+          sale.branch_id,
+        );
+
+        // Autorização da RPC: operador do modal (id + PIN) ou null para
+        // que a RPC resolva o operador pelo auth.uid() da sessão.
+        const effectiveOperatorId = operatorId ?? null;
+        const effectiveOperatorPin = operatorPin ?? null;
+
+        if (sale.status !== 'pre_venda') throw new Error('Esta pré-venda já foi finalizada ou cancelada.');
+        const parts = paymentMethod === 'misto' ? paymentSplits ?? [] : [];
+        if (paymentMethod === 'misto') {
+          const message = splitPaymentError(saleChargeTotal(sale), parts);
+          if (message) throw new Error(message);
+        }
+        if (paymentMethod === 'faturado' || edits) {
+          // Refresh first: another checkout may already have finalized this same sale.
+          const snapshot = await refreshPdv(branchId);
+          const persisted = snapshot.sales.find(item => item.id === id);
+          if (persisted?.status === 'concluida' && persisted.payment_method === paymentMethod && (!edits || (
+            persisted.customer_id === sale.customer_id && persisted.customer_name === sale.customer_name
+            && persisted.total === sale.total && (persisted.freight_fee ?? 0) === (sale.freight_fee ?? 0)
+            && persisted.customer_type === sale.customer_type && persisted.delivery_type === sale.delivery_type
+            && JSON.stringify(persisted.items) === JSON.stringify(sale.items)
+            && JSON.stringify(persisted.payment_splits ?? []) === JSON.stringify(parts)
+          ))) return;
+          if (persisted && persisted.status !== 'pre_venda') throw new Error('Esta pré-venda já foi finalizada ou cancelada. Confira o Histórico.');
+          if (paymentMethod === 'faturado') {
+            const message = billedSaleError(snapshot.credits.find(c => c.customer_id === sale.customer_id), sale.customer_id, saleChargeTotal(sale));
+            if (message) throw new Error(message);
+          }
+        }
+
+        if (isSupabaseConfigured && supabase) {
+          if (quoteChanged) {
+            // Persist the edited quote before finalizing: the finalization RPC must
+            // match its authoritative price snapshot and must reuse the same sale ID.
+            const { data: confirmedId, error } = await supabase.rpc('execute_partner_sale_mutation', {
+              p_salesperson_id: effectiveOperatorId, p_pin: effectiveOperatorPin,
+              p_commercial_salesperson_id: sale.salesperson_id, p_sale_id: id,
+              p_customer_id: sale.customer_id, p_customer_name: sale.customer_name,
+              p_items: sale.items, p_total: sale.total, p_freight_fee: sale.freight_fee ?? 0,
+              p_imei: sale.imei, p_serial_number: sale.serial_number,
+              p_payment_method: sale.payment_method, p_branch_id: sale.branch_id,
+              p_status: 'pre_venda', p_origin: sale.origin,
+              p_customer_type: sale.customer_type, p_delivery_type: sale.delivery_type,
+            });
+            if (error) throw new Error(pdvErrorMessage(error));
+            if (confirmedId !== id) throw new Error('O servidor não confirmou a edição da pré-venda.');
+            dataRevisionRef.current.invalidate(['sales']);
+            setData(previous => ({ ...previous, sales: previous.sales.map(item => item.id === id ? sale : item) }));
+          }
+          const { error: rpcErr } =
+            await supabase.rpc(
+              cashSessionId ? 'supervised_execute_partner_sale_mutation' : 'execute_partner_sale_mutation',
+              {
+                ...(cashSessionId ? { p_cash_session_id: cashSessionId } : {}),
+                p_salesperson_id:
+                  effectiveOperatorId,
+                p_pin: effectiveOperatorPin,
+                p_commercial_salesperson_id: sale.salesperson_id,
+                p_sale_id: id,
+                p_customer_id:
+                  sale.customer_id ?? null,
+                p_customer_name:
+                  sale.customer_name ?? '',
+                p_items: sale.items ?? [],
+                p_total: sale.total ?? 0,
+                p_freight_fee: sale.freight_fee ?? 0,
+                p_imei: sale.imei ?? null,
+                p_serial_number:
+                  sale.serial_number ?? null,
+                p_payment_splits: parts,
+                p_payment_method: paymentMethod,
+                p_branch_id: sale.branch_id,
+                p_status: 'concluida',
+                p_origin:
+                  sale.origin ?? 'pdv',
+                p_customer_type:
+                  sale.customer_type ?? 'varejo',
+                p_delivery_type:
+                  sale.delivery_type ?? 'balcao',
+              },
+            );
+
+          if (rpcErr) {
+            throw rpcErr;
+          }
+        }
+
+        dataRevisionRef.current.invalidate(["sales"]);
+        setData(prev => ({ ...prev, sales: prev.sales.map(item => item.id === id
+          ? { ...sale, status: 'concluida', completed_at: new Date().toISOString(), payment_method: paymentMethod, payment_splits: parts, payment_status: paymentMethod === 'faturado' ? 'pendente' : 'pago' }
+          : item) }));
+        if (isSupabaseConfigured && supabase) await syncConfirmedSale(branchId);
+      } finally { saleInFlight.current = false; }
     },
     [data.sales, requireIdentity, refreshPdv, syncConfirmedSale],
   );

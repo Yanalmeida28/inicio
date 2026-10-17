@@ -1227,6 +1227,7 @@ export function PartnerPanel({
     id: string,
     paymentMethod: string,
     paymentSplits?: SalePayment[],
+    edits?: Parameters<typeof handleCreateSale>[0],
   ) {
     const sale = partner.sales.find(
       (item) => item.id === id,
@@ -1257,6 +1258,7 @@ export function PartnerPanel({
       operatorPin,
       paymentSplits,
       managedCashSession?.id ?? null,
+      edits,
     );
   }
 

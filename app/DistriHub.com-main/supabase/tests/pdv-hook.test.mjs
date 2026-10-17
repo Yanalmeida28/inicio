@@ -363,6 +363,88 @@ test('background synchronization updates a sale completed on another device with
   assert.ok(h.current.lastSyncedAt);
 });
 
+test('rescued checkout saves all edited quote fields before finalizing the same sale and cash', async () => {
+  const original = { ...payload(), id: 'rescued', user_id: 'owner', status: 'pre_venda', origin: 'pdv', payment_method: null, salesperson_id: 'seller', imei: 'trace' };
+  const edits = { ...original, customer_id: 'new-customer', customer_name: 'Outro cliente',
+    items: [{ ...original.items[0], quantity: 2 }], total: 200, freight_fee: 15, delivery_type: 'entrega' };
+  const mutations = [];
+  let persisted = original;
+  const h = await harness({ initialSales: [original], rpc: async (name, args) => {
+    if (name.includes('execute_partner_sale_mutation')) {
+      mutations.push(args);
+      persisted = { ...persisted, ...edits, status: args.p_status, payment_method: args.p_payment_method };
+      return { data: original.id, error: null };
+    }
+    return { data: snapshot({ sales: [persisted] }), error: null };
+  } });
+  await act(async () => h.current.finalizePreSale(original.id, 'pix', 'manager', '1234', [], 'cash', edits));
+  assert.equal(mutations.length, 2);
+  assert.deepEqual(mutations.map(row => row.p_status), ['pre_venda', 'concluida']);
+  for (const row of mutations) {
+    assert.equal(row.p_sale_id, original.id);
+    assert.equal(row.p_customer_id, 'new-customer');
+    assert.equal(row.p_total, 200);
+    assert.equal(row.p_freight_fee, 15);
+    assert.equal(row.p_delivery_type, 'entrega');
+    assert.equal(row.p_imei, 'trace');
+    assert.equal(row.p_commercial_salesperson_id, 'seller');
+  }
+  assert.equal(mutations[1].p_cash_session_id, 'cash');
+  assert.equal(h.current.sales.length, 1);
+  assert.equal(h.current.sales[0].status, 'concluida');
+});
+
+test('rescued checkout never finalizes an unconfirmed edit and releases its submission lock', async () => {
+  const original = { ...payload(), id: 'rescued-failure', user_id: 'owner', status: 'pre_venda', origin: 'pdv', payment_method: null };
+  let attempts = 0;
+  const h = await harness({ initialSales: [original], rpc: async (name, args) => {
+    if (name === 'execute_partner_sale_mutation') {
+      attempts++;
+      assert.equal(args.p_status, 'pre_venda');
+      return { data: null, error: null };
+    }
+    return { data: snapshot({ sales: [original] }), error: null };
+  } });
+  for (let i = 0; i < 2; i++) await act(async () => assert.rejects(h.current.finalizePreSale(original.id, 'pix', null, null, [], null, { ...original, customer_name: 'Editado' }), /não confirmou a edição/));
+  assert.equal(attempts, 2);
+  assert.equal(h.current.sales[0].status, 'pre_venda');
+});
+
+test('unchanged rescued quote finalizes without repricing its negotiated items', async () => {
+  const original = { ...payload(), id: 'negotiated', user_id: 'owner', status: 'pre_venda', origin: 'pdv', payment_method: null, salesperson_id: null };
+  const mutations = [];
+  const h = await harness({ initialSales: [original], rpc: async (name, args) => {
+    if (name === 'execute_partner_sale_mutation') { mutations.push(args); return { data: original.id, error: null }; }
+    return { data: snapshot({ sales: [original] }), error: null };
+  } });
+  await act(async () => h.current.finalizePreSale(original.id, 'pix', null, null, [], null, original));
+  assert.equal(mutations.length, 1);
+  assert.equal(mutations[0].p_status, 'concluida');
+});
+
+test('rescued checkout blocks duplicate submissions and retains confirmed edits when payment fails', async () => {
+  const original = { ...payload(), id: 'edited-pending', user_id: 'owner', status: 'pre_venda', origin: 'pdv', payment_method: null };
+  const edits = { ...original, customer_name: 'Cliente editado', freight_fee: 7 };
+  let release;
+  const mutations = [];
+  const h = await harness({ initialSales: [original], rpc: async (name, args) => {
+    if (name === 'execute_partner_sale_mutation') {
+      mutations.push(args);
+      if (args.p_status === 'pre_venda') await new Promise(resolve => { release = resolve; });
+      return args.p_status === 'pre_venda' ? { data: original.id, error: null } : { error: { message: 'Caixa fechado' } };
+    }
+    return { data: snapshot({ sales: [original] }), error: null };
+  } });
+  let pending;
+  await act(async () => { pending = h.current.finalizePreSale(original.id, 'pix', null, null, [], null, edits).catch(error => error); });
+  await assert.rejects(h.current.finalizePreSale(original.id, 'pix', null, null, [], null, edits), /Aguarde/);
+  await act(async () => { release(); assert.match((await pending).message, /Caixa fechado/); });
+  assert.equal(mutations.length, 2);
+  assert.equal(h.current.sales[0].status, 'pre_venda');
+  assert.equal(h.current.sales[0].customer_name, 'Cliente editado');
+  assert.equal(h.current.sales[0].freight_fee, 7);
+});
+
 test('editing pre-sale retains its ID and metadata while replacing items and total',async()=>{
   const original={...payload(),id:'existing-order',user_id:'owner',status:'pre_venda',origin:'pdv',payment_method:null,imei:'trace',serial_number:null};
   const items=[{...original.items[0],quantity:3}];

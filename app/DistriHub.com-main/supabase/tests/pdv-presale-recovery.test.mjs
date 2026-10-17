@@ -49,6 +49,32 @@ test('operator switch preserves PDV tab and cart while updating price permission
  assert.match(storage.get('distrihub:draft:'+scope+':pdv:branch:presale:cart'),/product/);
 });
 
+test('rescue uses the full checkout, preserves the other cart and finalizes the original sale', async () => {
+ const scope = 'editable-rescue';
+ const sale = { id: 'pre-original', status: 'pre_venda', sale_number: 7, branch_id: 'branch',
+   customer_id: null, customer_name: 'Cliente', customer_type: 'varejo', delivery_type: 'balcao',
+   items: [{ product_id: 'product', name: 'Produto A', quantity: 2, unit_price: 100 }], total: 200 };
+ let created = 0, consumed = 0, finalized;
+ const props = { ...base, currentRole: 'gerente', onCreateSale: async () => { created++; },
+   onConsumePreSale: () => { consumed++; }, onFinalizePreSale: async (...args) => { finalized = args; } };
+ await act(async () => { view = TestRenderer.create(wrapped(components.PdvModule, props, scope)); });
+ await add();
+ await act(async () => view.update(wrapped(components.PdvModule, { ...props, preSaleToCheckout: sale }, scope)));
+ const checkout = view.root.findAll(node => typeof node.type === 'function' && node.type.name === 'PdvCheckout').find(node => node.props.rescuedSale);
+ assert.ok(checkout);
+ assert.ok(checkout.findByProps({ 'aria-label': 'Buscar produto por nome ou SKU' }));
+ assert.ok(checkout.findByProps({ 'aria-label': 'Tipo de atendimento da venda' }));
+ await act(async () => checkout.findByProps({ 'aria-label': 'Aumentar quantidade de Produto A' }).props.onClick());
+ await act(async () => checkout.findByProps({ className: 'module-cancel-btn pdv-checkout-btn' }).props.onClick());
+ assert.equal(finalized[0], sale.id);
+ assert.equal(finalized[3].items[0].quantity, 3);
+ assert.equal(created, 0);
+ assert.equal(consumed, 1);
+ const normal = view.root.findAll(node => typeof node.type === 'function' && node.type.name === 'PdvCheckout');
+ assert.equal(normal.length, 1);
+ assert.equal(JSON.parse(storage.get('distrihub:draft:' + scope + ':pdv:branch:checkout:cart'))[0].quantity, 1);
+});
+
 test('confirmed recovery clears only the original checkout draft and cannot resubmit it',async()=>{
  let sale;
  const props={...base,isActive:true,hasPendingSale:false,onCreateSale:async value=>{sale=value;return {...value,id:'new-id'};}};

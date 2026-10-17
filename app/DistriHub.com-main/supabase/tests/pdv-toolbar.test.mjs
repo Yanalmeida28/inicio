@@ -47,6 +47,27 @@ const props = {
 let renderer;
 afterEach(async () => { if (renderer) await act(async () => renderer.unmount()); renderer = null; });
 const controls = () => renderer.root.findByProps({ 'aria-label': 'Opções da venda' });
+
+test('rescued sale opens the full editable checkout with saved fields and submits changed cart', async () => {
+  let submitted;
+  const rescuedSale = { id: 'original', sale_number: 42, customer_id: null, customer_name: 'Consumidor',
+    items: [{ product_id: 'product', name: 'Produto', quantity: 2, unit_price: 100, subtotal: 200 }],
+    total: 200, freight_fee: 12, customer_type: 'varejo', delivery_type: 'entrega', payment_method: 'dinheiro', salesperson_id: null };
+  await act(async () => { renderer = TestRenderer.create(React.createElement(module.exports.Checkout, {
+    ...props, rescuedSale, onCreateSale: async sale => { submitted = sale; return { ...rescuedSale, ...sale }; },
+  })); });
+  assertVisibleControls();
+  assert.equal(renderer.root.findByProps({ 'aria-label': 'Frete terceirizado' }).props.value, 12);
+  assert.equal(renderer.root.findByProps({ 'aria-label': 'Tipo de atendimento da venda' }).props.value, 'entrega');
+  assert.ok(renderer.root.findByProps({ role: 'status' }).children.some(node => typeof node !== 'string' && node.props?.children?.toString().includes('Editando pré-venda')));
+  await act(async () => renderer.root.findByProps({ className: 'pdv-product-card' }).props.onClick());
+  await act(async () => renderer.root.findByProps({ className: 'module-cancel-btn pdv-checkout-btn' }).props.onClick());
+  assert.equal(submitted.items[0].quantity, 3);
+  assert.equal(submitted.items[0].subtotal, 300);
+  assert.equal(submitted.total, 300);
+  assert.equal(submitted.freight_fee, 12);
+  assert.equal(submitted.payment_method, 'dinheiro');
+});
 test('split checkout rejects a missing balance, completes remaining PIX and submits each part including freight',async()=>{
   let submitted;
   await act(async()=>{renderer=TestRenderer.create(React.createElement(module.exports.Checkout,{...props,onCreateSale:async sale=>{submitted=sale;}}));});
