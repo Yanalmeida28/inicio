@@ -15,7 +15,7 @@ async function compile(file, requires={}) {
   return mod.exports;
 }
 const helpers=await compile('../../src/lib/checkoutCash.ts');
-const managerSession={id:'manager-session',branch_id:'branch',actor_key:'manager',operator_id:'manager',operator_name:'Gerente',closed_at:null};
+const managerSession={id:'manager-session',branch_id:'branch',actor_key:'manager',operator_id:'manager',operator_name:'Gerente',closed_at:null,opened_at:'2026-10-17T09:00:00Z'};
 const ownerSession={...managerSession,id:'owner-session',actor_key:'owner',operator_id:null,operator_name:'Proprietário'};
 
 test('inactive screens skip cash reads and concurrent active refreshes share one request',async()=>{
@@ -40,9 +40,9 @@ test('inactive screens skip cash reads and concurrent active refreshes share one
   } finally {act(()=>view.unmount());}
 });
 
-test('cash belongs to the resolved operator and branch, even when owner can read the manager report',()=>{
+test('checkout shares an open cash in the same branch and still prefers the current operator',()=>{
   const result=helpers.checkoutCash({actor_key:'owner',sessions:[managerSession,{...ownerSession,branch_id:'other'}, {...ownerSession,closed_at:'yesterday'}]},'branch');
-  assert.equal(result.current,null);
+  assert.equal(result.current.id,'manager-session');
   assert.equal(result.others[0].id,'manager-session');
   assert.match(helpers.closedCashMessage('Proprietário',result.others.map(s=>s.operator_name)),/Gerente/);
   assert.equal(helpers.checkoutCash({actor_key:'manager',sessions:[managerSession,ownerSession]},'branch').current.id,'manager-session');
@@ -80,7 +80,7 @@ test('supervised checkout rechecks the selected cash while preserving manager au
  } finally {act(()=>view.unmount());}
 });
 
-test('checkout rechecks the real open session and cannot use another operator cash',async()=>{
+test('checkout rechecks shared cash with the real operator credentials and rejects a closed destination',async()=>{
   let data={actor_key:'owner',sessions:[managerSession]};
   const calls=[];
   const hook=await compile('../../src/hooks/useCheckoutCash.ts',{
@@ -92,8 +92,9 @@ test('checkout rechecks the real open session and cannot use another operator ca
   let view;
   await act(async()=>{view=TestRenderer.create(React.createElement(Consumer));});
   try {
-    assert.equal(api.status,'closed');
-    await act(async()=>{await assert.rejects(api.assertOpen(),/caixa de Proprietário.*Gerente/);});
+    assert.equal(api.status,'open');
+    assert.equal(api.current.id,'manager-session');
+    await act(async()=>api.assertOpen());
     data={actor_key:'owner',sessions:[managerSession,ownerSession]};
     await act(async()=>api.assertOpen());assert.equal(api.status,'open');
     data={actor_key:'owner',sessions:[{...ownerSession,closed_at:'now'}]};

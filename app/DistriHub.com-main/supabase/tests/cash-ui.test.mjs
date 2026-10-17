@@ -98,8 +98,18 @@ test('owner selects employee cash and closes using the supervised endpoint with 
 
 test('cash report shows employee sales returned by the cash RPC even if panel sales are empty',async()=>{
  const id=randomUUID();
- await harness({snapshot:{actor_key:'owner',sessions:[employeeSession],movements:[{id:randomUUID(),session_id:employeeSession.id,kind:'venda',payment_method:'pix',amount:50,sale_id:id,created_at:new Date().toISOString(),reason:'Venda'}],sales:[{id,sale_number:123,customer_name:'Cliente do funcionário',status:'concluida',total:50}],can_manage:true}});
+ await harness({snapshot:{actor_key:'owner',sessions:[employeeSession],movements:[{id:randomUUID(),session_id:employeeSession.id,kind:'venda',payment_method:'pix',amount:50,sale_id:id,created_at:new Date().toISOString(),reason:'Venda',performed_by:'seller',performed_by_name:'Ana Vendedora'}],sales:[{id,sale_number:123,customer_name:'Cliente do funcionário',status:'concluida',total:50}],can_manage:true}});
  assert.match(rendered(),/Cliente do funcionário/);assert.match(rendered(),/123/);
+ assert.match(rendered(),/Finalizado por/);assert.match(rendered(),/Ana Vendedora/);
+});
+
+test('shared cashier history shows the finalizer without presenting partial movements as complete cash totals',async()=>{
+ const id=randomUUID();
+ await harness({snapshot:{actor_key:'owner',sessions:[{...employeeSession,history_complete:false}],movements:[{id:randomUUID(),session_id:employeeSession.id,kind:'venda',payment_method:'pix',amount:50,sale_id:id,created_at:new Date().toISOString(),reason:'Venda',performed_by_name:'Ana'}],sales:[{id,customer_name:'Cliente compartilhado',status:'concluida',total:50}],can_manage:false}});
+ assert.match(rendered(),/Ana/);
+ assert.match(rendered(),/finalizadas por você/);
+ assert.equal(button('Imprimir relatório'),undefined);
+ assert.equal(renderer.root.findAllByProps({className:'cash-summary'}).length,0);
 });
 
 test('storage access failure cannot leave cash locked in flight or send a financial request',async()=>{

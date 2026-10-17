@@ -65,6 +65,7 @@ before(async () => {
   await db.exec('CREATE SCHEMA partner_rma_private');
   await db.exec(await read('../migrations/20261013202052_readable_sale_numbers.sql'));
   await db.exec(await read('../migrations/20261015013718_fix_sales_history_cancellation_and_completion.sql'));
+  await db.exec(await read('../migrations/20261017172437_shared_branch_checkout_operator_history.sql'));
 });
 after(() => db.close());
 
@@ -336,14 +337,72 @@ test('opening retry is idempotent, rejects second open and mismatching payload',
   await assert.rejects(mutate('abrir',101,{request}),/dados diferentes/);
 });
 
-test('separate cash by operator, even when commercial salesperson is the same', async () => {
+test('uses shared branch cash without impersonation and prefers own cash when one is open', async () => {
   const ownerCash=await mutate('abrir',100);
   await login(employeeAuth);
-  await assert.rejects(sale(),/Abra o caixa/);
+  const sharedSale = await sale();
+  const shared = (await sql('SELECT * FROM partner_cash_movements WHERE sale_id=$1', [sharedSale.id])).rows[0];
+  assert.equal(shared.session_id,ownerCash);
+  assert.equal(shared.performed_by,employee);
+  assert.equal(shared.performed_by_name,'Caixa');
+  await assert.rejects(mutate('fechar',100,{session:ownerCash}), /caixa|operador|permiss|autoriza/i);
   const employeeCash=await mutate('abrir',20);
-  await sale();
-  assert.equal((await sql('SELECT session_id FROM partner_cash_movements')).rows[0].session_id,employeeCash);
+  const ownSale = await sale();
+  assert.equal((await sql('SELECT session_id FROM partner_cash_movements WHERE sale_id=$1',[ownSale.id])).rows[0].session_id,employeeCash);
   assert.notEqual(ownerCash,employeeCash);
+});
+
+test('shared checkout records the finalizer separately from the commercial salesperson and preserves retries', async () => {
+  const quote = await negotiatedSale(75.5,{operator:manager,pin:'9876'});
+  const session = await mutate('abrir',0);
+  await login(employeeAuth);
+  await negotiatedSale(75.5,{id:quote.id,status:'concluida',method:'dinheiro'});
+  await negotiatedSale(75.5,{id:quote.id,status:'concluida',method:'dinheiro'});
+  const saved=(await sql('SELECT salesperson_id FROM partner_sales WHERE id=$1',[quote.id])).rows[0];
+  assert.equal(saved.salesperson_id,manager);
+  const entries=(await sql("SELECT * FROM partner_cash_movements WHERE sale_id=$1 AND kind='venda'",[quote.id])).rows;
+  assert.equal(entries.length,1);
+  assert.equal(entries[0].session_id,session);
+  assert.equal(entries[0].performed_by,employee);
+  assert.equal(entries[0].performed_by_name,'Caixa');
+  assert.equal((await sql('SELECT stock FROM partner_products WHERE id=$1',[product])).rows[0].stock,9);
+  await sql("UPDATE partner_salespeople SET name='Nome novo' WHERE id=$1",[employee]);
+  assert.equal((await sql('SELECT performed_by_name FROM partner_cash_movements WHERE sale_id=$1',[quote.id])).rows[0].performed_by_name,'Caixa');
+});
+
+test('shared split payments keep one finalizer on every part and preserve own history after closing', async () => {
+  const session = await mutate('abrir',0);
+  const ownerSale = await sale();
+  await login(employeeAuth);
+  const sold = await splitSale();
+  const snapshot=(await sql('SELECT read_partner_cash_register($1) AS data',[branch])).rows[0].data;
+  assert.equal(snapshot.sessions[0].id,session);
+  assert.equal(snapshot.sessions[0].history_complete,false);
+  assert.equal(snapshot.movements.length,2);
+  assert.ok(snapshot.movements.every(row=>row.performed_by===employee));
+  assert.equal(snapshot.sales.length,1);
+  assert.equal(snapshot.sales[0].id,sold.id);
+  assert.ok(!snapshot.sales.some(row=>row.id===ownerSale.id));
+  await login(owner);
+  const full=(await sql('SELECT read_partner_cash_register($1) AS data',[branch])).rows[0].data;
+  assert.equal(full.movements.length,3);
+  assert.equal(full.sessions[0].history_complete,true);
+  await mutate('fechar',150,{session});
+  await login(employeeAuth);
+  const history=(await sql('SELECT read_partner_cash_register($1) AS data',[branch])).rows[0].data;
+  assert.equal(history.sales[0].id,sold.id);
+  await assert.rejects(sale(),/Abra o caixa/);
+});
+
+test('shared checkout chooses the most recent branch cash and rejects foreign branches and inactive staff', async () => {
+  const older = await mutate('abrir',0);
+  const newer = (await sql("SELECT mutate_partner_cash_register('abrir',$1,$2,'9876',NULL,0,NULL,'',NULL,NULL,$3) id",[branch,manager,randomUUID()])).rows[0].id;
+  await sql("UPDATE partner_cash_sessions SET opened_at=now()-interval '1 hour' WHERE id=$1",[older]);
+  await login(employeeAuth);
+  const sold=await sale();
+  assert.equal((await sql('SELECT session_id FROM partner_cash_movements WHERE sale_id=$1',[sold.id])).rows[0].session_id,newer);
+  await sql('UPDATE partner_salespeople SET active=false WHERE id=$1',[employee]);
+  await assert.rejects(sale(),/inativo|inválido|nao vinculado|não vinculado/i);
 });
 
 test('cash expected amount includes opening, cash sales, supplies and withdrawals only', async () => {
@@ -624,7 +683,10 @@ test('tenant, branch, actor and anonymous access are denied on read and mutation
   await login(employeeAuth);
   await assert.rejects(mutate('fechar',100,{session}),/não pertence/);
   const snapshot=(await sql('SELECT read_partner_cash_register($1) AS data',[branch])).rows[0].data;
-  assert.equal(snapshot.sessions.length,0);
+  assert.equal(snapshot.sessions.length,1);
+  assert.equal(snapshot.sessions[0].id,session);
+  assert.equal(snapshot.sessions[0].history_complete,false);
+  assert.equal(snapshot.movements.length,0);
   await assert.rejects(sql('SELECT read_partner_cash_register($1)',[foreignBranch]),/filial/);
   await login(null); await assert.rejects(mutate('abrir',0),/autenticado/);
   await login(owner); await db.exec('SET ROLE authenticated');

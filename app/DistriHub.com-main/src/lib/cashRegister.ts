@@ -1,4 +1,5 @@
 export interface CashSession {
+  history_complete?: boolean;
   id: string;
   branch_id: string;
   operator_id: string | null;
@@ -47,6 +48,8 @@ export class CashRequestStore {
 }
 
 export interface CashMovement {
+  performed_by?: string | null;
+  performed_by_name?: string | null;
   id: string;
   session_id: string;
   kind: 'venda' | 'estorno' | 'devolucao' | 'sangria' | 'suprimento';
@@ -116,7 +119,7 @@ export function printCashReport(session: CashSession, movements: CashMovement[],
     ...(session.closed_at ? [`Dinheiro contado: ${currency.format(session.counted_amount ?? 0)}`, `Diferença: ${currency.format(session.difference ?? 0)}`] : []),
     ...(session.notes ? [`Observações: ${session.notes}`] : []),
     '', 'MOVIMENTAÇÕES',
-    ...movements.map(m => `${new Date(m.created_at).toLocaleString('pt-BR')} | ${m.kind} | ${cashPaymentLabels[m.payment_method] ?? m.payment_method} | ${currency.format(m.amount)} | ${m.reason}`),
+    ...movements.map(m => `${new Date(m.created_at).toLocaleString('pt-BR')} | ${m.kind} | ${cashPaymentLabels[m.payment_method] ?? m.payment_method} | ${currency.format(m.amount)} | ${m.reason} | Finalizado por: ${m.performed_by_name || 'Não registrado'}`),
   ];
   for (const text of lines) { const p = doc.createElement('p'); p.textContent = text; doc.body.append(p); }
   const button = doc.createElement('button');

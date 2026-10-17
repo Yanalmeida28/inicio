@@ -3,11 +3,12 @@ import type { CashSession } from './cashRegister';
 export type CheckoutCashSnapshot = { actor_key: string; sessions: CashSession[] };
 
 export function checkoutCash(snapshot: CheckoutCashSnapshot & { can_manage?: boolean }, branchId: string, managedSessionId?: string | null) {
-  const open = snapshot.sessions.filter(session => session.branch_id === branchId && !session.closed_at);
+  const open = snapshot.sessions.filter(session => session.branch_id === branchId && !session.closed_at)
+    .sort((a, b) => b.opened_at.localeCompare(a.opened_at) || b.id.localeCompare(a.id));
   return {
     current: managedSessionId
       ? (snapshot.can_manage ? open.find(session => session.id === managedSessionId) : null) ?? null
-      : open.find(session => session.actor_key === snapshot.actor_key) ?? null,
+      : open.find(session => session.actor_key === snapshot.actor_key) ?? open[0] ?? null,
     others: open.filter(session => session.actor_key !== snapshot.actor_key),
   };
 }

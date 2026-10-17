@@ -248,7 +248,7 @@ export function CashRegisterModule({ branchId, branchName, scopeKey, sales, oper
       {authorization()}<button className="module-submit-btn" disabled={busy || loading} onClick={() => void mutate(pending.action, true)}>Confirmar operação pendente</button>
     </section>}
     {loading ? <p>Carregando caixa...</p> : <>
-      {!current && !error && otherOpenSessions.length > 0 && <p role="status">Há caixas abertos de {otherOpenSessions.map(session => session.operator_name).join(', ')}. {canManage ? 'Selecione o caixa acima para operar como responsável.' : 'Abra o caixa do operador atual para finalizar vendas.'}</p>}
+      {!current && !error && otherOpenSessions.length > 0 && <p role="status">Há caixas abertos de {otherOpenSessions.map(session => session.operator_name).join(', ')}. Você pode finalizar vendas no PDV usando o caixa aberto da filial; o colaborador ficará registrado em cada venda.</p>}
       {!current && !managedSessionId && actorKey && <section className="cash-card"><h4>Abrir caixa</h4><p>Informe o dinheiro disponível para troco. Pré-vendas não entram no saldo até serem finalizadas.</p>
         <form onSubmit={e => { e.preventDefault(); void mutate('abrir'); }} className="cash-fields">
           <label>Troco inicial (R$)<input inputMode="decimal" value={opening} onChange={e => setOpening(e.target.value)} disabled={busy} required /></label>
@@ -301,12 +301,13 @@ export function CashRegisterModule({ branchId, branchName, scopeKey, sales, oper
         {sessions.map(s => <option key={s.id} value={s.id}>{new Date(s.opened_at).toLocaleString('pt-BR')} · {s.operator_name} · {s.closed_at ? 'Fechado' : 'Aberto'}</option>)}
       </select></label>
       {selected && <>
-        {selected.actor_key !== actorKey && <p>Relatório do caixa de {selected.operator_name}. Para operar, use “Caixa para operar” acima.</p>}
+        {selected.actor_key !== actorKey && <p>Caixa aberto por {selected.operator_name}. {selected.history_complete === false ? 'Aqui são exibidas as vendas finalizadas por você neste caixa compartilhado.' : 'Cada venda identifica o colaborador que a finalizou.'}</p>}
         <h4>Vendas deste caixa</h4>
-        <div className="stock-table-wrap"><table className="rma-table"><thead><tr><th>Venda</th><th>Cliente</th><th>Total</th><th>Status</th></tr></thead><tbody>
-          {allSales.filter(sale => selectedMovements.some(m => m.sale_id === sale.id && m.kind === 'venda')).map(sale => <tr key={sale.id}><td>#{sale.sale_number ?? sale.id.slice(0, 8).toUpperCase()}</td><td>{sale.customer_name}</td><td>{money.format(Number(sale.total) + Number(sale.freight_fee ?? 0))}</td><td>{sale.status}</td></tr>)}
-          {!selectedMovements.some(m => m.kind === 'venda') && <tr><td colSpan={4}>Nenhuma venda registrada neste caixa.</td></tr>}
+        <div className="stock-table-wrap"><table className="rma-table"><thead><tr><th>Venda</th><th>Cliente</th><th>Finalizado por</th><th>Total</th><th>Status</th></tr></thead><tbody>
+          {allSales.filter(sale => selectedMovements.some(m => m.sale_id === sale.id && m.kind === 'venda')).map(sale => <tr key={sale.id}><td>#{sale.sale_number ?? sale.id.slice(0, 8).toUpperCase()}</td><td>{sale.customer_name}</td><td>{selectedMovements.find(m => m.sale_id === sale.id && m.kind === 'venda')?.performed_by_name || 'Não registrado'}</td><td>{money.format(Number(sale.total) + Number(sale.freight_fee ?? 0))}</td><td>{sale.status}</td></tr>)}
+          {!selectedMovements.some(m => m.kind === 'venda') && <tr><td colSpan={5}>Nenhuma venda registrada neste caixa.</td></tr>}
         </tbody></table></div>
+        {selected.history_complete !== false && <>
         <div className="cash-summary"><div><small>Troco inicial</small><strong>{money.format(selected.opening_amount)}</strong></div>
           {Object.entries(totals).map(([key, value]) => <div key={key}><small>{cashPaymentLabels[key] ?? key} · líquido</small><strong>{money.format(value)}</strong></div>)}
           <div className="cash-day-total"><small>Total do dia</small><strong>{money.format(dayTotal)}</strong><small>{today.split('-').reverse().join('/')} · {selected.operator_name}</small></div>
@@ -316,8 +317,9 @@ export function CashRegisterModule({ branchId, branchName, scopeKey, sales, oper
         <p>O líquido em dinheiro inclui sangrias e suprimentos. Faturado é valor a receber e não compõe o dinheiro do caixa.</p>
         <p>O total do dia soma as vendas de hoje do operador nesta filial, incluindo faturado e descontando estornos e devoluções do dia. Não inclui troco inicial, sangrias ou suprimentos.</p>
         <button className="rma-advance-btn" onClick={() => { try { printCashReport(selected, selectedMovements, branchName); } catch (e) { setError(pdvErrorMessage(e)); } }}><Printer size={14} /> Imprimir relatório</button>
-        <div className="stock-table-wrap"><table className="rma-table"><thead><tr><th>Data</th><th>Tipo</th><th>Pagamento</th><th>Valor</th><th>Motivo / pedido</th></tr></thead><tbody>
-          {selectedMovements.length ? selectedMovements.map(m => <tr key={m.id}><td>{new Date(m.created_at).toLocaleString('pt-BR')}</td><td>{m.kind}</td><td>{cashPaymentLabels[m.payment_method] ?? m.payment_method}</td><td>{money.format(m.amount)}</td><td>{m.reason}{m.sale_id && ` · #${m.sale_id.slice(0, 8).toUpperCase()}`}</td></tr>) : <tr><td colSpan={5}>Nenhuma movimentação.</td></tr>}
+        </>}
+        <div className="stock-table-wrap"><table className="rma-table"><thead><tr><th>Data</th><th>Tipo</th><th>Colaborador</th><th>Pagamento</th><th>Valor</th><th>Motivo / pedido</th></tr></thead><tbody>
+          {selectedMovements.length ? selectedMovements.map(m => <tr key={m.id}><td>{new Date(m.created_at).toLocaleString('pt-BR')}</td><td>{m.kind}</td><td>{m.performed_by_name || 'Não registrado'}</td><td>{cashPaymentLabels[m.payment_method] ?? m.payment_method}</td><td>{money.format(m.amount)}</td><td>{m.reason}{m.sale_id && ` · #${m.sale_id.slice(0, 8).toUpperCase()}`}</td></tr>) : <tr><td colSpan={6}>Nenhuma movimentação.</td></tr>}
         </tbody></table></div>
       </>}
       </section>
