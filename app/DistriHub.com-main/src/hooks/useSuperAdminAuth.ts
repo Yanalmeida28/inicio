@@ -22,13 +22,13 @@ export function useSuperAdminAuth(): UseSuperAdminAuthReturn {
 
       const { data: userData, error: userError } = await supabase.auth.getUser();
       if (userError || !userData.user) {
-        await supabase.auth.signOut();
+        await supabase.auth.signOut({ scope: 'local' });
         return { ok: false, error: 'Sessão do super admin inválida.' };
       }
 
       const { data: isSuperAdmin, error: authError } = await supabase.rpc('is_super_admin');
       if (authError || isSuperAdmin !== true) {
-        await supabase.auth.signOut();
+        await supabase.auth.signOut({ scope: 'local' });
         return { ok: false, error: 'Operador não autorizado para o painel master.' };
       }
 

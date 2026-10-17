@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useReducer, useRef } from 'react';
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import type { PartnerIdentity, PartnerProfile, PartnerSalesperson } from '../types';
@@ -12,6 +12,7 @@ type AuthState = {
   loading: boolean;
   error: string | null;
   passwordRecovery: boolean;
+  sessionRecoveryError: string | null;
 };
 
 type SignUpData = {
@@ -29,10 +30,13 @@ type UseAuthReturn = AuthState & {
   signOut: () => Promise<void>;
   requestPasswordReset: (email: string) => Promise<{ error: string | null }>;
   updatePassword: (password: string) => Promise<{ error: string | null }>;
+  retrySession: () => void;
 };
 
 type AuthAction =
   | { type: 'RESET' }
+  | { type: 'RETRY_SESSION' }
+  | { type: 'SESSION_RECOVERY_FAILED' }
   | { type: 'SET_SESSION'; session: Session | null; user: User | null; passwordRecovery?: boolean }
   | { type: 'SET_PROFILE'; profile: PartnerProfile | null }
   | { type: 'SET_IDENTITY'; identity: PartnerIdentity | null }
@@ -49,13 +53,19 @@ function authReducer(state: AuthState, action: AuthAction): AuthState {
         loading: false,
         error: null,
         passwordRecovery: false,
+        sessionRecoveryError: null,
       };
+    case 'RETRY_SESSION':
+      return { ...state, loading: true, sessionRecoveryError: null };
+    case 'SESSION_RECOVERY_FAILED':
+      return { ...state, loading: false, sessionRecoveryError: 'Não foi possível recuperar sua sessão agora. Verifique a conexão e tente novamente.' };
     case 'SET_SESSION':
       return {
         ...state,
         session: action.session,
         user: action.user,
         loading: false,
+        sessionRecoveryError: null,
         passwordRecovery: action.passwordRecovery ?? state.passwordRecovery,
       };
     case 'SET_PROFILE':
@@ -81,7 +91,13 @@ export function useAuth(): UseAuthReturn {
     loading: true,
     error: null,
     passwordRecovery: false,
+    sessionRecoveryError: null,
   });
+  const [sessionRevision, setSessionRevision] = useState(0);
+  const retrySession = useCallback(() => {
+    dispatch({ type: 'RETRY_SESSION' });
+    setSessionRevision(value => value + 1);
+  }, []);
   const signupInProgressRef = useRef(false);
   const identityRequestRef = useRef(0);
 
@@ -233,15 +249,22 @@ export function useAuth(): UseAuthReturn {
       }
     };
 
-    supabase.auth.getSession().then(({ data }) => {
+    // A mobile connection failure must not be treated as an explicit logout.
+    supabase.auth.getSession().then(({ data, error }) => {
       if (!cancelled && !authEventReceived) {
-        void applySession(data.session);
+        if (error) dispatch({ type: 'SESSION_RECOVERY_FAILED' });
+        else void applySession(data.session);
       }
+    }).catch(() => {
+      if (!cancelled && !authEventReceived) dispatch({ type: 'SESSION_RECOVERY_FAILED' });
     });
 
     const { data: listener } = supabase.auth.onAuthStateChange(
       (event, session) => {
         if (cancelled) return;
+        // The SDK also emits INITIAL_SESSION(null) when renewal hits a network
+        // error. Let getSession distinguish that from a genuinely absent session.
+        if (event === 'INITIAL_SESSION' && !session) return;
         authEventReceived = true;
 
         dispatch({
@@ -278,7 +301,13 @@ export function useAuth(): UseAuthReturn {
       identityRequestRef.current += 1;
       listener.subscription.unsubscribe();
     };
-  }, [loadProfile, resolveIdentity]);
+  }, [loadProfile, resolveIdentity, sessionRevision]);
+
+  useEffect(() => {
+    if (!state.sessionRecoveryError) return;
+    window.addEventListener?.('online', retrySession);
+    return () => window.removeEventListener?.('online', retrySession);
+  }, [state.sessionRecoveryError, retrySession]);
 
   const signUp = useCallback(async (data: SignUpData): Promise<{ error: string | null; needsEmailConfirmation?: boolean }> => {
     if (!isSupabaseConfigured || !supabase) return { error: 'Supabase não configurado.' };
@@ -347,7 +376,7 @@ export function useAuth(): UseAuthReturn {
 
     identityRequestRef.current += 1;
 
-    const { error } = await supabase.auth.signOut();
+    const { error } = await supabase.auth.signOut({ scope: 'local' });
 
     if (error) {
       dispatch({ type: 'SET_ERROR', error: error.message });
@@ -371,5 +400,5 @@ export function useAuth(): UseAuthReturn {
     return { error: error?.message ?? null };
   }, []);
 
-  return { ...state, signUp, signIn, signOut, requestPasswordReset, updatePassword };
+  return { ...state, signUp, signIn, signOut, requestPasswordReset, updatePassword, retrySession };
 }

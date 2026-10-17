@@ -77,6 +77,60 @@ test('loading and permission errors do not show login or silently terminate a sa
   assert.equal(failed.renderer.root.findAllByProps({ 'data-panel': 'login' }).length, 0); await failed.close();
 });
 
+test('a recoverable session error shows recovery instead of a login screen', async () => {
+  const h = await harness({ user: null });
+  await h.update({ sessionRecoveryError: 'Conexão indisponível', retrySession() {} });
+  assert.match(JSON.stringify(h.renderer.toJSON()), /Conexão indisponível/);
+  assert.match(JSON.stringify(h.renderer.toJSON()), /Tentar novamente/);
+  assert.equal(h.renderer.root.findAllByProps({ 'data-panel': 'login' }).length, 0);
+  assert.equal(h.signouts, 0);
+  await h.close();
+});
+
+for (const mode of ['error-result', 'rejected-promise']) test(`mobile recovery retains authentication on ${mode} and retries without password`, async () => {
+  let current, listener, calls = 0, signouts = 0;
+  const events = new Map();
+  const session = { user: { id: 'owner' }, access_token: 'renewed' };
+  const client = { from: table => ({
+    select() { return this; }, eq() { return this; }, order() { return this; }, limit() { return this; },
+    async maybeSingle() { return { data: table === 'partner_profiles' ? { id: 'owner' } : null, error: null }; },
+  }), auth: {
+    async getSession() {
+      calls++;
+      if (calls === 1) {
+        if (mode === 'rejected-promise') throw new Error('Offline');
+        return { data: { session: null }, error: { message: 'Network unavailable' } };
+      }
+      return { data: { session }, error: null };
+    },
+    onAuthStateChange(callback) { listener = callback; callback('INITIAL_SESSION', null); return { data: { subscription: { unsubscribe() {} } } }; },
+    async signOut() { signouts++; return { error: null }; },
+  } };
+  const exports = {};
+  const authSource = await readFile(new URL('../../src/hooks/useAuth.ts', import.meta.url), 'utf8');
+  vm.runInNewContext(ts.transpileModule(authSource, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText, {
+    exports, Error, window: { setTimeout: callback => callback(), addEventListener: (name, callback) => events.set(name, callback), removeEventListener: name => events.delete(name) },
+    require: name => name === '../utils' ? {} : name === '../lib/supabase' ? { supabase: client, isSupabaseConfigured: true } : require(name),
+  });
+  function Probe() { current = exports.useAuth(); return null; }
+  let renderer;
+  await act(async () => { renderer = TestRenderer.create(React.createElement(Probe)); });
+  try {
+    assert.equal(current.user, null);
+    assert.equal(current.loading, false);
+    assert.match(current.sessionRecoveryError, /recuperar sua sessão/);
+    assert.equal(signouts, 0);
+    await act(async () => events.get('online')());
+    assert.equal(calls, 2);
+    assert.equal(current.user.id, 'owner');
+    assert.equal(current.identity.companyUserId, 'owner');
+    assert.equal(current.sessionRecoveryError, null);
+    await act(async () => listener('SIGNED_OUT', null));
+    assert.equal(current.user, null);
+    assert.equal(current.identity, null);
+  } finally { await act(async () => renderer.unmount()); }
+});
+
 test('password recovery remains on its reset screen and session removal closes a protected panel', async () => {
   const recovery = await harness({ recovery: true });
   assert.ok(recovery.renderer.root.findByProps({ 'data-panel': 'login', 'data-recovery': true })); assert.equal(recovery.checks, 0); await recovery.close();
@@ -94,7 +148,7 @@ test('a delayed initial session cannot overwrite login, token refresh preserves 
   }), auth: {
     getSession: () => initial,
     onAuthStateChange(callback) { listener = callback; return { data: { subscription: { unsubscribe() {} } } }; },
-    async signOut() { return { error: { message: 'Não foi possível sair' } }; },
+    async signOut(options) { assert.equal(options.scope,'local'); return { error: { message: 'Não foi possível sair' } }; },
   } };
   const exports = {};
   const authSource = await readFile(new URL('../../src/hooks/useAuth.ts', import.meta.url), 'utf8');
