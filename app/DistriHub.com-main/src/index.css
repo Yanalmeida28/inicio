@@ -926,8 +926,8 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
 .product-list-table .product-identity-text strong,
 .product-list-table .product-identity-text small { display: block; }
 .product-list-table .product-identity-text small { margin-top: 4px; color: var(--dh-text-secondary); }
-.partner-panel .cadastros-scope .product-list-table .directory-card-title .product-identity-text strong { font-size: 12px; line-height: 1.3; }
-.partner-panel .cadastros-scope .product-list-table .directory-card-title .product-identity-text small { font-size: 10px; line-height: 1.3; }
+.partner-panel .cadastros-scope .product-list-table .directory-card-title .product-identity-text strong { font-size: 14px; line-height: 1.4; }
+.partner-panel .cadastros-scope .product-list-table .directory-card-title .product-identity-text small { font-size: 12px; line-height: 1.4; }
 .product-list-table .product-list-photo { flex: 0 0 144px; margin-bottom: 0; }
 .product-list-table td { vertical-align: top; }
 .partner-panel .cadastros-scope .directory-card-actions .product-actions-menu.product-photo-actions { display: flex; align-items: center; gap: 8px; }
