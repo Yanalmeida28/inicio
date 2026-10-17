@@ -3151,22 +3151,15 @@ body, .app-shell { background: #091724; color: #edf5fc; }
 
 /* Highlight the product under the pointer using the palette's light blue. */
 @media (hover: hover) {
-  .partner-panel .pdv-product-card:hover:not(:disabled),
   .partner-panel .product-list-table tbody tr:has(.product-identity):hover > td {
     background: var(--dh-accent-text, #7bc8ff) !important;
     color: var(--dh-bg, #091724) !important;
   }
-  .partner-panel .pdv-product-card:hover:not(:disabled) :is(strong, small, span, em),
   .partner-panel .product-list-table tbody tr:has(.product-identity):hover > td :is(strong, small) {
     color: var(--dh-bg, #091724) !important;
   }
 }
 .partner-panel .pdv-product-card:focus-visible:not(:disabled) {
-  background: var(--dh-accent-text, #7bc8ff) !important;
   outline: 2px solid var(--dh-blue);
   outline-offset: 2px;
-  color: var(--dh-bg, #091724) !important;
-}
-.partner-panel .pdv-product-card:focus-visible:not(:disabled) :is(strong, small, span, em) {
-  color: var(--dh-bg, #091724) !important;
 }
