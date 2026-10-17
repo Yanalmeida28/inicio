@@ -672,6 +672,16 @@ test('collection cache deduplicates in-flight reads and never shares them betwee
    assert.equal(h.current.products[0].stock,2);
   }finally{Date.now=originalNow;}
  });
+ test('open orders load without waiting for invoices or RMA and finance still loads its own resources',async()=>{
+  const h=await harness({resourceScope:'pedidos',initialSales:[{id:'open-order',user_id:'owner',status:'pre_venda',branch_id:'branch',items:[]}],rpc:async()=>({data:null,error:null})});
+  assert.equal(h.current.resourcesReady,true);
+  assert.equal(h.current.sales[0].id,'open-order');
+  for(const table of ['partner_invoices','rma_requests_v2','partner_rma_credit_applications'])assert.equal(h.queries.includes(table),false,table+' should not delay open orders');
+  await h.setScope('financeiro');
+  assert.equal(h.current.resourcesReady,true);
+  for(const table of ['partner_invoices','rma_requests_v2','partner_rma_credit_applications'])assert.equal(h.queries.includes(table),true,table+' must still load for finance');
+ });
+
  test('menu prefetch loads only the destination resources and the subsequent tab uses them without another query',async()=>{
   const h=await harness({resourceScope:'cadastros:produtos',initialCustomers:[{id:'customer',user_id:'owner',name:'Customer'}],rpc:async()=>({data:null,error:null})});
   await act(async()=>h.current.prefetchModule('caixa'));

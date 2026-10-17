@@ -995,6 +995,7 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
 .action-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
 .export-btn-group { display: flex; gap: 6px; }
 
+
 /* ===== Import Map Rows ===== */
 .import-map-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid #152739; }
 .import-map-source { font: 600 14.5px Manrope; color: #e2eaf0; min-width: 140px; }
@@ -3116,4 +3117,34 @@ body, .app-shell { background: #091724; color: #edf5fc; }
   .partner-panel :is(.delivery-scope, .financial-scope, .pdv-presale-pending) .directory-card-table .directory-card-title strong { font-size: 14px; }
   .partner-panel :is(.delivery-scope, .financial-scope, .pdv-presale-pending) .directory-card-table .directory-card-actions { padding: 6px 0 0; margin-top: 2px; }
   .partner-panel :is(.delivery-scope, .financial-scope, .pdv-presale-pending) .directory-card-table td.directory-card-actions[data-label]::before { display: none; }
+}
+
+
+/* Compact mobile registration, finance and CRM layouts. */
+.partner-panel .invoice-quick-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; min-width: 0; }
+.partner-panel .invoice-quick-actions > .rma-advance-btn { width: 100%; min-width: 0; min-height: 44px; padding: 6px 4px; font-size: 11px; line-height: 1.2; justify-content: center; white-space: normal; }
+@media (max-width: 768px) {
+  .partner-panel .cadastros-scope .product-list-toolbar { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1.65fr); gap: 4px; }
+  .partner-panel .product-list-toolbar > .module-action-btn { width: 100%; min-width: 0; min-height: 40px; padding: 6px 4px; gap: 3px; font-size: 10px; line-height: 1.2; }
+  .partner-panel .product-list-toolbar > .module-action-btn svg { flex: 0 0 11px; width: 11px; height: 11px; }
+  .partner-panel .product-list-toolbar .export-btn-group { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px; min-width: 0; }
+  .partner-panel .product-list-toolbar .export-btn-group > button { min-width: 0; min-height: 40px; padding: 4px 2px; gap: 3px; font-size: 10px; }
+  .partner-panel .product-list-toolbar .export-btn-group svg { width: 11px; height: 11px; flex-shrink: 0; }
+  .partner-panel .cadastros-scope .category-browser-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .partner-panel .cadastros-scope .category-browser-item { display: grid; grid-template-columns: minmax(0, 1fr) 32px; min-width: 0; min-height: 72px; }
+  .partner-panel .cadastros-scope .category-browser-select { display: grid; grid-template-columns: 14px minmax(0, 1fr); grid-column: 1; grid-row: 1; gap: 4px; padding: 8px; min-height: 72px; font-size: 12px; }
+  .partner-panel .cadastros-scope .category-browser-select small { grid-column: 2; }
+  .partner-panel .cadastros-scope .category-browser-delete { grid-column: 2; grid-row: 1; width: 32px; min-height: 44px; }
+  .partner-panel .cadastros-scope .category-browser-item > select,
+  .partner-panel .cadastros-scope .category-browser-item > small { grid-column: 1 / -1; min-width: 0; max-width: 100%; padding: 6px; }
+  .partner-panel .category-browser-list > .empty-row { grid-column: 1 / -1; }
+  .partner-panel .stock-table-wrap .crm-birthdays-table { width: 100%; min-width: 0; table-layout: fixed; }
+  .partner-panel .crm-birthdays-table :is(th, td) { padding: 6px 4px; white-space: normal; overflow-wrap: anywhere; font-size: 11px; }
+  .partner-panel .crm-birthdays-table th { font-size: 10px; }
+  .partner-panel .crm-birthdays-table th:nth-child(1) { width: 34%; }
+  .partner-panel .crm-birthdays-table th:nth-child(2) { width: 27%; }
+  .partner-panel .crm-birthdays-table th:nth-child(3) { width: 22%; }
+  .partner-panel .crm-birthdays-table th:nth-child(4) { width: 17%; }
+  .partner-panel .crm-birthdays-table .whatsapp-btn { display: inline-flex; align-items: center; justify-content: center; min-width: 40px; min-height: 44px; width: 100%; max-width: 100%; padding: 4px; }
+  .partner-panel .crm-birthdays-table .whatsapp-btn span { display: none; }
 }

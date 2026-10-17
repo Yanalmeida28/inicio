@@ -163,6 +163,7 @@ export function OpenOrdersModule({ canEditPrice, products, onUpdateItems, onUpda
   // A lista abaixo serve apenas para escolher o responsável que autoriza.
   const managers = salespeople.filter(s => (s.active ?? s.is_active) !== false && (s.role === 'administrador' || (s.role === 'gerente' && s.branch_id === cancelTarget?.branch_id)));
 
+  const customerNames = useMemo(() => new Map(customers.map(customer => [customer.id, customer.name.toLowerCase()])), [customers]);
   const openOrders = useMemo(() => {
     return sales.filter((s) => s.status === 'aberta' || s.status === 'pre_venda');
   }, [sales]);
@@ -179,14 +180,14 @@ export function OpenOrdersModule({ canEditPrice, products, onUpdateItems, onUpda
       if (filters.customerSearch) {
         const term = filters.customerSearch.toLowerCase();
         if (!(sale.customer_name ?? '').toLowerCase().includes(term) &&
-          !customers.some((customer) => customer.id === sale.customer_id && customer.name.toLowerCase().includes(term))) return false;
+          !(customerNames.get(sale.customer_id ?? '') ?? '').includes(term)) return false;
       }
       if (filters.statusFilter !== 'all' && sale.status !== filters.statusFilter) return false;
       if (filters.paymentFilter !== 'all' && sale.payment_status !== filters.paymentFilter) return false;
       if (filters.sourceFilter !== 'all' && sale.origin !== filters.sourceFilter) return false;
       return true;
     });
-  }, [appliedFilters, customers, openOrders]);
+  }, [appliedFilters, customerNames, openOrders]);
 
   function handleSearch() {
     if (dateStart && dateEnd && dateStart > dateEnd) { setFilterError('A data inicial deve ser anterior ou igual à data final.'); return; }

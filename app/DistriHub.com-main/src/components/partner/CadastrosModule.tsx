@@ -430,7 +430,7 @@ function ProductsSubTab({ defaultIsService = false, isActive = true, products, a
 
   return (
     <div>
-      <div className="action-row">
+      <div className="action-row product-list-toolbar">
         <button className="module-action-btn" onClick={() => setShowForm(!showForm)}>
           {showForm ? 'Cancelar' : <><Plus size={16} /> Novo {itemLabel}</>}
         </button>

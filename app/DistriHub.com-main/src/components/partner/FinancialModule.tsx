@@ -261,7 +261,13 @@ function FinancialScreen({ invoices, creditLimit, creditUsed, onPayInvoice, rmaR
                       </span>
                     </td>
                     <td className="financial-title-actions directory-card-actions" data-label="Ações">
+                      <div className="invoice-quick-actions">
+                      {isOpen(inv) && payingId !== inv.id && <>
+                        <button type="button" className="rma-advance-btn" disabled={submitting || pending || !isActive} onClick={() => handlePay(inv.id, 'partial')}>Amortizar</button>
+                        <button type="button" className="rma-advance-btn" disabled={submitting || pending || !isActive} onClick={() => handlePay(inv.id, 'full')}>Quitar título</button>
+                      </>}
                       <button type="button" className="rma-advance-btn" title="Histórico de recebimentos" aria-label="Histórico de recebimentos" onClick={()=>setReceiptInvoiceId(receiptInvoiceId === inv.id ? null : inv.id)}>Histórico</button>
+                      </div>
                       {receiptInvoiceId === inv.id && <InvoiceReceipts invoice={inv} />}
                       {isOpen(inv) && (
                         <>
@@ -281,8 +287,6 @@ function FinancialScreen({ invoices, creditLimit, creditUsed, onPayInvoice, rmaR
                             </form>
                           ) : (
                             <div className="pix-actions">
-                              <button className="rma-advance-btn" disabled={submitting || pending || !isActive} onClick={() => handlePay(inv.id, 'partial')}>Amortizar</button>
-                              <button className="rma-advance-btn" disabled={submitting || pending || !isActive} onClick={() => handlePay(inv.id, 'full')}>Quitar título</button>
                               {onApplyCredit && eligibleCredits(inv).length > 0 && <button className="rma-advance-btn" disabled={submitting || pending || !isActive} onClick={() => openCredit(inv)}>Abater crédito RMA</button>}
                             </div>
                           )}

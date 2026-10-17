@@ -798,8 +798,8 @@ function CrmReport({ customers, sales }: { customers: PartnerCustomer[]; sales: 
       </div>
 
       <h4 className="report-section-title"><Cake size={16} /> Aniversariantes do Mês</h4>
-      <div className="stock-table-wrap">
-        <table className="rma-table">
+      <div className="stock-table-wrap crm-birthdays-wrap">
+        <table className="rma-table crm-birthdays-table">
           <thead><tr><th>Cliente</th><th>WhatsApp</th><th>Aniversário</th><th></th></tr></thead>
           <tbody>
             {birthdays.length === 0 ? (
@@ -813,10 +813,12 @@ function CrmReport({ customers, sales }: { customers: PartnerCustomer[]; sales: 
                   <td>
                     <button
                       className="rma-advance-btn whatsapp-btn"
+                      aria-label={`Enviar parabéns para ${c.name} pelo WhatsApp`}
+                      title="Enviar mensagem no WhatsApp"
                       onClick={() => sendBirthdayWhatsApp(c.phone, c.name)}
                       disabled={!c.phone}
                     >
-                      <MessageCircle size={14} /> Enviar Mensagem no WhatsApp
+                      <MessageCircle size={14} /> <span>Enviar Mensagem no WhatsApp</span>
                     </button>
                   </td>
                 </tr>

@@ -17,7 +17,7 @@ const moduleCollections: Record<string, PartnerCollection[]> = {
   'cadastros:combos': ['products', 'combos'], 'cadastros:modificadores': ['modifiers'],
   'cadastros:reposicao': ['products', 'sales'],
   pdv: ['products', 'customers', 'categories', 'combos', 'modifiers'],
-  pedidos: ['products', 'customers', 'sales', 'invoices', 'rmas'],
+  pedidos: ['products', 'customers', 'sales'],
   caixa: ['customers', 'sales'], os: ['products', 'customers'],
   rma: ['products', 'customers', 'sales', 'rmas'],
   historico: ['customers', 'orders'],
