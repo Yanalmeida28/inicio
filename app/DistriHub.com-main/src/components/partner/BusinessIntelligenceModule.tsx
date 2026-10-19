@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Activity, AlertTriangle, ArrowUpRight, Calculator, CalendarDays, Lightbulb, ShieldCheck, Sparkles } from 'lucide-react';
-import type { PartnerBranch, PartnerCustomer, PartnerInvoice, PartnerProduct, PartnerSale, StockMovement } from '../../types';
+import type { PartnerBranch, PartnerCustomer, PartnerInvoice, PartnerProduct, PartnerSale, RmaRequest, StockMovement } from '../../types';
 import { money } from '../../utils';
 import { useFinancialMovements } from '../../hooks/useFinancialMovements';
 import type { PayableAccount } from '../../lib/accounts';
@@ -11,6 +11,8 @@ type Props = {
   dataReady: boolean; dataError?: string | null; lastSyncedAt?: Date | null;
   sales: PartnerSale[]; products: PartnerProduct[]; customers: PartnerCustomer[]; movements: StockMovement[];
   invoices: PartnerInvoice[]; payables: PayableAccount[]; payablesLoading: boolean; payablesError: string;
+  rmas?: RmaRequest[];
+  onRefreshPayables?: () => Promise<boolean>;
   onBranchChange: (id: string) => void; onNavigate: (section: 'relatorios' | 'financeiro') => void;
   now?: Date;
 };
@@ -24,9 +26,10 @@ const expenseLabels: Record<string, string> = { fornecedor: 'Fornecedores / comp
 
 export function BusinessIntelligenceModule(props: Props) {
   const { companyId, branchId, branches, isActive, dataReady, dataError, sales, products, customers, movements,
-    invoices, payables, payablesLoading, payablesError, onBranchChange, onNavigate, lastSyncedAt, now: suppliedNow } = props;
+    invoices, rmas, payables, payablesLoading, payablesError, onRefreshPayables, onBranchChange, onNavigate, lastSyncedAt, now: suppliedNow } = props;
   const [clock, setClock] = useState(() => new Date());
   const [days, setDays] = useState<7 | 30 | 90>(30);
+  const [period, setPeriod] = useState<'closed' | 'month' | 'today'>('month');
   const [fixed, setFixed] = useState('');
   const [contribution, setContribution] = useState('');
   const [desired, setDesired] = useState('');
@@ -46,10 +49,18 @@ export function BusinessIntelligenceModule(props: Props) {
   const scopedInvoices = useMemo(() => intelligenceScope(invoices, companyId, branchId), [invoices, companyId, branchId]);
   const scopedPayables = useMemo(() => intelligenceScope(payables, companyId, branchId), [payables, companyId, branchId]);
   const ledger = useFinancialMovements(companyId, branchId, scopedInvoices, scopedPayables, isActive && validBranch && dataReady && !dataError && !payablesLoading && !payablesError);
-  const model = useMemo(() => buildBusinessIntelligence({ company: companyId, branch: branchId, now, days,
+  const reloadLedger = ledger.reload;
+  useEffect(() => {
+    if (!isActive || !validBranch || !dataReady || dataError) return;
+    void onRefreshPayables?.();
+    const refresh = () => { void onRefreshPayables?.(); reloadLedger(); };
+    window.addEventListener('focus', refresh);
+    return () => window.removeEventListener('focus', refresh);
+  }, [companyId, branchId, isActive, validBranch, dataReady, dataError, onRefreshPayables, reloadLedger]);
+  const model = useMemo(() => buildBusinessIntelligence({ company: companyId, branch: branchId, now, days, period, rmas,
     sales, products, customers, movements, invoices: scopedInvoices, payables: scopedPayables,
     receipts: ledger.receipts, payments: ledger.payments, refunds: ledger.refunds,
-  }), [companyId, branchId, now, days, sales, products, customers, movements, scopedInvoices, scopedPayables, ledger.receipts, ledger.payments, ledger.refunds]);
+  }), [companyId, branchId, now, days, period, rmas, sales, products, customers, movements, scopedInvoices, scopedPayables, ledger.receipts, ledger.payments, ledger.refunds]);
   const simulation = simulateBusinessGoal(fixed, contribution, desired, target, model.currentRevenue);
   const error = !validBranch ? 'A filial selecionada não pertence ao contexto disponível. Selecione uma filial válida.' : dataError || payablesError || ledger.error;
   const loading = !dataReady || payablesLoading || ledger.loading;
@@ -65,14 +76,57 @@ export function BusinessIntelligenceModule(props: Props) {
       <div className="bi-hero-note"><Lightbulb size={23} /><strong>Clareza antes da decisão</strong><span>Dados registrados, estimativas identificadas e nenhuma ação automática.</span></div>
     </header>
     <div className="admin-filter-bar bi-filters">
-      <label>Período de análise<select value={days} onChange={event => setDays(Number(event.target.value) as 7 | 30 | 90)}><option value={7}>Últimos 7 dias encerrados</option><option value={30}>Últimos 30 dias encerrados</option><option value={90}>Últimos 90 dias encerrados</option></select></label>
+      <label>Período de análise<select value={period === 'closed' ? String(days) : period} onChange={event => { const value = event.target.value; if (value === 'month' || value === 'today') setPeriod(value); else { setPeriod('closed'); setDays(Number(value) as 7 | 30 | 90); } }}><option value="month">Este mês até hoje</option><option value="today">Hoje</option><option value="7">Últimos 7 dias encerrados</option><option value="30">Últimos 30 dias encerrados</option><option value="90">Últimos 90 dias encerrados</option></select></label>
       <label>Filial<select value={branchId} onChange={event => onBranchChange(event.target.value)}><option value="">Visão consolidada</option>{branches.filter(branch => branch.user_id === companyId).map(branch => <option key={branch.id} value={branch.id}>{branch.name}</option>)}</select></label>
+      <button type="button" className="rma-advance-btn" disabled={loading} onClick={() => { ledger.reload(); void onRefreshPayables?.(); }}>Atualizar financeiro</button>
       <div className="bi-period"><CalendarDays size={15} /><span>{dayLabel(model.first)} a {dayLabel(model.last)}<small>America/Sao_Paulo · previsão a partir de {dayLabel(model.today)}</small></span></div>
     </div>
     {error ? <div className="module-card bi-notice" role="alert"><AlertTriangle size={20} /><div><strong>Análise indisponível</strong><p>{error}</p><p>Os valores não serão tratados como zero. Atualize a base no painel para tentar novamente.</p>{ledger.error && <button type="button" className="rma-advance-btn" onClick={ledger.reload}>Tentar novamente os movimentos</button>}</div></div>
       : loading ? <p className="module-card" role="status">Conferindo dados e movimentos financeiros antes de apresentar o diagnóstico…</p>
       : <>
-        <section aria-labelledby="bi-health" className="bi-section"><div className="bi-section-heading"><Activity size={19} /><div><h4 id="bi-health">Saúde do negócio</h4><p>Faturamento comercial e lucro bruto estimado; não representam lucro líquido contábil.</p></div></div>
+        <section aria-labelledby="bi-result" className="bi-section">
+          <div className="bi-section-heading"><Activity size={19} /><div><h4 id="bi-result">Resultado após despesas</h4><p>Vendas, devoluções, custos e despesas cadastradas no período selecionado.</p></div></div>
+          <div className={`module-card bi-result-status bi-result-${model.result.status}`} role="status">
+            <strong>{model.result.status === 'profit' ? 'Lucro estimado nos registros' : model.result.status === 'loss' ? 'Prejuízo estimado nos registros' : model.result.status === 'balanced' ? 'Resultado estimado em equilíbrio' : 'Resultado incompleto'}</strong>
+            <span>{amount(model.result.result)}</span>
+            <p>Estimativa gerencial após as despesas cadastradas, usando o vencimento como referência. Não é uma DRE contábil por competência nem comprova que todos os gastos foram informados.</p>
+          </div>
+          <div className="report-cards bi-kpi-grid">
+            <Kpi label="Receita após créditos e reembolsos" value={amount(model.result.netRevenue)} note="Deduzidos na data do registro da devolução financeira; uso posterior do crédito não deduz novamente" />
+            <Kpi label="Despesas registradas do período" value={amount(model.result.expenses)} note={`${model.result.expenseCount} conta(s), pelo valor integral e vencimento, incluindo abertas e parcialmente pagas`} />
+            <Kpi label="Margem após despesas cadastradas" value={model.result.margin === null ? 'Dados insuficientes' : `${model.result.margin.toFixed(1)}%`} note="Resultado estimado dividido pela receita após créditos e reembolsos" />
+            <Kpi label="Movimento de caixa do período" value={amount(model.cashResult)} note="Entradas menos pagamentos e reembolsos registrados; inclui compras e frete, não é lucro nem saldo bancário" />
+          </div>
+          <details className="module-card bi-calculation" open>
+            <summary>Como o resultado foi calculado</summary>
+            <dl>
+              <div><dt>Vendas concluídas, sem frete de repasse</dt><dd>{amount(model.currentRevenue)}</dd></div>
+              <div><dt>(−) Créditos e reembolsos de devoluções</dt><dd>{amount(model.result.returns)}</dd></div>
+              <div><dt>(−) Custo dos produtos e serviços vendidos</dt><dd>{amount(model.quality.cost)}</dd></div>
+              <div><dt>(+) Custo recuperado em mercadorias reintegradas</dt><dd>{amount(model.result.restoredCost)}</dd></div>
+              <div><dt>(−) Despesas cadastradas por vencimento</dt><dd>{amount(model.result.expenses)}</dd></div>
+              <div className="bi-calculation-total"><dt>Resultado estimado após despesas</dt><dd>{amount(model.result.result)}</dd></div>
+            </dl>
+            <p>Pagamento parcial ou quitação não desconta a despesa novamente. Compras de estoque entram no resultado pelo custo das mercadorias vendidas.</p>
+            <p>Compras / fornecedores no período: <strong>{amount(model.result.purchases)}</strong> ({model.result.purchaseCount} conta(s)), separadas da dedução de despesas para evitar duplicidade com o custo das vendas. A categoria Fornecedor é tratada como compra de mercadorias; serviços e outros gastos devem ser cadastrados na categoria de despesa correspondente.</p>
+          </details>
+          {model.result.categories.length > 0 && <div className="module-card bi-quality"><strong>Despesas consideradas no resultado</strong><div className="bi-inline-stats">{model.result.categories.map(row => <span key={row.category}>{expenseLabels[row.category] ?? row.category}: <strong>{amount(row.amount)}</strong> · {row.count} conta(s)</span>)}</div><p>Valores integrais das contas com vencimento no período, independentemente da data em que foram pagas.</p></div>}
+          <div className="module-card bi-quality"><strong>O que precisa ser conferido</strong><ul>
+            {!model.result.hasExpenseRecords && <li>Nenhuma despesa operacional cadastrada nesta seleção. Compras de fornecedores, sozinhas, não comprovam despesa operacional zero.</li>}
+            {model.result.hasExpenseRecords && model.result.expenseCount === 0 && <li>Não há despesas operacionais com vencimento no período. Confira se o cadastro deste período está completo antes de interpretar o resultado.</li>}
+            {model.result.undatedExpenses > 0 && <li>{model.result.undatedExpenses} conta(s) sem vencimento válido impedem atribuir todas as despesas ao período.</li>}
+            {model.result.invalidExpenses > 0 && <li>{model.result.invalidExpenses} conta(s) com valor ou categoria inválidos impedem concluir o resultado.</li>}
+            {!model.result.returnsKnown && <li>Devoluções indisponíveis ou incompletas: {model.result.invalidReturns} registro(s) sem data, vínculo, quantidade ou custo utilizável. O resultado permanece indisponível até a conferência.</li>}
+            {model.result.estimatedReturnCosts > 0 && <li>{model.result.estimatedReturnCosts} reintegração(ões) usam custo atual por falta de custo histórico.</li>}
+            {model.missingCashHistory > 0 && <li>{model.missingCashHistory} conta(s) têm valores liquidados que não conferem com o histórico financeiro. O movimento de caixa fica indisponível; os valores não foram inventados ou distribuídos entre datas.</li>}
+            {(model.undatedMovements > 0 || model.invalidCashAmounts > 0) && <li>Existem movimentos sem data ou valor utilizável. O movimento de caixa fica indisponível.</li>}
+            <li>Impostos, taxas, salários e demais gastos entram somente quando cadastrados. Vencimento é uma aproximação temporal: uma despesa pode pertencer a outra competência.</li>
+            <li>Custos históricos ausentes usam o cadastro atual com os avisos abaixo. Nenhuma premissa do simulador é tratada como despesa efetivamente registrada.</li>
+          </ul></div>
+          <button type="button" className="rma-advance-btn" onClick={() => onNavigate('financeiro')}>Conferir Contas a Pagar <ArrowUpRight size={14} /></button>
+        </section>
+
+        <section aria-labelledby="bi-health" className="bi-section"><div className="bi-section-heading"><Activity size={19} /><div><h4 id="bi-health">Saúde do negócio</h4><p>Faturamento, lucro bruto e recebimentos; a apuração após despesas está no quadro acima.</p></div></div>
           <div className="report-cards bi-kpi-grid">
             <Kpi label="Faturamento registrado" value={amount(model.currentRevenue)} note={`${model.salesCount} vendas concluídas · sem frete para repasse`} />
             <Kpi label="Lucro bruto estimado" value={amount(model.profit)} note="Faturamento menos CMV; antes de despesas, taxas e tributos" />
@@ -91,8 +145,8 @@ export function BusinessIntelligenceModule(props: Props) {
         </section>
 
         <section aria-labelledby="bi-alerts" className="bi-section"><div className="bi-section-heading"><AlertTriangle size={19} /><div><h4 id="bi-alerts">Alertas inteligentes</h4><p>Regras explícitas, sem IA externa: queda de vendas ≥ 20%, margem ≥ 5 p.p., vencidos, sem giro e inatividade.</p></div></div>
-          {!model.comparisonReady && <p className="bi-hint">Comparação de vendas e margem inconclusiva: exige histórico desde o início da referência e pelo menos cinco vendas no período anterior. Ausência de histórico não será tratada como vendas zero.</p>}
-          {model.growth !== null && <p className="bi-hint">Faturamento: {model.growth.toFixed(1)}% em relação aos {days} dias anteriores. Quedas de margem usam custos estimados quando não há custo original.</p>}
+          {!model.comparisonReady && <p className="bi-hint">{period !== 'closed' ? 'Período em andamento: comparação de crescimento disponível nos períodos encerrados.' : 'Comparação de vendas e margem inconclusiva: exige histórico desde o início da referência e pelo menos cinco vendas no período anterior. Ausência de histórico não será tratada como vendas zero.'}</p>}
+          {model.growth !== null && <p className="bi-hint">Faturamento: {model.growth.toFixed(1)}% em relação aos {model.periodDays} dias anteriores. Quedas de margem usam custos estimados quando não há custo original.</p>}
           <div className="bi-alert-grid">{model.alerts.map(alert => <article key={alert.id} className={`module-card bi-alert bi-alert-${alert.severity}`}><span className="bi-tag">{alert.severity === 'critical' ? 'Prioridade' : 'Atenção'}</span><h5>{alert.title}</h5><p>{alert.detail}</p><p>{alert.action}</p><button type="button" className="rma-advance-btn" onClick={() => onNavigate(alert.target)}>Abrir {alert.target === 'financeiro' ? 'Financeiro' : 'Relatórios'} <ArrowUpRight size={14} /></button></article>)}</div>
           {!model.alerts.length && <p className="module-card">Nenhum alerta acionado pelos dados disponíveis. Isso não certifica a saúde financeira da empresa.</p>}
           <p className="bi-hint">Clientes inativos: 90 dias sem compra concluída {branchId ? 'nesta filial' : 'na empresa'}. {model.neverPurchased} cliente(s) sem compras registradas foram separados da inatividade.</p>
@@ -114,7 +168,8 @@ export function BusinessIntelligenceModule(props: Props) {
         </section>
 
         <section aria-labelledby="bi-diagnosis" className="module-card bi-diagnosis"><div className="bi-section-heading"><Lightbulb size={20} /><div><h4 id="bi-diagnosis">Diagnóstico automático</h4><p>Orientações baseadas apenas nos registros desta seleção.</p></div></div><ol>
-          {!model.forecast.expenseData && <li>Cadastre e confira suas contas a pagar antes de avaliar despesas, capacidade de pagamento e resultado operacional.</li>}
+          {!model.result.hasExpenseRecords && <li>Cadastre e confira suas despesas em Contas a Pagar para completar a apuração após despesas.</li>}
+          {model.result.status === 'incomplete' && <li>Confira as pendências no quadro Resultado após despesas. Dados ausentes não serão considerados como zero.</li>}
           {(model.quality.estimatedSales > 0 || model.zeroCostProducts > 0 || model.quality.zeroCostLines > 0 || model.quality.unknown > 0) && <li>Revise os custos sinalizados. Para vendas antigas, o preço de custo atual é uma aproximação; não reescreva o histórico para eliminar o aviso.</li>}
           {model.alerts.map(alert => <li key={alert.id}><strong>{alert.title}:</strong> {alert.action}</li>)}
           {!model.comparisonReady && <li>Acompanhe períodos completos e confirme a cobertura do histórico antes de concluir tendência de crescimento ou queda.</li>}

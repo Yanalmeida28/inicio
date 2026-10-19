@@ -26,6 +26,45 @@ const base = {
 const adminProps = { userId: 'company', sales: [], products: [], salespeople: [], customers: [], branches: [], movements: [],
   ownerView: true, allowedModules: ['relatorios', 'financeiro'], intelligenceAllowed: true, intelligenceDataReady: true };
 
+test('the automatic result uses registered expenses, responds to changes and displays profit, loss and its calculation', async () => {
+  const { load } = fixture();
+  const Component = load('components/partner/BusinessIntelligenceModule.tsx').BusinessIntelligenceModule;
+  const props = { ...base, rmas: [], payables: [payable({ amount: 30, paid_amount: 0, status: 'aberta', due_date: '2026-10-10' })] };
+  const status = () => renderer.root.findAll(node => typeof node.props.className === 'string' && node.props.className.startsWith('module-card bi-result-status'))[0];
+  await act(async () => { renderer = Renderer.create(React.createElement(Component, props)); });
+  assert.match(text(status()), /Lucro estimado nos registros/);
+  assert.match(text(status()), /30,00/);
+  assert.match(text(renderer.toJSON()), /Como o resultado foi calculado/);
+  assert.match(text(renderer.toJSON()), /Despesas consideradas no resultado/);
+  await act(async () => renderer.update(React.createElement(Component, { ...props, payables: [payable({ amount: 80, paid_amount: 0, status: 'aberta', due_date: '2026-10-10' })] })));
+  assert.match(text(status()), /Prejuízo estimado nos registros/); assert.match(text(status()), /20,00/);
+  assert.ok(renderer.root.findAllByType('input').every(input => input.props.value === ''));
+});
+
+test('month-to-date is the default and today shows new expenses without pretending that earlier sales happened today', async () => {
+  const { load } = fixture();
+  const Component = load('components/partner/BusinessIntelligenceModule.tsx').BusinessIntelligenceModule;
+  await act(async () => { renderer = Renderer.create(React.createElement(Component, { ...base, rmas: [], payables: [payable({ amount: 30, paid_amount: 0, due_date: '2026-10-19' })] })); });
+  const period = renderer.root.findAllByType('select')[0];
+  assert.equal(period.props.value, 'month');
+  await act(async () => period.props.onChange({ target: { value: 'today' } }));
+  const status = renderer.root.findAll(node => node.props.className === 'module-card bi-result-status bi-result-loss')[0];
+  assert.match(text(status), /30,00/);
+  assert.match(text(renderer.toJSON()), /19\/10\/2026 a 19\/10\/2026/);
+});
+
+test('financial refresh reads the existing sources and asks the parent to reload payables', async () => {
+  const { load, calls } = fixture();
+  const Component = load('components/partner/BusinessIntelligenceModule.tsx').BusinessIntelligenceModule;
+  let refreshed = 0;
+  const refresh = async () => { refreshed++; return true; };
+  await act(async () => { renderer = Renderer.create(React.createElement(Component, { ...base, rmas: [], onRefreshPayables: refresh })); });
+  assert.equal(refreshed, 1);
+  const before = calls.length;
+  await act(async () => renderer.root.findAllByType('button').find(button => text(button) === 'Atualizar financeiro').props.onClick());
+  assert.equal(refreshed, 2); assert.ok(calls.length > before);
+});
+
 test('UI distinguishes missing expenses, estimated profit, zero costs and temporary scenarios without storage writes', async () => {
   const { load, calls } = fixture();
   const Component = load('components/partner/BusinessIntelligenceModule.tsx').BusinessIntelligenceModule;

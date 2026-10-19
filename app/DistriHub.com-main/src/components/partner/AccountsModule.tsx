@@ -20,7 +20,7 @@ type Props = {
   onReceive?: (id: string, amount: number, requestId?: string) => Promise<void>;
 };
 
-const categories = { fornecedor: 'Fornecedor', aluguel: 'Aluguel', energia: 'Energia', salarios: 'Salários', impostos: 'Impostos', outros: 'Outras despesas' };
+const categories = { fornecedor: 'Compra de mercadorias / estoque', aluguel: 'Aluguel', energia: 'Energia', salarios: 'Salários', impostos: 'Impostos', outros: 'Outras despesas' };
 const parseAmount = (text: string) => /^\d+(?:[.,]\d{1,2})?$/.test(text.trim()) ? Number(text.replace(',', '.')) : NaN;
 
 export function AccountsModule(props: Props) {
@@ -114,10 +114,11 @@ function AccountsScreen({ kind, invoices, payables, branches, suppliers, branchI
       <label>Filial<select required value={form.branchId} disabled={busy || pending || !isActive} onChange={e => setForm({ ...form, branchId: e.target.value })}><option value="">Selecione</option>{branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select></label>
       <label>Descrição<input required maxLength={200} value={form.description} disabled={busy || pending || !isActive} onChange={e => setForm({ ...form, description: e.target.value })} /></label>
       <label>Categoria<select value={form.category} disabled={busy || pending || !isActive} onChange={e => setForm({ ...form, category: e.target.value })}>{Object.entries(categories).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
-      <label>Fornecedor (opcional)<select value={form.supplierId} disabled={busy || pending || !isActive} onChange={e => { const supplier = suppliers.find(s => s.id === e.target.value); setForm({ ...form, supplierId: e.target.value, creditor: supplier?.name ?? form.creditor, category: supplier ? 'fornecedor' : form.category }); }}><option value="">Sem fornecedor</option>{suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
+      <label>Fornecedor (opcional)<select value={form.supplierId} disabled={busy || pending || !isActive} onChange={e => { const supplier = suppliers.find(s => s.id === e.target.value); setForm({ ...form, supplierId: e.target.value, creditor: supplier?.name ?? form.creditor }); }}><option value="">Sem fornecedor</option>{suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
       <label>Credor<input required maxLength={200} value={form.creditor} disabled={busy || pending || !isActive} onChange={e => setForm({ ...form, creditor: e.target.value })} /></label>
       <label>Valor (R$)<input required inputMode="decimal" placeholder="0,00" value={form.amount} disabled={busy || pending || !isActive} onChange={e => setForm({ ...form, amount: e.target.value })} /></label>
       <label>Vencimento<input required type="date" value={form.dueDate} disabled={busy || pending || !isActive} onChange={e => setForm({ ...form, dueDate: e.target.value })} /></label>
+      <p style={{ gridColumn: '1 / -1' }}>A categoria define como a conta entra no resultado. Escolha compra de mercadorias / estoque apenas para reposição de produtos; serviços, taxas e demais gastos usam a categoria de despesa correspondente. Selecionar um fornecedor não muda essa escolha.</p>
       <div><button className="module-submit-btn" disabled={busy || pending || !isActive}>{busy ? 'Salvando…' : 'Cadastrar'}</button> <button type="button" className="rma-advance-btn" disabled={busy || pending || !isActive} onClick={() => setCreating(false)}>Cancelar</button></div>
     </form>}
     <div className="stock-table-wrap"><table className="rma-table">

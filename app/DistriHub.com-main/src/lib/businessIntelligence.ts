@@ -1,5 +1,6 @@
-import type { PartnerCustomer, PartnerInvoice, PartnerProduct, PartnerSale, StockMovement } from '../types';
-import { accountBalance, type PayableAccount } from './accounts';
+import type { PartnerCustomer, PartnerInvoice, PartnerProduct, PartnerSale, RmaRequest, StockMovement } from '../types';
+import { registeredBusinessResult } from './registeredBusinessResult';
+import { accountBalance, accountPaid, invoiceCashReceived, type PayableAccount } from './accounts';
 import { adminBusinessDay, adminSaleDate, getAdminPeriodRange, shiftAdminDay } from './adminDashboard';
 import { actualFinancialFlow, localDate, projectedFinancialFlow, type FinancialRefund, type InvoiceReceipt, type PayablePayment } from './financialFlow';
 import { getCostOfGoodsSold, legacyCostSalesCount } from './reportMetrics';
@@ -45,6 +46,7 @@ export type BusinessInput = {
   sales: PartnerSale[]; products: PartnerProduct[]; customers: PartnerCustomer[]; movements: StockMovement[];
   invoices: PartnerInvoice[]; payables: PayableAccount[];
   receipts: InvoiceReceipt[]; payments: PayablePayment[]; refunds: FinancialRefund[];
+  rmas?: RmaRequest[]; period?: 'closed' | 'month' | 'today';
 };
 
 export function businessForecast(invoices: PartnerInvoice[], payables: PayableAccount[], today: string) {
@@ -69,7 +71,9 @@ export function businessForecast(invoices: PartnerInvoice[], payables: PayableAc
 export function buildBusinessIntelligence(input: BusinessInput) {
   const { company, branch, now, days } = input;
   const today = adminBusinessDay(now);
-  const first = shiftAdminDay(today, -days), last = shiftAdminDay(today, -1);
+  const first = input.period === 'month' ? today.slice(0, 7) + '-01' : input.period === 'today' ? today : shiftAdminDay(today, -days);
+  const last = input.period && input.period !== 'closed' ? today : shiftAdminDay(today, -1);
+  const periodDays = Math.round((Date.parse(last) - Date.parse(first)) / 86400000) + 1;
   const range = getAdminPeriodRange('custom', first, last, now);
   const sales = intelligenceScope(input.sales, company, branch).filter(sale => sale.status === 'concluida');
   const products = intelligenceScope(input.products, company, branch);
@@ -90,7 +94,7 @@ export function buildBusinessIntelligence(input: BusinessInput) {
   const margin = currentRevenue && profit !== null ? profit / currentRevenue * 100 : null;
   const previousMargin = previousRevenue && previousQuality.cost !== null ? (previousRevenue - previousQuality.cost) / previousRevenue * 100 : null;
   // An early recorded sale is evidence of history; absence of one is not proof of a zero-sales reference period.
-  const comparisonReady = previousSales.length >= 5 && sales.some(sale => Date.parse(adminSaleDate(sale)) <= range.prevStart.getTime());
+  const comparisonReady = (!input.period || input.period === 'closed') && previousSales.length >= 5 && sales.some(sale => Date.parse(adminSaleDate(sale)) <= range.prevStart.getTime());
   const growth = comparisonReady && currentRevenue !== null && previousRevenue && previousRevenue > 0 ? (currentRevenue - previousRevenue) / previousRevenue * 100 : null;
   const forecast = businessForecast(invoices, payables, today);
   const invoiceIds = new Set(invoices.map(invoice => invoice.id));
@@ -100,6 +104,16 @@ export function buildBusinessIntelligence(input: BusinessInput) {
   const refunds = intelligenceScope(input.refunds, company, branch);
   const ledger = actualFinancialFlow(sales, movements, receipts, payments, payables, invoices, refunds);
   const periodLedger = ledger.filter(row => inRange(row.date, range.start, range.end));
+  const result = registeredBusinessResult({ revenue: currentRevenue, cost: quality.cost, sales, products, payables,
+    rmas: input.rmas === undefined ? undefined : intelligenceScope(input.rmas, company, branch), first, last });
+  const undatedMovements = ledger.filter(row => !row.date || !localDate(row.date)).length;
+  const invalidCashAmounts = periodLedger.filter(row => !validAmount(Math.abs(row.amount))).length;
+  const paidByAccount = new Map<string, number>(), receivedByInvoice = new Map<string, number>();
+  for (const payment of payments) if (validAmount(payment.amount)) paidByAccount.set(payment.payable_id, (paidByAccount.get(payment.payable_id) ?? 0) + cents(payment.amount));
+  for (const receipt of receipts) if (validAmount(receipt.amount)) receivedByInvoice.set(receipt.invoice_id, (receivedByInvoice.get(receipt.invoice_id) ?? 0) + cents(receipt.amount));
+  const missingCashHistory = payables.filter(account => account.status !== 'cancelada' && cents(accountPaid(account)) !== (paidByAccount.get(account.id) ?? 0)).length
+    + invoices.filter(invoice => invoice.status !== 'cancelada' && cents(invoiceCashReceived(invoice)) !== (receivedByInvoice.get(invoice.id) ?? 0)).length;
+  const cashResult = forecast.expenseData && !undatedMovements && !invalidCashAmounts && !missingCashHistory ? total(periodLedger) : null;
   const paid = forecast.expenseData ? Math.abs(total(periodLedger.filter(row => row.id.startsWith('payment-')))) : null;
   const received = total(periodLedger.filter(row => row.amount >= 0));
   const refunded = Math.abs(total(periodLedger.filter(row => row.id.startsWith('rma-refund-'))));
@@ -123,15 +137,17 @@ export function buildBusinessIntelligence(input: BusinessInput) {
   const overdueInvoices = invoices.filter(invoice => accountBalance(invoice) > 0 && invoice.due_date && invoice.due_date < today);
   const overduePayables = payables.filter(account => accountBalance(account) > 0 && account.due_date < today);
   const alerts: IntelligenceAlert[] = [];
+  if (result.result !== null && result.result < 0) alerts.push({ id: 'registered-loss', title: 'Prejuízo estimado nos registros', detail: 'Receitas, devoluções, custos e despesas por vencimento resultaram em valor negativo.', action: 'Confira a composição do resultado e as despesas cadastradas antes de decidir cortes ou preços.', target: 'financeiro', severity: 'critical' });
+  if (cashResult !== null && cashResult < 0) alerts.push({ id: 'cash-deficit', title: 'Saídas registradas maiores que entradas', detail: 'O movimento de caixa do período está negativo; isso não é, por si só, prejuízo.', action: 'Confira vencimentos, recebimentos e compras no Financeiro.', target: 'financeiro', severity: 'attention' });
   if (growth !== null && growth <= -20) alerts.push({ id: 'sales', title: 'Queda de faturamento', detail: `${Math.abs(growth).toFixed(1)}% abaixo dos ${days} dias anteriores.`, action: 'Revise os produtos, vendedores e clientes no relatório de vendas.', target: 'relatorios', severity: 'attention' });
   if (comparisonReady && margin !== null && previousMargin !== null && previousMargin - margin >= 5) alerts.push({ id: 'margin', title: 'Redução de margem bruta estimada', detail: `Queda de ${(previousMargin - margin).toFixed(1)} pontos percentuais; custos antigos podem usar o cadastro atual.`, action: 'Confira custo e composição das vendas antes de rever preços.', target: 'relatorios', severity: 'attention' });
   if (overdueInvoices.length || overduePayables.length) alerts.push({ id: 'overdue', title: 'Contas vencidas', detail: `${overdueInvoices.length} a receber e ${overduePayables.length} a pagar cadastradas.`, action: 'Confira vencimentos e pagamentos antes de priorizar cobranças ou despesas.', target: 'financeiro', severity: 'critical' });
   if (stagnant.count) alerts.push({ id: 'stock', title: 'Estoque sem giro', detail: `${stagnant.count} produto(s) há 30 dias ou mais sem giro; ${stagnant.criticalCount} há 90 dias ou mais.`, action: 'Consulte o relatório Sem giro e avalie a reposição desses itens.', target: 'relatorios', severity: 'attention' });
   if (inactive.length) alerts.push({ id: 'customers', title: 'Clientes sem compra há 90 dias', detail: `${inactive.length} cliente(s) sem compras concluídas ${branch ? 'nesta filial' : 'na empresa'}.`, action: 'Consulte o CRM para planejar retornos. Nenhum contato será enviado automaticamente.', target: 'relatorios', severity: 'attention' });
-  return { today, first, last, currentRevenue, previousRevenue, profit, margin, quality, previousQuality, comparisonReady, growth,
+  return { today, first, last, periodDays, result, cashResult, invalidCashAmounts, missingCashHistory, currentRevenue, previousRevenue, profit, margin, quality, previousQuality, comparisonReady, growth,
     salesCount: currentSales.length, previousCount: previousSales.length, forecast, received, paid, refunded,
     expenseCategories: [...categoryTotals].map(([category, value]) => ({ category, amount: value / 100 })),
-    undatedMovements: ledger.filter(row => !row.date || !localDate(row.date)).length,
+    undatedMovements,
     receivable: invoices.reduce((sum, invoice) => sum + cents(accountBalance(invoice)), 0) / 100,
     payable: forecast.expenseData ? payables.reduce((sum, account) => sum + cents(accountBalance(account)), 0) / 100 : null,
     stagnant, inactiveCount: inactive.length, neverPurchased, alerts,

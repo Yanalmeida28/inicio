@@ -2359,6 +2359,7 @@ export function PartnerPanel({
                 renderSettings={() => <SettingsModule user={user} profile={partner.profile} onProfileUpdate={partner.updateProfile} />}
                 renderCadastros={renderCadastros}
                 invoices={filteredInvoices}
+                rmas={partner.rmas}
                 onReceiveInvoice={identity?.salespersonId ? undefined : partner.payInvoice}
                 movements={
                   filteredMovements

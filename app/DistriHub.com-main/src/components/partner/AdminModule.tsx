@@ -25,7 +25,7 @@ import { getAdminPeriodRange, adminChartBuckets, adminSaleDate, type AdminPeriod
 import { financialAccounts, type PayableAccount } from '../../lib/accounts';
 import { legacyCostSalesCount } from '../../lib/reportMetrics';
 import type { FinancialRecovery } from '../../lib/invoicePayments';
-import type { PartnerInvoice } from '../../types';
+import type { PartnerInvoice, RmaRequest } from '../../types';
 import type {
   PartnerSale, PartnerProduct, PartnerSalesperson, SalespersonRole,
   PartnerBranch, PartnerCustomer, PartnerSupplier, PartnerCategory,
@@ -77,6 +77,7 @@ type Props = {
   renderSettings?: () => ReactNode;
   renderCadastros?: (target: AdminCadastrosTarget) => ReactNode;
   invoices?: PartnerInvoice[];
+  rmas?: RmaRequest[];
   onReceiveInvoice?: (id: string, amount: number, requestId?: string) => Promise<void>;
   userId?: string;
   sales: PartnerSale[];
@@ -188,7 +189,7 @@ export function AdminModule({
   intelligenceAllowed = false, intelligenceDataReady = false, intelligenceDataError, lastSyncedAt,
   renderSettings,
   renderCadastros,
-  invoices = [], onReceiveInvoice, allowedModules = [], contextKey, isActive = true, recoveries, recoveryError,
+  invoices = [], rmas, onReceiveInvoice, allowedModules = [], contextKey, isActive = true, recoveries, recoveryError,
   userId, sales = [], products = [], movements = [], salespeople = [], branches = [], customers = [], suppliers = [], categories = [],
   selectedBranchId = '', onSelectBranch, onNavigate, ownerView = false,
 }: Props) {
@@ -198,6 +199,7 @@ export function AdminModule({
         renderSettings={renderSettings}
         renderCadastros={renderCadastros}
         invoices={invoices}
+        rmas={rmas}
         onReceiveInvoice={onReceiveInvoice}
         userId={userId}
         sales={sales}
@@ -221,7 +223,7 @@ function AdminModuleInner({
   intelligenceAllowed = false, intelligenceDataReady = false, intelligenceDataError, lastSyncedAt,
   renderSettings,
   renderCadastros,
-  invoices = [], onReceiveInvoice, allowedModules = [], contextKey, isActive = true, recoveries, recoveryError,
+  invoices = [], rmas, onReceiveInvoice, allowedModules = [], contextKey, isActive = true, recoveries, recoveryError,
   userId, sales, products, movements = [], salespeople, branches = [], customers = [], suppliers = [], categories = [],
   selectedBranchId = '', onSelectBranch, ownerView = false,
 }: Props) {
@@ -353,7 +355,7 @@ function AdminModuleInner({
               <BusinessIntelligenceModule key={`${contextKey}:${branchFilter}`} companyId={userId} branchId={branchFilter}
                 branches={branches} isActive={isActive} dataReady={intelligenceDataReady} dataError={intelligenceDataError}
                 lastSyncedAt={lastSyncedAt} sales={sales} products={products} customers={customers} movements={movements}
-                invoices={invoices} payables={payables.accounts} payablesLoading={payables.loading} payablesError={payables.error}
+                invoices={invoices} rmas={rmas} payables={payables.accounts} payablesLoading={payables.loading} payablesError={payables.error} onRefreshPayables={payables.reload}
                 onBranchChange={handleBranchChange} onNavigate={section => {
                   if (!allowed(section)) return;
                   setExpandedSection(section); setActiveAdminTab(section); setActiveItemId(section === 'financeiro' ? 'pagar' : 'vendas');

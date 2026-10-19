@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import type { FinancialRefund, InvoiceReceipt, PayablePayment } from '../lib/financialFlow';
 
@@ -9,6 +9,7 @@ export function useFinancialMovements(userId: string | undefined, branchId: stri
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [revision, setRevision] = useState(0);
+  const reload = useCallback(() => setRevision(value => value + 1), []);
   useEffect(() => {
     if (!isActive) return;
     let active = true;
@@ -43,5 +44,5 @@ export function useFinancialMovements(userId: string | undefined, branchId: stri
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [userId, branchId, invoices, payables, revision, isActive]);
-  return { receipts, payments, refunds, loading, error, reload: () => setRevision(value => value + 1) };
+  return { receipts, payments, refunds, loading, error, reload };
 }

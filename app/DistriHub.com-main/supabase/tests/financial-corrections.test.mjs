@@ -31,6 +31,30 @@ const invoice={id:'invoice',user_id:'owner',branch_id:'A',customer_id:'customer'
 const payable={id:'payable',user_id:'owner',branch_id:'A',description:'Aluguel',creditor_name:'Credor',amount:100,paid_amount:0,status:'aberta',due_date:'2026-10-20'};
 const button=(r,label)=>r.root.findAllByType('button').find(node=>node.children.join('')===label);
 
+test('selecting a supplier preserves the chosen expense category and explicit inventory purchases remain separate', async () => {
+ const e=environment(),Component=e.load('components/partner/AccountsModule.tsx').AccountsModule;
+ let r;const saved=[];
+ const props={kind:'pagar',invoices:[],payables:{accounts:[],loading:false,error:'',reload:async()=>{},pay:async()=>{},create:async account=>{saved.push(account);}},
+  branches:[{id:'A',name:'Centro'}],suppliers:[{id:'utility',name:'Empresa fornecedora'}],branchId:'A'};
+ try {
+  await act(async()=>{r=Renderer.create(React.createElement(Component,props));});
+  for(const category of ['energia','fornecedor']) {
+   await act(async()=>button(r,'Nova conta a pagar').props.onClick());
+   const option=value=>r.root.findAllByType('select').find(select=>select.findAllByType('option').some(node=>node.props.value===value));
+   await act(async()=>option('energia').props.onChange({target:{value:category}}));
+   await act(async()=>option('utility').props.onChange({target:{value:'utility'}}));
+   assert.equal(option('energia').props.value,category);
+   const description=r.root.findAllByType('label').find(label=>label.children[0]==='Descrição').findByType('input');
+   await act(async()=>description.props.onChange({target:{value:'Conta de teste'}}));
+   await act(async()=>r.root.findByProps({inputMode:'decimal'}).props.onChange({target:{value:'30,00'}}));
+   await act(async()=>r.root.findByProps({type:'date'}).props.onChange({target:{value:'2026-10-19'}}));
+   await act(async()=>r.root.findByType('form').props.onSubmit({preventDefault(){}}));
+   assert.equal(saved.at(-1).category,category);assert.equal(saved.at(-1).supplier_id,'utility');assert.equal(saved.at(-1).amount,30);
+  }
+  assert.equal(saved.length,2);
+ } finally {if(r)await act(async()=>r.unmount());}
+});
+
 test('Financeiro uses civil due date, excludes cancelled balances and resets another branch draft',async()=>{
  const oldTZ=process.env.TZ;process.env.TZ='America/Sao_Paulo';
  const e=environment(),Component=e.load('components/partner/FinancialModule.tsx').FinancialModule;let r;
