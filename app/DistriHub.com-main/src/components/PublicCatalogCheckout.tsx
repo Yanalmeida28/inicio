@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import { CatalogOrderRejected, saveCatalogOrder } from '../lib/catalogOrders';
 import { OperationAttempts } from '../lib/operationAttempts';
 import { money } from '../utils';
-export type CatalogCartItem = { id: string; name: string; quantity: number; sale_price: number; stock: number };
+export type CatalogCartItem = { id: string; name: string; quantity: number; sale_price: number; stock?: number };
 type Draft = { cart: { id: string; quantity: number }[]; businessName: string; contact: string; deliveryAddress: string; paymentMethod: string; deliveryMethod: string };
 export function PublicCatalogCheckout({ slug, branchId, cart, userId, onSignIn, onQuantity, onComplete }: { slug: string; branchId: string; cart: CatalogCartItem[]; userId: string | null; onSignIn?: (email: string, password: string) => Promise<{ error: string | null }>; onQuantity: (id: string, amount: number) => void; onComplete: () => void }) {
   const [name, setName] = useState(''); const [contact, setContact] = useState(''); const [address, setAddress] = useState('');

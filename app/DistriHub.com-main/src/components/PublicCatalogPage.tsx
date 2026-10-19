@@ -40,7 +40,7 @@ type PublicPartnerBranch = {
   address: string | null;
 };
 
-type PublicCatalogProduct = Pick<PartnerProduct, 'id' | 'branch_id' | 'name' | 'sale_price' | 'image_url' | 'stock' | 'category' | 'sku' | 'is_service'>;
+type PublicCatalogProduct = Pick<PartnerProduct, 'id' | 'branch_id' | 'name' | 'sale_price' | 'image_url' | 'category' | 'is_service'> & { stock?: number; sku?: string | null; available?: boolean };
 
 export function PublicCatalogPage({ slug, branchSlug, userId = null, onSignIn }: PublicCatalogPageProps) {
   const [loading, setLoading] = useState(true);
@@ -101,9 +101,10 @@ export function PublicCatalogPage({ slug, branchSlug, userId = null, onSignIn }:
   const preferences = catalogPreferences(settings?.catalog_preferences);
   const visibleProducts = products;
   function addProduct(product: PublicCatalogProduct) {
+    if (product.available === false || (product.stock != null && product.stock <= 0)) return;
     setCart(previous => {
       const current = previous.find(item => item.id === product.id);
-      if (current) return previous.map(item => item.id === product.id ? { ...item, quantity: Math.min(item.quantity + 1, product.stock) } : item);
+      if (current) return previous.map(item => item.id === product.id ? { ...item, quantity: Math.min(item.quantity + 1, product.stock ?? Number.MAX_SAFE_INTEGER) } : item);
       return [...previous, { id: product.id, name: product.name, sale_price: Number(product.sale_price), stock: product.stock, quantity: 1 }];
     });
   }
@@ -185,11 +186,11 @@ export function PublicCatalogPage({ slug, branchSlug, userId = null, onSignIn }:
                 <p style={{ color: '#adc2d6', minHeight: 48, margin: '8px 0 14px' }}>{product.category ?? 'Produto da loja'}</p>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
                   <strong style={{ color: '#edf5fc', fontSize: 22 }}>R$ {Number(product.sale_price ?? 0).toFixed(2).replace('.', ',')}</strong>
-                  {preferences.show_stock && <span style={{ color: product.stock > 0 ? '#adc2d6' : '#fda4af', fontSize: 12, fontWeight: 700 }}>
+                  {preferences.show_stock && product.stock != null && <span style={{ color: product.stock > 0 ? '#adc2d6' : '#fda4af', fontSize: 12, fontWeight: 700 }}>
                     {product.stock > 0 ? `${product.stock} em estoque` : 'Indisponível'}
                   </span>}
                 </div>
-                <button type="button" disabled={product.stock <= 0 || Number(product.sale_price) <= 0} onClick={() => addProduct(product)} style={{ width: '100%', border: 'none', background: normalizeColor(settings?.primary_color), color: contrastText(normalizeColor(settings?.primary_color)), borderRadius: 10, padding: '12px 14px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                <button type="button" disabled={product.available === false || (product.stock != null && product.stock <= 0) || Number(product.sale_price) <= 0} onClick={() => addProduct(product)} style={{ width: '100%', border: 'none', background: normalizeColor(settings?.primary_color), color: contrastText(normalizeColor(settings?.primary_color)), borderRadius: 10, padding: '12px 14px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
                   <ShoppingCart size={16} /> Adicionar ao pedido
                 </button>
               </div>
@@ -199,7 +200,7 @@ export function PublicCatalogPage({ slug, branchSlug, userId = null, onSignIn }:
         {productsLoading && <p role="status">Carregando produtos...</p>}
         {!productsLoading && !error && !visibleProducts.length && <p>Nenhum produto disponível nesta seleção.</p>}
         {!error && nextOffset !== null && <button type="button" disabled={productsLoading} onClick={() => setOffset(nextOffset)}>Carregar mais produtos</button>}
-        <div id="pedido"><PublicCatalogCheckout key={selectedBranch} slug={settings?.catalog_slug ?? slug} branchId={selectedBranch} cart={cart} userId={userId} onSignIn={onSignIn} onQuantity={(id, amount) => { if (!Number.isInteger(amount) || amount < 0) return; setCart(previous => previous.flatMap(item => item.id !== id ? [item] : amount === 0 ? [] : [{ ...item, quantity: Math.min(amount, item.stock) }])); }} onComplete={() => setCart([])} /></div>
+        <div id="pedido"><PublicCatalogCheckout key={selectedBranch} slug={settings?.catalog_slug ?? slug} branchId={selectedBranch} cart={cart} userId={userId} onSignIn={onSignIn} onQuantity={(id, amount) => { if (!Number.isSafeInteger(amount) || amount < 0) return; setCart(previous => previous.flatMap(item => item.id !== id ? [item] : amount === 0 ? [] : [{ ...item, quantity: Math.min(amount, item.stock ?? Number.MAX_SAFE_INTEGER) }])); }} onComplete={() => setCart([])} /></div>
       </main>
       {whatsappUrl && <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" style={{ position: 'fixed', right: 20, bottom: 20, display: 'flex', gap: 8, alignItems: 'center', background: '#15803d', color: '#fff', padding: '12px 18px', borderRadius: 24, boxShadow: '0 4px 16px #0003' }}><MessageCircle size={20} /> Falar com a loja</a>}
     </div>

@@ -15,7 +15,7 @@ const page = async (args = {}) => (await query(
 before(async () => {
   await db.exec(`
     CREATE ROLE anon; CREATE ROLE authenticated; CREATE SCHEMA auth;
-    CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT NULL::uuid $$;
+    CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;
     GRANT USAGE ON SCHEMA auth TO anon,authenticated;
     CREATE TABLE public.store_settings_v2(id uuid DEFAULT gen_random_uuid(),user_id uuid,catalog_slug text,catalog_enabled boolean,
       logo_url text,banner_url text,primary_color text,nav_color text,business_hours text,personalization jsonb DEFAULT '{}');
@@ -28,6 +28,13 @@ before(async () => {
   const migration = (await readdir(dir)).find(name => name.endsWith('_paginate_public_catalog.sql'));
   assert.ok(migration, 'catalog pagination migration exists');
   await db.exec(await readFile(new URL(migration, dir), 'utf8'));
+  const visibility = (await readdir(dir)).find(name => name.endsWith('_enforce_public_catalog_visibility.sql'));
+  assert.ok(visibility);
+  await db.exec(await readFile(new URL(visibility, dir), 'utf8'));
+  const legacySource = await readFile(new URL('20261012195624_fix_audited_operations.sql', dir), 'utf8');
+  const legacyWrapper = legacySource.match(/CREATE FUNCTION public\.read_public_catalog_v2[\s\S]*?GRANT EXECUTE ON FUNCTION public\.read_public_catalog_v2\(text,text\) TO anon,authenticated;/);
+  assert.ok(legacyWrapper);
+  await db.exec(legacyWrapper[0]);
   await query("INSERT INTO public.store_settings_v2(user_id,catalog_slug,catalog_enabled) VALUES($1,'loja',true),($2,'desativada',false)", [owner, other]);
   await query("INSERT INTO public.partner_profiles VALUES($1,'Loja','Loja'),($2,'Outra','Outra')", [owner, other]);
   await query("INSERT INTO public.partner_branches VALUES($1,$5,'Centro','Rua A',true),($2,$5,'Bairro','Rua B',true),($3,$5,'Inativa','Rua C',false),($4,$6,'Outra','Rua D',true)", [center, neighborhood, inactive, foreign, owner, other]);
@@ -36,6 +43,36 @@ before(async () => {
   await db.exec('SET ROLE anon');
 });
 after(() => db.close());
+
+test('hidden stock and SKU are omitted from every public catalog projection for anonymous and authenticated callers', async () => {
+  try {
+    for (const role of ['anon', 'authenticated']) for (const [showStock, showSku] of [[false, false], [true, false], [false, true], [true, true]]) {
+      await db.exec('RESET ROLE');
+      await query('UPDATE public.store_settings_v2 SET personalization=$1::jsonb WHERE user_id=$2', [JSON.stringify({ catalog: { show_stock: showStock, show_sku: showSku } }), owner]);
+      await db.exec(`SET ROLE ${role}`);
+      await query("SELECT set_config('request.jwt.claim.sub',$1,false)", [role === 'authenticated' ? owner : '']);
+      const result = await page({ branchId: neighborhood });
+      const legacy = (await query("SELECT public.read_public_store_catalog('loja','Bairro') AS data")).rows[0].data;
+      const v2 = (await query("SELECT public.read_public_catalog_v2('loja','Bairro') AS data")).rows[0].data;
+      for (const response of [result, legacy, v2]) {
+        assert.equal(response.products.length, 1);
+        const product = response.products[0];
+        assert.equal(Object.hasOwn(product, 'stock'), showStock);
+        assert.equal(Object.hasOwn(product, 'sku'), showSku);
+        assert.equal(product.available, true);
+        if (showStock) assert.equal(product.stock, 3);
+        if (showSku) assert.equal(product.sku, 'R-1');
+      }
+      assert.equal((await page({ branchId: neighborhood, search: 'R-1' })).total, showSku ? 1 : 0);
+      assert.equal((await page({ branchId: neighborhood, search: 'Raro' })).total, 1);
+    }
+  } finally {
+    await db.exec('RESET ROLE');
+    await query("SELECT set_config('request.jwt.claim.sub','',false)");
+    await query("UPDATE public.store_settings_v2 SET personalization='{}' WHERE user_id=$1", [owner]);
+    await db.exec('SET ROLE anon');
+  }
+});
 
 test('all 1005 products are reachable in deterministic non-overlapping pages', async () => {
   const ids = [];

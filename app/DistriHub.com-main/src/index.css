@@ -3134,7 +3134,38 @@ body, .app-shell { background: #091724; color: #edf5fc; }
 
 /* Compact mobile registration, finance and CRM layouts. */
 .partner-panel .invoice-quick-actions { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; min-width: 0; }
-.partner-panel .invoice-quick-actions > .rma-advance-btn { width: 100%; min-width: 0; min-height: 44px; padding: 8px 12px; font-size: 13px; line-height: 1.3; justify-content: center; white-space: nowrap; }
+.partner-panel .invoice-quick-actions > .rma-advance-btn { width: 100%; min-width: 0; min-height: 44px; height: auto; padding: 8px 12px; font-size: 13px; line-height: 1.3; justify-content: center; white-space: normal; overflow-wrap: anywhere; }
+.partner-panel .financial-scope .fin-invoices { min-width: 0; container: financial-invoices / inline-size; }
+.partner-panel .financial-scope .fin-invoices > .directory-card-wrap > .directory-card-table { min-width: 0; table-layout: fixed; }
+.partner-panel .financial-scope .fin-invoices > .directory-card-wrap > .directory-card-table > :is(thead, tbody) > tr > :is(th, td) { white-space: normal; overflow-wrap: anywhere; }
+.partner-panel .financial-scope .fin-invoices > .directory-card-wrap > .directory-card-table > :is(thead, tbody) > tr > :is(th, td):last-child { width: 184px; }
+.partner-panel .financial-scope .financial-title-actions :is(form, input, .pix-actions) { min-width: 0; max-width: 100%; }
+.partner-panel .financial-scope .financial-title-actions input { width: 100%; }
+.partner-panel .financial-scope .financial-title-actions :is(h4, p) { white-space: normal; overflow-wrap: anywhere; }
+.partner-panel .financial-scope .invoice-receipts-table { min-width: 0; width: 100%; table-layout: fixed; }
+.partner-panel .financial-scope .invoice-receipts-table :is(th, td) { min-width: 0; padding: 6px 4px; white-space: normal; overflow-wrap: anywhere; }
+.partner-panel .financial-scope .invoice-receipts-table,
+.partner-panel .financial-scope .invoice-receipts-table tbody { display: block; }
+.partner-panel .financial-scope .invoice-receipts-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.partner-panel .financial-scope .invoice-receipts-table tbody tr { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; padding: 8px; margin-top: 8px; border: 1px solid var(--dh-border); border-radius: 8px; }
+.partner-panel .financial-scope .invoice-receipts-table td { display: block; width: auto; border: 0; }
+.partner-panel .financial-scope .invoice-receipts-table td[data-label]::before { content: attr(data-label); display: block; margin-bottom: 3px; font-size: 11px; color: var(--dh-text-secondary); }
+.partner-panel .financial-scope .financial-title-actions .pix-actions { flex-wrap: wrap; }
+.partner-panel .financial-scope .financial-title-actions .pix-actions > button { width: 100%; min-width: 0; min-height: 44px; height: auto; white-space: normal; overflow-wrap: anywhere; }
+@container financial-invoices (max-width: 1000px) {
+  .partner-panel .financial-scope .fin-invoices > .directory-card-wrap { overflow: visible; border: 0; background: transparent; }
+  .partner-panel .financial-scope .fin-invoices > .directory-card-wrap > .directory-card-table { display: block; width: 100%; }
+  .partner-panel .financial-scope .fin-invoices > .directory-card-wrap > .directory-card-table > thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .partner-panel .financial-scope .fin-invoices > .directory-card-wrap > .directory-card-table > tbody { display: grid; gap: 12px; width: 100%; }
+  .partner-panel .financial-scope .fin-invoices > .directory-card-wrap > .directory-card-table > tbody > tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 12px; min-width: 0; padding: 12px; border: 1px solid var(--dh-border); border-radius: 12px; background: var(--dh-surface); }
+  .partner-panel .financial-scope .fin-invoices > .directory-card-wrap > .directory-card-table > tbody > tr > td { display: block; width: auto; min-width: 0; max-width: 100%; padding: 6px 0; border: 0; text-align: left; }
+  .partner-panel .financial-scope .fin-invoices > .directory-card-wrap > .directory-card-table > tbody > tr > td:last-child { width: auto; }
+  .partner-panel .financial-scope .fin-invoices > .directory-card-wrap > .directory-card-table > tbody > tr > td[data-label]::before { content: attr(data-label); display: block; margin-bottom: 4px; color: var(--dh-text-secondary); font-size: 11px; font-weight: 600; }
+  .partner-panel .financial-scope .fin-invoices .directory-card-table .directory-card-title { grid-column: 1 / -1; padding-bottom: 10px; border-bottom: 1px solid var(--dh-border); }
+  .partner-panel .financial-scope .fin-invoices .directory-card-table .directory-card-actions { grid-column: 1 / -1; width: auto; padding-top: 10px; border-top: 1px solid var(--dh-border); }
+  .partner-panel .financial-scope .fin-invoices .directory-card-table .directory-card-actions::before { display: none !important; }
+  .partner-panel .financial-scope .fin-invoices .directory-card-table .empty-row { grid-column: 1 / -1; }
+}
 @media (max-width: 768px) {
   .partner-panel .cadastros-scope .product-list-toolbar { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1.65fr); gap: 4px; }
   .partner-panel .product-list-toolbar > .module-action-btn { width: 100%; min-width: 0; min-height: 40px; padding: 6px 4px; gap: 3px; font-size: 10px; line-height: 1.2; }

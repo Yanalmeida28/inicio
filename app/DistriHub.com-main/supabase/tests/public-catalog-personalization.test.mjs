@@ -42,6 +42,27 @@ test('catalog personalization controls welcome text, stock, SKU and contact with
   assert.equal(calls[0].args.p_branch_slug,'Centro');
 });
 
+test('hidden stock does not prevent adding products or editing quantities, while disclosed stock remains a limit', async () => {
+  const Component = component(async () => ({ error: null, data: page([
+    { id: 'hidden', branch_id: 'a', name: 'Hidden stock', sale_price: 10, available: true },
+    { id: 'shown', branch_id: 'a', name: 'Shown stock', sale_price: 10, stock: 2, available: true },
+    { id: 'unavailable', branch_id: 'a', name: 'Unavailable', sale_price: 10, available: false },
+  ], { settings: { catalog_slug: 'loja', catalog_preferences: { show_stock: false, show_sku: false } } }) }));
+  await act(async () => { renderer = TestRenderer.create(React.createElement(Component, { slug: 'loja' })); });
+  const checkout = () => renderer.root.findAll(node => typeof node.type === 'function' && Array.isArray(node.props.cart))[0].props;
+  const add = renderer.root.findAllByType('button').filter(b => b.children.some(child => typeof child === 'string' && child.includes('Adicionar ao pedido')));
+  assert.equal(add[0].props.disabled, false);
+  assert.equal(add[2].props.disabled, true);
+  await act(async () => { add[0].props.onClick(); add[0].props.onClick(); add[1].props.onClick(); });
+  assert.equal(checkout().cart.find(item => item.id === 'hidden').quantity, 2);
+  await act(async () => { checkout().onQuantity('hidden', 12); checkout().onQuantity('shown', 12); });
+  assert.equal(checkout().cart.find(item => item.id === 'hidden').quantity, 12);
+  assert.equal(checkout().cart.find(item => item.id === 'hidden').stock, undefined);
+  assert.equal(checkout().cart.find(item => item.id === 'shown').quantity, 2);
+  await act(async () => checkout().onQuantity('hidden', 0));
+  assert.ok(!checkout().cart.some(item => item.id === 'hidden'));
+});
+
 function page(products, overrides={}) {
   return {settings:{catalog_slug:'loja'},profile:{business_name:'Loja'},branch:null,
     branches:[{id:'a',name:'Centro'},{id:'b',name:'Bairro'}],selected_branch_id:'a',

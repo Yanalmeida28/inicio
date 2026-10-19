@@ -187,6 +187,7 @@ export function useAuth(): UseAuthReturn {
 
     let cancelled = false;
     let authEventReceived = false;
+    let authEventGeneration = 0;
     let resolvedUserId: string | null = null;
 
     const applySession = async (session: Session | null, passwordRecovery = false) => {
@@ -266,6 +267,9 @@ export function useAuth(): UseAuthReturn {
         // error. Let getSession distinguish that from a genuinely absent session.
         if (event === 'INITIAL_SESSION' && !session) return;
         authEventReceived = true;
+        const eventGeneration = ++authEventGeneration;
+        // Invalidate identity reads immediately, before another deferred callback runs.
+        identityRequestRef.current += 1;
 
         dispatch({
           type: 'SET_SESSION',
@@ -277,11 +281,15 @@ export function useAuth(): UseAuthReturn {
 
         if (!session?.user) {
           resolvedUserId = null;
-          identityRequestRef.current += 1;
           dispatch({ type: 'SET_PROFILE', profile: null });
           dispatch({ type: 'SET_IDENTITY', identity: null });
           dispatch({ type: 'SET_ERROR', error: null });
           return;
+        }
+
+        if (resolvedUserId !== session.user.id) {
+          dispatch({ type: 'SET_PROFILE', profile: null });
+          dispatch({ type: 'SET_IDENTITY', identity: null });
         }
 
         if (signupInProgressRef.current) return;
@@ -291,7 +299,9 @@ export function useAuth(): UseAuthReturn {
 
         // Defer database reads until the auth callback releases its session lock.
         window.setTimeout(() => {
-          if (!cancelled) void applySession(session, event === 'PASSWORD_RECOVERY');
+          if (!cancelled && eventGeneration === authEventGeneration) {
+            void applySession(session, event === 'PASSWORD_RECOVERY');
+          }
         }, 0);
       },
     );
