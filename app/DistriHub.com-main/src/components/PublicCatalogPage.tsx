@@ -53,36 +53,53 @@ export function PublicCatalogPage({ slug, branchSlug, userId = null, onSignIn }:
   const [selectedBranch, setSelectedBranch] = useState('');
   const [cart, setCart] = useState<CatalogCartItem[]>([]);
   const [search, setSearch] = useState('');
+  const [requestedBranch, setRequestedBranch] = useState<string | null>(null);
+  const [offset, setOffset] = useState(0);
+  const [nextOffset, setNextOffset] = useState<number | null>(null);
+  const [total, setTotal] = useState(0);
+  const [productsLoading, setProductsLoading] = useState(true);
+  const [retry, setRetry] = useState(0);
+
+  useEffect(() => {
+    setCart([]); setRequestedBranch(null); setSearch(''); setOffset(0); setLoading(true);
+    setSettings(null); setProfile(null); setBranch(null); setBranches([]); setSelectedBranch('');
+    setNextOffset(null); setTotal(0);
+  }, [slug, branchSlug]);
 
   useEffect(() => {
     let active = true;
     async function loadCatalog() {
-      setLoading(true); setError(null); setBranch(null);
+      setProductsLoading(true); setError(null);
+      if (offset === 0) setProducts([]);
       if (!isSupabaseConfigured || !supabase || !slug) {
-        setError('Catálogo indisponível no momento.'); setLoading(false); return;
+        setError('Catálogo indisponível no momento.'); setLoading(false); setProductsLoading(false); return;
       }
       try {
-        const { data, error: catalogError } = await supabase.rpc('read_public_catalog_v2', { p_slug: slug, p_branch_slug: branchSlug ?? null });
+        const { data, error: catalogError } = await supabase.rpc('read_public_catalog_page', {
+          p_slug: slug, p_branch_slug: branchSlug ?? null, p_branch_id: requestedBranch,
+          p_search: search.trim(), p_offset: offset, p_limit: 48,
+        });
         if (catalogError) throw new Error(catalogError.message);
         if (!active) return;
         if (!data) { setError('Este catálogo está indisponível no momento.'); return; }
-        const catalog = data as { settings: PublicStoreSettings; profile: PublicPartnerProfile | null; branch: PublicPartnerBranch | null; branches?: PublicPartnerBranch[]; products: PublicCatalogProduct[] };
-        setSettings(catalog.settings); setProfile(catalog.profile); setBranch(catalog.branch); setProducts(catalog.products);
+        const catalog = data as { settings: PublicStoreSettings; profile: PublicPartnerProfile | null; branch: PublicPartnerBranch | null; branches: PublicPartnerBranch[]; products: PublicCatalogProduct[]; selected_branch_id: string | null; total: number; next_offset: number | null };
+        setSettings(catalog.settings); setProfile(catalog.profile); setBranch(catalog.branch);
+        setProducts(previous => offset === 0 ? catalog.products : [...previous, ...catalog.products.filter(product => !previous.some(item => item.id === product.id))]);
         setBranches(catalog.branches ?? (catalog.branch ? [catalog.branch] : []));
-        setSelectedBranch(catalog.branch?.id ?? catalog.branches?.[0]?.id ?? catalog.products[0]?.branch_id ?? '');
-        setCart([]);
+        setSelectedBranch(catalog.selected_branch_id ?? '');
+        setTotal(catalog.total); setNextOffset(catalog.next_offset);
       } catch (cause) {
         if (active) setError(cause instanceof Error ? cause.message : 'Erro ao carregar catálogo.');
-      } finally { if (active) setLoading(false); }
+      } finally { if (active) { setLoading(false); setProductsLoading(false); } }
     }
     void loadCatalog();
     return () => { active = false; };
-  }, [branchSlug, slug]);
+  }, [branchSlug, slug, requestedBranch, search, offset, retry]);
 
   const primaryBrandName = profile?.business_name ?? profile?.account_name ?? 'Loja';
   const logoUrl = settings?.logo_url ?? null;
   const preferences = catalogPreferences(settings?.catalog_preferences);
-  const visibleProducts = products.filter(product => product.branch_id === selectedBranch && `${product.name} ${product.sku ?? ''}`.toLowerCase().includes(search.trim().toLowerCase()));
+  const visibleProducts = products;
   function addProduct(product: PublicCatalogProduct) {
     setCart(previous => {
       const current = previous.find(item => item.id === product.id);
@@ -100,11 +117,12 @@ export function PublicCatalogPage({ slug, branchSlug, userId = null, onSignIn }:
     return <div style={{ padding: 32, textAlign: 'center' }}>Carregando catálogo...</div>;
   }
 
-  if (error) {
+  if (error && !settings) {
     return (
       <div style={{ padding: 40, textAlign: 'center', fontFamily: 'sans-serif' }}>
         <h2>Catálogo indisponível</h2>
         <p>{error}</p>
+        <button type="button" onClick={() => setRetry(value => value + 1)}>Tentar novamente</button>
       </div>
     );
   }
@@ -139,12 +157,13 @@ export function PublicCatalogPage({ slug, branchSlug, userId = null, onSignIn }:
           </div>
           <div style={{ background: '#102638', borderRadius: 16, padding: 18, boxShadow: '0 8px 24px rgba(15,23,42,0.06)' }}>
             <strong style={{ display: 'block', marginBottom: 8 }}>Produtos ativos</strong>
-            <div style={{ fontSize: 14, color: '#adc2d6' }}>{products.length} itens disponíveis</div>
+            <div style={{ fontSize: 14, color: '#adc2d6' }}>{total} itens disponíveis nesta seleção</div>
           </div>
         </div>
 
         {preferences.welcome_message && <p style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', padding: '16px 20px', background: '#102638', borderRadius: 12 }}>{preferences.welcome_message}</p>}
-        <div className="public-catalog-filters"><label>Buscar produto<input type="search" value={search} onChange={e => setSearch(e.target.value)} /></label>{!branch && branches.length > 1 && <label>Filial<select value={selectedBranch} onChange={e => { setSelectedBranch(e.target.value); setCart([]); }}>{branches.map(branch => <option key={branch.id} value={branch.id}>{branch.name}</option>)}</select></label>}</div>
+        <div className="public-catalog-filters"><label>Buscar produto<input type="search" value={search} onChange={e => { setSearch(e.target.value); setOffset(0); }} /></label>{!branch && branches.length > 1 && <label>Filial<select value={selectedBranch} onChange={e => { setSelectedBranch(e.target.value); setRequestedBranch(e.target.value); setOffset(0); setCart([]); }}>{branches.map(branch => <option key={branch.id} value={branch.id}>{branch.name}</option>)}</select></label>}</div>
+        {error && <div role="alert"><p>{error}</p><button type="button" disabled={productsLoading} onClick={() => setRetry(value => value + 1)}>Tentar novamente</button></div>}
         <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, ${preferences.card_size === 'compact' ? 220 : 280}px), 1fr))`, gap: preferences.card_size === 'compact' ? 12 : 20 }}>
           {visibleProducts.map((product) => (
             <article key={product.id} style={{ background: '#102638', borderRadius: 16, overflow: 'hidden', boxShadow: '0 8px 24px rgba(15,23,42,0.06)' }}>
@@ -177,7 +196,9 @@ export function PublicCatalogPage({ slug, branchSlug, userId = null, onSignIn }:
             </article>
           ))}
         </div>
-        {!visibleProducts.length && <p>Nenhum produto disponível nesta seleção.</p>}
+        {productsLoading && <p role="status">Carregando produtos...</p>}
+        {!productsLoading && !error && !visibleProducts.length && <p>Nenhum produto disponível nesta seleção.</p>}
+        {!error && nextOffset !== null && <button type="button" disabled={productsLoading} onClick={() => setOffset(nextOffset)}>Carregar mais produtos</button>}
         <div id="pedido"><PublicCatalogCheckout key={selectedBranch} slug={settings?.catalog_slug ?? slug} branchId={selectedBranch} cart={cart} userId={userId} onSignIn={onSignIn} onQuantity={(id, amount) => { if (!Number.isInteger(amount) || amount < 0) return; setCart(previous => previous.flatMap(item => item.id !== id ? [item] : amount === 0 ? [] : [{ ...item, quantity: Math.min(amount, item.stock) }])); }} onComplete={() => setCart([])} /></div>
       </main>
       {whatsappUrl && <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" style={{ position: 'fixed', right: 20, bottom: 20, display: 'flex', gap: 8, alignItems: 'center', background: '#15803d', color: '#fff', padding: '12px 18px', borderRadius: 24, boxShadow: '0 4px 16px #0003' }}><MessageCircle size={20} /> Falar com a loja</a>}
