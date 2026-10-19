@@ -1,13 +1,13 @@
 import { saleRevenuePayments, salePaymentDescription } from '../../lib/pdv';
 import { buildCsv, escapeHtml } from '../../lib/exportSafety';
-import { Component, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Component, Suspense, lazy, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   Shield, BarChart3, Users, TrendingUp, TrendingDown,
   DollarSign, Wallet, Percent, AlertCircle,
   Boxes, FileText, Settings, Package,
   CreditCard, Smartphone, Receipt,
   Building2, Download, Calendar, UserCheck,
-  PieChart, LineChart as LineChartIcon, MapPin,
+  PieChart, LineChart as LineChartIcon, MapPin, Lightbulb,
 } from 'lucide-react';
 import { money } from '../../utils';
 import { ReportsModule } from './ReportsModule';
@@ -31,6 +31,8 @@ import type {
   PartnerBranch, PartnerCustomer, PartnerSupplier, PartnerCategory,
   AuditLog, SaleItem, StockMovement,
 } from '../../types';
+
+const BusinessIntelligenceModule = lazy(() => import('./BusinessIntelligenceModule').then(module => ({ default: module.BusinessIntelligenceModule })));
 
 function safeItems(sale: PartnerSale): SaleItem[] {
   return Array.isArray(sale.items) ? sale.items : [];
@@ -63,6 +65,10 @@ class AdminErrorBoundary extends Component<
 }
 
 type Props = {
+  intelligenceAllowed?: boolean;
+  intelligenceDataReady?: boolean;
+  intelligenceDataError?: string | null;
+  lastSyncedAt?: Date | null;
   allowedModules?: string[];
   contextKey?: string;
   isActive?: boolean;
@@ -87,8 +93,8 @@ type Props = {
   ownerView?: boolean;
 };
 
-type AdminSection = 'dashboard' | 'cadastros' | 'relatorios' | 'fiscal' | 'financeiro' | 'configuracoes';
-type AdminTab = 'dashboard' | 'cadastros' | 'relatorios' | 'fiscal' | 'financeiro' | 'permissoes' | 'auditoria' | 'dispositivos' | 'gestao-dados' | 'configuracoes';
+type AdminSection = 'dashboard' | 'cadastros' | 'relatorios' | 'inteligencia' | 'fiscal' | 'financeiro' | 'configuracoes';
+type AdminTab = 'dashboard' | 'cadastros' | 'relatorios' | 'inteligencia' | 'fiscal' | 'financeiro' | 'permissoes' | 'auditoria' | 'dispositivos' | 'gestao-dados' | 'configuracoes';
 type AdminPage = AdminTab;
 
 type TimePeriod = AdminPeriod;
@@ -136,6 +142,12 @@ const sidebarSections: {
     items: [{ id: 'vendas', label: 'Relatório detalhado de Vendas', tab: 'relatorios' }],
   },
   {
+    id: 'inteligencia',
+    label: 'Inteligência Empresarial',
+    icon: Lightbulb,
+    items: [{ id: 'inteligencia', label: 'Análise e planejamento', tab: 'inteligencia' }],
+  },
+  {
     id: 'fiscal',
     label: 'Área Fiscal',
     icon: FileText,
@@ -173,6 +185,7 @@ const sidebarSections: {
 ];
 
 export function AdminModule({
+  intelligenceAllowed = false, intelligenceDataReady = false, intelligenceDataError, lastSyncedAt,
   renderSettings,
   renderCadastros,
   invoices = [], onReceiveInvoice, allowedModules = [], contextKey, isActive = true, recoveries, recoveryError,
@@ -181,7 +194,7 @@ export function AdminModule({
 }: Props) {
   return (
     <AdminErrorBoundary>
-      <AdminModuleInner allowedModules={allowedModules} key={contextKey} contextKey={contextKey} isActive={isActive} recoveries={recoveries} recoveryError={recoveryError}
+      <AdminModuleInner intelligenceAllowed={intelligenceAllowed} intelligenceDataReady={intelligenceDataReady} intelligenceDataError={intelligenceDataError} lastSyncedAt={lastSyncedAt} allowedModules={allowedModules} key={contextKey} contextKey={contextKey} isActive={isActive} recoveries={recoveries} recoveryError={recoveryError}
         renderSettings={renderSettings}
         renderCadastros={renderCadastros}
         invoices={invoices}
@@ -205,18 +218,21 @@ export function AdminModule({
 }
 
 function AdminModuleInner({
+  intelligenceAllowed = false, intelligenceDataReady = false, intelligenceDataError, lastSyncedAt,
   renderSettings,
   renderCadastros,
   invoices = [], onReceiveInvoice, allowedModules = [], contextKey, isActive = true, recoveries, recoveryError,
   userId, sales, products, movements = [], salespeople, branches = [], customers = [], suppliers = [], categories = [],
   selectedBranchId = '', onSelectBranch, ownerView = false,
 }: Props) {
-  const allowed = (module: string) => module === 'dashboard' || allowedModules.includes(module);
+  const allowed = (module: string) => module === 'inteligencia'
+    ? intelligenceAllowed && ownerView && Boolean(userId) && ['relatorios', 'financeiro'].every(feature => allowedModules.includes(feature))
+    : module === 'dashboard' || allowedModules.includes(module);
   const visibleSections = sidebarSections.filter(section => allowed(section.id) && (section.id !== 'configuracoes' || ownerView));
   const [expandedSection, setExpandedSection] = useState<AdminSection>('dashboard');
   const [activeAdminTab, setActiveAdminTab] = useState<AdminTab>('dashboard');
   const [activeItemId, setActiveItemId] = useState('visao-geral');
-  const currentModule = ['dashboard', 'cadastros', 'relatorios', 'fiscal', 'financeiro'].includes(activeAdminTab) ? activeAdminTab : 'configuracoes';
+  const currentModule = ['dashboard', 'cadastros', 'relatorios', 'inteligencia', 'fiscal', 'financeiro'].includes(activeAdminTab) ? activeAdminTab : 'configuracoes';
   const canViewCurrent = allowed(currentModule) && (currentModule !== 'configuracoes' || ownerView);
   const [branchFilter, setBranchFilter] = useState(selectedBranchId);
   const [reportsInitialTab, setReportsInitialTab] = useState<'vendas' | 'sem-giro'>('vendas');
@@ -331,6 +347,19 @@ function AdminModuleInner({
               customers={customers}
               salespeople={salespeople}
             />
+          )}
+          {activeAdminTab === 'inteligencia' && allowed('inteligencia') && userId && (
+            <Suspense fallback={<p role="status">Carregando Inteligência Empresarial…</p>}>
+              <BusinessIntelligenceModule key={`${contextKey}:${branchFilter}`} companyId={userId} branchId={branchFilter}
+                branches={branches} isActive={isActive} dataReady={intelligenceDataReady} dataError={intelligenceDataError}
+                lastSyncedAt={lastSyncedAt} sales={sales} products={products} customers={customers} movements={movements}
+                invoices={invoices} payables={payables.accounts} payablesLoading={payables.loading} payablesError={payables.error}
+                onBranchChange={handleBranchChange} onNavigate={section => {
+                  if (!allowed(section)) return;
+                  setExpandedSection(section); setActiveAdminTab(section); setActiveItemId(section === 'financeiro' ? 'pagar' : 'vendas');
+                  if (section === 'relatorios') setReportsInitialTab('vendas');
+                }} />
+            </Suspense>
           )}
           {activeAdminTab === 'financeiro' && (
             <>

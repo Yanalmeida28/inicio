@@ -33,6 +33,7 @@ import { usePartnerData } from '../hooks/usePartnerData';
 import { branchDirectoryRows } from '../lib/partnerSync';
 import { useSaasSubscription } from '../hooks/useSaasSubscription';
 import { canUseSaasFeature } from '../lib/saas';
+import { canViewBusinessIntelligence } from '../lib/businessIntelligence';
 import { useDeviceHeartbeat } from '../hooks/useDeviceHeartbeat';
 
 import { pdvErrorMessage } from '../lib/pdv';
@@ -2345,6 +2346,11 @@ export function PartnerPanel({
               <div hidden={activeTab !== 'administrativo'}>
               {renderTab('administrativo',
               <AdminModule
+                intelligenceAllowed={canViewBusinessIntelligence(Boolean(identity && !identity.salespersonId && identity.authUserId === identity.companyUserId), !currentSalespersonId,
+                  ['administrativo', 'relatorios', 'financeiro'].filter(module => !blockedTabs.includes(module as Tab) && canUseSaasFeature(saas.subscription, module)))}
+                intelligenceDataReady={partner.resourcesReady && !partner.loading && !partner.syncing}
+                intelligenceDataError={partner.error || partner.syncError}
+                lastSyncedAt={partner.lastSyncedAt}
                 allowedModules={['cadastros', 'relatorios', 'fiscal', 'financeiro', 'configuracoes'].filter(module => !blockedTabs.includes(module as Tab) && canUseSaasFeature(saas.subscription, module))}
                 contextKey={[identity?.authUserId, identity?.companyUserId].join(':')}
                 isActive={activeTab === 'administrativo'}
