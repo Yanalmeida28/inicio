@@ -48,6 +48,40 @@ let renderer;
 afterEach(async () => { if (renderer) await act(async () => renderer.unmount()); renderer = null; });
 const controls = () => renderer.root.findByProps({ 'aria-label': 'Opções da venda' });
 
+test('new checkout applies customer return credit to a purchase and charges only the difference',async()=>{
+ let submitted;
+ const rma={id:'rma',customer_id:'customer',branch_id:'branch',status:'credito_gerado',product_name:'Returned product',credit_amount:50,credit_used_amount:0};
+ await act(async()=>{renderer=TestRenderer.create(React.createElement(module.exports.Checkout,{...props,customers:[{id:'customer',name:'Cliente',customer_type:'varejo'}],rmaRequests:[rma,{...rma,id:'foreign-credit',customer_id:'other',credit_amount:1000}],onCreateSale:async sale=>{submitted=sale;return {...sale,id:'confirmed'};}}));});
+ await act(async()=>renderer.root.findByProps({className:'pdv-product-card'}).props.onClick());
+ const selectCustomer=id=>renderer.root.findAll(node=>typeof node.type==='function'&&node.type.name==='CustomerSearchPicker')[0].props.onSelect(id);
+ await act(async()=>selectCustomer('customer'));
+ const chooser=()=>renderer.root.findByProps({'aria-label':'Crédito RMA para a compra'});
+ assert.equal(chooser().findAllByType('option').length,2);
+ await act(async()=>chooser().props.onChange({target:{value:'rma'}}));
+ assert.equal(renderer.root.findByProps({'aria-label':'Valor do crédito RMA na compra'}).props.value,'50');
+ await act(async()=>renderer.root.findByProps({className:'module-cancel-btn pdv-checkout-btn'}).props.onClick());
+ assert.equal(submitted.total,100);assert.equal(submitted.rma_credit_id,'rma');assert.equal(submitted.payment_method,'misto');
+ assert.deepEqual(JSON.parse(JSON.stringify(submitted.payment_splits)),[{method:'credito_rma',amount:50},{method:'pix',amount:50}]);
+});
+
+test('checkout refuses excessive return credit, preserves it after a server failure, and clears it on customer change',async()=>{
+ let calls=0;
+ const rma={id:'rma',customer_id:'customer',branch_id:'branch',status:'credito_gerado',product_name:'Returned product',credit_amount:50,credit_used_amount:0};
+ await act(async()=>{renderer=TestRenderer.create(React.createElement(module.exports.Checkout,{...props,customers:[{id:'customer',name:'Cliente',customer_type:'varejo'},{id:'other',name:'Outro',customer_type:'varejo'}],rmaRequests:[rma],onCreateSale:async()=>{calls++;throw Error('Falha de conexão');}}));});
+ await act(async()=>renderer.root.findByProps({className:'pdv-product-card'}).props.onClick());
+ const selectCustomer=id=>renderer.root.findAll(node=>typeof node.type==='function'&&node.type.name==='CustomerSearchPicker')[0].props.onSelect(id);
+ await act(async()=>selectCustomer('customer'));
+ await act(async()=>renderer.root.findByProps({'aria-label':'Crédito RMA para a compra'}).props.onChange({target:{value:'rma'}}));
+ const amount=()=>renderer.root.findByProps({'aria-label':'Valor do crédito RMA na compra'});
+ await act(async()=>amount().props.onChange({target:{value:'51'}}));
+ await act(async()=>renderer.root.findByProps({className:'module-cancel-btn pdv-checkout-btn'}).props.onClick());assert.equal(calls,0);
+ await act(async()=>amount().props.onChange({target:{value:'50'}}));
+ await act(async()=>renderer.root.findByProps({className:'module-cancel-btn pdv-checkout-btn'}).props.onClick());assert.equal(calls,1);
+ assert.equal(amount().props.value,'50');
+ await act(async()=>selectCustomer('other'));
+ assert.equal(renderer.root.findByProps({'aria-label':'Crédito RMA para a compra'}).props.value,'');
+});
+
 test('rescued sale opens the full editable checkout with saved fields and submits changed cart', async () => {
   let submitted;
   const rescuedSale = { id: 'original', sale_number: 42, customer_id: null, customer_name: 'Consumidor',

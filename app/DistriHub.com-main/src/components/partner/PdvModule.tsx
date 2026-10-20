@@ -6,7 +6,7 @@ import {
   X, Tag, Ban, Lock, ClipboardList, Wallet, Lock as LockIcon,
 } from 'lucide-react';
 import type { IScannerControls } from '@zxing/browser';
-import type { DeliveryType, PartnerProduct, PartnerCustomer, PartnerSale, SalePayment, PartnerSalesperson, SaleItem, SalespersonRole } from '../../types';
+import type { DeliveryType, PartnerProduct, PartnerCustomer, PartnerSale, SalePayment, PartnerSalesperson, SaleItem, SalespersonRole, RmaRequest } from '../../types';
 import { SalePriceInput } from './SalePriceInput';
 import { money } from '../../utils';
 import { draftPayments, emptySplitPaymentDraft, splitPaymentDraft, splitPaymentError, billedSaleError, pdvErrorMessage, pdvTotal, saleChargeTotal, validSalePrice, type CustomerCredit, customerPriceTable, productTablePrice, type PriceTable } from '../../lib/pdv';
@@ -303,6 +303,7 @@ type Props = {
   customers: PartnerCustomer[];
   sales: PartnerSale[];
   credits: CustomerCredit[];
+  rmaRequests?: RmaRequest[];
   hasPendingSale?: boolean;
   isActive?: boolean;
   barcodeScannerEnabled?: boolean;
@@ -327,7 +328,7 @@ type Props = {
     delivery_type: DeliveryType;
     imei?: string;
     serial_number?: string;
-    payment_method?: string; payment_splits?: SalePayment[];
+    payment_method?: string; payment_splits?: SalePayment[]; rma_credit_id?: string | null;
     salesperson_id?: string | null;
     draft_scope?: string; branch_id?: string | null;
   }) => Promise<PartnerSale>;
@@ -355,7 +356,7 @@ const PRODUCT_PAGE_SIZE = 30;
 
 export function PdvModule({
   cashContext, onOpenCash, onConfirmCashOperator,
-  products, customers, sales, credits, hasPendingSale, isActive = true, salespeople, segment, selectedBranchId,
+  products, customers, sales, credits, rmaRequests = [], hasPendingSale, isActive = true, salespeople, segment, selectedBranchId,
   barcodeScannerEnabled = true, cameraScannerEnabled = false,
   preSaleToCheckout, onConsumePreSale, onRequestPreSale,
   activeSalespersonId, activeBranchName, receiptDetails, currentRole, canEditPrice, onCreateSale, onCreatePreSale, onFinalizePreSale, onCancelSale, onDeleteSale,
@@ -449,6 +450,7 @@ export function PdvModule({
           products={products}
           customers={customers}
           credits={credits}
+          rmaRequests={rmaRequests}
           salespeople={salespeople}
           activeSalespersonId={activeSalespersonId}
           segment={segment}
@@ -477,6 +479,7 @@ export function PdvModule({
           customers={customers}
           credits={credits}
           hasPendingSale={hasPendingSale}
+          rmaRequests={rmaRequests}
           isActive={isActive && subTab === 'pdv' && !checkoutPreSale}
           barcodeScannerEnabled={barcodeScannerEnabled}
           cameraScannerEnabled={cameraScannerEnabled}
@@ -519,12 +522,13 @@ export function PdvModule({
 
 /* ============ PDV Checkout ============ */
 
-function PdvCheckout({ products, customers, credits, hasPendingSale, isActive = true, barcodeScannerEnabled = true, cameraScannerEnabled = false, salespeople, activeSalespersonId, selectedBranchId, canCheckout, canEditPrice, receiptDetails, onCreateSale, rescuedSale, onExitRescue }: {
+function PdvCheckout({ products, customers, credits, rmaRequests = [], hasPendingSale, isActive = true, barcodeScannerEnabled = true, cameraScannerEnabled = false, salespeople, activeSalespersonId, selectedBranchId, canCheckout, canEditPrice, receiptDetails, onCreateSale, rescuedSale, onExitRescue }: {
   rescuedSale?: PartnerSale;
   onExitRescue?: () => void;
   products: PartnerProduct[];
   customers: PartnerCustomer[];
   credits: CustomerCredit[];
+  rmaRequests?: RmaRequest[];
   canEditPrice: boolean;
   hasPendingSale?: boolean;
   isActive?: boolean;
@@ -536,7 +540,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, isActive = 
   selectedBranchId: string | null;
   canCheckout: boolean;
   receiptDetails?: ReceiptDetails;
-  onCreateSale: (sale: { customer_id: string | null; customer_name: string; items: SaleItem[]; total: number; freight_fee?: number; customer_type: ClientType; delivery_type: DeliveryType; imei?: string; serial_number?: string; payment_method?: string; payment_splits?: SalePayment[]; salesperson_id?: string | null; draft_scope?: string; branch_id?: string | null }) => Promise<PartnerSale>;
+  onCreateSale: (sale: { customer_id: string | null; customer_name: string; items: SaleItem[]; total: number; freight_fee?: number; customer_type: ClientType; delivery_type: DeliveryType; imei?: string; serial_number?: string; payment_method?: string; payment_splits?: SalePayment[]; rma_credit_id?: string | null; salesperson_id?: string | null; draft_scope?: string; branch_id?: string | null }) => Promise<PartnerSale>;
 }) {
   const draftScope = useSessionDraftScope();
   const [search, setSearch] = useSessionDraftState('checkout:product-search', '');
@@ -576,6 +580,8 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, isActive = 
   const [clientType, setClientType] = useSessionDraftState<ClientType>('checkout:client-type', rescuedSale?.customer_type ?? 'varejo');
   const [paymentMethod, setPaymentMethod] = useSessionDraftState('checkout:payment-method', rescuedSale?.payment_method || 'pix');
   const [paymentDraft, setPaymentDraft] = useSessionDraftState('checkout:split-payments', rescuedSale ? splitPaymentDraft(rescuedSale.payment_splits) : { ...emptySplitPaymentDraft });
+  const [rmaCreditId, setRmaCreditId] = useSessionDraftState('checkout:rma-credit-id', '');
+  const [rmaCreditAmount, setRmaCreditAmount] = useSessionDraftState('checkout:rma-credit-amount', '');
   const [deliveryType, setDeliveryType] = useSessionDraftState<DeliveryType>('checkout:delivery-type', rescuedSale?.delivery_type ?? 'balcao');
   const [freightFee, setFreightFee] = useSessionDraftState<number | string>('checkout:freight-fee', rescuedSale?.freight_fee ?? 0, undefined, value => typeof value === 'string' || (typeof value === 'number' && Number.isFinite(value)));
   const freightAmount = freightFee === '' ? 0 : Number(freightFee);
@@ -616,6 +622,8 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, isActive = 
   function getPriceForProduct(p: PartnerProduct, table: PriceTable): number { return productTablePrice(p, table); }
 
   function handleClientTypeChange(type: ClientType) {
+    if (!canChangeCart()) return;
+    setRmaCreditId(''); setRmaCreditAmount('');
     setClientType(type);
     setPriceTable(type);
     setCustomerId('');
@@ -639,6 +647,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, isActive = 
         return product ? { ...item, unit_price: getPriceForProduct(product, table) } : item;
       });
       setCustomerId(id); setCustomerName(customer?.name ?? ''); setClientType(type); setPriceTable(table);
+      setRmaCreditId(''); setRmaCreditAmount('');
       updateCart(next);
     } catch (error) { setCheckoutError(pdvErrorMessage(error)); }
   }
@@ -657,6 +666,11 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, isActive = 
 
   const total = pdvTotal(cart);
   const chargeTotal = saleChargeTotal({ total, freight_fee: freightAmount });
+  const availableReturnCredits = rmaRequests.filter(rma => rma.customer_id === customerId && rma.branch_id === selectedBranchId && rma.status === 'credito_gerado' && rma.credit_used_amount != null && Number(rma.credit_amount) > Number(rma.credit_used_amount));
+  const selectedReturnCredit = availableReturnCredits.find(rma => rma.id === rmaCreditId);
+  const returnCreditBalance = selectedReturnCredit ? (Math.round(Number(selectedReturnCredit.credit_amount) * 100) - Math.round(Number(selectedReturnCredit.credit_used_amount) * 100)) / 100 : 0;
+  const appliedReturnCredit = rmaCreditId ? Number(rmaCreditAmount.replace(',', '.')) : 0;
+  const remainingCharge = (Math.round(chargeTotal * 100) - Math.round(appliedReturnCredit * 100)) / 100;
   const selectedCustomer = customers.find((customer) => customer.id === customerId) ?? null;
   const credit = credits.find(item => item.customer_id === customerId);
   const customerOpenCredit = Number(credit?.used ?? 0);
@@ -766,8 +780,13 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, isActive = 
       const message = billedSaleError(credit, customerId || null, checkoutChargeTotal);
       if (message) { setCheckoutError(message); return; }
     }
-    const parts = paymentMethod === 'misto' ? draftPayments(paymentDraft) : [];
-    const validation = paymentMethod === 'misto' ? splitPaymentError(checkoutChargeTotal, parts) : null;
+    if (rmaCreditId && (rescuedSale || !selectedReturnCredit || !validSalePrice(appliedReturnCredit) || appliedReturnCredit <= 0 || appliedReturnCredit > Math.min(returnCreditBalance, checkoutChargeTotal) || paymentMethod === 'faturado')) {
+      setCheckoutError('Confira o crédito de devolução e o valor a usar. A diferença deve ser paga em dinheiro, PIX ou cartão.'); return;
+    }
+    const parts: SalePayment[] = rmaCreditId
+      ? [{ method: 'credito_rma', amount: appliedReturnCredit }, ...(remainingCharge === 0 ? [] : paymentMethod === 'misto' ? draftPayments(paymentDraft) : [{ method: paymentMethod as SalePayment['method'], amount: remainingCharge }])]
+      : paymentMethod === 'misto' ? draftPayments(paymentDraft) : [];
+    const validation = paymentMethod === 'misto' || rmaCreditId ? splitPaymentError(checkoutChargeTotal, parts) : null;
     if (validation) { setCheckoutError(validation); return; }
     const fallbackName = clientType === 'atacado' ? 'Cliente Atacado' : 'Cliente Varejo';
     const printWindow = shouldPrint && !directReceiptEnabled?.() ? window.open('', '_blank', 'width=440,height=700') : null;
@@ -786,7 +805,8 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, isActive = 
         freight_fee: freightAmount,
         customer_type: clientType,
         delivery_type: deliveryType,
-        payment_method: paymentMethod,
+        payment_method: rmaCreditId ? 'misto' : paymentMethod,
+        rma_credit_id: rmaCreditId || null,
         payment_splits: parts,
         salesperson_id: salespersonId || null,
         branch_id: selectedBranchId,
@@ -797,6 +817,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, isActive = 
       setPriceTable('varejo');
       setPaymentMethod('pix');
       setPaymentDraft({ ...emptySplitPaymentDraft });
+      setRmaCreditId(''); setRmaCreditAmount('');
       setDeliveryType('balcao');
       setSearch('');
       setVisibleProductCount(PRODUCT_PAGE_SIZE);
@@ -1042,7 +1063,21 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, isActive = 
                 </div>
               </div>
               </div>
-              {paymentMethod === 'misto' && <SplitPaymentFields total={chargeTotal} value={paymentDraft} onChange={setPaymentDraft} disabled={isCheckingOut || !canCheckout} />}
+              {!rescuedSale && customerId && <section className="b2b-credit-summary" aria-label="Crédito de devolução na compra">
+                <strong>Crédito de devolução</strong>
+                <label>Saldo do cliente<select aria-label="Crédito RMA para a compra" value={rmaCreditId} disabled={cartLocked || !canCheckout} onChange={event => {
+                  if (!canChangeCart()) return;
+                  const selected = availableReturnCredits.find(rma => rma.id === event.target.value);
+                  setRmaCreditId(event.target.value);
+                  if (selected && paymentMethod === 'faturado') setPaymentMethod('pix');
+                  setRmaCreditAmount(selected ? String(Math.min(chargeTotal, Number(selected.credit_amount) - Number(selected.credit_used_amount))) : '');
+                }}><option value="">Não usar crédito</option>{availableReturnCredits.map(rma => <option key={rma.id} value={rma.id}>{rma.product_name} — {money.format(Number(rma.credit_amount) - Number(rma.credit_used_amount))}</option>)}</select></label>
+                {!availableReturnCredits.length && <small>Nenhum crédito de devolução disponível para este cliente nesta filial.</small>}
+                {rmaCreditId && <><label>Valor a usar (R$)<input aria-label="Valor do crédito RMA na compra" inputMode="decimal" value={rmaCreditAmount} disabled={cartLocked || !canCheckout} onChange={event => { if (canChangeCart()) setRmaCreditAmount(event.target.value); }} /></label>
+                  <span>Saldo disponível: {money.format(returnCreditBalance)}</span><strong>Restante a pagar: {Number.isFinite(remainingCharge) ? money.format(Math.max(0, remainingCharge)) : 'Confira o valor'}</strong>
+                  <small>A forma de pagamento escolhida será usada para a diferença. O crédito utilizado não entra como dinheiro no caixa.</small></>}
+              </section>}
+              {paymentMethod === 'misto' && <SplitPaymentFields total={rmaCreditId ? Math.max(0, remainingCharge) : chargeTotal} value={paymentDraft} onChange={setPaymentDraft} disabled={isCheckingOut || !canCheckout} />}
               {paymentMethod === 'faturado' && selectedCustomer && !credit && (
                 <p role="status">Não foi possível consultar o crédito deste cliente.</p>
               )}

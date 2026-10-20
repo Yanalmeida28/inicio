@@ -264,6 +264,7 @@ export function usePartnerData(identity: PartnerIdentity | null, syncBranchId: s
   const syncInFlight = useRef(false);
 
   const [pdvCredits, setPdvCredits] = useState<CustomerCredit[]>([]);
+  const [pdvReturnCredits, setPdvReturnCredits] = useState<RmaRequest[]>([]);
   const [pdvSyncWarning, setPdvSyncWarning] = useState<string | null>(null);
   const [pendingSale, setPendingSale] = useState<PartnerSale | null>(null);
   const saleInFlight = useRef(false);
@@ -273,6 +274,7 @@ export function usePartnerData(identity: PartnerIdentity | null, syncBranchId: s
   identityScopeRef.current = identityScope;
   useEffect(() => {
     setPdvCredits([]);
+    setPdvReturnCredits([]);
     setPdvSyncWarning(null);
     ++pdvRequestId.current;
     try {
@@ -1478,6 +1480,7 @@ read('sales', () => fetchAllPages((from, to) => client
     ensureEmployeeBranch(currentIdentity, branchId);
     const scope = currentIdentity.authUserId + ':' + currentIdentity.companyUserId;
     const request = ++pdvRequestId.current;
+    setPdvReturnCredits([]);
     const readRevision = dataRevisionRef.current.begin(['products', 'sales', 'invoices', 'movements']);
     setPdvCredits([]);
     if (!isSupabaseConfigured || !supabase) throw new Error('Sincronização do PDV requer Supabase.');
@@ -1487,7 +1490,7 @@ read('sales', () => fetchAllPages((from, to) => client
       || !Array.isArray(snapshot.sales) || !Array.isArray(snapshot.invoices) || !Array.isArray(snapshot.movements)) {
       throw new Error('Resposta de sincronização do PDV inválida.');
     }
-    const result = snapshot as { credits: CustomerCredit[]; products: PartnerProduct[]; sales: PartnerSale[]; invoices: PartnerInvoice[]; movements: StockMovement[] };
+    const result = snapshot as { credits: CustomerCredit[]; return_credits?: RmaRequest[]; products: PartnerProduct[]; sales: PartnerSale[]; invoices: PartnerInvoice[]; movements: StockMovement[] };
     if (mountedRef.current && identityScopeRef.current === scope && request === pdvRequestId.current) {
       const mergeBranch = <T extends { branch_id?: string | null }>(old: T[], rows: T[]) =>
         [...rows, ...old.filter(row => row.branch_id !== branchId)];
@@ -1499,6 +1502,7 @@ read('sales', () => fetchAllPages((from, to) => client
       }));
       if (dataRevisionRef.current.isCurrent(readRevision, 'invoices') && dataRevisionRef.current.isCurrent(readRevision, 'sales')) {
         setPdvCredits(result.credits);
+        setPdvReturnCredits(result.return_credits ?? []);
       }
       if (currentIdentity.salespersonId && resourceScopeRef.current !== null) {
         for (const key of ['products', 'sales', 'invoices', 'movements']) if (dataRevisionRef.current.isCurrent(readRevision, key)) loadCacheRef.current.mark(key);
@@ -1670,7 +1674,9 @@ read('sales', () => fetchAllPages((from, to) => client
         setPendingSale(ns);
         if (isSupabaseConfigured && supabase) {
           try {
-            const { data: confirmedId, error: rpcError } = await supabase.rpc(ns.cash_session_id ? 'supervised_execute_partner_sale_mutation' : 'execute_partner_sale_mutation', {
+            const { data: confirmedId, error: rpcError } = await supabase.rpc(ns.rma_credit_id ? 'execute_partner_sale_with_rma_credit' : ns.cash_session_id ? 'supervised_execute_partner_sale_mutation' : 'execute_partner_sale_mutation', ns.rma_credit_id ? {
+              p_sale: ns, p_rma_id: ns.rma_credit_id, p_operator_id: operatorId ?? null, p_pin: operatorPin ?? null, p_cash_session_id: ns.cash_session_id ?? null,
+            } : {
               ...(ns.cash_session_id ? { p_cash_session_id: ns.cash_session_id } : {}),
               p_salesperson_id: operatorId ?? null, p_pin: operatorPin ?? null,
               p_commercial_salesperson_id: ns.salesperson_id,
@@ -1707,6 +1713,12 @@ read('sales', () => fetchAllPages((from, to) => client
         catch { setPdvSyncWarning('Venda confirmada. A recuperação local permanece pendente; não repita com outro ID.'); }
         if (isSupabaseConfigured && supabase) {
           await syncConfirmedSale(ns.branch_id!);
+          if (ns.rma_credit_id && identityScopeRef.current === scope) {
+            dataRevisionRef.current.invalidate(['rmas']);
+            if (loadCacheRef.current.has('rmas')) {
+              try { await loadData(true, ['rmas']); } catch { setPdvSyncWarning('Venda confirmada. Atualize os dados para conferir o saldo de devolução.'); }
+            }
+          }
           try {
             const { data: numbered } = await supabase.from('partner_sales').select('sale_number').eq('id', ns.id).eq('user_id', currentIdentity.companyUserId).maybeSingle();
             if (numbered?.sale_number) {
@@ -1717,7 +1729,7 @@ read('sales', () => fetchAllPages((from, to) => client
         }
         return ns;
       } finally { saleInFlight.current = false; }
-    }, [requireIdentity, validateBilledSale, syncConfirmedSale],
+    }, [requireIdentity, validateBilledSale, syncConfirmedSale, loadData],
   );
 
   const retryPendingSale = useCallback(async (operatorId?: string | null, operatorPin?: string | null) => {
@@ -3991,6 +4003,7 @@ read('sales', () => fetchAllPages((from, to) => client
     deleteBranch,
 
     pdvCredits,
+    pdvReturnCredits,
     pdvSyncWarning,
     pendingSale,
     refreshPdv,

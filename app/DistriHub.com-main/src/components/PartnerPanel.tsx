@@ -1132,7 +1132,7 @@ export function PartnerPanel({
       delivery_type: DeliveryType;
       imei?: string;
       serial_number?: string;
-      payment_method?: string; payment_splits?: SalePayment[];
+      payment_method?: string; payment_splits?: SalePayment[]; rma_credit_id?: string | null;
       salesperson_id?: string | null;
       draft_scope?: string;
       branch_id?: string | null;
@@ -2126,6 +2126,7 @@ export function PartnerPanel({
                   filteredSales
                 }
                 credits={partner.pdvCredits}
+                rmaRequests={partner.pdvReturnCredits}
                 salespeople={
                   filteredSalespeople
                 }

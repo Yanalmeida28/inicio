@@ -1,0 +1,50 @@
+import { PGlite } from '@electric-sql/pglite';
+import { readFile } from 'node:fs/promises';
+export async function checkoutCreditDatabase() {
+ const db=new PGlite();
+ const read=path=>readFile(new URL('../'+path,import.meta.url),'utf8');
+ 
+  await db.exec(await read('./fixtures/pdv_schema.sql'));
+  await db.exec(await read('./fixtures/pdv_production.sql'));
+  await db.exec('GRANT SELECT ON public.partner_profiles TO authenticated');
+  await db.exec('CREATE TABLE auth.users(id uuid PRIMARY KEY)');
+  await db.exec('ALTER TABLE partner_profiles ADD COLUMN document text, ADD COLUMN whatsapp text, ADD COLUMN segment text, ADD COLUMN subscription_plan text NOT NULL DEFAULT \'basico\', ADD COLUMN subscription_status text NOT NULL DEFAULT \'trial\', ADD COLUMN next_billing_date date, ADD COLUMN payment_method text');
+  await db.exec('ALTER TABLE partner_branches ADD COLUMN name text, ADD COLUMN address text, ADD COLUMN is_active boolean NOT NULL DEFAULT true, ADD COLUMN created_at timestamptz NOT NULL DEFAULT now(), ADD COLUMN updated_at timestamptz');
+  await db.exec('CREATE TABLE public.b2b_orders(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),user_id uuid,total numeric,created_at timestamptz DEFAULT now())');
+  await db.exec('CREATE VIEW public.admin_financial_months AS SELECT 1 AS financial_total');
+  await db.exec('GRANT SELECT ON public.admin_financial_months TO anon, authenticated');
+  await db.exec(await read('../migrations/20260928044542_fix_pdv_sales_reconciliation.sql'));
+  await db.exec(await read('../migrations/20260928195329_enforce_pdv_authoritative_pricing.sql'));
+  await db.exec(await read('../migrations/20260826110000_add_fiscal_documents_foundation.sql'));
+  await db.exec(await read('../migrations/20260826150000_add_fiscal_rules_and_inutilizations.sql'));
+  await db.exec("CREATE FUNCTION public.verify_super_admin(input_password text) RETURNS boolean LANGUAGE sql AS $$ SELECT input_password='admin-secret' $$");
+  await db.exec("CREATE FUNCTION public.is_super_admin() RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT auth.uid() IS NOT NULL AND auth.uid()::text=current_setting('test.super_admin_uid',true) $$");
+  await db.exec(await read('../migrations/20260826140000_add_super_admin_financial_overview.sql'));
+  await db.exec("CREATE FUNCTION public.record_fiscal_document(p_document_id uuid DEFAULT NULL, p_document_type text DEFAULT 'nfe', p_status text DEFAULT 'pending', p_document_number text DEFAULT NULL, p_access_key text DEFAULT NULL, p_payload jsonb DEFAULT '{}'::jsonb) RETURNS uuid LANGUAGE sql AS $$ SELECT NULL::uuid $$");
+  await db.exec('ALTER TABLE partner_salespeople ADD COLUMN name text');
+  await db.exec(await read('../migrations/20261003182612_partner_cash_register.sql'));
+  await db.exec(await read('../migrations/20261003190000_secure_financial_subscription_fiscal_and_branch_flows.sql'));
+  await db.exec(await read('../migrations/20261003193000_add_post_close_cash_refunds.sql'));
+  await db.exec(await read('../migrations/20261005211357_allow_owner_manager_sale_prices.sql'));
+  await db.exec('ALTER TABLE partner_customers ADD COLUMN name text');
+  await db.exec(await read('../migrations/20261007211956_change_open_order_customer.sql'));
+  await db.exec(await read('../migrations/20261009184720_add_third_party_freight.sql'));
+  // Subscription authorization is isolated from these cash tests; branch/PIN/role guards remain real.
+  await db.exec(`CREATE SCHEMA partner_subscription_private;
+    CREATE FUNCTION partner_subscription_private.require_operator_module(text,uuid) RETURNS void LANGUAGE sql AS $$ SELECT $$;
+    CREATE FUNCTION partner_subscription_private.require_actor(text) RETURNS void LANGUAGE sql AS $$ SELECT $$;`);
+  await db.exec(JSON.parse(await read('./fixtures/split_payment_baseline.json')));
+  await db.exec(await read('../migrations/20261009211459_add_split_sale_payments.sql'));
+  await db.exec(await read('../migrations/20261014224645_fix_cash_supervision_recovery_and_balance.sql'));
+  await db.exec(await read('../migrations/20261014230708_fix_open_order_authorization.sql'));
+  await db.exec(`CREATE TABLE rma_requests_v2(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),user_id uuid,sale_id uuid,sale_item_index integer,quantity integer);
+    CREATE VIEW public.partner_stock_movements AS SELECT * FROM stock_movements;
+    CREATE FUNCTION partner_subscription_private.require_access(uuid,text) RETURNS void LANGUAGE sql AS $$ SELECT $$;
+    CREATE SCHEMA partner_operations_private;
+    CREATE FUNCTION partner_operations_private.authorize_branch(uuid,text) RETURNS uuid LANGUAGE sql AS $$ SELECT user_id FROM public.partner_branches WHERE id=$1 $$;`);
+  await db.exec('CREATE SCHEMA partner_rma_private');
+  await db.exec(await read('../migrations/20261013202052_readable_sale_numbers.sql'));
+  await db.exec(await read('../migrations/20261015013718_fix_sales_history_cancellation_and_completion.sql'));
+  await db.exec(await read('../migrations/20261017172437_shared_branch_checkout_operator_history.sql'));
+ return db;
+}

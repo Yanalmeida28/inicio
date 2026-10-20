@@ -1,6 +1,6 @@
 import type { PartnerInvoice, PartnerSale, StockMovement } from '../types';
 import { accountBalance, type PayableAccount } from './accounts';
-import { saleChargeTotal } from './pdv';
+import { saleChargeTotal, salePaymentParts } from './pdv';
 
 export interface InvoiceReceipt {
   id: string; user_id: string; invoice_id: string; branch_id: string | null;
@@ -32,7 +32,7 @@ export function actualFinancialFlow(sales: PartnerSale[], movements: StockMoveme
   return [
     ...sales.filter(s => s.status === 'concluida' && s.payment_method !== 'faturado' && !billed.has(s.id)).map(s => ({
       id: `sale-${s.id}`, date: saleTimes.get(s.id) ?? s.completed_at ?? s.created_at,
-      description: `Venda à vista — ${s.customer_name}${s.freight_fee ? ' (inclui frete para repasse)' : ''}`, amount: saleChargeTotal(s),
+      description: `Venda à vista — ${s.customer_name}${s.freight_fee ? ' (inclui frete para repasse)' : ''}`, amount: s.payment_method === 'misto' ? salePaymentParts(s).filter(part => part.method !== 'credito_rma').reduce((sum, part) => sum + Math.round(part.amount * 100), 0) / 100 : saleChargeTotal(s),
     })),
     ...receipts.map(r => ({ id: `receipt-${r.id}`, date: r.occurred_at, description: `Fatura ${r.invoice_number} — ${r.customer_name}`, amount: Number(r.amount) })),
     ...payments.filter(p => accounts.has(p.payable_id)).map(p => ({ id: `payment-${p.id}`, date: p.created_at,

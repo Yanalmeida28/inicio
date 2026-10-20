@@ -310,7 +310,7 @@ export function RmaModule({
         <form className="modal-card rma-form" onSubmit={confirmCredit}>
           <h4>Gerar crédito de devolução</h4>
           <p>{creditRma.customer_name} — {creditRma.product_name} ({creditRma.quantity ?? 1} unidade(s))</p>
-          <p>O crédito poderá abater faturas do cliente. O valor máximo é o valor dos itens devolvidos na venda.</p>
+          <p>O crédito poderá ser usado em novas compras no PDV ou para abater faturas do mesmo cliente e filial. O valor máximo é o valor dos itens devolvidos na venda.</p>
           <label>Valor do crédito (R$)<input aria-label="Valor do crédito" inputMode="decimal" value={creditAmount} onChange={event => setCreditAmount(event.target.value)} disabled={busy} required autoFocus /></label>
           {creditError && <p className="otp-error-msg" role="alert">{creditError}</p>}
           <div className="pix-actions">

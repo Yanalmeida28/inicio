@@ -49,6 +49,21 @@ async function load(name, window, directPrint, document) {
   return exports;
 }
 
+test('return credit source survives a reload, cannot change on retry, and is identified on the receipt',async()=>{
+ const credited={...sale,rma_credit_id:'rma-50',payment_method:'misto',payment_splits:[{method:'credito_rma',amount:50},{method:'pix',amount:65}]};
+ const values=new Map();const storage={getItem:key=>values.get(key)??null,setItem:(key,value)=>values.set(key,value),removeItem:key=>values.delete(key)};
+ new pdvHelpers.PdvSaleAttemptStore(storage,'credit').begin(credited);
+ const reloaded=new pdvHelpers.PdvSaleAttemptStore(storage,'credit');
+ assert.equal(reloaded.read().rma_credit_id,'rma-50');
+ assert.throws(()=>reloaded.begin({...credited,rma_credit_id:'another-credit'}),/resultado pendente/);
+ function element(tag){return {tag,children:[],style:{},append(...nodes){this.children.push(...nodes);},textContent:''};}
+ const document={head:element('head'),body:element('body'),documentElement:{},createElement:element,images:[]};
+ const print=await load('salePrint',{open:()=>({document,requestAnimationFrame(){},focus(){},print(){}})});
+ print.printSale(credited,'receipt');
+ const texts=node=>[node.textContent,...node.children.flatMap(texts)];
+ assert.ok(texts(document.body).includes(`Pagamento: Crédito de devolução: ${currency.format(50)} + PIX: ${currency.format(65)}`));
+});
+
 test('browser and direct receipts preserve saved text and identify the sale branch across units',async()=>{
   const branches=[{id:'wholesale',name:'Saunier Atacado',address:'Rua Atacado'}, {id:'retail',name:'Saunier Varejo',address:'Rua Varejo'}];
   for(const direct of [false,true])for(const branch of branches){

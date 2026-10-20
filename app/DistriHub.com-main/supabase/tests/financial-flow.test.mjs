@@ -13,6 +13,13 @@ for (const name of ['accounts', 'pdv', 'financialFlow']) {
 }
 const { actualFinancialFlow, projectedFinancialFlow, localDate } = modules.financialFlow;
 
+test('return credit funds the sale without becoming cash received; fully credit-funded purchases receive zero',()=>{
+ const sale={id:'s',status:'concluida',total:100,freight_fee:0,payment_method:'misto',payment_splits:[{method:'credito_rma',amount:50},{method:'pix',amount:50}],created_at:'2026-10-20',customer_name:'Cliente'};
+ assert.equal(actualFinancialFlow([sale],[],[],[],[],[])[0].amount,50);
+ assert.equal(actualFinancialFlow([{...sale,payment_splits:[{method:'credito_rma',amount:100}]}],[],[],[],[],[])[0].amount,0);
+ assert.match(modules.pdv.salePaymentDescription(sale),/Crédito de devolução/);
+});
+
 test('cash flow shows the full receipt including freight without changing merchandise revenue', () => {
   const sale={id:'s',status:'concluida',total:100,freight_fee:15,payment_method:'pix',created_at:'2026-10-09',customer_name:'Cliente'};
   const rows=actualFinancialFlow([sale],[],[],[],[],[]);

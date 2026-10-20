@@ -21,13 +21,13 @@ export function saleChargeTotal(sale: { total: number; freight_fee?: number }): 
   return (Math.round(sale.total * 100) + Math.round((sale.freight_fee ?? 0) * 100)) / 100;
 }
 
-export type SplitPaymentDraft = Record<SalePayment['method'], string>;
+export type SplitPaymentDraft = Record<'dinheiro' | 'pix' | 'cartao', string>;
 export const emptySplitPaymentDraft: SplitPaymentDraft = { dinheiro: '', pix: '', cartao: '' };
-export const salePaymentLabels: Record<string, string> = { dinheiro: 'Dinheiro', pix: 'PIX', cartao: 'Cartão', faturado: 'Faturado B2B', misto: 'Pagamento dividido' };
+export const salePaymentLabels: Record<string, string> = { dinheiro: 'Dinheiro', pix: 'PIX', cartao: 'Cartão', faturado: 'Faturado B2B', misto: 'Pagamento dividido', credito_rma: 'Crédito de devolução' };
 
 export function splitPaymentDraft(payments: SalePayment[] = []): SplitPaymentDraft {
   const draft = { ...emptySplitPaymentDraft };
-  for (const payment of payments) if (payment.method in draft) draft[payment.method] = String(payment.amount);
+  for (const payment of payments) if (payment.method !== 'credito_rma' && payment.method in draft) draft[payment.method] = String(payment.amount);
   return draft;
 }
 
@@ -36,8 +36,9 @@ export function draftPayments(draft: SplitPaymentDraft): SalePayment[] {
 }
 
 export function splitPaymentError(total: number, payments: SalePayment[]): string | null {
-  if (payments.some(payment => !['dinheiro', 'pix', 'cartao'].includes(payment.method) || !validSalePrice(payment.amount) || payment.amount <= 0)) return 'Informe valores de pagamento válidos com até duas casas decimais.';
-  if (payments.length < 2 || payments.length > 3 || new Set(payments.map(payment => payment.method)).size !== payments.length) return 'Informe pelo menos duas formas de pagamento diferentes.';
+  if (payments.some(payment => !['dinheiro', 'pix', 'cartao', 'credito_rma'].includes(payment.method) || !validSalePrice(payment.amount) || payment.amount <= 0)) return 'Informe valores de pagamento válidos com até duas casas decimais.';
+  const hasReturnCredit = payments.some(payment => payment.method === 'credito_rma');
+  if (payments.length < (hasReturnCredit ? 1 : 2) || payments.length > (hasReturnCredit ? 4 : 3) || new Set(payments.map(payment => payment.method)).size !== payments.length) return 'Informe pelo menos duas formas de pagamento diferentes.';
   if (payments.reduce((sum, payment) => sum + Math.round(payment.amount * 100), 0) !== Math.round(total * 100)) return 'A soma dos pagamentos deve ser igual ao total da venda, incluindo o frete.';
   return null;
 }
@@ -106,7 +107,7 @@ export function saleRequestKey(sale: Partial<PartnerSale>): string {
     sale.imei ?? null, sale.serial_number ?? null, sale.payment_method ?? null,
     sale.branch_id, sale.salesperson_id ?? null, sale.customer_type ?? 'varejo',
     sale.delivery_type ?? 'balcao', sale.origin ?? 'pdv', sale.status ?? 'concluida',
-    sale.cash_session_id ?? null,
+    sale.cash_session_id ?? null, sale.rma_credit_id ?? null,
   ]);
 }
 
@@ -142,6 +143,7 @@ export class PdvSaleAttemptStore {
       payment_status: sale.payment_status, created_at: sale.created_at,
       draft_scope: sale.draft_scope,
       cash_session_id: sale.cash_session_id,
+      rma_credit_id: sale.rma_credit_id,
     };
     this.storage.setItem(this.key, JSON.stringify(stored));
     return stored;

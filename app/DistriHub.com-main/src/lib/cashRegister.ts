@@ -61,7 +61,7 @@ export interface CashMovement {
 }
 
 export const cashPaymentLabels: Record<string, string> = {
-  dinheiro: 'Dinheiro', pix: 'PIX', cartao: 'Cartão', faturado: 'Faturado (a receber)',
+  dinheiro: 'Dinheiro', pix: 'PIX', cartao: 'Cartão', faturado: 'Faturado (a receber)', credito_rma: 'Crédito de devolução (sem entrada de dinheiro)',
 };
 
 export function cashTotals(movements: CashMovement[]): Record<string, number> {
@@ -94,7 +94,7 @@ export function cashBusinessDay(value: string | Date): string {
 export function cashDaySalesTotal(movements: CashMovement[], sessions: CashSession[], branchId: string, actorKey: string, day: string): number {
   const sessionIds = new Set(sessions.filter(session => session.branch_id === branchId && session.actor_key === actorKey).map(session => session.id));
   return movements.filter(movement => sessionIds.has(movement.session_id) && cashBusinessDay(movement.created_at) === day &&
-    ['venda', 'estorno', 'devolucao'].includes(movement.kind) && ['dinheiro', 'pix', 'cartao', 'faturado'].includes(movement.payment_method))
+    ['venda', 'estorno', 'devolucao'].includes(movement.kind) && ['dinheiro', 'pix', 'cartao', 'faturado', 'credito_rma'].includes(movement.payment_method))
     .reduce((sum, movement) => sum + (movement.kind === 'venda' ? 1 : -1) * Math.round(Number(movement.amount) * 100), 0) / 100;
 }
 
