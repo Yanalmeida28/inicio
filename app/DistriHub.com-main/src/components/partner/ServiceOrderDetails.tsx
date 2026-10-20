@@ -1,3 +1,5 @@
+import { printServiceOrder } from '../../lib/serviceOrderPrint';
+import type { ReceiptDetails } from '../../lib/salePrint';
 import { useEffect, useRef, useState } from 'react';
 import type { PartnerCustomer, ServiceOrder, ServiceOrderItem, ServiceOrderPhoto, ServiceOrderStatus, ServiceOrderApprovalStatus } from '../../types';
 import { supabase } from '../../lib/supabase';
@@ -10,11 +12,11 @@ const statuses: { value: ServiceOrderStatus; label: string }[] = [
   { value: 'aguardando_peca', label: 'Aguardando peça' }, { value: 'aguardando_cliente', label: 'Aguardando cliente' },
   { value: 'pronta', label: 'Pronta' }, { value: 'finalizada', label: 'Finalizada / entregue' }, { value: 'cancelada', label: 'Cancelada' },
 ];
-type Props = { order: ServiceOrder; customers: PartnerCustomer[]; onClose: () => void; onChanged: (order: ServiceOrder) => void };
+type Props = { printDetails?: ReceiptDetails; warrantyTerms?: string; order: ServiceOrder; customers: PartnerCustomer[]; onClose: () => void; onChanged: (order: ServiceOrder) => void };
 export function ServiceOrderDetails(props: Props) {
   return <ServiceOrderDetailsContent key={`${props.order.user_id}:${props.order.branch_id}:${props.order.id}`} {...props} />;
 }
-function ServiceOrderDetailsContent({ order, customers, onClose, onChanged }: Props) {
+function ServiceOrderDetailsContent({ order, customers, onClose, onChanged, printDetails, warrantyTerms }: Props) {
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const [status, setStatus] = useState(order.status);
@@ -32,6 +34,7 @@ function ServiceOrderDetailsContent({ order, customers, onClose, onChanged }: Pr
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(true);
+  const [printReady, setPrintReady] = useState(false);
   const [invoiceKnown, setInvoiceKnown] = useState(false);
   const [readVersion, setReadVersion] = useState(0);
   const lock = useRef(false);
@@ -46,7 +49,7 @@ function ServiceOrderDetailsContent({ order, customers, onClose, onChanged }: Pr
   useEffect(() => {
     let active = true;
     if (!supabase) { setLoading(false); setError('Conexão indisponível.'); return; }
-    setLoading(true); setInvoiceKnown(false); setError('');
+    setLoading(true); setPrintReady(false); setInvoiceKnown(false); setError('');
     const client = supabase;
     void (async () => {
       try {
@@ -62,7 +65,7 @@ function ServiceOrderDetailsContent({ order, customers, onClose, onChanged }: Pr
           if (error) throw error;
           return { ...photo, url: data?.signedUrl };
         }));
-        if (active) { setParts((items.data ?? []) as ServiceOrderItem[]); setPhotos(images); setInvoiceId(invoice.data?.id ?? null); }
+        if (active) { setParts((items.data ?? []) as ServiceOrderItem[]); setPhotos(images); setInvoiceId(invoice.data?.id ?? null); setPrintReady(true); }
         const pending = await pendingPhotos(fileKey);
         if (active) setQueuedPhotos(pending);
       } catch (cause) { if (active) setError(cause && typeof cause === 'object' && 'message' in cause ? String(cause.message) : 'Não foi possível carregar os detalhes e fotos.'); }
@@ -93,6 +96,12 @@ function ServiceOrderDetailsContent({ order, customers, onClose, onChanged }: Pr
     {error && <p role="alert">{error}</p>}{message && <p role="status">{message}</p>}
     {loading && <p role="status">Carregando detalhes da OS...</p>}
     {error && <button type="button" disabled={busy || loading} onClick={() => setReadVersion(value => value + 1)}>Recarregar detalhes da OS</button>}
+    <button type="button" className="rma-advance-btn" disabled={busy || loading || !printReady} onClick={() => {
+      setError('');
+      try { printServiceOrder(order, parts, printDetails, warrantyTerms, customers.find(customer => customer.id === order.customer_id)); }
+      catch (cause) { setError(cause instanceof Error ? cause.message : 'Não foi possível abrir a impressão da OS.'); }
+    }}>Imprimir OS / PDF</button>
+    <p>A impressão usa os dados salvos da OS. Salve as alterações antes de imprimir.</p>
     <p>Cliente: {order.customer_name || 'Não informado'} · Total: {money.format(Number(order.total))}</p>
     <section aria-label="Dados do cliente" style={{ padding: 14, borderRadius: 10, border: '1px solid rgba(127,127,127,.25)' }}>
       <h4 style={{ margin: '0 0 10px' }}>Dados do cliente</h4>

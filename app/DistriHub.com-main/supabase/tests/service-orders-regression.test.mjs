@@ -11,6 +11,7 @@ const require=createRequire(import.meta.url);
 const compile=source=>ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,target:ts.ScriptTarget.ES2020}}).outputText;
 const moduleSource=compile(await readFile(new URL('../../src/components/partner/ServiceOrdersModule.tsx',import.meta.url),'utf8'));
 const detailSource=compile(await readFile(new URL('../../src/components/partner/ServiceOrderDetails.tsx',import.meta.url),'utf8'));
+const printSource=compile(await readFile(new URL('../../src/lib/serviceOrderPrint.ts',import.meta.url),'utf8'));
 const service={};vm.runInNewContext(compile(await readFile(new URL('../../src/lib/serviceOrders.ts',import.meta.url),'utf8')),{exports:service,Error});
 const attempt={};vm.runInNewContext(compile(await readFile(new URL('../../src/lib/operationAttempts.ts',import.meta.url),'utf8')),{exports:attempt,crypto:{randomUUID}});
 const orderA={id:'order-a',user_id:'owner',branch_id:'branch-a',customer_id:'client-a',customer_name:'Cliente A',equipment_type:'Equipamento A',equipment_identification:'A',status:'em_andamento',approval_status:'aprovado',technician_name:'Técnico A',total:100};
@@ -34,11 +35,13 @@ async function harness({orders=[],read,rpc,invoice=null,blocked=false,values=new
   then(done,fail){queries.push({...args});const result=read?.(args)??{data:table==='service_orders'?orders:[],error:null};return Promise.resolve(result).then(done,fail);}};return q;
  },storage:{from:()=>({createSignedUrl:async()=>({data:{signedUrl:'photo'},error:null})})}};
  const drafts={'service-order:open':true,'service-order:equipment-type':'Celular','service-order:identification':'Inicial','service-order:checklist':{screen:true,touch:true,camera:true},'service-order:customer-acknowledged':true};
- const details={},module={};
+ const details={},module={},printing={};
+ vm.runInNewContext(printSource,{exports:printing,require:()=>({money:{format:String}}),window:win});
  const load=name=>{
   if(name==='../../lib/supabase')return {supabase:client};
   if(name==='../../hooks/useSessionDraft')return {useSessionDraftState:(key,initial)=>React.useState(drafts[key]??initial)};
   if(name==='../../lib/serviceOrders')return service;
+  if(name==='../../lib/serviceOrderPrint')return printing;
   if(name==='../../lib/operationAttempts')return {...attempt,pendingPhotos:async()=>[]};
   if(name==='./ServiceOrderDetails')return details;
   if(name==='../../utils')return {money:{format:String}};

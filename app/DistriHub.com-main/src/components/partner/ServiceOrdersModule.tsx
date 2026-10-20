@@ -1,3 +1,4 @@
+import type { ReceiptDetails } from '../../lib/salePrint';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Camera,
@@ -33,6 +34,7 @@ type Props = {
   customers: PartnerCustomer[];
   products: PartnerProduct[];
   selectedBranchId: string | null;
+  printDetails?: ReceiptDetails;
   warrantyTerms?: string;
   onUpdateWarrantyTerms?: (value: string) => void;
   isActive?: boolean;
@@ -99,6 +101,7 @@ function ServiceOrdersContent({
   products,
   selectedBranchId,
   warrantyTerms,
+  printDetails,
   isActive = true,
 }: Props) {
   const [orders, setOrders] = useState<ServiceOrder[]>([]);
@@ -599,7 +602,7 @@ function ServiceOrdersContent({
       {pendingAttempt && <div className="module-card"><p>Existe uma OS aguardando confirmação. Recupere esta tentativa antes de cadastrar outra.</p><button type="button" disabled={saving} onClick={() => restorePayload(pendingAttempt.payload)}>Restaurar dados enviados</button></div>}
       {loadError && <div role="alert"><p>{loadError}</p><button type="button" className="rma-advance-btn" disabled={loadingOrders} onClick={() => setReadVersion(value => value + 1)}>Tentar carregar OS novamente</button></div>}
       {loadingOrders && <p role="status">Carregando Ordens de Serviço...</p>}
-      {details && <ServiceOrderDetails order={details} customers={customers} onClose={() => setDetails(null)} onChanged={order => { if (!mounted.current) return; readGeneration.current++; setLoadingOrders(false); setLoadError(null); setDetails(order); setOrders(current => current.map(existing => existing.id === order.id ? order : existing)); onChanged?.(); }} />}
+      {details && <ServiceOrderDetails printDetails={printDetails} warrantyTerms={warrantyTerms} order={details} customers={customers} onClose={() => setDetails(null)} onChanged={order => { if (!mounted.current) return; readGeneration.current++; setLoadingOrders(false); setLoadError(null); setDetails(order); setOrders(current => current.map(existing => existing.id === order.id ? order : existing)); onChanged?.(); }} />}
       {open && (
         <div
           className="partner-card service-order-form"
