@@ -1,4 +1,5 @@
 import { printServiceOrder } from '../../lib/serviceOrderPrint';
+import { checklistItems, checklistResults, checklistComplete, checklistText, readChecklist, withoutExitChecklist, type Checklist } from '../../lib/serviceChecklist';
 import type { ReceiptDetails } from '../../lib/salePrint';
 import { useEffect, useRef, useState } from 'react';
 import type { PartnerCustomer, ServiceOrder, ServiceOrderItem, ServiceOrderPhoto, ServiceOrderStatus, ServiceOrderApprovalStatus } from '../../types';
@@ -22,7 +23,8 @@ function ServiceOrderDetailsContent({ order, customers, onClose, onChanged, prin
   const [status, setStatus] = useState(order.status);
   const [approval, setApproval] = useState<ServiceOrderApprovalStatus>(order.approval_status ?? 'aguardando_aprovacao');
   const [technician, setTechnician] = useState(order.technician_name ?? '');
-  const [reason, setReason] = useState(order.approval_notes ?? '');
+  const [reason, setReason] = useState(withoutExitChecklist(order.approval_notes));
+  const [exitChecklist, setExitChecklist] = useState<Checklist>(() => readChecklist(order.approval_notes, order.equipment_type, 'saída'));
   const [customerId, setCustomerId] = useState(order.customer_id ?? '');
   const [parts, setParts] = useState<ServiceOrderItem[]>([]);
   const [photos, setPhotos] = useState<(ServiceOrderPhoto & { url?: string })[]>([]);
@@ -84,7 +86,11 @@ function ServiceOrderDetailsContent({ order, customers, onClose, onChanged, prin
     await action(async () => {
       if (!supabase) throw new Error('Conexão indisponível.');
       if (!invoiceKnown) throw new Error('Confira a cobrança da OS antes de salvar. Recarregue os detalhes.');
-      const { data, error } = await supabase.rpc('update_service_order_workflow_checked', { p_order_id: order.id, p_status: status, p_technician: technician, p_approval: approval, p_reason: reason, p_customer_id: customerId || null, p_clear_customer: !customerId && Boolean(order.customer_id) });
+      const hasExit = Object.values(exitChecklist).some(Boolean);
+      if ((hasExit || ['finalizada', 'entregue'].includes(status)) && !checklistComplete(order.equipment_type, exitChecklist)) throw new Error('Complete o checklist de saída. Para itens sem teste, selecione Não testado.');
+      const savedReason = hasExit ? [reason.trim(), checklistText(order.equipment_type, exitChecklist, 'saída')].filter(Boolean).join('\n\n') : reason;
+      if (savedReason.length > 4000) throw new Error('Reduza a observação para salvar o checklist completo (limite total de 4.000 caracteres).');
+      const { data, error } = await supabase.rpc('update_service_order_workflow_checked', { p_order_id: order.id, p_status: status, p_technician: technician, p_approval: approval, p_reason: savedReason, p_customer_id: customerId || null, p_clear_customer: !customerId && Boolean(order.customer_id) });
       if (error || !data) throw error ?? new Error('Situação não confirmada.');
       if (!mounted.current) return;
       if (data.id !== order.id || data.user_id !== order.user_id || data.branch_id !== order.branch_id) throw new Error('Confirmação inválida da OS. Recarregue os detalhes.');
@@ -120,9 +126,20 @@ function ServiceOrderDetailsContent({ order, customers, onClose, onChanged, prin
       <label>Aprovação do orçamento<select value={approval} onChange={e => setApproval(e.target.value as ServiceOrderApprovalStatus)}><option value="aguardando_aprovacao">Aguardando aprovação</option><option value="aprovado">Aprovado</option><option value="reprovado">Reprovado</option></select></label>
       <label>Situação<select value={status} onChange={e => setStatus(e.target.value as ServiceOrderStatus)}>{statuses.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}</select></label>
       <label>Observação / motivo<textarea required={status === 'cancelada'} minLength={status === 'cancelada' ? 5 : undefined} maxLength={4000} value={reason} onChange={e => setReason(e.target.value)} /></label>
+      <h4>Checklist de saída</h4>
+      <p>Confira após o reparo e antes de entregar. Os resultados são salvos junto com a situação da OS. Avarias e sinais de umidade devem ser marcados como Com defeito.</p>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: 12 }}>
+        {checklistItems(order.equipment_type).map(([key, label]) => <label key={key}>{label}
+          <select aria-label={`Saída: ${label}`} value={exitChecklist[key] || ''} onChange={event => { if (!lock.current) setExitChecklist(current => ({ ...current, [key]: event.target.value as Checklist[string] })); }}>
+            <option value="">Selecione</option>{checklistResults.map(value => <option key={value} value={value}>{value}</option>)}
+          </select>
+        </label>)}
+      </div>
+      <button type="button" onClick={() => { if (!lock.current) setExitChecklist(current => Object.fromEntries(checklistItems(order.equipment_type).map(([key]) => [key, current[key] || 'Não testado']))); }}>Marcar pendentes como não testados</button>
       {status === 'cancelada' && <p>O cancelamento devolve as peças baixadas ao estoque e cancela a fatura sem recebimentos. OS com valores recebidos exige conciliação financeira.</p>}
       <button type="submit" className="module-submit-btn">{busy ? 'Salvando...' : 'Salvar situação'}</button>
     </fieldset></form>
+    {order.approval_notes?.includes('[Checklist de saída]') && <section aria-label="Vistoria de saída salva"><h4>Vistoria de saída salva</h4><p style={{ whiteSpace: 'pre-wrap' }}>{order.approval_notes}</p></section>}
     <h4>Peças e serviços</h4>{parts.map(p => <p key={p.id}>{p.product_name}{!p.product_id && ' (peça manual / terceiros)'} · {p.quantity} × {money.format(Number(p.unit_price))}</p>)}
     <h4>Fotos de entrada e saída</h4><div className="service-order-photos">{photos.map(photo => <a key={photo.id} href={photo.url} target="_blank" rel="noopener noreferrer"><img src={photo.url} alt={photo.label} loading="lazy" /><span>{photo.photo_type === 'entry' ? 'Entrada' : 'Saída'} · {photo.label}</span></a>)}</div>
     <div className="rma-form inline"><label>Tipo de foto<select disabled={busy || loading} value={photoType} onChange={e => setPhotoType(e.target.value as 'entry' | 'exit')}><option value="entry">Entrada</option><option value="exit">Saída</option></select></label><label>Adicionar fotos<input type="file" accept="image/*" multiple disabled={busy || loading || order.status === 'cancelada'} onChange={e => {

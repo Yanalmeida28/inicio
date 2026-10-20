@@ -53,6 +53,8 @@ export function printServiceOrder(order: ServiceOrder, items: ServiceOrderItem[]
     ['Carcaça', order.shell_condition], ['Laterais', order.side_condition], ['Traseira', order.rear_condition], ['Conectores', order.connectors_condition],
     ['Botões', order.buttons_condition], ['Outros danos', order.other_damage], ['Inspeção', order.inspection_notes], ['Observações', order.observations],
   ]) if (value) node('p', `${label}: ${value}`);
+  node('h2', 'Conferência de saída');
+  node('p', order.approval_notes?.includes('[Checklist de saída]') ? order.approval_notes : 'Checklist de saída não registrado.');
   node('h2', 'Peças e serviços');
   const table = node('table', ''); const header = node('tr', '', node('thead', '', table));
   for (const label of ['Descrição', 'Qtd.', 'Valor unitário', 'Subtotal']) node('th', label, header);

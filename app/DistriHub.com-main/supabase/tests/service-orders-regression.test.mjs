@@ -12,6 +12,7 @@ const compile=source=>ts.transpileModule(source,{compilerOptions:{module:ts.Modu
 const moduleSource=compile(await readFile(new URL('../../src/components/partner/ServiceOrdersModule.tsx',import.meta.url),'utf8'));
 const detailSource=compile(await readFile(new URL('../../src/components/partner/ServiceOrderDetails.tsx',import.meta.url),'utf8'));
 const printSource=compile(await readFile(new URL('../../src/lib/serviceOrderPrint.ts',import.meta.url),'utf8'));
+const checklist={};vm.runInNewContext(compile(await readFile(new URL('../../src/lib/serviceChecklist.ts',import.meta.url),'utf8')),{exports:checklist});
 const service={};vm.runInNewContext(compile(await readFile(new URL('../../src/lib/serviceOrders.ts',import.meta.url),'utf8')),{exports:service,Error});
 const attempt={};vm.runInNewContext(compile(await readFile(new URL('../../src/lib/operationAttempts.ts',import.meta.url),'utf8')),{exports:attempt,crypto:{randomUUID}});
 const orderA={id:'order-a',user_id:'owner',branch_id:'branch-a',customer_id:'client-a',customer_name:'Cliente A',equipment_type:'Equipamento A',equipment_identification:'A',status:'em_andamento',approval_status:'aprovado',technician_name:'Técnico A',total:100};
@@ -34,13 +35,14 @@ async function harness({orders=[],read,rpc,invoice=null,blocked=false,values=new
   maybeSingle(){return Promise.resolve({data:invoice?{id:invoice}:null,error:null});},
   then(done,fail){queries.push({...args});const result=read?.(args)??{data:table==='service_orders'?orders:[],error:null};return Promise.resolve(result).then(done,fail);}};return q;
  },storage:{from:()=>({createSignedUrl:async()=>({data:{signedUrl:'photo'},error:null})})}};
- const drafts={'service-order:open':true,'service-order:equipment-type':'Celular','service-order:identification':'Inicial','service-order:checklist':{screen:true,touch:true,camera:true},'service-order:customer-acknowledged':true};
+ const drafts={'service-order:open':true,'service-order:equipment-type':'Celular','service-order:identification':'Inicial','service-order:checklist':Object.fromEntries(checklist.checklistItems('Celular').map(([key])=>[key,'Não testado'])),'service-order:customer-acknowledged':true};
  const details={},module={},printing={};
  vm.runInNewContext(printSource,{exports:printing,require:()=>({money:{format:String}}),window:win});
  const load=name=>{
   if(name==='../../lib/supabase')return {supabase:client};
   if(name==='../../hooks/useSessionDraft')return {useSessionDraftState:(key,initial)=>React.useState(drafts[key]??initial)};
   if(name==='../../lib/serviceOrders')return service;
+  if(name==='../../lib/serviceChecklist')return checklist;
   if(name==='../../lib/serviceOrderPrint')return printing;
   if(name==='../../lib/operationAttempts')return {...attempt,pendingPhotos:async()=>[]};
   if(name==='./ServiceOrderDetails')return details;
@@ -210,4 +212,33 @@ test('uncertain creation retains the same ID and retries once without changing i
 });
 test('malformed pending storage is preserved for reconciliation and never creates an untracked OS',async()=>{
  const values=new Map([['distrihub-operation:owner:owner:branch-a:service-order','{invalid']]);const h=await harness({values});await act(async()=>save().props.onClick());assert.equal(h.calls.length,0);assert.equal(values.size,1);assert.equal(save().props.disabled,false);
+});
+
+test('entry checklist saves defects and not-applicable results, and refuses unanswered items',async()=>{
+ const h=await harness();
+ const change=async(label,value)=>act(async()=>view.root.findByProps({'aria-label':label}).props.onChange({target:{value}}));
+ await change('Entrada: Touch','');await act(async()=>save().props.onClick());assert.equal(h.calls.length,0);
+ await change('Entrada: Touch','Com defeito');await change('Entrada: Biometria / reconhecimento facial','Não se aplica');
+ await act(async()=>save().props.onClick());
+ assert.match(h.calls[0].args.p_payload.notes,/Touch: Com defeito/);
+ assert.match(h.calls[0].args.p_payload.notes,/Biometria \/ reconhecimento facial: Não se aplica/);
+ assert.match(h.calls[0].args.p_payload.notes,/Câmera traseira: Não testado/);
+});
+
+test('exit checklist is saved by the authorized workflow, restores separately, and blocks incomplete delivery',async()=>{
+ const mobile={...orderA,equipment_type:'Celular'};
+ const h=await harness({detail:mobile});
+ const selects=view.root.findAllByType('select');
+ const status=selects.find(node=>node.props.value==='em_andamento');
+ await act(async()=>status.props.onChange({target:{value:'finalizada'}}));
+ await act(async()=>view.root.findByType('form').props.onSubmit({preventDefault(){}}));
+ assert.equal(h.calls.length,0);assert.match(rendered(),/Complete o checklist/);
+ await act(async()=>button('Marcar pendentes como não testados').props.onClick());
+ await act(async()=>view.root.findByProps({'aria-label':'Saída: Touch'}).props.onChange({target:{value:'Funcionando'}}));
+ await act(async()=>view.root.findByType('form').props.onSubmit({preventDefault(){}}));
+ assert.equal(h.calls[0].args.p_status,'finalizada');assert.match(h.calls[0].args.p_reason,/Touch: Funcionando/);
+ assert.match(h.calls[0].args.p_reason,/Câmera traseira: Não testado/);
+ await h.update({order:{...mobile,id:'other-os',approval_notes:h.calls[0].args.p_reason}});
+ assert.equal(view.root.findByProps({'aria-label':'Saída: Touch'}).props.value,'Funcionando');
+ const reason=view.root.findByType('textarea');assert.equal(reason.props.value,'');
 });

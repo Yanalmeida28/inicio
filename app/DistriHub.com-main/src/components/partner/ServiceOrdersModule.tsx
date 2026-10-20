@@ -1,4 +1,5 @@
 import type { ReceiptDetails } from '../../lib/salePrint';
+import { checklistItems, checklistResults, checklistComplete as isChecklistComplete, checklistText, readChecklist, validChecklistResult, type Checklist } from '../../lib/serviceChecklist';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Camera,
@@ -136,7 +137,7 @@ function ServiceOrdersContent({
   const [damage, setDamage] = useSessionDraftState('service-order:damage', '');
   const [notes, setNotes] = useSessionDraftState('service-order:notes', '');
   const [labor, setLabor] = useSessionDraftState('service-order:labor', '');
-  const [preRepairChecklist, setPreRepairChecklist] = useSessionDraftState('service-order:checklist', { screen: false, touch: false, camera: false });
+  const [preRepairChecklist, setPreRepairChecklist] = useSessionDraftState<Checklist>('service-order:checklist', {});
   const [customerAcknowledged, setCustomerAcknowledged] = useSessionDraftState('service-order:customer-acknowledged', false);
 
   const [productSearch, setProductSearch] = useSessionDraftState('service-order:product-search', '');
@@ -201,10 +202,8 @@ function ServiceOrdersContent({
   const laborTotal = Number(labor) || 0;
 
   const total = partsTotal + laborTotal;
-  const checklistLabels = /celular|smartphone|tablet|iphone/i.test(equipmentType)
-    ? [['screen', 'Tela acende'], ['touch', 'Touch responde'], ['camera', 'Câmera frontal']] as const
-    : [['screen', 'Equipamento identificado'], ['touch', 'Estado externo registrado'], ['camera', 'Acessórios conferidos']] as const;
-  const checklistComplete = Object.values(preRepairChecklist).every(Boolean);
+  const checklistLabels = checklistItems(equipmentType);
+  const checklistComplete = isChecklistComplete(equipmentType, preRepairChecklist);
   function restorePayload(payload: ServiceOrderPayload) {
     setCustomerId(payload.manual_customer ? manualCustomerOption : payload.customer_id ?? '');
     setManualCustomerName(payload.manual_customer?.name ?? '');
@@ -215,7 +214,7 @@ function ServiceOrdersContent({
     setSerial(payload.serial); setAccessories(payload.accessories); setCondition(payload.condition); setDamage(payload.damage);
     setNotes(payload.draft_notes ?? payload.notes); setLabor(String(payload.labor_total));
     setItems(payload.items.map(item => ({ ...item, name: item.product_id ? products.find(p => p.id === item.product_id)?.name ?? 'Peça' : item.name ?? 'Peça manual', stock: products.find(p => p.id === item.product_id)?.stock ?? 0, is_service: Boolean(products.find(p => p.id === item.product_id)?.is_service) })));
-    setPreRepairChecklist({ screen: true, touch: true, camera: true }); setCustomerAcknowledged(true); setOpen(true);
+    setPreRepairChecklist(readChecklist(payload.notes, payload.equipment_type, 'entrada')); setCustomerAcknowledged(true); setOpen(true);
   }
   useEffect(() => {
     let active = true;
@@ -379,7 +378,7 @@ function ServiceOrdersContent({
     setDamage('');
     setNotes('');
     setLabor('');
-    setPreRepairChecklist({ screen: false, touch: false, camera: false });
+    setPreRepairChecklist({});
     setCustomerAcknowledged(false);
     setProductSearch('');
     setItems([]);
@@ -475,7 +474,7 @@ function ServiceOrdersContent({
   async function saveOrder() {
     if (saveLock.current || photoLock.current) return;
     if (!supabase || !userId || !selectedBranchId) { setSaveError('Selecione uma filial e entre na conta.'); return; }
-    if (!checklistComplete || !customerAcknowledged) { setSaveError('Complete a vistoria e confirme as condições de entrada.'); return; }
+    if (!pendingAttempt && (!checklistComplete || !customerAcknowledged)) { setSaveError('Complete a vistoria e confirme as condições de entrada.'); return; }
     if (!equipmentType.trim() && !identification.trim() && !serial.trim()) { setSaveError('Informe o equipamento ou identificação.'); return; }
     if (!Number.isFinite(Number(labor || 0)) || Number(labor || 0) < 0) { setSaveError('Informe um valor de mão de obra válido.'); return; }
     if (customerId === manualCustomerOption && !manualCustomerName.trim()) { setSaveError('Informe o nome do cliente.'); return; }
@@ -498,7 +497,7 @@ function ServiceOrdersContent({
         segment, equipment_type: equipmentType,
         identification, serial, accessories, condition, damage,
         draft_notes: notes,
-        notes: pendingAttempt?.payload.notes ?? notes.trim() + String.fromCharCode(10, 10) + 'Checklist pré-reparo: ' + checklistLabels.map(([, label]) => label).join('; ') + '.' + String.fromCharCode(10) + 'Cliente ciente das condições de entrada: sim.',
+        notes: pendingAttempt?.payload.notes ?? notes.trim() + '\n\n' + checklistText(equipmentType, preRepairChecklist, 'entrada') + '\nCliente ciente das condições de entrada: sim.',
         labor_total: Math.round(Number(labor || 0) * 100) / 100,
         items: items.map(item => ({ product_id: item.product_id, quantity: item.quantity, unit_price: item.unit_price, ...(!item.product_id ? { name: item.name, manual_id: item.manual_id } : {}) })),
         photo_ids: pendingAttempt?.payload.photo_ids ?? photos.map(p => ({ id: p.id, type: p.type, label: p.label })),
@@ -803,8 +802,8 @@ function ServiceOrdersContent({
           <div className="service-order-section" style={{ marginTop: 18, padding: 18, borderRadius: 14, backgroundColor: '#102638', border: '1px solid #29465f' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
               <div>
-                <h3 style={{ margin: 0, color: '#edf5fc' }}>Checklist pré-reparo</h3>
-                <small style={{ color: '#adc2d6' }}>Registre a condição funcional antes de iniciar o serviço.</small>
+                <h3 style={{ margin: 0, color: '#edf5fc' }}>Checklist de entrada</h3>
+                <small style={{ color: '#adc2d6' }}>Registre cada resultado antes do reparo. Use Com defeito para avarias ou sinais de umidade. Se não foi possível avaliar, escolha Não testado.</small>
               </div>
               <span style={{ padding: '5px 9px', borderRadius: 999, background: checklistComplete ? '#12382d' : '#102638', color: checklistComplete ? '#4ade80' : '#fbbf24', fontSize: 11, fontWeight: 700 }}>
                 {checklistComplete ? 'Completo' : 'Obrigatório'}
@@ -812,12 +811,15 @@ function ServiceOrdersContent({
             </div>
             <div className="service-order-fields" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))', gap: 10, marginTop: 14 }}>
               {checklistLabels.map(([key, label]) => (
-                <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 11, border: '1px solid #29465f', borderRadius: 9, color: '#edf5fc', fontSize: 13, cursor: 'pointer' }}>
-                  <input type="checkbox" checked={preRepairChecklist[key]} onChange={(event) => setPreRepairChecklist((current) => ({ ...current, [key]: event.target.checked }))} />
+                <label key={key} style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 11, border: '1px solid #29465f', borderRadius: 9, color: '#edf5fc', fontSize: 13, cursor: 'pointer' }}>
                   {label}
+                  <select aria-label={`Entrada: ${label}`} style={{ ...inputDarkStyle, minWidth: 0 }} value={validChecklistResult(preRepairChecklist[key]) ? preRepairChecklist[key] : ''} onChange={(event) => { if (!saveLock.current) setPreRepairChecklist((current) => ({ ...current, [key]: event.target.value as Checklist[string] })); }}>
+                    <option value="">Selecione</option>{checklistResults.map(value => <option key={value} value={value}>{value}</option>)}
+                  </select>
                 </label>
               ))}
             </div>
+            <button type="button" className="rma-advance-btn" onClick={() => { if (!saveLock.current) setPreRepairChecklist(current => Object.fromEntries(checklistLabels.map(([key]) => [key, validChecklistResult(current[key]) ? current[key] : 'Não testado']))); }}>Marcar pendentes como não testados</button>
             {possibleRecurrence && (
               <div style={{ marginTop: 12, padding: 11, borderRadius: 9, background: '#102638', border: '1px solid #29465f', color: '#fbbf24', fontSize: 12 }}>
                 Possível reincidência: já existe uma OS com a mesma identificação ou número de série nesta filial. Verifique a garantia antes de prosseguir.
