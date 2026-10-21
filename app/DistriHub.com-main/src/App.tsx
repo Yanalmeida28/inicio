@@ -1,7 +1,7 @@
 import { Suspense, lazy, useEffect, useState } from 'react';
 import { ArrowLeft, Lock, ShieldAlert, Eye, KeyRound, Mail, ShieldCheck, CheckCircle2 } from 'lucide-react';
 import type { BusinessSegment } from './types';
-import { useAuth } from './hooks/useAuth';
+import { readWithJwtRecovery, useAuth } from './hooks/useAuth';
 import { useSuperAdminAuth } from './hooks/useSuperAdminAuth';
 import { HubHome } from './components/HubHome';
 import { supabase } from './lib/supabase';
@@ -64,7 +64,8 @@ function App() {
     async function restorePanel() {
       try {
         if (!supabase) throw new Error('Não foi possível conectar para recuperar o painel.');
-        const { data, error } = await supabase.rpc('is_super_admin');
+        const client = supabase;
+        const { data, error } = await readWithJwtRecovery(() => client.rpc('is_super_admin'), () => !cancelled);
         if (error || typeof data !== 'boolean') throw new Error('Não foi possível confirmar o acesso ao painel. Tente novamente.');
         if (cancelled) return;
         setSessionAccess({ userId: sessionUserId!, master: data, error: null });
@@ -194,6 +195,7 @@ function App() {
             user={auth.user}
             identity={auth.identity}
             identityError={auth.error}
+            onRetryIdentity={auth.retrySession}
             segment={segment}
             initialTab={partnerInitialTab}
             onConsumeInitialTab={() => setPartnerInitialTab(undefined)}

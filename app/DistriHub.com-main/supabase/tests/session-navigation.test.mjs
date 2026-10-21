@@ -9,13 +9,18 @@ import ts from '../../node_modules/typescript/lib/typescript.js';
 
 const require = createRequire(import.meta.url);
 const source = await readFile(new URL('../../src/App.tsx', import.meta.url), 'utf8');
-async function harness({ user = { id: 'owner' }, master = false, permissionError = null, loading = false, recovery = false } = {}) {
+const clockHelpers = {};
+vm.runInNewContext(ts.transpileModule(await readFile(new URL('../../src/hooks/useAuth.ts', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText, {
+  exports: clockHelpers, Error, window: { setTimeout: fn => fn() },
+  require: name => name === '../utils' || name === '../lib/supabase' ? {} : require(name),
+});
+async function harness({ user = { id: 'owner' }, master = false, permissionError = null, loading = false, recovery = false, clockFailures = 0 } = {}) {
   let auth, renderer, signouts = 0, checks = 0;
   function partner({ onBack }) { return React.createElement('button', { onClick: onBack, 'data-panel': 'partner' }, 'Sair do app'); }
   function admin({ onBack }) { return React.createElement('button', { onClick: onBack, 'data-panel': 'master' }, 'Sair do app'); }
   function login(props) { return React.createElement('div', { 'data-panel': 'login', 'data-recovery': props.recoveryMode }); }
   const dependencies = {
-    './hooks/useAuth': { useAuth: () => auth },
+    './hooks/useAuth': { useAuth: () => auth, readWithJwtRecovery: clockHelpers.readWithJwtRecovery },
     './hooks/useSuperAdminAuth': { useSuperAdminAuth: () => ({}) },
     './hooks/useCart': { useCart: () => ({ cart: [], cartCount: 0, cartTotal: 0 }) },
     './components/CartDrawer': { CartDrawer: () => null },
@@ -23,7 +28,7 @@ async function harness({ user = { id: 'owner' }, master = false, permissionError
     './components/PartnerPanel': { PartnerPanel: partner },
     './components/AdminPanel': { AdminPanel: admin },
     './components/AuthScreen': { AuthScreen: login },
-    './lib/supabase': { supabase: { async rpc() { checks++; return { data: master, error: permissionError }; } } },
+    './lib/supabase': { supabase: { async rpc() { checks++; return clockFailures-- > 0 ? { data: null, error: { code: 'PGRST303', message: 'JWT issued at future' } } : { data: master, error: permissionError }; } } },
     './lib/b2bOrder': {},
   };
   const exports = {};
@@ -34,6 +39,7 @@ async function harness({ user = { id: 'owner' }, master = false, permissionError
     async signOut() { signouts++; auth = { ...auth, user: null }; renderer.update(React.createElement(exports.default)); } };
   await act(async () => { renderer = TestRenderer.create(React.createElement(exports.default)); });
   return { renderer, get signouts() { return signouts; }, get checks() { return checks; },
+    recoverClock() { clockFailures = 0; },
     async update(changes) { auth = { ...auth, ...changes }; await act(async () => renderer.update(React.createElement(exports.default))); },
     async close() { await act(async () => renderer.unmount()); } };
 }
@@ -49,6 +55,22 @@ test('reload restores the partner panel from an existing session without logging
   const reloaded = await harness();
   assert.ok(reloaded.renderer.root.findByProps({ 'data-panel': 'partner' })); assert.equal(reloaded.signouts, 0);
   await reloaded.close();
+});
+
+test('panel permission check also recovers from future JWT without inferring administrator access', async () => {
+  const h=await harness({clockFailures:2});
+  try { assert.equal(h.checks,3);assert.ok(h.renderer.root.findByProps({'data-panel':'partner'}));assert.equal(h.signouts,0); }
+  finally { await h.close(); }
+});
+
+test('persistent clock failure in permission check stays blocked and the retry button validates again', async () => {
+  const h=await harness({clockFailures:99});
+  try {
+    assert.equal(h.checks,4);assert.equal(h.renderer.root.findAllByProps({'data-panel':'partner'}).length,0);
+    assert.match(JSON.stringify(h.renderer.toJSON()),/diferença de horário/);
+    h.recoverClock();await act(async()=>h.renderer.root.findAllByType('button').find(button=>button.children.includes('Tentar novamente')).props.onClick());
+    assert.equal(h.checks,5);assert.ok(h.renderer.root.findByProps({'data-panel':'partner'}));assert.equal(h.signouts,0);
+  } finally { await h.close(); }
 });
 
 test('master session is restored only after server permission validation and explicit exit ends it', async () => {

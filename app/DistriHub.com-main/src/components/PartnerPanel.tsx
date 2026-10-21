@@ -105,6 +105,7 @@ type PartnerPanelProps = {
   user: User | null;
   identity: PartnerIdentity | null;
   identityError: string | null;
+  onRetryIdentity?: () => void;
   segment: BusinessSegment;
   initialTab?: string;
   onConsumeInitialTab?: () => void;
@@ -280,6 +281,7 @@ export function PartnerPanel({
   user,
   identity,
   identityError,
+  onRetryIdentity,
   segment,
   initialTab,
   onConsumeInitialTab,
@@ -1653,9 +1655,11 @@ export function PartnerPanel({
   if (identityError) {
     return (
       <div className="partner-panel">
-        <p className="partner-loading">
+        <p className="partner-loading" role="alert">
           {identityError}
         </p>
+        {onRetryIdentity && <button type="button" className="module-submit-btn" onClick={onRetryIdentity}>Tentar novamente</button>}
+        <button type="button" className="rma-advance-btn" onClick={onBack}>Sair da conta</button>
       </div>
     );
   }

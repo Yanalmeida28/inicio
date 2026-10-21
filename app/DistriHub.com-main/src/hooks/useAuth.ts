@@ -42,6 +42,31 @@ type AuthAction =
   | { type: 'SET_IDENTITY'; identity: PartnerIdentity | null }
   | { type: 'SET_ERROR'; error: string | null };
 
+function isFutureJwtError(error: unknown): boolean {
+  if (!error || typeof error !== 'object' || !('message' in error)) return false;
+  return typeof error.message === 'string' && error.message.trim().toLowerCase() === 'jwt issued at future'
+    && (!('code' in error) || error.code === 'PGRST303');
+}
+
+// Retry only authentication reads rejected before execution by PostgREST's
+// clock check. Never refresh/mint tokens, replay writes or bypass validation.
+export async function readWithJwtRecovery<T extends { error?: unknown }>(
+  read: () => PromiseLike<T>,
+  isCurrent: () => boolean = () => true,
+): Promise<T> {
+  const delays = [1000, 2000, 4000];
+  for (let attempt = 0; ; attempt++) {
+    if (!isCurrent()) throw new Error('Leitura de sessão substituída.');
+    const result = await read();
+    if (!isCurrent()) throw new Error('Leitura de sessão substituída.');
+    if (!isFutureJwtError(result.error)) return result;
+    if (attempt === delays.length) {
+      throw new Error('O serviço de autenticação está com uma diferença de horário temporária. Aguarde alguns segundos e clique em Tentar novamente.');
+    }
+    await new Promise<void>(resolve => window.setTimeout(resolve, delays[attempt]));
+  }
+}
+
 function authReducer(state: AuthState, action: AuthAction): AuthState {
   switch (action.type) {
     case 'RESET':
@@ -101,18 +126,19 @@ export function useAuth(): UseAuthReturn {
   const signupInProgressRef = useRef(false);
   const identityRequestRef = useRef(0);
 
-  const resolveIdentity = useCallback(async (authUserId: string): Promise<PartnerIdentity> => {
+  const resolveIdentity = useCallback(async (authUserId: string, isCurrent: () => boolean = () => true): Promise<PartnerIdentity> => {
     if (!supabase) {
       throw new Error('Supabase não configurado; não foi possível resolver a identidade do usuário.');
     }
 
-    const { data, error } = await supabase
+    const client = supabase;
+    const { data, error } = await readWithJwtRecovery(() => client
       .from('partner_salespeople')
       .select('id, user_id, role, branch_id')
       .eq('auth_user_id', authUserId)
       .order('created_at', { ascending: false })
       .limit(1)
-      .maybeSingle();
+      .maybeSingle(), isCurrent);
 
     if (error) {
       throw new Error(`Não foi possível resolver a identidade do usuário: ${error.message}`);
@@ -133,12 +159,12 @@ export function useAuth(): UseAuthReturn {
       };
     }
 
-    const { data: ownerProfile, error: ownerError } = await supabase
+    const { data: ownerProfile, error: ownerError } = await readWithJwtRecovery(() => client
       .from('partner_profiles')
       .select('id')
       .eq('id', authUserId)
       .limit(1)
-      .maybeSingle();
+      .maybeSingle(), isCurrent);
 
     if (ownerError) {
       throw new Error(`Não foi possível validar a identidade do proprietário: ${ownerError.message}`);
@@ -163,14 +189,15 @@ export function useAuth(): UseAuthReturn {
     return { authUserId, companyUserId: authUserId, role: 'administrador', salespersonId: null, branchId: null };
   }, []);
 
-  const loadProfile = useCallback(async (userId: string): Promise<PartnerProfile | null> => {
+  const loadProfile = useCallback(async (userId: string, isCurrent: () => boolean = () => true): Promise<PartnerProfile | null> => {
     if (!supabase) return null;
 
-    const { data: profile, error } = await supabase
+    const client = supabase;
+    const { data: profile, error } = await readWithJwtRecovery(() => client
       .from('partner_profiles')
       .select('*')
       .eq('id', userId)
-      .maybeSingle();
+      .maybeSingle(), isCurrent);
 
     if (error) {
       throw new Error(`Não foi possível carregar o perfil da empresa: ${error.message}`);
@@ -217,11 +244,12 @@ export function useAuth(): UseAuthReturn {
       if (signupInProgressRef.current) return;
 
       try {
-        const identity = await resolveIdentity(session.user.id);
+        const isCurrent = () => !cancelled && requestId === identityRequestRef.current;
+        const identity = await resolveIdentity(session.user.id, isCurrent);
 
         if (cancelled || requestId !== identityRequestRef.current) return;
 
-        const profile = await loadProfile(identity.companyUserId);
+        const profile = await loadProfile(identity.companyUserId, isCurrent);
 
         if (cancelled || requestId !== identityRequestRef.current) return;
 
