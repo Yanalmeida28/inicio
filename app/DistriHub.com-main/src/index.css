@@ -2870,6 +2870,53 @@ body, .app-shell { background: #091724; color: #edf5fc; }
 .admin-panel .admin-feedback-error { color: #fda4af; background: #351c2e; border-color: #854359; }
 .admin-panel .subscription-actions { flex-wrap: wrap; }
 .admin-panel .partner-content { max-width: none; }
+.saas-management-charts { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 20px; }
+.saas-chart-card { min-width: 0; padding: 24px; border: 1px solid #29465f; border-radius: 14px; background: linear-gradient(145deg, #102638, #0c1c2c); }
+.saas-chart-heading { display: flex; align-items: start; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
+.saas-chart-eyebrow { display: flex; align-items: center; gap: 8px; color: #93c5fd; font-size: 10px; font-weight: 700; letter-spacing: .08em; }
+.saas-chart-heading h4 { margin: 8px 0 0; color: #edf5fc; font: 700 17px Manrope, sans-serif; }
+.saas-chart-period { display: grid; gap: 5px; color: #adc2d6; font-size: 11px; flex-shrink: 0; }
+.saas-chart-period select { padding: 7px 10px; border: 1px solid #375773; border-radius: 7px; background: #102638; color: #edf5fc; }
+.saas-chart-total { display: block; color: #edf5fc; font: 800 clamp(22px, 2.5vw, 30px) Manrope, sans-serif; overflow-wrap: anywhere; }
+.saas-chart-note { margin: 8px 0 0; color: #adc2d6; font-size: 12px; line-height: 1.6; }
+.saas-revenue-svg { display: block; width: 100%; margin-top: 16px; }
+.saas-revenue-svg text { fill: #adc2d6; font-size: 11px; }
+.saas-chart-empty { min-height: 180px; display: grid; place-items: center; color: #adc2d6; font-size: 13px; text-align: center; }
+.saas-chart-data { margin-top: 12px; color: #adc2d6; font-size: 12px; }
+.saas-chart-data summary { cursor: pointer; padding: 8px 0; color: #93c5fd; }
+.saas-chart-data table { width: 100%; border-collapse: collapse; }
+.saas-chart-data th, .saas-chart-data td { padding: 8px; text-align: left; border-bottom: 1px solid #29465f; }
+.saas-donut { width: 174px; height: 174px; border-radius: 50%; display: grid; place-items: center; margin: 22px auto; }
+.saas-donut > div { width: 144px; height: 144px; border-radius: 50%; background: #0e2132; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; }
+.saas-donut strong { font: 800 32px Manrope, sans-serif; color: #edf5fc; }
+.saas-donut span { font-size: 12px; color: #adc2d6; }
+.saas-chart-legend p { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 10px 0; font-size: 13px; color: #dbe8ef; }
+.saas-chart-legend p > span { display: flex; align-items: center; gap: 8px; }
+.saas-chart-legend i { width: 8px; height: 8px; border-radius: 50%; }
+.saas-chart-bars { display: grid; gap: 18px; margin: 22px 0; }
+.saas-bar-label { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-size: 13px; color: #dbe8ef; margin-bottom: 8px; flex-wrap: wrap; }
+.saas-bar-label strong { overflow-wrap: anywhere; }
+.saas-bar-label small { color: #adc2d6; font-weight: 400; }
+.saas-bar-track { height: 8px; border-radius: 8px; background: #20394c; overflow: hidden; }
+.saas-bar-track > span { display: block; height: 100%; border-radius: inherit; }
+@media (max-width: 900px) { .saas-management-charts { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 620px) { .saas-chart-card { padding: 16px; } .saas-chart-heading { flex-wrap: wrap; } .saas-chart-heading h4 { font-size: 16px; } }
+/* Keep the Super Admin workspace comfortably inset on every screen. */
+.admin-panel .page-container {
+  width: calc(100% - clamp(40px, 6vw, 112px));
+  max-width: 1440px;
+  min-width: 0;
+}
+.admin-panel .partner-body { padding-top: 24px; padding-bottom: 48px; }
+.admin-panel .partner-tabs { flex-wrap: wrap; margin-bottom: 24px; }
+.admin-panel .partner-tab { padding: 10px 14px; font-size: 13px; }
+.admin-panel .partner-content { min-width: 0; }
+.admin-panel .partner-title { min-width: 0; overflow-wrap: anywhere; }
+@media (max-width: 620px) {
+  .admin-panel .partner-tabs { flex-wrap: nowrap; }
+  .admin-panel .partner-tab { flex-shrink: 0; font-size: 12px; }
+  .admin-panel .partner-title h2 { font-size: 21px; }
+}
 .module-submit-btn, .module-save-btn, .admin-panel .module-submit-btn, .partner-panel .module-submit-btn, .partner-panel .module-save-btn { background: #22c55e !important; color: #05221a !important; border-color: #22c55e !important; }
 .module-submit-btn:hover:not(:disabled), .module-save-btn:hover:not(:disabled), .admin-panel .module-submit-btn:hover:not(:disabled), .partner-panel .module-submit-btn:hover:not(:disabled) { background: #4ade80 !important; color: #05221a !important; }
 .admin-panel .rma-advance-btn { background: #173b58; color: #a8daff; border-color: #3193e5; }

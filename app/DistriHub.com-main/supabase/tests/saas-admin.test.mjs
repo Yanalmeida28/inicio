@@ -41,6 +41,7 @@ async function harness({ subscriptions = [company()], mutation, initialCompanyId
     if (name === '../lib/adminOverview') return overview;
     if (name === './AdminResponsiveTable') return responsive;
     if (name === './AdminActivityModule') return {};
+    if (name === './AdminManagementCharts') return { AdminManagementCharts: () => null };
     if (name === '../utils') return { money: new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }) };
     return require(name);
   } });

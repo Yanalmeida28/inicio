@@ -6,6 +6,7 @@ import { saasAdminDraft, saasAdminError, type SaasAdminAction } from '../lib/saa
 import { accessDeadline, accessExplanation, adminDay, downloadAdminCsv, matchesPeriod, monthlyReceipts, recurringRevenue } from '../lib/adminOverview';
 import { AdminActivityModule, AdminPendingSummary } from './AdminActivityModule';
 import { AdminResponsiveTable } from './AdminResponsiveTable';
+import { AdminManagementCharts } from './AdminManagementCharts';
 
 const date = (value: string | null) => value ? new Date(value).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : '—';
 export function AdminSaasModule({ view, initialCompanyId, onChanged, onNavigate }: { view: 'subscriptions' | 'invoices' | 'financial' | 'overview' | 'history'; initialCompanyId?: string | null; onChanged?: () => void; onNavigate?: (tab: 'assinaturas' | 'faturas' | 'suporte' | 'planos') => void }) {
@@ -101,6 +102,7 @@ export function AdminSaasModule({ view, initialCompanyId, onChanged, onNavigate 
         ['Cobranças pendentes', invoices.filter(i => i.status === 'pending').length], ['Receita recorrente prevista', money.format(recurringRevenue(subscriptions))],
       ].map(([label, value]) => <div className="admin-financial-kpi" key={label}><small>{label}</small><strong>{value}</strong></div>)}</div>
       <div className="subscription-actions admin-overview-actions"><button className="rma-advance-btn" onClick={() => onNavigate?.('assinaturas')}>Gerenciar acessos</button><button className="rma-advance-btn" onClick={() => onNavigate?.('faturas')}>Consultar cobranças</button><button className="rma-advance-btn" onClick={() => onNavigate?.('suporte')}>Abrir suporte</button><button className="rma-advance-btn" onClick={() => onNavigate?.('planos')}>Solicitações de plano</button></div>
+      <AdminManagementCharts data={data} />
       <AdminPendingSummary version={summaryVersion} />
       <h4>Acessos que vencem nos próximos 7 dias</h4>
       <div className="admin-overview-list">{expiring.map(s => <div className="module-card" key={s.company_id}><strong>{s.company_name}</strong><p>{accessExplanation(s)} · até {date(accessDeadline(s))}</p><button className="rma-advance-btn" disabled={busy || loading} onClick={() => edit(s)}>Gerenciar</button></div>)}</div>
