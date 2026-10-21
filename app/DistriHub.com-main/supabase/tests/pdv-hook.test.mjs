@@ -127,7 +127,7 @@ async function harness({initialSales=[],initialInvoices=[],initialCustomers=[],r
   const helperModule={exports:{}};
   vm.runInNewContext(compile(helperSource),{exports:helperModule.exports,require});
   const syncModule={exports:{}};
-  vm.runInNewContext(compile(syncSource),{exports:syncModule.exports,Date});
+  vm.runInNewContext(compile(syncSource),{exports:syncModule.exports,Date,setTimeout(callback){const id=++timerId;timeouts.set(id,callback);return id;},clearTimeout(id){timeouts.delete(id);}});
   const hookModule={exports:{}};
   vm.runInNewContext(compile(source),{
     exports:hookModule.exports,sessionStorage:storage,crypto:{randomUUID},console,
@@ -729,7 +729,7 @@ test('lazy finance refresh preserves employee-authorized invoice snapshots inste
 });
 
 test('collection cache deduplicates in-flight reads and never shares them between identity scopes',async()=>{
-  const exports={};vm.runInNewContext(compile(syncSource),{exports});const cache=new exports.PartnerLoadCache();cache.reset('first');let oldResolve,newResolve,calls=0;
+  const exports={};vm.runInNewContext(compile(syncSource),{exports,setTimeout,clearTimeout});const cache=new exports.PartnerLoadCache();cache.reset('first');let oldResolve,newResolve,calls=0;
   const first=cache.read('products',()=>{calls++;return new Promise(resolve=>{oldResolve=resolve;});});
   assert.equal(cache.read('products',()=>{throw Error('Duplicate read');}),first);
   await Promise.resolve();assert.equal(calls,1);cache.reset('second');
@@ -738,6 +738,51 @@ test('collection cache deduplicates in-flight reads and never shares them betwee
   newResolve('new');assert.equal(await second,'new');assert.equal(calls,2);
   cache.mark('products');assert.equal(cache.needs('products'),false);assert.equal(cache.needs('products',Date.now()+31000),true);
   cache.reset('third');assert.equal(cache.has('products'),false);
+});
+
+test('a stalled data request times out, releases the shared read and permits a fresh retry',async()=>{
+ const timers=new Map();let id=0;
+ const exports={};vm.runInNewContext(compile(syncSource),{exports,setTimeout(callback){timers.set(++id,callback);return id;},clearTimeout(key){timers.delete(key);}});
+ const cache=new exports.PartnerLoadCache();cache.reset('owner');let oldResolve;
+ const stalled=cache.read('invoices',()=>new Promise(resolve=>{oldResolve=resolve;}));
+ const failure=assert.rejects(stalled,/demorou demais/);
+ await Promise.resolve();for(const callback of [...timers.values()])callback();await failure;
+ assert.equal(await cache.read('invoices',async()=> 'fresh'),'fresh');
+ oldResolve('late');await Promise.resolve();assert.equal(timers.size,0);
+});
+
+test('a stalled screen shows an error and retry loads its resources instead of waiting forever',async()=>{
+ let stalled=true;
+ const h=await harness({resourceScope:'configuracoes',rpc:async()=>({data:null,error:null}),readResult:(table,fallback)=>stalled&&table==='partner_invoices'?new Promise(()=>{}):fallback});
+ await h.setScope('financeiro');assert.equal(h.current.loading,true);
+ await act(async()=>h.flushTimers());
+ assert.equal(h.current.loading,false);assert.equal(h.current.resourcesReady,false);assert.match(h.current.error,/demorou demais/);
+ stalled=false;await act(async()=>h.current.loadData(false,undefined,false));
+ assert.equal(h.current.loading,false);assert.equal(h.current.resourcesReady,true);
+});
+
+test('a slow module read remains reusable after navigating away and does not need to be fetched twice',async()=>{
+ let release;
+ const h=await harness({resourceScope:'configuracoes',rpc:async()=>({data:null,error:null}),readResult:(table,fallback)=>table==='partner_invoices'?new Promise(resolve=>{release=resolve;}):fallback});
+ await h.setScope('financeiro');assert.equal(h.current.loading,true);
+ await h.setScope('cadastros:produtos');assert.equal(h.current.resourcesReady,true);
+ await act(async()=>release({data:[],error:null}));
+ const count=h.queries.length;await h.setScope('financeiro');
+ assert.equal(h.current.resourcesReady,true);assert.equal(h.current.loading,false);
+ assert.equal(h.queries.length,count);
+});
+
+test('returning to cached products immediately releases the previous modules loading state while revalidating',async()=>{
+ let hold=false,releaseProducts,releaseInvoices;
+ const h=await harness({resourceScope:'cadastros:produtos',rpc:async()=>({data:null,error:null}),readResult:(table,fallback)=>hold&&table==='partner_invoices'?new Promise(resolve=>{releaseInvoices=resolve;}):hold&&table==='partner_products'?new Promise(resolve=>{releaseProducts=resolve;}):fallback});
+ const originalNow=Date.now;const now=Date.now();Date.now=()=>now+31000;
+ try {
+  hold=true;await h.setScope('financeiro');assert.equal(h.current.loading,true);
+  await h.setScope('cadastros:produtos');assert.equal(h.current.resourcesReady,true);assert.equal(h.current.loading,false);
+ } finally {
+  Date.now=originalNow;
+  await act(async()=>{releaseProducts?.({data:[],error:null});releaseInvoices?.({data:[],error:null});});
+ }
 });
 
  test('returning to an expired cached module preserves its data without blocking navigation',async()=>{

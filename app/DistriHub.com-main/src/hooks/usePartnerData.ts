@@ -340,7 +340,9 @@ export function usePartnerData(identity: PartnerIdentity | null, syncBranchId: s
   }, []);
 
   const loadData = useCallback(async (background = false, collections?: PartnerCollection[], force = true) => {
-    const currentRequestId = ++requestIdRef.current;
+    // Scope generations isolate identities; per-collection versions order overlapping reads.
+    // A prefetch or a tab change must not discard another collection's valid response.
+    const currentRequestId = requestIdRef.current;
     const loadScope = identity ? identity.authUserId + ':' + identity.companyUserId + ':' + (identity.salespersonId ?? '') + ':' + (identity.branchId ?? '') : '';
     if (loadCacheRef.current.reset(loadScope)) { clearData(); dataSnapshotRef.current = initialData; authorizedPdvScopeRef.current = ''; setLastSyncedAt(null); setSyncError(null); }
     const requested = new Set((collections ?? requestedResourcesRef.current).filter(key => force || loadCacheRef.current.needs(key)));
@@ -360,8 +362,9 @@ export function usePartnerData(identity: PartnerIdentity | null, syncBranchId: s
       return;
     }
 
+    if (requestedResourcesRef.current.every(key => loadCacheRef.current.has(key))) setLoading(false);
+    else if (!background) setLoading(true);
     if (!background) {
-      setLoading(true);
       setError(null);
     }
 
@@ -759,12 +762,15 @@ read('sales', () => fetchAllPages((from, to) => client
   }, [clearData, identity, requireIdentity]);
 
   useEffect(() => {
-    const requests = requestIdRef;
-    const revisions = dataRevisionRef;
     const alreadyLoaded = requestedResourcesRef.current.every(key => loadCacheRef.current.has(key));
     void loadData(alreadyLoaded, undefined, false);
-    return () => { ++requests.current; revisions.current.invalidate(); };
   }, [loadData, resourceScope]);
+
+  useEffect(() => {
+    const requests = requestIdRef;
+    const revisions = dataRevisionRef;
+    return () => { ++requests.current; revisions.current.invalidate(); };
+  }, [loadData]);
 
   useEffect(() => {
     const profileId = identity?.companyUserId;

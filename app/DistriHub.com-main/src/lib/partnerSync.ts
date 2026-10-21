@@ -30,6 +30,14 @@ const moduleCollections: Record<string, PartnerCollection[]> = {
 export function partnerResources(scope: string | null): PartnerCollection[] {
   return scope === null ? [...partnerCollections] : [...new Set([...baseCollections, ...(moduleCollections[scope] ?? [])])];
 }
+
+export function withLoadTimeout<T>(loader: () => PromiseLike<T>, message: string, timeoutMs = 20_000): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+  });
+  return Promise.race([Promise.resolve().then(loader), deadline]).finally(() => clearTimeout(timer));
+}
 export class PartnerLoadCache {
   private scope = '';
   private loaded = new Map<string, number>();
@@ -45,7 +53,7 @@ export class PartnerLoadCache {
   read<T>(key: string, loader: () => PromiseLike<T>): Promise<T> {
     const existing = this.pending.get(key);
     if (existing) return existing as Promise<T>;
-    const request = Promise.resolve().then(loader);
+    const request = withLoadTimeout(loader, 'A consulta demorou demais. Tente carregar novamente.');
     this.pending.set(key, request);
     void request.finally(() => { if (this.pending.get(key) === request) this.pending.delete(key); }).catch(() => {});
     return request;

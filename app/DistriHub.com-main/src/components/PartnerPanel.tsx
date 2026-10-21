@@ -1,3 +1,5 @@
+import { ModuleBoundary } from './ModuleBoundary';
+import { moduleLoader } from '../lib/moduleLoading';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { OperatorPinInput } from './partner/OperatorPinInput';
@@ -46,41 +48,41 @@ import { useCheckoutCash } from '../hooks/useCheckoutCash';
 import { SessionDraftProvider, useSessionDraftState, clearConfirmedPdvDraft } from '../hooks/useSessionDraft';
 import { OperatorSelectionStore } from '../lib/checkoutCash';
 
-const loadCadastrosModule = () => import('./partner/CadastrosModule').then((module) => ({ default: module.CadastrosModule }));
+const loadCadastrosModule = moduleLoader(() => import('./partner/CadastrosModule').then((module) => ({ default: module.CadastrosModule })));
 const CadastrosModule = lazy(loadCadastrosModule);
-const loadPdvModule = () => import('./partner/PdvModule').then((module) => ({ default: module.PdvModule }));
+const loadPdvModule = moduleLoader(() => import('./partner/PdvModule').then((module) => ({ default: module.PdvModule })));
 const PdvModule = lazy(loadPdvModule);
-const loadCashRegisterModule = () => import('./partner/CashRegisterModule').then((module) => ({ default: module.CashRegisterModule }));
+const loadCashRegisterModule = moduleLoader(() => import('./partner/CashRegisterModule').then((module) => ({ default: module.CashRegisterModule })));
 const CashRegisterModule = lazy(loadCashRegisterModule);
-const loadFinancialModule = () => import('./partner/FinancialModule').then((module) => ({ default: module.FinancialModule }));
+const loadFinancialModule = moduleLoader(() => import('./partner/FinancialModule').then((module) => ({ default: module.FinancialModule })));
 const FinancialModule = lazy(loadFinancialModule);
-const loadRmaModule = () => import('./partner/RmaModule').then((module) => ({ default: module.RmaModule }));
+const loadRmaModule = moduleLoader(() => import('./partner/RmaModule').then((module) => ({ default: module.RmaModule })));
 const RmaModule = lazy(loadRmaModule);
-const loadReportsModule = () => import('./partner/ReportsModule').then((module) => ({ default: module.ReportsModule }));
+const loadReportsModule = moduleLoader(() => import('./partner/ReportsModule').then((module) => ({ default: module.ReportsModule })));
 const ReportsModule = lazy(loadReportsModule);
-const loadWhiteLabelModule = () => import('./partner/WhiteLabelModule').then((module) => ({ default: module.WhiteLabelModule }));
+const loadWhiteLabelModule = moduleLoader(() => import('./partner/WhiteLabelModule').then((module) => ({ default: module.WhiteLabelModule })));
 const WhiteLabelModule = lazy(loadWhiteLabelModule);
-const loadMultiStoreModule = () => import('./partner/MultiStoreModule').then((module) => ({ default: module.MultiStoreModule }));
+const loadMultiStoreModule = moduleLoader(() => import('./partner/MultiStoreModule').then((module) => ({ default: module.MultiStoreModule })));
 const MultiStoreModule = lazy(loadMultiStoreModule);
-const loadDeliveryModule = () => import('./partner/DeliveryModule').then((module) => ({ default: module.DeliveryModule }));
+const loadDeliveryModule = moduleLoader(() => import('./partner/DeliveryModule').then((module) => ({ default: module.DeliveryModule })));
 const DeliveryModule = lazy(loadDeliveryModule);
-const loadSettingsModule = () => import('./partner/SettingsModule').then((module) => ({ default: module.SettingsModule }));
+const loadSettingsModule = moduleLoader(() => import('./partner/SettingsModule').then((module) => ({ default: module.SettingsModule })));
 const SettingsModule = lazy(loadSettingsModule);
-const loadOpenOrdersModule = () => import('./partner/OpenOrdersModule').then((module) => ({ default: module.OpenOrdersModule }));
+const loadOpenOrdersModule = moduleLoader(() => import('./partner/OpenOrdersModule').then((module) => ({ default: module.OpenOrdersModule })));
 const OpenOrdersModule = lazy(loadOpenOrdersModule);
-const loadFiscalModule = () => import('./partner/FiscalModule').then((module) => ({ default: module.FiscalModule }));
+const loadFiscalModule = moduleLoader(() => import('./partner/FiscalModule').then((module) => ({ default: module.FiscalModule })));
 const FiscalModule = lazy(loadFiscalModule);
-const loadAdminModule = () => import('./partner/AdminModule').then((module) => ({ default: module.AdminModule }));
+const loadAdminModule = moduleLoader(() => import('./partner/AdminModule').then((module) => ({ default: module.AdminModule })));
 const AdminModule = lazy(loadAdminModule);
-const loadSalesHistoryModule = () => import('./partner/SalesHistoryModule').then((module) => ({ default: module.SalesHistoryModule }));
+const loadSalesHistoryModule = moduleLoader(() => import('./partner/SalesHistoryModule').then((module) => ({ default: module.SalesHistoryModule })));
 const SalesHistoryModule = lazy(loadSalesHistoryModule);
-const loadOrderHistoryModule = () => import('./partner/OrderHistoryModule').then((module) => ({ default: module.OrderHistoryModule }));
+const loadOrderHistoryModule = moduleLoader(() => import('./partner/OrderHistoryModule').then((module) => ({ default: module.OrderHistoryModule })));
 const OrderHistoryModule = lazy(loadOrderHistoryModule);
-const loadSupportChatModule = () => import('./partner/SupportChatModule').then((module) => ({ default: module.SupportChatModule }));
+const loadSupportChatModule = moduleLoader(() => import('./partner/SupportChatModule').then((module) => ({ default: module.SupportChatModule })));
 const SupportChatModule = lazy(loadSupportChatModule);
-const loadServiceOrdersModule = () => import('./partner/ServiceOrdersModule').then((module) => ({ default: module.ServiceOrdersModule }));
+const loadServiceOrdersModule = moduleLoader(() => import('./partner/ServiceOrdersModule').then((module) => ({ default: module.ServiceOrdersModule })));
 const ServiceOrdersModule = lazy(loadServiceOrdersModule);
-const loadCatalogOrdersModule = () => import('./partner/CatalogOrdersModule').then(module => ({ default: module.CatalogOrdersModule }));
+const loadCatalogOrdersModule = moduleLoader(() => import('./partner/CatalogOrdersModule').then(module => ({ default: module.CatalogOrdersModule })));
 const CatalogOrdersModule = lazy(loadCatalogOrdersModule);
 
 import type {
@@ -1677,10 +1679,18 @@ export function PartnerPanel({
     if (!visitedTabs.has(tab) || blockedTabs.includes(tab) || !canUseSaasFeature(saas.subscription, tab)) return null;
     return (
       <div key={tab + instance} hidden={activeTab !== tab}>
+        <ModuleBoundary>
         <Suspense fallback={<div className="partner-loading" role="status">Carregando módulo...</div>}>
-          {activeTab === tab && (partner.resourcesReady === false || partner.loading) && <p role="status" className="partner-loading">Carregando dados da tela...{(partner.error || partner.syncError) && <button type="button" className="rma-advance-btn" onClick={() => void partner.synchronize()}>Tentar carregar novamente</button>}</p>}
+          {activeTab === tab && (partner.resourcesReady === false || partner.loading) && (
+            partner.error || partner.syncError ? <div role="alert" className="module-card">
+              <p>Não foi possível concluir o carregamento desta tela.</p>
+              <p>{partner.error || partner.syncError}</p>
+              <button type="button" className="rma-advance-btn" disabled={partner.loading} onClick={() => void partner.loadData(false, undefined, false)}>Tentar carregar novamente</button>
+            </div> : <p role="status" className="partner-loading">Carregando dados da tela...</p>
+          )}
           <div hidden={activeTab === tab && (partner.resourcesReady === false || partner.loading)}>{content}</div>
         </Suspense>
+        </ModuleBoundary>
       </div>
     );
   }

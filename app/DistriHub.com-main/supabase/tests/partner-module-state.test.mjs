@@ -12,6 +12,7 @@ test('trocar módulos preserva rascunhos; revogar acesso desmonta a tela', async
   const code = source.slice(source.indexOf('  function renderTab('), source.indexOf('  function renderCadastros('));
   const context = vm.createContext({
     require: createRequire(import.meta.url), exports: {}, Suspense: React.Suspense,
+    ModuleBoundary: ({children}) => children,
     visitedTabs: new Set(['cadastros','pdv']), blockedTabs: [], activeTab: 'cadastros',
     saas: {subscription: {}}, canUseSaasFeature: () => true,
     partner: {resourcesReady:true,loading:false},
@@ -32,7 +33,7 @@ test('trocar módulos preserva rascunhos; revogar acesso desmonta a tela', async
   context.activeTab='pdv';
   await act(async () => renderer.update(screen()));
   assert.equal(renderer.root.findByProps({'aria-label':'cadastro'}).props.value,'rascunho');
-  assert.equal(renderer.root.findByProps({'aria-label':'cadastro'}).parent.parent.parent.props.hidden,true);
+  assert.equal(renderer.toJSON().children[0].props.hidden,true);
   await act(async () => renderer.root.findByProps({'aria-label':'venda'}).props.onChange({target:{value:'produto selecionado'}}));
   context.activeTab='cadastros';
   await act(async () => renderer.update(screen()));
