@@ -214,6 +214,24 @@ test('malformed pending storage is preserved for reconciliation and never create
  const values=new Map([['distrihub-operation:owner:owner:branch-a:service-order','{invalid']]);const h=await harness({values});await act(async()=>save().props.onClick());assert.equal(h.calls.length,0);assert.equal(values.size,1);assert.equal(save().props.disabled,false);
 });
 
+test('a definitive warranty rejection releases an old pending draft and requires fresh acknowledgment',async()=>{
+ let phase=0;
+ const h=await harness({rpc:name=>name==='create_service_order_once'?(phase===0?{error:{code:'08006',message:'Resposta perdida'}}:phase===1?{error:{code:'22023',message:'O termo de garantia mudou'}}:undefined):undefined});
+ await h.update({warrantyTerms:'Termo original'});
+ const acknowledge=()=>view.root.findAllByType('label').find(label=>label.children.some(child=>typeof child==='string'&&child.includes('Cliente informado'))).findByType('input');
+ await act(async()=>acknowledge().props.onChange({target:{checked:true}}));
+ await act(async()=>save().props.onClick());assert.equal(h.values.size,1);
+ await h.update({warrantyTerms:'Termo novo'});phase=1;
+ await act(async()=>save().props.onClick());assert.equal(h.values.size,0);
+ assert.equal(h.calls[0].args.p_request_id,h.calls[1].args.p_request_id);
+ assert.equal(h.calls[1].args.p_payload.warranty_terms,'Termo original');
+ phase=2;await act(async()=>save().props.onClick());assert.equal(h.calls.length,2);
+ const ack=acknowledge();
+ assert.equal(ack.props.checked,false);await act(async()=>ack.props.onChange({target:{checked:true}}));
+ await act(async()=>save().props.onClick());assert.equal(h.calls.length,3);
+ assert.notEqual(h.calls[2].args.p_request_id,h.calls[1].args.p_request_id);assert.equal(h.calls[2].args.p_payload.warranty_terms,'Termo novo');
+});
+
 test('entry checklist saves defects and not-applicable results, and refuses unanswered items',async()=>{
  const h=await harness();
  const change=async(label,value)=>act(async()=>view.root.findByProps({'aria-label':label}).props.onChange({target:{value}}));

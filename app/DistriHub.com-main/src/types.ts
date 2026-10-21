@@ -581,6 +581,17 @@ export interface AuditLog {
 }
 
 export interface ServiceOrder {
+  inspection_version?: number;
+  entry_checklist?: Record<string, string> | null;
+  entry_recorded_at?: string | null;
+  entry_recorded_by?: string | null;
+  customer_acknowledged_at?: string | null;
+  customer_acknowledged_by?: string | null;
+  exit_checklist?: Record<string, string> | null;
+  exit_recorded_at?: string | null;
+  exit_recorded_by?: string | null;
+  warranty_snapshot?: string | null;
+  warranty_snapshot_at?: string | null;
   status_history?: { status: string; approval?: string; actor: string; at: string; reason?: string }[];
   id: string;
   user_id: string;

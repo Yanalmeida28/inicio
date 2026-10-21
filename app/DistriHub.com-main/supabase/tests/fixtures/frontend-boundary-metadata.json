@@ -1,0 +1,1462 @@
+{
+  "capturedDate": "2026-10-21",
+  "scope": "Database definitions and policies only; no commercial rows.",
+  "audit": {
+    "views": [
+      {
+        "name": "partner_stock_movements",
+        "options": [
+          "security_invoker=true"
+        ],
+        "definition": " SELECT id,\n    user_id,\n    product_id,\n    product_name,\n    type,\n    quantity,\n    reason,\n    created_at,\n    branch_id\n   FROM stock_movements;"
+      },
+      {
+        "name": "partner_store_settings",
+        "options": [
+          "security_invoker=true"
+        ],
+        "definition": " SELECT id,\n    user_id,\n    logo_url,\n    primary_color,\n    nav_color,\n    internal_notice,\n    updated_at,\n    banner_url,\n    warranty_terms,\n    receipt_footer_text,\n    show_logo_on_receipt,\n    show_cnpj_on_receipt,\n    catalog_slug,\n    catalog_enabled,\n    catalog_oos_behavior,\n    social_facebook,\n    social_instagram,\n    social_whatsapp,\n    business_hours,\n    created_at,\n    service_warranty_terms,\n    personalization\n   FROM store_settings_v2;"
+      },
+      {
+        "name": "public_catalog_partner_branches",
+        "options": [
+          "security_barrier=true",
+          "security_invoker=true"
+        ],
+        "definition": " SELECT b.id,\n    b.name,\n    b.address,\n    s.catalog_slug\n   FROM (partner_branches b\n     JOIN store_settings_v2 s ON ((s.user_id = b.user_id)))\n  WHERE ((s.catalog_enabled = true) AND (s.catalog_slug IS NOT NULL) AND (b.is_active = true));"
+      },
+      {
+        "name": "public_catalog_partner_profiles",
+        "options": [
+          "security_barrier=true",
+          "security_invoker=true"
+        ],
+        "definition": " SELECT p.business_name,\n    p.account_name,\n    s.catalog_slug\n   FROM (partner_profiles p\n     JOIN store_settings_v2 s ON ((s.user_id = p.id)))\n  WHERE ((s.catalog_enabled = true) AND (s.catalog_slug IS NOT NULL));"
+      },
+      {
+        "name": "public_catalog_products",
+        "options": [
+          "security_barrier=true",
+          "security_invoker=true"
+        ],
+        "definition": " SELECT p.id,\n    p.branch_id,\n    p.name,\n    p.sale_price,\n    p.image_url,\n    p.stock,\n    p.category,\n    p.sku,\n    p.is_service,\n    s.catalog_slug\n   FROM ((partner_products p\n     JOIN store_settings_v2 s ON ((s.user_id = p.user_id)))\n     JOIN partner_branches b ON (((b.id = p.branch_id) AND (b.user_id = p.user_id))))\n  WHERE ((s.catalog_enabled = true) AND (s.catalog_slug IS NOT NULL) AND (b.is_active = true) AND (p.stock > 0));"
+      },
+      {
+        "name": "public_catalog_store_settings",
+        "options": [
+          "security_barrier=true",
+          "security_invoker=true"
+        ],
+        "definition": " SELECT catalog_slug,\n    catalog_enabled,\n    logo_url,\n    banner_url,\n    primary_color,\n    nav_color,\n    business_hours\n   FROM store_settings_v2\n  WHERE ((catalog_enabled = true) AND (catalog_slug IS NOT NULL));"
+      }
+    ],
+    "policies": [
+      {
+        "cmd": "DELETE",
+        "qual": "((( SELECT auth.uid() AS uid) = user_id) OR partner_cadastros_private.can_manage_combo(user_id, items))",
+        "roles": [
+          "authenticated"
+        ],
+        "tablename": "partner_combos",
+        "permissive": "PERMISSIVE",
+        "policyname": "catalog_delete",
+        "schemaname": "public",
+        "with_check": null
+      },
+      {
+        "cmd": "INSERT",
+        "qual": null,
+        "roles": [
+          "authenticated"
+        ],
+        "tablename": "partner_combos",
+        "permissive": "PERMISSIVE",
+        "policyname": "catalog_insert",
+        "schemaname": "public",
+        "with_check": "(partner_cadastros_private.can_manage_combo(user_id, items) OR (( SELECT auth.uid() AS uid) = user_id))"
+      },
+      {
+        "cmd": "SELECT",
+        "qual": "(partner_cadastros_private.can_manage_combo(user_id, items) OR ((user_id = ( SELECT auth.uid() AS uid)) OR partner_rma_company_access(user_id)))",
+        "roles": [
+          "authenticated"
+        ],
+        "tablename": "partner_combos",
+        "permissive": "PERMISSIVE",
+        "policyname": "catalog_select",
+        "schemaname": "public",
+        "with_check": null
+      },
+      {
+        "cmd": "UPDATE",
+        "qual": "(partner_cadastros_private.can_manage_combo(user_id, items) OR (( SELECT auth.uid() AS uid) = user_id))",
+        "roles": [
+          "authenticated"
+        ],
+        "tablename": "partner_combos",
+        "permissive": "PERMISSIVE",
+        "policyname": "catalog_update",
+        "schemaname": "public",
+        "with_check": "(partner_cadastros_private.can_manage_combo(user_id, items) OR (( SELECT auth.uid() AS uid) = user_id))"
+      },
+      {
+        "cmd": "ALL",
+        "qual": "partner_has_saas_access(user_id, 'cadastros'::text)",
+        "roles": [
+          "authenticated"
+        ],
+        "tablename": "partner_combos",
+        "permissive": "RESTRICTIVE",
+        "policyname": "saas_entitlement",
+        "schemaname": "public",
+        "with_check": "partner_has_saas_access(user_id, 'cadastros'::text)"
+      },
+      {
+        "cmd": "INSERT",
+        "qual": null,
+        "roles": [
+          "authenticated"
+        ],
+        "tablename": "partner_crm_tasks",
+        "permissive": "PERMISSIVE",
+        "policyname": "crm_tasks_insert",
+        "schemaname": "public",
+        "with_check": "(partner_has_saas_access(user_id, 'relatorios'::text) AND ((user_id = ( SELECT auth.uid() AS uid)) OR partner_employee_can_access_branch(user_id, branch_id)) AND (EXISTS ( SELECT 1\n   FROM partner_customers c\n  WHERE ((c.id = partner_crm_tasks.customer_id) AND (c.user_id = partner_crm_tasks.user_id)))) AND (EXISTS ( SELECT 1\n   FROM partner_branches b\n  WHERE ((b.id = partner_crm_tasks.branch_id) AND (b.user_id = partner_crm_tasks.user_id)))) AND ((responsible_id IS NULL) OR (EXISTS ( SELECT 1\n   FROM partner_salespeople s\n  WHERE ((s.id = partner_crm_tasks.responsible_id) AND (s.user_id = partner_crm_tasks.user_id) AND ((s.branch_id IS NULL) OR (s.branch_id = partner_crm_tasks.branch_id)))))))"
+      },
+      {
+        "cmd": "SELECT",
+        "qual": "(partner_has_saas_access(user_id, 'relatorios'::text) AND ((user_id = ( SELECT auth.uid() AS uid)) OR partner_employee_can_access_branch(user_id, branch_id)))",
+        "roles": [
+          "authenticated"
+        ],
+        "tablename": "partner_crm_tasks",
+        "permissive": "PERMISSIVE",
+        "policyname": "crm_tasks_select",
+        "schemaname": "public",
+        "with_check": null
+      },
+      {
+        "cmd": "UPDATE",
+        "qual": "(partner_has_saas_access(user_id, 'relatorios'::text) AND ((user_id = ( SELECT auth.uid() AS uid)) OR partner_employee_can_access_branch(user_id, branch_id)))",
+        "roles": [
+          "authenticated"
+        ],
+        "tablename": "partner_crm_tasks",
+        "permissive": "PERMISSIVE",
+        "policyname": "crm_tasks_update",
+        "schemaname": "public",
+        "with_check": "(partner_has_saas_access(user_id, 'relatorios'::text) AND ((user_id = ( SELECT auth.uid() AS uid)) OR partner_employee_can_access_branch(user_id, branch_id)))"
+      },
+      {
+        "cmd": "DELETE",
+        "qual": "((user_id = ( SELECT auth.uid() AS uid)) OR ((branch_id IS NOT NULL) AND partner_employee_can_access_branch(user_id, branch_id)))",
+        "roles": [
+          "authenticated"
+        ],
+        "tablename": "partner_customers",
+        "permissive": "PERMISSIVE",
+        "policyname": "delete_partner_customers",
+        "schemaname": "public",
+        "with_check": null
+      },
+      {
+        "cmd": "INSERT",
+        "qual": null,
+        "roles": [
+          "authenticated"
+        ],
+        "tablename": "partner_customers",
+        "permissive": "PERMISSIVE",
+        "policyname": "insert_partner_customers",
+        "schemaname": "public",
+        "with_check": "((user_id = ( SELECT auth.uid() AS uid)) OR ((branch_id IS NOT NULL) AND partner_employee_can_access_branch(user_id, branch_id)))"
+      },
+      {
+        "cmd": "SELECT",
+        "qual": "((user_id = ( SELECT auth.uid() AS uid)) OR ((user_id IS NOT NULL) AND ((branch_id IS NULL) OR partner_employee_can_access_branch(user_id, branch_id))))",
+        "roles": [
+          "authenticated"
+        ],
+        "tablename": "partner_customers",
+        "permissive": "PERMISSIVE",
+        "policyname": "partner_customers_select",
+        "schemaname": "public",
+        "with_check": null
+      },
+      {
+        "cmd": "UPDATE",
+        "qual": "((user_id = ( SELECT auth.uid() AS uid)) OR ((branch_id IS NOT NULL) AND partner_employee_can_access_branch(user_id, branch_id)))",
+        "roles": [
+          "authenticated"
+        ],
+        "tablename": "partner_customers",
+        "permissive": "PERMISSIVE",
+        "policyname": "partner_customers_update",
+        "schemaname": "public",
+        "with_check": "((user_id = ( SELECT auth.uid() AS uid)) OR ((branch_id IS NOT NULL) AND partner_employee_can_access_branch(user_id, branch_id)))"
+      },
+      {
+        "cmd": "ALL",
+        "qual": "partner_has_saas_access(user_id, 'cadastros'::text)",
+        "roles": [
+          "authenticated"
+        ],
+        "tablename": "partner_customers",
+        "permissive": "RESTRICTIVE",
+        "policyname": "saas_entitlement",
+        "schemaname": "public",
+        "with_check": "partner_has_saas_access(user_id, 'cadastros'::text)"
+      },
+      {
+        "cmd": "DELETE",
+        "qual": "((( SELECT auth.uid() AS uid) = user_id) OR (EXISTS ( SELECT 1\n   FROM partner_products p\n  WHERE ((p.id = partner_modifiers.product_id) AND (p.user_id = partner_modifiers.user_id) AND partner_cadastros_private.can_manage(p.user_id, p.branch_id)))))",
+        "roles": [
+          "authenticated"
+        ],
+        "tablename": "partner_modifiers",
+        "permissive": "PERMISSIVE",
+        "policyname": "catalog_delete",
+        "schemaname": "public",
+        "with_check": null
+      },
+      {
+        "cmd": "INSERT",
+        "qual": null,
+        "roles": [
+          "authenticated"
+        ],
+        "tablename": "partner_modifiers",
+        "permissive": "PERMISSIVE",
+        "policyname": "catalog_insert",
+        "schemaname": "public",
+        "with_check": "((EXISTS ( SELECT 1\n   FROM partner_products p\n  WHERE ((p.id = partner_modifiers.product_id) AND (p.user_id = partner_modifiers.user_id) AND partner_cadastros_private.can_manage(p.user_id, p.branch_id)))) OR (( SELECT auth.uid() AS uid) = user_id))"
+      },
+      {
+        "cmd": "SELECT",
+        "qual": "((EXISTS ( SELECT 1\n   FROM partner_products p\n  WHERE ((p.id = partner_modifiers.product_id) AND (p.user_id = partner_modifiers.user_id) AND partner_cadastros_private.can_manage(p.user_id, p.branch_id)))) OR ((user_id = ( SELECT auth.uid() AS uid)) OR partner_rma_company_access(user_id)))",
+        "roles": [
+          "authenticated"
+        ],
+        "tablename": "partner_modifiers",
+        "permissive": "PERMISSIVE",
+        "policyname": "catalog_select",
+        "schemaname": "public",
+        "with_check": null
+      },
+      {
+        "cmd": "UPDATE",
+        "qual": "((EXISTS ( SELECT 1\n   FROM partner_products p\n  WHERE ((p.id = partner_modifiers.product_id) AND (p.user_id = partner_modifiers.user_id) AND partner_cadastros_private.can_manage(p.user_id, p.branch_id)))) OR (( SELECT auth.uid() AS uid) = user_id))",
+        "roles": [
+          "authenticated"
+        ],
+        "tablename": "partner_modifiers",
+        "permissive": "PERMISSIVE",
+        "policyname": "catalog_update",
+        "schemaname": "public",
+        "with_check": "((EXISTS ( SELECT 1\n   FROM partner_products p\n  WHERE ((p.id = partner_modifiers.product_id) AND (p.user_id = partner_modifiers.user_id) AND partner_cadastros_private.can_manage(p.user_id, p.branch_id)))) OR (( SELECT auth.uid() AS uid) = user_id))"
+      },
+      {
+        "cmd": "ALL",
+        "qual": "partner_has_saas_access(user_id, 'cadastros'::text)",
+        "roles": [
+          "authenticated"
+        ],
+        "tablename": "partner_modifiers",
+        "permissive": "RESTRICTIVE",
+        "policyname": "saas_entitlement",
+        "schemaname": "public",
+        "with_check": "partner_has_saas_access(user_id, 'cadastros'::text)"
+      },
+      {
+        "cmd": "ALL",
+        "qual": "(partner_has_saas_access(user_id, 'os'::text) AND ((user_id = ( SELECT auth.uid() AS uid)) OR partner_employee_can_access_branch(user_id, branch_id) OR ( SELECT is_super_admin() AS is_super_admin)))",
+        "roles": [
+          "authenticated"
+        ],
+        "tablename": "service_orders",
+        "permissive": "RESTRICTIVE",
+        "policyname": "os_branch_gate",
+        "schemaname": "public",
+        "with_check": "(partner_has_saas_access(user_id, 'os'::text) AND ((user_id = ( SELECT auth.uid() AS uid)) OR partner_employee_can_access_branch(user_id, branch_id) OR ( SELECT is_super_admin() AS is_super_admin)))"
+      },
+      {
+        "cmd": "ALL",
+        "qual": "partner_has_saas_access(user_id, 'os'::text)",
+        "roles": [
+          "authenticated"
+        ],
+        "tablename": "service_orders",
+        "permissive": "RESTRICTIVE",
+        "policyname": "saas_entitlement",
+        "schemaname": "public",
+        "with_check": "partner_has_saas_access(user_id, 'os'::text)"
+      },
+      {
+        "cmd": "DELETE",
+        "qual": "((user_id = ( SELECT auth.uid() AS uid)) OR ((branch_id IS NOT NULL) AND partner_employee_can_access_branch(user_id, branch_id)))",
+        "roles": [
+          "authenticated"
+        ],
+        "tablename": "service_orders",
+        "permissive": "PERMISSIVE",
+        "policyname": "service_orders_delete",
+        "schemaname": "public",
+        "with_check": null
+      },
+      {
+        "cmd": "INSERT",
+        "qual": null,
+        "roles": [
+          "authenticated"
+        ],
+        "tablename": "service_orders",
+        "permissive": "PERMISSIVE",
+        "policyname": "service_orders_insert",
+        "schemaname": "public",
+        "with_check": "((user_id = ( SELECT auth.uid() AS uid)) AND (branch_id IS NOT NULL) AND ((EXISTS ( SELECT 1\n   FROM partner_branches b\n  WHERE ((b.id = service_orders.branch_id) AND (b.user_id = ( SELECT auth.uid() AS uid)) AND (b.is_active = true)))) OR partner_employee_can_access_branch(user_id, branch_id)) AND ((customer_id IS NULL) OR (EXISTS ( SELECT 1\n   FROM partner_customers c\n  WHERE ((c.id = service_orders.customer_id) AND (c.user_id = service_orders.user_id) AND ((c.branch_id IS NULL) OR (c.branch_id = service_orders.branch_id)))))))"
+      },
+      {
+        "cmd": "SELECT",
+        "qual": "((user_id = ( SELECT auth.uid() AS uid)) OR ((branch_id IS NOT NULL) AND partner_employee_can_access_branch(user_id, branch_id)))",
+        "roles": [
+          "authenticated"
+        ],
+        "tablename": "service_orders",
+        "permissive": "PERMISSIVE",
+        "policyname": "service_orders_select",
+        "schemaname": "public",
+        "with_check": null
+      },
+      {
+        "cmd": "UPDATE",
+        "qual": "((user_id = ( SELECT auth.uid() AS uid)) OR ((branch_id IS NOT NULL) AND partner_employee_can_access_branch(user_id, branch_id)))",
+        "roles": [
+          "authenticated"
+        ],
+        "tablename": "service_orders",
+        "permissive": "PERMISSIVE",
+        "policyname": "service_orders_update",
+        "schemaname": "public",
+        "with_check": "((user_id = ( SELECT auth.uid() AS uid)) AND (branch_id IS NOT NULL) AND ((EXISTS ( SELECT 1\n   FROM partner_branches b\n  WHERE ((b.id = service_orders.branch_id) AND (b.user_id = ( SELECT auth.uid() AS uid)) AND (b.is_active = true)))) OR partner_employee_can_access_branch(user_id, branch_id)))"
+      }
+    ],
+    "functions": [
+      {
+        "signature": "execute_partner_sale_with_rma_credit(jsonb,uuid,uuid,text,uuid)",
+        "definition": "CREATE OR REPLACE FUNCTION public.execute_partner_sale_with_rma_credit(p_sale jsonb, p_rma_id uuid, p_operator_id uuid DEFAULT NULL::uuid, p_pin text DEFAULT NULL::text, p_cash_session_id uuid DEFAULT NULL::uuid)\n RETURNS uuid\n LANGUAGE sql\n SET search_path TO ''\nAS $function$\n SELECT partner_checkout_credit_private.execute_sale(p_sale,p_rma_id,p_operator_id,p_pin,p_cash_session_id)\n$function$\n"
+      },
+      {
+        "signature": "update_partner_customer_profile(uuid,jsonb,uuid,text,uuid)",
+        "definition": "CREATE OR REPLACE FUNCTION public.update_partner_customer_profile(p_customer_id uuid, p_fields jsonb, p_operator_id uuid DEFAULT NULL::uuid, p_operator_pin text DEFAULT NULL::text, p_branch_id uuid DEFAULT NULL::uuid)\n RETURNS jsonb\n LANGUAGE sql\n SET search_path TO ''\nAS $function$\n SELECT partner_cadastros_private.update_customer_profile(p_customer_id,p_fields,p_operator_id,p_operator_pin,p_branch_id);\n$function$\n"
+      },
+      {
+        "signature": "update_service_order_workflow_checked(uuid,text,text,text,text,uuid,boolean)",
+        "definition": "CREATE OR REPLACE FUNCTION public.update_service_order_workflow_checked(p_order_id uuid, p_status text, p_technician text, p_approval text, p_reason text, p_customer_id uuid DEFAULT NULL::uuid, p_clear_customer boolean DEFAULT false)\n RETURNS jsonb\n LANGUAGE sql\n SET search_path TO ''\nAS $function$SELECT partner_service_orders_private.update_workflow(p_order_id,p_status,p_technician,p_approval,p_reason,p_customer_id,p_clear_customer)$function$\n"
+      },
+      {
+        "signature": "create_service_order_once(uuid,jsonb)",
+        "definition": "CREATE OR REPLACE FUNCTION public.create_service_order_once(p_request_id uuid, p_payload jsonb)\n RETURNS uuid\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\n      DECLARE\r\n       actor uuid:=auth.uid();\r\n        branch uuid:=(p_payload->>'branch_id')::uuid;\r\n         company uuid;\r\n          request partner_operations_private.operation_requests%ROWTYPE;\r\n           customer uuid:=(p_payload->>'customer_id')::uuid;\r\n            manual jsonb:=p_payload->'manual_customer';\r\n             customer_name text;\r\n              customer_email text;\r\n               customer_address text;\r\n                customer_phone text;\r\n                 manual_name text;\r\n                  labor numeric:=(p_payload->>'labor_total')::numeric;\r\n                   total_parts numeric:=0;\r\n                    item jsonb;\r\n                     product public.partner_products%ROWTYPE;\r\n                      qty integer;\r\n                       price numeric;\r\n                       BEGIN\r\n                        company:=partner_operations_private.authorize_branch(branch,'os');\r\n                         IF p_request_id IS NULL OR p_payload IS NULL THEN RAISE EXCEPTION 'OS sem identificação.'; END IF;\r\n                          PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(actor::text||':service-order:'||p_request_id::text,0));\r\n                           SELECT * INTO request FROM partner_operations_private.operation_requests WHERE actor_id=actor AND kind='service-order' AND request_id=p_request_id;\r\n                            IF FOUND THEN\r\n                              IF request.payload<>p_payload THEN RAISE EXCEPTION 'Esta tentativa já identifica outra OS.'; END IF;\r\n                                RETURN (request.result->>'id')::uuid;\r\n                                 END IF;\r\n                                  IF labor IS NULL OR labor::text IN ('NaN','Infinity','-Infinity') OR labor<0 OR labor<>round(labor,2) THEN RAISE EXCEPTION 'Mão de obra inválida.'; END IF;\r\n                                   IF coalesce(length(trim(p_payload->>'equipment_type')),0)=0 AND coalesce(length(trim(p_payload->>'identification')),0)=0 AND coalesce(length(trim(p_payload->>'serial')),0)=0 THEN RAISE EXCEPTION 'Informe o equipamento.'; END IF;\r\n                                    IF customer IS NOT NULL THEN\r\n                                      IF manual IS NOT NULL THEN RAISE EXCEPTION 'Informe um cliente cadastrado ou um cliente manual, não ambos.'; END IF;\r\n                                        SELECT name INTO customer_name FROM public.partner_customers WHERE id=customer AND user_id=company AND (branch_id IS NULL OR branch_id=branch);\r\n                                          IF NOT FOUND THEN RAISE EXCEPTION 'Cliente não autorizado nesta filial.'; END IF;\r\n                                           ELSIF manual IS NOT NULL THEN\r\n                                             IF jsonb_typeof(manual) IS DISTINCT FROM 'object' OR jsonb_typeof(manual->'name') IS DISTINCT FROM 'string' THEN\r\n                                                RAISE EXCEPTION 'Dados do cliente manual inválidos.';\r\n                                                  END IF;\r\n                                                    manual_name:=nullif(btrim(manual->>'name'),'');\r\n                                                      IF manual_name IS NULL OR length(manual_name)>200 THEN RAISE EXCEPTION 'Informe o nome do cliente (até 200 caracteres).'; END IF;\r\n                                                        IF jsonb_typeof(manual->'email') NOT IN ('string','null') OR jsonb_typeof(manual->'address') NOT IN ('string','null') OR jsonb_typeof(manual->'phone') NOT IN ('string','null') THEN\r\n                                                           RAISE EXCEPTION 'Dados do cliente manual inválidos.';\r\n                                                             END IF;\r\n                                                               customer_email:=nullif(btrim(manual->>'email'),'');\r\n                                                                 customer_address:=nullif(btrim(manual->>'address'),'');\r\n                                                                   customer_phone:=nullif(btrim(manual->>'phone'),'');\r\n                                                                     IF length(customer_email)>320 OR length(customer_address)>1000 OR length(customer_phone)>50 THEN RAISE EXCEPTION 'Os dados do cliente excedem o limite permitido.'; END IF;\r\n                                                                       IF customer_email IS NOT NULL AND customer_email !~ '^[^[:space:]@]+@[^[:space:]@]+\\.[^[:space:]@]+$' THEN RAISE EXCEPTION 'E-mail do cliente inválido.'; END IF;\r\n                                                                         customer_name:=manual_name;\r\n                                                                          END IF;\r\n                                                                           IF jsonb_typeof(p_payload->'items') IS DISTINCT FROM 'array' OR jsonb_array_length(p_payload->'items')>100 THEN RAISE EXCEPTION 'Peças inválidas.'; END IF;\r\n                                                                            INSERT INTO public.service_orders(id,user_id,branch_id,customer_id,customer_name,customer_email,customer_address,customer_phone,service_segment,equipment_type,equipment_identification,serial_number,accessories_left,physical_condition,entry_damage,entry_notes,labor_total,total,status_history)\r\n                                                                             VALUES(p_request_id,company,branch,customer,coalesce(customer_name,''),customer_email,customer_address,customer_phone,coalesce(p_payload->>'segment','assistencia'),p_payload->>'equipment_type',p_payload->>'identification',p_payload->>'serial',p_payload->>'accessories',p_payload->>'condition',p_payload->>'damage',p_payload->>'notes',labor,labor,jsonb_build_array(jsonb_build_object('status','aberta','actor',actor,'at',now())));\r\n                                                                              FOR item IN SELECT value FROM jsonb_array_elements(p_payload->'items') ORDER BY value->>'product_id' LOOP\r\n                                                                                IF (item->>'quantity')::numeric<>trunc((item->>'quantity')::numeric) THEN RAISE EXCEPTION 'Quantidade deve ser inteira.'; END IF;\r\n                                                                                  qty:=(item->>'quantity')::integer; price:=(item->>'unit_price')::numeric;\r\n                                                                                    IF qty IS NULL OR qty<=0 OR price IS NULL OR price::text IN ('NaN','Infinity','-Infinity') OR price<0 OR price<>round(price,2) THEN RAISE EXCEPTION 'Peça com valor inválido.'; END IF;\r\n                                                                                      IF item->>'product_id' IS NULL THEN\r\n                                                                                         IF jsonb_typeof(item->'name') IS DISTINCT FROM 'string' OR length(btrim(item->>'name')) NOT BETWEEN 1 AND 200 OR qty>999 OR price>9999999.99 THEN RAISE EXCEPTION 'Peça manual: informe descrição, quantidade de 1 a 999 e preço válido.'; END IF;\r\n                                                                                            INSERT INTO public.service_order_items(service_order_id,user_id,product_id,branch_id,product_name,quantity,unit_cost,unit_price,stock_consumed)\r\n                                                                                                VALUES(p_request_id,company,NULL,branch,btrim(item->>'name'),qty,0,price,false);\r\n                                                                                                   total_parts:=total_parts+price*qty;\r\n                                                                                                      CONTINUE;\r\n                                                                                                        END IF;\r\n                                                                                                          SELECT * INTO product FROM public.partner_products WHERE id=(item->>'product_id')::uuid AND user_id=company AND branch_id=branch FOR UPDATE;\r\n                                                                                                            IF NOT FOUND THEN RAISE EXCEPTION 'Produto não autorizado nesta filial.'; END IF;\r\n                                                                                                              IF NOT coalesce(product.is_service,false) AND product.stock<qty THEN RAISE EXCEPTION 'Estoque insuficiente para %.',product.name; END IF;\r\n                                                                                                                INSERT INTO public.service_order_items(service_order_id,user_id,product_id,branch_id,product_name,quantity,unit_cost,unit_price,stock_consumed)\r\n                                                                                                                   VALUES(p_request_id,company,product.id,branch,product.name,qty,product.cost_price,price,NOT coalesce(product.is_service,false));\r\n                                                                                                                     total_parts:=total_parts+price*qty;\r\n                                                                                                                       IF NOT coalesce(product.is_service,false) THEN\r\n                                                                                                                          UPDATE public.partner_products SET stock=stock-qty,updated_at=now() WHERE id=product.id;\r\n                                                                                                                             INSERT INTO public.stock_movements(user_id,product_id,product_name,type,quantity,reason,branch_id) VALUES(company,product.id,product.name,'saida',qty,'Uso em OS '||p_request_id::text,branch);\r\n                                                                                                                               END IF;\r\n                                                                                                                                END LOOP;\r\n                                                                                                                                 UPDATE public.service_orders SET parts_total=total_parts,total=total_parts+labor,updated_at=now() WHERE id=p_request_id;\r\n                                                                                                                                  INSERT INTO partner_operations_private.operation_requests VALUES(actor,'service-order',p_request_id,p_payload,jsonb_build_object('id',p_request_id),now());\r\n                                                                                                                                   RETURN p_request_id;\r\n                                                                                                                                   END $function$\n"
+      },
+      {
+        "signature": "update_service_order_workflow(uuid,text,text,text,text,uuid)",
+        "definition": "CREATE OR REPLACE FUNCTION public.update_service_order_workflow(p_order_id uuid, p_status text, p_technician text, p_approval text, p_reason text, p_customer_id uuid DEFAULT NULL::uuid)\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\nDECLARE o public.service_orders%ROWTYPE; item public.service_order_items%ROWTYPE; name text;\nBEGIN\n SELECT * INTO o FROM public.service_orders WHERE id=p_order_id FOR UPDATE;\n IF NOT FOUND THEN RAISE EXCEPTION 'OS nÃ£o encontrada.'; END IF;\n IF o.user_id IS DISTINCT FROM partner_operations_private.authorize_branch(o.branch_id,'os') THEN RAISE EXCEPTION 'OS n?o autorizada.'; END IF;\n IF p_status IS NULL OR p_status NOT IN ('aberta','em_andamento','aguardando_peca','aguardando_cliente','pronta','finalizada','cancelada') OR p_approval IS NULL OR p_approval NOT IN ('aguardando_aprovacao','aprovado','reprovado') THEN RAISE EXCEPTION 'SituaÃ§Ã£o invÃ¡lida.'; END IF;\n\n IF p_customer_id IS NOT NULL AND p_customer_id IS DISTINCT FROM o.customer_id\n  AND EXISTS(SELECT 1 FROM public.partner_invoices WHERE service_order_id=o.id) THEN\n  RAISE EXCEPTION 'OS já faturada: o cliente não pode ser alterado. Utilize a conciliação financeira.';\n END IF;\n IF o.status IN ('cancelada','finalizada') THEN\n  IF p_status=o.status AND coalesce(p_customer_id,o.customer_id) IS NOT DISTINCT FROM o.customer_id AND p_approval=o.approval_status AND coalesce(p_technician,'')=coalesce(o.technician_name,'') AND coalesce(p_reason,'')=coalesce(o.approval_notes,'') THEN RETURN to_jsonb(o); END IF;\n  RAISE EXCEPTION 'Esta OS jÃ¡ foi encerrada.';\n END IF;\n IF p_status IN ('em_andamento','pronta','finalizada') AND p_approval<>'aprovado' THEN RAISE EXCEPTION 'Aprove o orÃ§amento antes de avanÃ§ar.'; END IF;\n IF p_status='finalizada' AND o.status<>'pronta' THEN RAISE EXCEPTION 'Marque a OS como pronta antes de finalizar.'; END IF;\n IF p_customer_id IS NOT NULL THEN\n  SELECT c.name INTO name FROM public.partner_customers c WHERE c.id=p_customer_id AND c.user_id=o.user_id AND (c.branch_id IS NULL OR c.branch_id=o.branch_id);\n  IF NOT FOUND THEN RAISE EXCEPTION 'Cliente nÃ£o autorizado nesta filial.'; END IF;\n END IF;\n IF p_status='cancelada' THEN\n  IF coalesce(length(trim(p_reason)),0)<5 THEN RAISE EXCEPTION 'Informe o motivo do cancelamento.'; END IF;\n  IF EXISTS(SELECT 1 FROM public.partner_invoices WHERE service_order_id=o.id AND paid_amount>0) THEN RAISE EXCEPTION 'HÃ¡ recebimentos vinculados. Concilie o financeiro antes de cancelar.'; END IF;\n  IF EXISTS(SELECT 1 FROM public.service_order_items WHERE service_order_id=o.id AND stock_consumed IS NULL) THEN RAISE EXCEPTION 'OS antiga sem identificaÃ§Ã£o da baixa: confira o estoque antes de cancelar.'; END IF;\n  FOR item IN SELECT * FROM public.service_order_items WHERE service_order_id=o.id AND stock_consumed ORDER BY product_id LOOP\n   UPDATE public.partner_products SET stock=stock+item.quantity,updated_at=now() WHERE id=item.product_id AND user_id=o.user_id AND branch_id=o.branch_id;\n   IF NOT FOUND THEN RAISE EXCEPTION 'Produto da OS nÃ£o estÃ¡ mais nesta filial.'; END IF;\n   INSERT INTO public.stock_movements(user_id,product_id,product_name,type,quantity,reason,branch_id) VALUES(o.user_id,item.product_id,item.product_name,'entrada',item.quantity,'Cancelamento de OS '||o.id::text,o.branch_id);\n  END LOOP;\n  UPDATE public.partner_invoices SET status='cancelada' WHERE service_order_id=o.id AND status IN ('aberta','parcial');\n END IF;\n UPDATE public.service_orders SET status=p_status,technician_name=nullif(trim(p_technician),''),approval_status=p_approval,approval_notes=left(p_reason,4000),customer_id=coalesce(p_customer_id,customer_id),customer_name=coalesce(name,customer_name),updated_at=now(),\n status_history=status_history||jsonb_build_array(jsonb_build_object('status',p_status,'approval',p_approval,'reason',left(p_reason,4000),'actor',auth.uid(),'at',now())) WHERE id=o.id RETURNING * INTO o;\n RETURN to_jsonb(o);\nEND $function$\n"
+      },
+      {
+        "signature": "partner_operations_private.stamp_crm_task()",
+        "definition": "CREATE OR REPLACE FUNCTION partner_operations_private.stamp_crm_task()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\nBEGIN\n  PERFORM partner_subscription_private.require_actor('relatorios');\n  IF TG_OP='INSERT' THEN NEW.created_at:=now(); NEW.status:='pendente'; NEW.completed_at:=NULL;\n  ELSIF NEW.status='concluida' AND OLD.status='pendente' THEN NEW.completed_at:=now();\n  ELSE NEW.completed_at:=OLD.completed_at;\n  END IF;\n  RETURN NEW;\nEND;\n$function$\n"
+      },
+      {
+        "signature": "execute_partner_product_priced_mutation(uuid,text,uuid,uuid,text,numeric,numeric,numeric,integer,integer,text,text,boolean,text,uuid,numeric)",
+        "definition": "CREATE OR REPLACE FUNCTION public.execute_partner_product_priced_mutation(p_salesperson_id uuid, p_pin text, p_product_id uuid, p_branch_id uuid, p_name text, p_cost_price numeric, p_sale_price numeric, p_wholesale_price numeric, p_stock integer, p_min_stock integer, p_category text, p_sku text, p_is_service boolean, p_image_url text, p_supplier_id uuid, p_premium_price numeric)\n RETURNS uuid\n LANGUAGE sql\n SET search_path TO ''\nAS $function$\n SELECT partner_pdv_fix_private.mutate_priced_product(p_salesperson_id,p_pin,p_product_id,p_branch_id,p_name,p_cost_price,p_sale_price,p_wholesale_price,p_stock,p_min_stock,p_category,p_sku,p_is_service,p_image_url,p_supplier_id,p_premium_price);\n$function$\n"
+      },
+      {
+        "signature": "partner_service_orders_private.update_workflow(uuid,text,text,text,text,uuid,boolean)",
+        "definition": "CREATE OR REPLACE FUNCTION partner_service_orders_private.update_workflow(p_order_id uuid, p_status text, p_technician text, p_approval text, p_reason text, p_customer_id uuid DEFAULT NULL::uuid, p_clear_customer boolean DEFAULT false)\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\nDECLARE target_customer uuid; o public.service_orders%ROWTYPE; item public.service_order_items%ROWTYPE; name text;\nBEGIN\n SELECT * INTO o FROM public.service_orders WHERE id=p_order_id FOR UPDATE;\n IF NOT FOUND THEN RAISE EXCEPTION 'OS nÃ£o encontrada.'; END IF;\n IF o.user_id IS DISTINCT FROM partner_operations_private.authorize_branch(o.branch_id,'os') THEN RAISE EXCEPTION 'OS n?o autorizada.'; END IF;\n IF p_status IS NULL OR p_status NOT IN ('aberta','em_andamento','aguardando_peca','aguardando_cliente','pronta','finalizada','cancelada') OR p_approval IS NULL OR p_approval NOT IN ('aguardando_aprovacao','aprovado','reprovado') THEN RAISE EXCEPTION 'SituaÃ§Ã£o invÃ¡lida.'; END IF;\n\n\n IF p_clear_customer AND p_customer_id IS NOT NULL THEN RAISE EXCEPTION 'Solicitação de cliente inconsistente'; END IF;\n target_customer:=CASE WHEN p_clear_customer THEN NULL ELSE COALESCE(p_customer_id,o.customer_id) END;\n IF target_customer IS DISTINCT FROM o.customer_id\n  AND EXISTS(SELECT 1 FROM public.partner_invoices WHERE service_order_id=o.id) THEN\n  RAISE EXCEPTION 'OS já faturada: o cliente não pode ser alterado. Utilize a conciliação financeira.';\n END IF;\n IF o.status IN ('cancelada','finalizada') THEN\n  IF p_status=o.status AND target_customer IS NOT DISTINCT FROM o.customer_id AND p_approval=o.approval_status AND coalesce(p_technician,'')=coalesce(o.technician_name,'') AND coalesce(p_reason,'')=coalesce(o.approval_notes,'') THEN RETURN to_jsonb(o); END IF;\n  RAISE EXCEPTION 'Esta OS jÃ¡ foi encerrada.';\n END IF;\n IF p_status IN ('em_andamento','pronta','finalizada') AND p_approval<>'aprovado' THEN RAISE EXCEPTION 'Aprove o orÃ§amento antes de avanÃ§ar.'; END IF;\n IF p_status='finalizada' AND o.status<>'pronta' THEN RAISE EXCEPTION 'Marque a OS como pronta antes de finalizar.'; END IF;\n IF p_customer_id IS NOT NULL THEN\n  SELECT c.name INTO name FROM public.partner_customers c WHERE c.id=p_customer_id AND c.user_id=o.user_id AND (c.branch_id IS NULL OR c.branch_id=o.branch_id);\n  IF NOT FOUND THEN RAISE EXCEPTION 'Cliente nÃ£o autorizado nesta filial.'; END IF;\n END IF;\n IF p_status='cancelada' THEN\n  IF coalesce(length(trim(p_reason)),0)<5 THEN RAISE EXCEPTION 'Informe o motivo do cancelamento.'; END IF;\n  IF EXISTS(SELECT 1 FROM public.partner_invoices WHERE service_order_id=o.id AND paid_amount>0) THEN RAISE EXCEPTION 'HÃ¡ recebimentos vinculados. Concilie o financeiro antes de cancelar.'; END IF;\n  IF EXISTS(SELECT 1 FROM public.service_order_items WHERE service_order_id=o.id AND stock_consumed IS NULL) THEN RAISE EXCEPTION 'OS antiga sem identificaÃ§Ã£o da baixa: confira o estoque antes de cancelar.'; END IF;\n  FOR item IN SELECT * FROM public.service_order_items WHERE service_order_id=o.id AND stock_consumed ORDER BY product_id LOOP\n   UPDATE public.partner_products SET stock=stock+item.quantity,updated_at=now() WHERE id=item.product_id AND user_id=o.user_id AND branch_id=o.branch_id;\n   IF NOT FOUND THEN RAISE EXCEPTION 'Produto da OS nÃ£o estÃ¡ mais nesta filial.'; END IF;\n   INSERT INTO public.stock_movements(user_id,product_id,product_name,type,quantity,reason,branch_id) VALUES(o.user_id,item.product_id,item.product_name,'entrada',item.quantity,'Cancelamento de OS '||o.id::text,o.branch_id);\n  END LOOP;\n  UPDATE public.partner_invoices SET status='cancelada' WHERE service_order_id=o.id AND status IN ('aberta','parcial');\n END IF;\n UPDATE public.service_orders SET status=p_status,technician_name=nullif(trim(p_technician),''),approval_status=p_approval,approval_notes=left(p_reason,4000),customer_id=target_customer,customer_name=CASE WHEN p_clear_customer THEN '' ELSE coalesce(name,customer_name) END,updated_at=now(),\n status_history=status_history||jsonb_build_array(jsonb_build_object('status',p_status,'approval',p_approval,'reason',left(p_reason,4000),'actor',auth.uid(),'at',now())) WHERE id=o.id RETURNING * INTO o;\n RETURN to_jsonb(o);\nEND $function$\n"
+      }
+    ],
+    "constraints": [
+      {
+        "table": "partner_combos",
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "table": "partner_combos",
+        "definition": "FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE"
+      },
+      {
+        "table": "partner_modifiers",
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "table": "partner_modifiers",
+        "definition": "FOREIGN KEY (product_id) REFERENCES partner_products(id) ON DELETE CASCADE"
+      },
+      {
+        "table": "partner_modifiers",
+        "definition": "FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE"
+      },
+      {
+        "table": "service_orders",
+        "definition": "CHECK ((approval_status = ANY (ARRAY['aguardando_aprovacao'::text, 'aprovado'::text, 'reprovado'::text])))"
+      },
+      {
+        "table": "service_orders",
+        "definition": "FOREIGN KEY (branch_id) REFERENCES partner_branches(id) ON DELETE RESTRICT"
+      },
+      {
+        "table": "service_orders",
+        "definition": "FOREIGN KEY (customer_id) REFERENCES partner_customers(id) ON DELETE SET NULL"
+      },
+      {
+        "table": "service_orders",
+        "definition": "CHECK ((labor_total >= (0)::numeric))"
+      },
+      {
+        "table": "service_orders",
+        "definition": "CHECK ((parts_total >= (0)::numeric))"
+      },
+      {
+        "table": "service_orders",
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "table": "service_orders",
+        "definition": "CHECK ((status = ANY (ARRAY['aberta'::text, 'em_andamento'::text, 'aguardando_peca'::text, 'aguardando_cliente'::text, 'pronta'::text, 'finalizada'::text, 'cancelada'::text])))"
+      },
+      {
+        "table": "service_orders",
+        "definition": "CHECK ((total = (labor_total + parts_total)))"
+      },
+      {
+        "table": "service_orders",
+        "definition": "CHECK ((total = (labor_total + parts_total)))"
+      },
+      {
+        "table": "service_orders",
+        "definition": "CHECK ((total >= (0)::numeric))"
+      },
+      {
+        "table": "service_orders",
+        "definition": "FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE"
+      },
+      {
+        "table": "partner_crm_tasks",
+        "definition": "FOREIGN KEY (branch_id) REFERENCES partner_branches(id)"
+      },
+      {
+        "table": "partner_crm_tasks",
+        "definition": "FOREIGN KEY (customer_id) REFERENCES partner_customers(id)"
+      },
+      {
+        "table": "partner_crm_tasks",
+        "definition": "CHECK (((length(TRIM(BOTH FROM description)) >= 1) AND (length(TRIM(BOTH FROM description)) <= 4000)))"
+      },
+      {
+        "table": "partner_crm_tasks",
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "table": "partner_crm_tasks",
+        "definition": "FOREIGN KEY (responsible_id) REFERENCES partner_salespeople(id)"
+      },
+      {
+        "table": "partner_crm_tasks",
+        "definition": "CHECK ((status = ANY (ARRAY['pendente'::text, 'concluida'::text])))"
+      },
+      {
+        "table": "partner_crm_tasks",
+        "definition": "FOREIGN KEY (user_id) REFERENCES partner_profiles(id)"
+      }
+    ]
+  },
+  "more": {
+    "columns": [
+      {
+        "type": "uuid",
+        "table": "partner_crm_tasks",
+        "column": "id"
+      },
+      {
+        "type": "uuid",
+        "table": "partner_crm_tasks",
+        "column": "user_id"
+      },
+      {
+        "type": "uuid",
+        "table": "partner_crm_tasks",
+        "column": "branch_id"
+      },
+      {
+        "type": "uuid",
+        "table": "partner_crm_tasks",
+        "column": "customer_id"
+      },
+      {
+        "type": "text",
+        "table": "partner_crm_tasks",
+        "column": "description"
+      },
+      {
+        "type": "date",
+        "table": "partner_crm_tasks",
+        "column": "due_date"
+      },
+      {
+        "type": "uuid",
+        "table": "partner_crm_tasks",
+        "column": "responsible_id"
+      },
+      {
+        "type": "text",
+        "table": "partner_crm_tasks",
+        "column": "status"
+      },
+      {
+        "type": "timestamp with time zone",
+        "table": "partner_crm_tasks",
+        "column": "completed_at"
+      },
+      {
+        "type": "timestamp with time zone",
+        "table": "partner_crm_tasks",
+        "column": "created_at"
+      },
+      {
+        "type": "uuid",
+        "table": "partner_modifiers",
+        "column": "id"
+      },
+      {
+        "type": "uuid",
+        "table": "partner_modifiers",
+        "column": "user_id"
+      },
+      {
+        "type": "uuid",
+        "table": "partner_modifiers",
+        "column": "product_id"
+      },
+      {
+        "type": "text",
+        "table": "partner_modifiers",
+        "column": "name"
+      },
+      {
+        "type": "numeric",
+        "table": "partner_modifiers",
+        "column": "price_adjustment"
+      },
+      {
+        "type": "timestamp with time zone",
+        "table": "partner_modifiers",
+        "column": "created_at"
+      },
+      {
+        "type": "text",
+        "table": "permission_overrides",
+        "column": "id"
+      },
+      {
+        "type": "uuid",
+        "table": "permission_overrides",
+        "column": "user_id"
+      },
+      {
+        "type": "text",
+        "table": "permission_overrides",
+        "column": "salesperson_id"
+      },
+      {
+        "type": "boolean",
+        "table": "permission_overrides",
+        "column": "can_cancel_sales"
+      },
+      {
+        "type": "numeric",
+        "table": "permission_overrides",
+        "column": "discount_override_limit"
+      },
+      {
+        "type": "boolean",
+        "table": "permission_overrides",
+        "column": "can_view_cost_prices"
+      },
+      {
+        "type": "timestamp with time zone",
+        "table": "permission_overrides",
+        "column": "created_at"
+      }
+    ],
+    "functions": [
+      {
+        "signature": "partner_cadastros_private.validate_combo()",
+        "definition": "CREATE OR REPLACE FUNCTION partner_cadastros_private.validate_combo()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\nDECLARE i jsonb; product_branch uuid; kit_branch uuid;\nBEGIN\n IF trim(coalesce(NEW.name,''))='' OR NEW.price IS NULL OR NEW.price<0 OR NEW.price::text IN ('NaN','Infinity','-Infinity') THEN RAISE EXCEPTION 'Nome e preço válido são obrigatórios no kit.'; END IF;\n IF jsonb_typeof(NEW.items) IS DISTINCT FROM 'array' OR jsonb_array_length(NEW.items)=0 THEN RAISE EXCEPTION 'Selecione os produtos do kit.'; END IF;\n FOR i IN SELECT * FROM jsonb_array_elements(NEW.items) LOOP\n  SELECT p.branch_id INTO product_branch FROM public.partner_products p WHERE p.id::text=i->>'product_id' AND p.user_id=NEW.user_id FOR KEY SHARE;\n  IF NOT FOUND OR product_branch IS NULL OR (kit_branch IS NOT NULL AND product_branch<>kit_branch) THEN RAISE EXCEPTION 'Produtos do kit devem pertencer à mesma empresa e filial.'; END IF;\n  IF NOT (coalesce(i->>'quantity','') ~ '^[1-9][0-9]*$') THEN RAISE EXCEPTION 'Quantidade do kit inválida.'; END IF;\n  kit_branch:=product_branch;\n END LOOP;\n RETURN NEW;\nEND $function$\n"
+      },
+      {
+        "signature": "partner_employee_can_access_branch(uuid,uuid)",
+        "definition": "CREATE OR REPLACE FUNCTION public.partner_employee_can_access_branch(p_company_id uuid, p_branch_id uuid)\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$ select exists(select 1 from public.partner_salespeople sp join public.partner_branches b on b.id=p_branch_id and b.user_id=p_company_id where sp.user_id=p_company_id and sp.auth_user_id=auth.uid() and coalesce(sp.active,true) and (sp.role='administrador' or sp.branch_id=p_branch_id)); $function$\n"
+      },
+      {
+        "signature": "partner_rma_company_access(uuid)",
+        "definition": "CREATE OR REPLACE FUNCTION public.partner_rma_company_access(p_company_id uuid)\n RETURNS boolean\n LANGUAGE sql\n SECURITY DEFINER\n SET search_path TO 'public', 'pg_catalog'\nAS $function$\n  select exists (\n    select 1 from public.partner_profiles pp\n    where pp.id = p_company_id and pp.id = auth.uid()\n  )\n  or exists (\n    select 1 from public.partner_salespeople ps\n    where ps.user_id = p_company_id\n      and ps.auth_user_id = auth.uid()\n      and coalesce(ps.active, true) = true\n  );\n$function$\n"
+      },
+      {
+        "signature": "partner_has_saas_access(uuid,text)",
+        "definition": "CREATE OR REPLACE FUNCTION public.partner_has_saas_access(p_company uuid, p_feature text)\n RETURNS boolean\n LANGUAGE plpgsql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\nDECLARE s jsonb;\nBEGIN\n IF auth.uid() IS NULL THEN RETURN false; END IF;\n IF public.is_super_admin() THEN RETURN true; END IF;\n IF auth.uid()<>p_company AND NOT EXISTS(SELECT 1 FROM public.partner_salespeople\n  WHERE user_id=p_company AND auth_user_id=auth.uid() AND active=true) THEN RETURN false; END IF;\n s:=partner_subscription_private.state(p_company);\n RETURN COALESCE((s->>'can_access')::boolean,false) AND s->'features' ? p_feature;\nEND;\n$function$\n"
+      },
+      {
+        "signature": "partner_subscription_private.guard_operational_write()",
+        "definition": "CREATE OR REPLACE FUNCTION partner_subscription_private.guard_operational_write()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\nDECLARE company uuid; previous_company uuid; s jsonb; max_branches integer;\nBEGIN\n company:=(CASE WHEN TG_OP='DELETE' THEN to_jsonb(OLD) ELSE to_jsonb(NEW) END->>'user_id')::uuid;\n IF TG_OP='UPDATE' THEN\n  previous_company:=(to_jsonb(OLD)->>'user_id')::uuid;\n  IF company IS DISTINCT FROM previous_company THEN RAISE EXCEPTION 'Não é permitido transferir registros entre empresas.'; END IF;\n END IF;\n -- Server maintenance is allowed; JWT-less browser roles are not.\n IF auth.uid() IS NULL THEN\n  IF COALESCE(NULLIF(current_setting('role',true),'none'),session_user) NOT IN ('postgres','service_role') THEN\n   RAISE EXCEPTION 'Não autenticado.';\n  END IF;\n ELSE\n  IF NOT public.partner_has_saas_access(company,TG_ARGV[0]) THEN\n   RAISE EXCEPTION 'Recurso indisponível para esta assinatura ou empresa.';\n  END IF;\n END IF;\n IF TG_TABLE_NAME='partner_branches' AND TG_OP='INSERT' THEN\n  PERFORM 1 FROM public.saas_subscriptions WHERE company_id=company FOR UPDATE;\n  s:=partner_subscription_private.state(company);\n  max_branches:=(s->>'branch_limit')::integer;\n  IF max_branches IS NOT NULL AND (SELECT count(*) FROM public.partner_branches WHERE user_id=company)>=max_branches THEN\n   RAISE EXCEPTION 'Limite de filiais do plano atingido.';\n  END IF;\n END IF;\n IF TG_OP='DELETE' THEN RETURN OLD; END IF;\n RETURN NEW;\nEND;\n$function$\n"
+      },
+      {
+        "signature": "partner_subscription_private.guard_collaborator_write()",
+        "definition": "CREATE OR REPLACE FUNCTION partner_subscription_private.guard_collaborator_write()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\nBEGIN\n PERFORM partner_subscription_private.require_collaborator_module(TG_ARGV[0]);\n IF TG_OP='DELETE' THEN RETURN OLD; END IF;\n RETURN NEW;\nEND; $function$\n"
+      },
+      {
+        "signature": "partner_cadastros_private.update_customer_profile(uuid,jsonb,uuid,text,uuid)",
+        "definition": "CREATE OR REPLACE FUNCTION partner_cadastros_private.update_customer_profile(p_customer_id uuid, p_fields jsonb, p_operator_id uuid DEFAULT NULL::uuid, p_operator_pin text DEFAULT NULL::text, p_branch_id uuid DEFAULT NULL::uuid)\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\nDECLARE existing public.partner_customers%ROWTYPE; desired public.partner_customers%ROWTYPE; allowed jsonb; operator record;\nBEGIN\n PERFORM partner_subscription_private.require_actor('cadastros');\n PERFORM partner_subscription_private.require_operator_module('cadastros',p_operator_id);\n SELECT * INTO existing FROM public.partner_customers WHERE id=p_customer_id FOR UPDATE;\n IF NOT FOUND THEN RAISE EXCEPTION 'Cliente não encontrado.'; END IF;\n \n IF auth.uid()=existing.user_id AND p_operator_id IS NOT NULL THEN\n  -- The company owner may authorize a company operator with a valid PIN,\n  -- including operators who also have their own login. Preserve their role.\n  SELECT sp.user_id AS company_id,sp.id AS salesperson_id,sp.role,sp.branch_id\n  INTO operator FROM public.partner_salespeople sp\n  WHERE sp.id=p_operator_id AND sp.user_id=auth.uid() AND coalesce(sp.active,true)\n   AND sp.pin_hash IS NOT NULL\n   AND public.verify_partner_salesperson_pin(p_operator_pin,sp.pin_hash);\n  IF NOT FOUND THEN RAISE EXCEPTION 'Operador invalido ou PIN incorreto'; END IF;\n  IF operator.role<>'administrador' AND operator.branch_id IS NOT NULL\n   AND operator.branch_id IS DISTINCT FROM coalesce(p_branch_id,existing.branch_id)\n  THEN RAISE EXCEPTION 'Acesso negado a filial'; END IF;\n ELSE\n  SELECT * INTO operator FROM public.resolve_partner_operator(p_operator_id,p_operator_pin,coalesce(p_branch_id,existing.branch_id));\n END IF;\n \n IF existing.user_id<>operator.company_id OR (operator.role<>'administrador' AND existing.branch_id IS NOT NULL AND existing.branch_id IS DISTINCT FROM operator.branch_id)\n THEN RAISE EXCEPTION 'Cliente de outra empresa ou filial.'; END IF;\n IF jsonb_typeof(p_fields) IS DISTINCT FROM 'object' THEN RAISE EXCEPTION 'Dados do cliente inválidos.'; END IF;\n SELECT coalesce(jsonb_object_agg(key,value),'{}'::jsonb) INTO allowed FROM jsonb_each(p_fields)\n WHERE key=ANY(ARRAY['branch_id','name','document','person_type','phone','email','birthday','address','neighborhood','city','device_model','notes','customer_type','credit_limit','allow_credit','trade_name','rg','municipal_registration','state_registration','ie_isento','suframa_id','sex','address_number','zip_code','state','complement','reference_point','country','salesperson_id','customer_group','price_table','convenio','simples_nacional','reter_iss','is_active','is_store_admin','phone_commercial_1','phone_commercial_2','photo_url']);\n SELECT * INTO desired FROM jsonb_populate_record(existing,allowed);\n -- Company-wide customers remain shared even when the form supplies its active branch.\n IF existing.branch_id IS NULL THEN desired.branch_id:=NULL; END IF;\n IF desired.branch_id IS DISTINCT FROM existing.branch_id AND\n (desired.branch_id IS NULL OR operator.role<>'administrador' OR NOT EXISTS(SELECT 1 FROM public.partner_branches b WHERE b.id=desired.branch_id AND b.user_id=existing.user_id))\n THEN RAISE EXCEPTION 'Filial do cliente não autorizada.'; END IF;\n desired.name:=trim(desired.name);\n IF desired.name IS NULL OR trim(desired.name)='' THEN RAISE EXCEPTION 'Nome obrigatório.'; END IF;\n IF desired.person_type IS NULL OR desired.person_type NOT IN ('PF','PJ') THEN RAISE EXCEPTION 'Tipo de pessoa inválido.'; END IF;\n IF nullif(desired.document,'') IS NOT NULL AND length(regexp_replace(desired.document,'[^0-9]','','g')) <> (CASE WHEN desired.person_type='PJ' THEN 14 ELSE 11 END)\n THEN RAISE EXCEPTION 'Documento incompatível com o tipo de pessoa.'; END IF;\n IF desired.credit_limit IS NULL OR desired.credit_limit<0 OR desired.credit_limit::text IN ('NaN','Infinity','-Infinity') THEN RAISE EXCEPTION 'Limite de crédito inválido.'; END IF;\n IF desired.salesperson_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.partner_salespeople sp WHERE sp.id=desired.salesperson_id AND sp.user_id=existing.user_id AND (sp.branch_id IS NULL OR sp.branch_id IS NOT DISTINCT FROM desired.branch_id))\n THEN RAISE EXCEPTION 'Vendedor de outra empresa ou filial.'; END IF;\n IF desired.photo_url IS DISTINCT FROM existing.photo_url AND desired.photo_url IS NOT NULL AND\n (split_part(desired.photo_url,'/',1)<>auth.uid()::text OR split_part(desired.photo_url,'/',2)<>p_customer_id::text OR NOT EXISTS(SELECT 1 FROM storage.objects WHERE bucket_id='customer-photos' AND name=desired.photo_url))\n THEN RAISE EXCEPTION 'Foto do cliente inválida.'; END IF;\n UPDATE public.partner_customers SET name=desired.name,document=desired.document,person_type=desired.person_type,phone=desired.phone,email=desired.email,birthday=desired.birthday,address=desired.address,neighborhood=desired.neighborhood,city=desired.city,device_model=desired.device_model,notes=desired.notes,customer_type=desired.customer_type,credit_limit=desired.credit_limit,allow_credit=desired.allow_credit,trade_name=desired.trade_name,rg=desired.rg,municipal_registration=desired.municipal_registration,state_registration=desired.state_registration,ie_isento=desired.ie_isento,suframa_id=desired.suframa_id,sex=desired.sex,address_number=desired.address_number,zip_code=desired.zip_code,state=desired.state,complement=desired.complement,reference_point=desired.reference_point,country=desired.country,salesperson_id=desired.salesperson_id,customer_group=desired.customer_group,price_table=desired.price_table,convenio=desired.convenio,simples_nacional=desired.simples_nacional,reter_iss=desired.reter_iss,is_active=desired.is_active,is_store_admin=desired.is_store_admin,phone_commercial_1=desired.phone_commercial_1,phone_commercial_2=desired.phone_commercial_2,photo_url=desired.photo_url\n WHERE id=existing.id AND user_id=operator.company_id;\n UPDATE public.partner_customers SET branch_id=desired.branch_id WHERE id=existing.id AND user_id=operator.company_id RETURNING * INTO desired;\n RETURN jsonb_set(to_jsonb(desired),'{convenio}',to_jsonb(coalesce(desired.convenio,'false') IN ('true','sim','1')));\nEND $function$\n"
+      }
+    ],
+    "customer_policies": [
+      {
+        "cmd": "SELECT",
+        "qual": "((user_id = ( SELECT auth.uid() AS uid)) OR ((user_id IS NOT NULL) AND ((branch_id IS NULL) OR partner_employee_can_access_branch(user_id, branch_id))))",
+        "roles": [
+          "authenticated"
+        ],
+        "tablename": "partner_customers",
+        "permissive": "PERMISSIVE",
+        "policyname": "partner_customers_select",
+        "schemaname": "public",
+        "with_check": null
+      },
+      {
+        "cmd": "INSERT",
+        "qual": null,
+        "roles": [
+          "authenticated"
+        ],
+        "tablename": "partner_customers",
+        "permissive": "PERMISSIVE",
+        "policyname": "insert_partner_customers",
+        "schemaname": "public",
+        "with_check": "((user_id = ( SELECT auth.uid() AS uid)) OR ((branch_id IS NOT NULL) AND partner_employee_can_access_branch(user_id, branch_id)))"
+      },
+      {
+        "cmd": "ALL",
+        "qual": "partner_has_saas_access(user_id, 'cadastros'::text)",
+        "roles": [
+          "authenticated"
+        ],
+        "tablename": "partner_customers",
+        "permissive": "RESTRICTIVE",
+        "policyname": "saas_entitlement",
+        "schemaname": "public",
+        "with_check": "partner_has_saas_access(user_id, 'cadastros'::text)"
+      },
+      {
+        "cmd": "DELETE",
+        "qual": "((user_id = ( SELECT auth.uid() AS uid)) OR ((branch_id IS NOT NULL) AND partner_employee_can_access_branch(user_id, branch_id)))",
+        "roles": [
+          "authenticated"
+        ],
+        "tablename": "partner_customers",
+        "permissive": "PERMISSIVE",
+        "policyname": "delete_partner_customers",
+        "schemaname": "public",
+        "with_check": null
+      },
+      {
+        "cmd": "UPDATE",
+        "qual": "((user_id = ( SELECT auth.uid() AS uid)) OR ((branch_id IS NOT NULL) AND partner_employee_can_access_branch(user_id, branch_id)))",
+        "roles": [
+          "authenticated"
+        ],
+        "tablename": "partner_customers",
+        "permissive": "PERMISSIVE",
+        "policyname": "partner_customers_update",
+        "schemaname": "public",
+        "with_check": "((user_id = ( SELECT auth.uid() AS uid)) OR ((branch_id IS NOT NULL) AND partner_employee_can_access_branch(user_id, branch_id)))"
+      }
+    ]
+  },
+  "helpers": [
+    {
+      "signature": "partner_subscription_private.require_access(uuid,text)",
+      "definition": "CREATE OR REPLACE FUNCTION partner_subscription_private.require_access(p_company uuid, p_feature text)\n RETURNS void\n LANGUAGE plpgsql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\nDECLARE s jsonb;\nBEGIN\n s:=partner_subscription_private.state(p_company);\n IF NOT COALESCE((s->>'can_access')::boolean,false) THEN RAISE EXCEPTION 'Assinatura sem acesso ativo. Regularize em Configurações ou fale com o administrador.'; END IF;\n IF NOT (s->'features' ? p_feature) THEN RAISE EXCEPTION 'Este recurso não está incluído no plano contratado.'; END IF;\nEND;\n$function$\n"
+    },
+    {
+      "signature": "partner_subscription_private.require_actor(text)",
+      "definition": "CREATE OR REPLACE FUNCTION partner_subscription_private.require_actor(p_feature text)\n RETURNS void\n LANGUAGE plpgsql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\nDECLARE company uuid;\nBEGIN PERFORM partner_subscription_private.require_collaborator_module(p_feature);\n IF auth.uid() IS NULL THEN RAISE EXCEPTION 'Não autenticado.'; END IF;\n IF public.is_super_admin() THEN RETURN; END IF;\n SELECT id INTO company FROM public.partner_profiles WHERE id=auth.uid();\n IF company IS NULL THEN SELECT user_id INTO company FROM public.partner_salespeople\n  WHERE auth_user_id=auth.uid() AND active=true LIMIT 1; END IF;\n IF company IS NULL THEN RAISE EXCEPTION 'Empresa não autorizada.'; END IF;\n PERFORM partner_subscription_private.require_access(company,p_feature);\nEND;\n$function$\n"
+    },
+    {
+      "signature": "partner_subscription_private.require_collaborator_module(text)",
+      "definition": "CREATE OR REPLACE FUNCTION partner_subscription_private.require_collaborator_module(p_feature text)\n RETURNS void\n LANGUAGE plpgsql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\nDECLARE feature text:=CASE WHEN p_feature='estoque' THEN 'cadastros' ELSE p_feature END;\nBEGIN\n IF EXISTS(SELECT 1 FROM public.partner_salespeople WHERE auth_user_id=auth.uid() AND active=true AND feature=ANY(blocked_modules))\n THEN RAISE EXCEPTION 'Acesso a este módulo bloqueado pelo administrador.'; END IF;\nEND; $function$\n"
+    },
+    {
+      "signature": "partner_operations_private.authorize_branch(uuid,text)",
+      "definition": "CREATE OR REPLACE FUNCTION partner_operations_private.authorize_branch(p_branch uuid, p_feature text)\n RETURNS uuid\n LANGUAGE plpgsql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\nDECLARE company uuid;\nBEGIN\n IF auth.uid() IS NULL THEN RAISE EXCEPTION 'NÃ£o autenticado.'; END IF;\n SELECT user_id INTO company FROM public.partner_branches WHERE id=p_branch AND is_active;\n IF company IS NULL OR NOT (company=auth.uid() OR public.partner_employee_can_access_branch(company,p_branch) OR public.is_super_admin()) THEN\n  RAISE EXCEPTION 'Filial nÃ£o autorizada.';\n END IF;\n PERFORM partner_subscription_private.require_actor(p_feature);\n PERFORM partner_subscription_private.require_access(company,p_feature);\n RETURN company;\nEND $function$\n"
+    }
+  ],
+  "final": {
+    "all_rpcs": [
+      {
+        "anon": false,
+        "args": "p_branch_id uuid, p_supplier_id uuid, p_name text, p_phone text, p_notes text, p_document text, p_delete boolean, p_operator_id uuid DEFAULT NULL::uuid, p_operator_pin text DEFAULT NULL::text",
+        "name": "mutate_partner_branch_supplier",
+        "definer": false
+      },
+      {
+        "anon": false,
+        "args": "p_salesperson_id uuid, p_pin text, p_product_id uuid",
+        "name": "execute_partner_product_delete",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_branch_id uuid, p_salesperson_id uuid DEFAULT NULL::uuid, p_pin text DEFAULT NULL::text",
+        "name": "read_partner_cash_register",
+        "definer": true
+      },
+      {
+        "anon": true,
+        "args": "p_slug text, p_branch_slug text DEFAULT NULL::text, p_branch_id uuid DEFAULT NULL::uuid, p_search text DEFAULT ''::text, p_offset integer DEFAULT 0, p_limit integer DEFAULT 48",
+        "name": "read_public_catalog_page",
+        "definer": true
+      },
+      {
+        "anon": true,
+        "args": "p_slug text, p_branch_slug text DEFAULT NULL::text",
+        "name": "read_public_store_catalog",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_company_id uuid, p_branch_id uuid DEFAULT NULL::uuid, p_start date DEFAULT NULL::date, p_end date DEFAULT NULL::date, p_status text DEFAULT 'all'::text, p_search text DEFAULT ''::text, p_page integer DEFAULT 0",
+        "name": "read_partner_sales_history",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_sale jsonb, p_rma_id uuid, p_operator_id uuid DEFAULT NULL::uuid, p_pin text DEFAULT NULL::text, p_cash_session_id uuid DEFAULT NULL::uuid",
+        "name": "execute_partner_sale_with_rma_credit",
+        "definer": false
+      },
+      {
+        "anon": false,
+        "args": "input_email text",
+        "name": "request_super_admin_recovery",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_customer_id uuid, p_fields jsonb, p_operator_id uuid DEFAULT NULL::uuid, p_operator_pin text DEFAULT NULL::text, p_branch_id uuid DEFAULT NULL::uuid",
+        "name": "update_partner_customer_profile",
+        "definer": false
+      },
+      {
+        "anon": false,
+        "args": "current_password text, new_password text",
+        "name": "change_super_admin_password",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_branch_id uuid, p_invoice jsonb, p_operator_id uuid DEFAULT NULL::uuid, p_operator_pin text DEFAULT NULL::text",
+        "name": "import_partner_stock_xml",
+        "definer": false
+      },
+      {
+        "anon": false,
+        "args": "input_password text",
+        "name": "verify_super_admin_password",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "input_password text",
+        "name": "get_super_admin_clients",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "",
+        "name": "set_payment_transaction_updated_at",
+        "definer": false
+      },
+      {
+        "anon": false,
+        "args": "",
+        "name": "set_fiscal_document_updated_at",
+        "definer": false
+      },
+      {
+        "anon": false,
+        "args": "p_request_id uuid, p_branch_id uuid, p_sale_id uuid, p_expected_revision bigint, p_patch jsonb, p_salesperson_id uuid DEFAULT NULL::uuid, p_pin text DEFAULT NULL::text",
+        "name": "mutate_partner_delivery_checked",
+        "definer": false
+      },
+      {
+        "anon": false,
+        "args": "p_company_id uuid, p_branch_id uuid",
+        "name": "partner_employee_can_access_branch",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_company_id uuid, p_branch_id uuid, p_salesperson_id uuid",
+        "name": "partner_employee_can_operate_sale",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_salesperson_id uuid, p_pin text, p_sale_id uuid, p_status text, p_driver_id uuid",
+        "name": "execute_partner_delivery_mutation",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_branch_id uuid, p_customer_id uuid, p_customer_name text, p_service_segment text, p_equipment_type text, p_equipment_identification text, p_serial_number text, p_accessories_left text, p_physical_condition text, p_entry_damage text, p_entry_notes text, p_labor_total numeric, p_items jsonb",
+        "name": "create_service_order",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "",
+        "name": "check_salesperson_branch_integrity",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_cash_session_id uuid, p_salesperson_id uuid, p_pin text, p_sale_id uuid, p_customer_id uuid, p_customer_name text, p_items jsonb, p_total numeric, p_imei text, p_serial_number text, p_payment_method text, p_branch_id uuid, p_status text, p_origin text, p_customer_type text, p_delivery_type text, p_commercial_salesperson_id uuid DEFAULT NULL::uuid, p_freight_fee numeric DEFAULT NULL::numeric, p_payment_splits jsonb DEFAULT NULL::jsonb",
+        "name": "supervised_execute_partner_sale_mutation",
+        "definer": false
+      },
+      {
+        "anon": false,
+        "args": "p_salesperson_id uuid, p_pin text, p_customer_id uuid",
+        "name": "execute_partner_customer_delete",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_order_id uuid, p_status text, p_technician text, p_approval text, p_reason text, p_customer_id uuid DEFAULT NULL::uuid, p_clear_customer boolean DEFAULT false",
+        "name": "update_service_order_workflow_checked",
+        "definer": false
+      },
+      {
+        "anon": false,
+        "args": "",
+        "name": "register_admin_client",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "input_password text",
+        "name": "verify_super_admin",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_user_id uuid, p_action text, p_expected_position bigint DEFAULT NULL::bigint",
+        "name": "update_admin_support_state",
+        "definer": false
+      },
+      {
+        "anon": false,
+        "args": "input_password text, client_id uuid, new_status text DEFAULT NULL::text, new_credit_limit numeric DEFAULT NULL::numeric",
+        "name": "update_super_admin_client",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "recovery_code_input text, new_password text",
+        "name": "reset_super_admin_password",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "",
+        "name": "is_super_admin",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "",
+        "name": "get_super_admin_clients_auth",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_pin text, p_pin_hash text",
+        "name": "verify_partner_salesperson_pin",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_salesperson_id uuid, p_pin text, p_requested_branch_id uuid",
+        "name": "resolve_partner_operator",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "",
+        "name": "protect_partner_salesperson_pin",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_product_id uuid, p_branch_id uuid, p_type text, p_quantity integer, p_reason text",
+        "name": "record_partner_stock_movement",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_company_id uuid",
+        "name": "partner_rma_company_access",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "",
+        "name": "get_super_admin_company_overview_auth",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "",
+        "name": "get_super_admin_financial_overview_auth",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "client_id uuid, new_status text DEFAULT NULL::text, new_credit_limit numeric DEFAULT NULL::numeric",
+        "name": "update_super_admin_client_auth",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_operator_id uuid, p_operator_pin text, p_supplier_id uuid",
+        "name": "execute_partner_supplier_delete",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_salesperson_id uuid, p_pin text, p_product_id uuid, p_branch_id uuid, p_name text, p_cost_price numeric, p_sale_price numeric, p_wholesale_price numeric, p_stock integer, p_min_stock integer, p_category text, p_sku text, p_is_service boolean, p_image_url text",
+        "name": "execute_partner_product_mutation",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_transaction_id uuid, p_amount numeric, p_status text, p_provider text DEFAULT NULL::text, p_external_id text DEFAULT NULL::text",
+        "name": "record_payment_transaction",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_actor_name text, p_actor_role text, p_action text, p_entity_type text DEFAULT NULL::text, p_entity_id text DEFAULT NULL::text, p_details text DEFAULT NULL::text",
+        "name": "record_partner_audit_event",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "",
+        "name": "enforce_partner_salesperson_branch_integrity",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_rule_id uuid",
+        "name": "delete_fiscal_tax_rule",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_rule jsonb",
+        "name": "save_fiscal_tax_rule",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "input_password text",
+        "name": "get_super_admin_company_overview",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "input_password text",
+        "name": "get_super_admin_financial_overview",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_operator_id uuid, p_operator_pin text, p_salesperson_id uuid",
+        "name": "execute_partner_salesperson_delete",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_operator_id uuid, p_operator_pin text, p_supplier_id uuid, p_name text, p_phone text, p_notes text",
+        "name": "execute_partner_supplier_mutation",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_salesperson_id uuid, p_name text, p_role text, p_commission_rate numeric, p_phone text, p_email text, p_is_active boolean, p_branch_id uuid, p_operator_id uuid, p_operator_pin text, p_new_pin text DEFAULT NULL::text",
+        "name": "execute_partner_salesperson_mutation",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_salesperson_id uuid, p_pin text",
+        "name": "set_partner_salesperson_pin",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_salesperson_id uuid, p_pin text, p_requested_branch_id uuid",
+        "name": "resolve_partner_pdv_operator",
+        "definer": false
+      },
+      {
+        "anon": false,
+        "args": "p_salesperson_id uuid, p_pin text, p_sale_id uuid",
+        "name": "execute_partner_sale_delete",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_branch_id uuid",
+        "name": "get_partner_pdv_snapshot",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_company uuid, p_branch uuid, p_customer uuid, p_type text, p_items jsonb, p_total numeric",
+        "name": "validate_partner_pdv_prices",
+        "definer": false
+      },
+      {
+        "anon": false,
+        "args": "",
+        "name": "guard_partner_pdv_price_snapshot",
+        "definer": true
+      },
+      {
+        "anon": true,
+        "args": "",
+        "name": "set_partner_profile_subscription_defaults",
+        "definer": false
+      },
+      {
+        "anon": false,
+        "args": "",
+        "name": "get_partner_plan_change_requests",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_requested_plan text",
+        "name": "request_partner_plan_change",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_name text, p_address text DEFAULT NULL::text",
+        "name": "create_partner_branch",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "",
+        "name": "get_saas_admin_overview",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_document_id uuid DEFAULT NULL::uuid, p_document_type text DEFAULT 'nfe'::text, p_status text DEFAULT 'pending'::text, p_document_number text DEFAULT NULL::text, p_access_key text DEFAULT NULL::text, p_payload jsonb DEFAULT '{}'::jsonb",
+        "name": "record_fiscal_document",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_data jsonb",
+        "name": "create_fiscal_inutilization",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_settings jsonb",
+        "name": "save_fiscal_branch_settings",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_salesperson_id uuid, p_pin text, p_product_id uuid, p_branch_id uuid, p_name text, p_cost_price numeric, p_sale_price numeric, p_wholesale_price numeric, p_stock integer, p_min_stock integer, p_category text, p_sku text, p_is_service boolean, p_image_url text, p_supplier_id uuid",
+        "name": "execute_partner_product_mutation",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_company_id uuid DEFAULT NULL::uuid",
+        "name": "get_partner_subscription",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_payable_id uuid, p_amount numeric, p_payment_id uuid",
+        "name": "record_partner_payable_payment",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "",
+        "name": "capture_partner_invoice_receipt",
+        "definer": false
+      },
+      {
+        "anon": false,
+        "args": "p_device_key uuid, p_name text, p_branch_id uuid",
+        "name": "touch_partner_device",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_salesperson_id uuid, p_pin text, p_sale_id uuid, p_customer_id uuid",
+        "name": "execute_partner_open_order_customer_mutation",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_company_id uuid, p_plan_id text, p_billing_mode text, p_full_access boolean, p_status text, p_reason text, p_trial_ends_at timestamp with time zone DEFAULT NULL::timestamp with time zone, p_admin_access_until timestamp with time zone DEFAULT NULL::timestamp with time zone",
+        "name": "admin_update_saas_subscription",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_company_id uuid DEFAULT NULL::uuid, p_reason text DEFAULT 'Cancelamento solicitado pelo titular'::text",
+        "name": "cancel_saas_renewal",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_invoice_id uuid, p_reason text",
+        "name": "admin_cancel_saas_invoice",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_company_id uuid",
+        "name": "begin_saas_checkout",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_attempt_id uuid, p_provider_id text, p_checkout_url text, p_provider_status text",
+        "name": "finish_saas_checkout",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_attempt_id uuid, p_definitive_failure boolean DEFAULT false",
+        "name": "mark_saas_checkout_uncertain",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_provider_subscription_id text, p_payment_id text, p_status text, p_amount numeric, p_currency text, p_period_start timestamp with time zone, p_paid_at timestamp with time zone DEFAULT NULL::timestamp with time zone",
+        "name": "apply_saas_payment",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_company uuid, p_feature text",
+        "name": "partner_has_saas_access",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_id uuid, p_branch_id uuid, p_supplier_id uuid, p_description text, p_creditor_name text, p_category text, p_amount numeric, p_due_date date",
+        "name": "create_partner_payable",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_invoice_id uuid, p_amount numeric",
+        "name": "record_partner_invoice_payment",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_order_id uuid, p_status text",
+        "name": "update_catalog_order_status",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_request_id uuid, p_approved boolean",
+        "name": "resolve_partner_plan_change",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_limit integer DEFAULT 10",
+        "name": "claim_saas_provider_jobs",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_job_id uuid, p_lease_token uuid, p_success boolean, p_error text DEFAULT NULL::text",
+        "name": "finish_saas_provider_job",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_provider_id text, p_status text",
+        "name": "sync_saas_provider_subscription",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "",
+        "name": "get_super_admin_plan_requests",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "",
+        "name": "guard_partner_collaborator_modules",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_salesperson_id uuid, p_pin text, p_product_id uuid, p_branch_id uuid, p_quantity integer, p_unit_cost numeric DEFAULT NULL::numeric, p_reason text DEFAULT NULL::text",
+        "name": "execute_partner_stock_replenishment",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_salesperson_id uuid, p_name text, p_role text, p_commission_rate numeric, p_phone text, p_email text, p_is_active boolean, p_branch_id uuid, p_operator_id uuid, p_operator_pin text, p_new_pin text, p_blocked_modules text[]",
+        "name": "update_partner_salesperson_access",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_salesperson_id uuid, p_pin text, p_customer_id uuid, p_branch_id uuid, p_name text, p_document text, p_phone text, p_email text, p_birthday date, p_address text, p_neighborhood text, p_city text, p_device_model text, p_notes text, p_customer_type text, p_credit_limit numeric, p_allow_credit boolean",
+        "name": "execute_partner_customer_mutation",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_salesperson_id uuid, p_pin text, p_sale_id uuid, p_customer_id uuid, p_customer_name text, p_items jsonb, p_total numeric, p_imei text, p_serial_number text, p_payment_method text, p_branch_id uuid, p_status text, p_origin text, p_customer_type text, p_delivery_type text, p_commercial_salesperson_id uuid DEFAULT NULL::uuid, p_freight_fee numeric DEFAULT NULL::numeric, p_payment_splits jsonb DEFAULT NULL::jsonb",
+        "name": "execute_partner_sale_mutation",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_branch_id uuid, p_salesperson_id uuid, p_pin text, p_session_id uuid, p_sale_id uuid, p_amount numeric, p_reason text, p_supervisor_id uuid, p_supervisor_pin text, p_request_id uuid, p_refund_method text DEFAULT NULL::text",
+        "name": "record_partner_cash_refund",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_rma_id uuid, p_amount numeric",
+        "name": "grant_partner_rma_credit",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_rma_id uuid, p_invoice_id uuid, p_amount numeric, p_application_id uuid",
+        "name": "apply_partner_rma_credit",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_invoice_id uuid, p_amount numeric, p_request_id uuid",
+        "name": "record_partner_invoice_payment_once",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_order_id uuid, p_due_date date",
+        "name": "bill_service_order_once",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_request_id uuid, p_slug text, p_branch_id uuid, p_items jsonb, p_business_name text, p_contact text, p_delivery_address text, p_payment_method text, p_delivery_method text",
+        "name": "place_catalog_order",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_salesperson_id uuid, p_pin text, p_sale_id uuid, p_status text, p_driver_id uuid, p_details jsonb",
+        "name": "save_partner_delivery_details",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_request_id uuid, p_approved boolean, p_reason text",
+        "name": "resolve_partner_plan_change_with_reason",
+        "definer": true
+      },
+      {
+        "anon": true,
+        "args": "p_slug text, p_branch_slug text DEFAULT NULL::text",
+        "name": "read_public_catalog_v2",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_request_id uuid, p_salesperson_id uuid, p_pin text, p_product_id uuid, p_branch_id uuid, p_quantity integer, p_unit_cost numeric DEFAULT NULL::numeric, p_reason text DEFAULT NULL::text",
+        "name": "execute_partner_stock_replenishment_once",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_request_id uuid, p_payload jsonb",
+        "name": "create_service_order_once",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_order_id uuid, p_photo_id uuid, p_path text, p_type text, p_label text",
+        "name": "save_service_order_photo",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_order_id uuid, p_status text, p_technician text, p_approval text, p_reason text, p_customer_id uuid DEFAULT NULL::uuid",
+        "name": "update_service_order_workflow",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_token text",
+        "name": "authorize_saas_scheduler",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_rma_id uuid, p_amount numeric, p_method text, p_reason text, p_request_id uuid, p_salesperson_id uuid DEFAULT NULL::uuid, p_pin text DEFAULT NULL::text",
+        "name": "record_partner_rma_refund",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_rma_id uuid, p_kind text, p_name text, p_path text",
+        "name": "add_partner_rma_attachment",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_action text, p_branch_id uuid, p_salesperson_id uuid DEFAULT NULL::uuid, p_pin text DEFAULT NULL::text, p_session_id uuid DEFAULT NULL::uuid, p_amount numeric DEFAULT NULL::numeric, p_kind text DEFAULT NULL::text, p_reason text DEFAULT NULL::text, p_supervisor_id uuid DEFAULT NULL::uuid, p_supervisor_pin text DEFAULT NULL::text, p_request_id uuid DEFAULT NULL::uuid",
+        "name": "mutate_partner_cash_register",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_salesperson_id uuid, p_pin text, p_product_id uuid, p_branch_id uuid, p_name text, p_cost_price numeric, p_sale_price numeric, p_wholesale_price numeric, p_stock integer, p_min_stock integer, p_category text, p_sku text, p_is_service boolean, p_image_url text, p_supplier_id uuid, p_premium_price numeric",
+        "name": "execute_partner_product_priced_mutation",
+        "definer": false
+      },
+      {
+        "anon": false,
+        "args": "p_action text, p_branch_id uuid, p_salesperson_id uuid DEFAULT NULL::uuid, p_pin text DEFAULT NULL::text, p_session_id uuid DEFAULT NULL::uuid, p_amount numeric DEFAULT NULL::numeric, p_kind text DEFAULT NULL::text, p_reason text DEFAULT NULL::text, p_supervisor_id uuid DEFAULT NULL::uuid, p_supervisor_pin text DEFAULT NULL::text, p_request_id uuid DEFAULT NULL::uuid",
+        "name": "supervised_mutate_partner_cash_register",
+        "definer": false
+      },
+      {
+        "anon": false,
+        "args": "p_branch_id uuid, p_salesperson_id uuid, p_pin text, p_session_id uuid, p_sale_id uuid, p_amount numeric, p_reason text, p_supervisor_id uuid, p_supervisor_pin text, p_request_id uuid, p_refund_method text DEFAULT NULL::text",
+        "name": "supervised_record_partner_cash_refund",
+        "definer": false
+      },
+      {
+        "anon": false,
+        "args": "p_branch_id uuid, p_salesperson_id uuid, p_pin text, p_request jsonb",
+        "name": "resolve_partner_cash_request",
+        "definer": false
+      },
+      {
+        "anon": false,
+        "args": "p_sale_id uuid, p_branch_id uuid, p_action text, p_salesperson_id uuid DEFAULT NULL::uuid, p_pin text DEFAULT NULL::text, p_supervisor_id uuid DEFAULT NULL::uuid, p_supervisor_pin text DEFAULT NULL::text",
+        "name": "mutate_partner_open_order",
+        "definer": false
+      },
+      {
+        "anon": false,
+        "args": "p_sale_id uuid, p_branch_id uuid, p_salesperson_id uuid DEFAULT NULL::uuid, p_pin text DEFAULT NULL::text, p_supervisor_id uuid DEFAULT NULL::uuid, p_supervisor_pin text DEFAULT NULL::text",
+        "name": "cancel_partner_history_sale",
+        "definer": false
+      },
+      {
+        "anon": false,
+        "args": "p_request_id uuid, p_user_id uuid, p_admin boolean, p_message text",
+        "name": "send_support_message_once",
+        "definer": false
+      },
+      {
+        "anon": false,
+        "args": "p_search text DEFAULT ''::text, p_filter text DEFAULT 'all'::text, p_page integer DEFAULT 0",
+        "name": "get_admin_support_inbox",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "",
+        "name": "get_super_admin_pending_summary",
+        "definer": true
+      },
+      {
+        "anon": false,
+        "args": "p_user_id uuid",
+        "name": "get_admin_support_conversation",
+        "definer": false
+      },
+      {
+        "anon": false,
+        "args": "p_branch_id uuid DEFAULT NULL::uuid, p_salesperson_id uuid DEFAULT NULL::uuid, p_pin text DEFAULT NULL::text, p_after uuid DEFAULT NULL::uuid",
+        "name": "read_partner_deliveries",
+        "definer": false
+      }
+    ],
+    "os_columns": [
+      "id",
+      "user_id",
+      "branch_id",
+      "customer_id",
+      "customer_name",
+      "service_segment",
+      "equipment_type",
+      "equipment_identification",
+      "serial_number",
+      "accessories_left",
+      "physical_condition",
+      "entry_damage",
+      "entry_notes",
+      "status",
+      "labor_total",
+      "parts_total",
+      "total",
+      "created_at",
+      "updated_at",
+      "technician_name",
+      "approval_status",
+      "approval_notes",
+      "forecast_delivery",
+      "status_history",
+      "customer_email",
+      "customer_address",
+      "customer_phone"
+    ],
+    "customer_constraints": [
+      "FOREIGN KEY (branch_id) REFERENCES partner_branches(id) ON DELETE SET NULL",
+      "CHECK (((person_type IS NULL) OR (person_type = ANY (ARRAY['PF'::text, 'PJ'::text]))))",
+      "PRIMARY KEY (id)",
+      "FOREIGN KEY (salesperson_id) REFERENCES partner_salespeople(id) ON DELETE SET NULL",
+      "FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE"
+    ],
+    "guarantee_history_constraints": []
+  }
+}

@@ -17,7 +17,7 @@ function harness(blocked = false) {
   });
   return { ...exports, doc, calls };
 }
-const order = { id: '12345678-abcd', branch_id: 'b', customer_id: null, customer_name: '<img src=x onerror=alert(1)>', customer_phone: '11999999999', os_number: 'OS-42', status: 'aberta', created_at: '2026-10-20T15:00:00Z', forecast_delivery: '2026-10-21', parts_total: 30, labor_total: 50, discount_total: 5, total: 75 };
+const order = { id: '12345678-abcd', branch_id: 'b', customer_id: null, customer_name: '<img src=x onerror=alert(1)>', customer_phone: '11999999999', os_number: 'OS-42', status: 'aberta', created_at: '2026-10-20T15:00:00Z', forecast_delivery: '2026-10-21', parts_total: 30, labor_total: 50, discount_total: 5, total: 75, warranty_snapshot: 'Garantia\nCondições' };
 test('OS prints saved customer, correct branch, totals, literal text and service warranty without exposing costs', () => {
   const api = harness();
   api.printServiceOrder({ ...order, entry_notes: '[Checklist de entrada]\nTouch: Com defeito\n[/Checklist de entrada]', approval_notes: '[Checklist de saída]\nTouch: Funcionando\n[/Checklist de saída]' }, [{ product_name: 'Peça', quantity: 2, unit_price: 15, unit_cost: 999 }], { companyName: 'Empresa', branches: [{ id: 'other', name: 'Errada' }, { id: 'b', name: 'Filial correta', address: 'Rua A' }] }, 'Garantia\nCondições');
@@ -35,4 +35,13 @@ test('OS prints saved customer, correct branch, totals, literal text and service
 });
 test('blocked popup gives a recoverable error', () => {
   assert.throws(() => harness(true).printServiceOrder(order, []), /Permita a abertura/);
+});
+
+test('reprints use the saved warranty, including empty terms; legacy orders do not invent terms', () => {
+  for (const [snapshot,expected] of [['Termo original',/Termo original/],['',/Nenhum termo de garantia adicional/],[null,/Termo histórico não registrado/]]) {
+    const api=harness();
+    api.printServiceOrder({ ...order,warranty_snapshot:snapshot },[],{},'Configuração nova');
+    const text=api.doc.body.children.map(node=>node.textContent || '').join('\n');
+    assert.match(text,expected);assert.doesNotMatch(text,/Configuração nova/);
+  }
 });

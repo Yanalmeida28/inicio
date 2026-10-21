@@ -67,7 +67,10 @@ export function printServiceOrder(order: ServiceOrder, items: ServiceOrderItem[]
   node('p', `Peças: ${money.format(Number(order.parts_total))} · Mão de obra / serviços: ${money.format(Number(order.labor_total))} · Desconto: ${money.format(Number(order.discount_total))}`);
   node('h2', `Total: ${money.format(Number(order.total))}`);
   node('p', 'Este documento não comprova pagamento.');
-  if (warrantyTerms.trim()) { node('h2', 'Termo de garantia de serviços'); node('p', warrantyTerms); }
+  // The current store configuration must never replace an issued order's terms.
+  warrantyTerms = order.warranty_snapshot ?? '';
+  node('h2', 'Termo de garantia de serviços');
+  node('p', order.warranty_snapshot == null ? 'Termo histórico não registrado nesta OS.' : warrantyTerms.trim() ? warrantyTerms : 'Nenhum termo de garantia adicional registrado na abertura.');
   const signatures = node('div', ''); signatures.className = 'signatures';
   node('p', 'Assinatura do cliente', signatures); node('p', 'Responsável pelo atendimento', signatures);
   node('p', 'Data: ______ / ______ / __________');

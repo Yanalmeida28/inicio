@@ -139,6 +139,15 @@ function ServiceOrdersContent({
   const [labor, setLabor] = useSessionDraftState('service-order:labor', '');
   const [preRepairChecklist, setPreRepairChecklist] = useSessionDraftState<Checklist>('service-order:checklist', {});
   const [customerAcknowledged, setCustomerAcknowledged] = useSessionDraftState('service-order:customer-acknowledged', false);
+  const previousWarranty = useRef(warrantyTerms ?? '');
+  useEffect(() => {
+    const current = warrantyTerms ?? '';
+    if (previousWarranty.current !== current) {
+      previousWarranty.current = current;
+      if (!pendingAttempt) setCustomerAcknowledged(false);
+    }
+  }, [warrantyTerms, pendingAttempt, setCustomerAcknowledged]);
+  const presentedWarranty = pendingAttempt?.payload.warranty_terms ?? warrantyTerms ?? '';
 
   const [productSearch, setProductSearch] = useSessionDraftState('service-order:product-search', '');
   const [items, setItems] = useSessionDraftState<DraftItem[]>('service-order:items', []);
@@ -497,6 +506,7 @@ function ServiceOrdersContent({
         segment, equipment_type: equipmentType,
         identification, serial, accessories, condition, damage,
         draft_notes: notes,
+        ...(pendingAttempt ? (pendingAttempt.payload.warranty_terms !== undefined ? { warranty_terms: pendingAttempt.payload.warranty_terms } : {}) : { warranty_terms: warrantyTerms ?? '' }),
         notes: pendingAttempt?.payload.notes ?? notes.trim() + '\n\n' + checklistText(equipmentType, preRepairChecklist, 'entrada') + '\nCliente ciente das condições de entrada: sim.',
         labor_total: Math.round(Number(labor || 0) * 100) / 100,
         items: items.map(item => ({ product_id: item.product_id, quantity: item.quantity, unit_price: item.unit_price, ...(!item.product_id ? { name: item.name, manual_id: item.manual_id } : {}) })),
@@ -520,8 +530,9 @@ function ServiceOrdersContent({
         setPendingAttempt(null); resetForm(); setDetails(saved as ServiceOrder); onChanged?.();
       }
     } catch (cause) {
-      if ((!startedCreation || cause instanceof ServiceOrderRejected) && createdAttempt && attempts) {
-        try { attempts.confirm(currentScope, 'service-order'); if (mounted.current && scopeRef.current === currentScope) setPendingAttempt(null); }
+      const canRevise = cause instanceof ServiceOrderRejected && cause.canRevise;
+      if (((!startedCreation || cause instanceof ServiceOrderRejected) && createdAttempt || canRevise) && attempts) {
+        try { attempts.confirm(currentScope, 'service-order'); if (mounted.current && scopeRef.current === currentScope) { setPendingAttempt(null); if (canRevise) setCustomerAcknowledged(false); } }
         catch { /* Retain the pending identity when browser storage cannot be cleared. */ }
       }
       if (mounted.current && scopeRef.current === currentScope) setSaveError(cause instanceof Error ? cause.message : 'Não foi possível confirmar a OS. Recupere a mesma tentativa.');
@@ -825,9 +836,10 @@ function ServiceOrdersContent({
                 Possível reincidência: já existe uma OS com a mesma identificação ou número de série nesta filial. Verifique a garantia antes de prosseguir.
               </div>
             )}
+            {presentedWarranty.trim() && <details style={{ marginTop: 14 }}><summary>Termo de garantia desta OS</summary><p style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{presentedWarranty}</p></details>}
             <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 14, color: '#edf5fc', fontSize: 12, cursor: 'pointer' }}>
               <input type="checkbox" checked={customerAcknowledged} onChange={(event) => setCustomerAcknowledged(event.target.checked)} />
-              Cliente informado e de acordo com as condições registradas, acessórios e avarias de entrada.
+              Cliente informado e de acordo com as condições registradas, acessórios, avarias de entrada e termo de garantia apresentado.
             </label>
           </div>
 

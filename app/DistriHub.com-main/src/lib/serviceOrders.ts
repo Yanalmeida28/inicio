@@ -7,6 +7,7 @@ export type ServiceOrderPayload = {
   notes: string; labor_total: number; items: { product_id: string | null; quantity: number; unit_price: number; name?: string; manual_id?: string }[];
   photo_ids?: { id: string; type: 'entry' | 'exit'; label: string }[];
   draft_notes?: string;
+  warranty_terms?: string;
 };
 export function servicePartPrice(value: string): number {
   const normalized = value.trim().replace(/^R\$\s*/i, '').replace(/\s/g, '');
@@ -15,10 +16,12 @@ export function servicePartPrice(value: string): number {
   const result = Number(decimal);
   return Number.isFinite(result) && result <= 9999999.99 ? result : NaN;
 }
-export class ServiceOrderRejected extends Error {}
+export class ServiceOrderRejected extends Error {
+  constructor(message: string, readonly canRevise = false) { super(message); }
+}
 export async function createServiceOrder(client: SupabaseClient, requestId: string, payload: ServiceOrderPayload): Promise<string> {
   const { data, error } = await client.rpc('create_service_order_once', { p_request_id: requestId, p_payload: payload });
-  if (error) { if (['P0001','22023','23514'].includes(error.code)) throw new ServiceOrderRejected(error.message); throw new Error(error.message); }
+  if (error) { if (['P0001','22023','23514'].includes(error.code)) throw new ServiceOrderRejected(error.message, error.code === '22023'); throw new Error(error.message); }
   if (typeof data !== 'string' || data !== requestId) throw new Error('O servidor não confirmou a criação da OS. Tente recuperar a mesma operação.');
   return data;
 }
