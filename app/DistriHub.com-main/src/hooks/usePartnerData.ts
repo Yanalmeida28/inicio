@@ -2361,7 +2361,12 @@ read('sales', () => fetchAllPages((from, to) => client
         throw new Error('Supabase não configurado.');
       }
 
-      const { data: updated, error } = await supabase
+      // UPDATE existing settings directly: an INSERT/upsert runs branding defaults
+      // before conflict handling even when only the service terms have changed.
+      const result = await supabase.from('store_settings_v2').update(settings)
+        .eq('user_id', currentIdentity.companyUserId).select().maybeSingle();
+      if (result.error) throw result.error;
+      const { data: updated, error } = result.data ? result : await supabase
         .from('store_settings_v2')
         .upsert(
           {
@@ -2380,6 +2385,10 @@ read('sales', () => fetchAllPages((from, to) => client
         throw error;
       }
 
+      if (!updated || updated.user_id !== currentIdentity.companyUserId ||
+        (settings.service_warranty_terms !== undefined && updated.service_warranty_terms !== settings.service_warranty_terms)) {
+        throw new Error('Não foi possível confirmar o termo de garantia salvo. Mantenha o texto e tente novamente.');
+      }
       dataRevisionRef.current.invalidate(["settings"]);
       setData((prev) => ({
         ...prev,

@@ -36,7 +36,7 @@ export function printServiceOrder(order: ServiceOrder, items: ServiceOrderItem[]
   node('h1', details.companyName || branch?.name || 'Ordem de Serviço');
   if (branch) fields(['Filial', branch.name]);
   if (details.companyDocument) fields(['CPF/CNPJ', details.companyDocument]);
-  if (branch?.address || details.companyAddress) node('p', branch?.address || details.companyAddress || '');
+  if (branch?.address || details.companyAddress) fields(['Endereço da loja', branch?.address || details.companyAddress || '']);
   node('h2', `Ordem de Serviço Nº ${order.os_number || order.id.slice(0, 8)}`);
   const date = (value: string | null) => {
     if (!value) return 'Não informada';
@@ -75,7 +75,15 @@ export function printServiceOrder(order: ServiceOrder, items: ServiceOrderItem[]
   for (const [title, content] of [['Entrada', entry.checklist], ['Saída', exit.checklist]]) {
     const column = node('td', '', checklistRow);
     node('h3', title || '', column);
-    node('p', content || `Checklist de ${title === 'Entrada' ? 'entrada' : 'saída'} não registrado.`, column);
+    if (!content) node('p', `Checklist de ${title === 'Entrada' ? 'entrada' : 'saída'} não registrado.`, column);
+    else for (const line of content.split(/\r?\n/)) {
+      const paragraph = node('p', '', column);
+      const separator = line.indexOf(':');
+      if (separator > 0) {
+        node('strong', line.slice(0, separator + 1), paragraph);
+        node('span', line.slice(separator + 1), paragraph);
+      } else paragraph.textContent = line;
+    }
   }
   if (exit.notes) fields(['Observações de saída / aprovação', exit.notes]);
   node('h2', 'Peças e serviços');
@@ -95,7 +103,7 @@ export function printServiceOrder(order: ServiceOrder, items: ServiceOrderItem[]
   node('h2', 'Termo de garantia de serviços');
   node('p', order.warranty_snapshot == null ? 'Termo histórico não registrado nesta OS.' : warrantyTerms.trim() ? warrantyTerms : 'Nenhum termo de garantia adicional registrado na abertura.');
   const signatures = node('div', ''); signatures.className = 'signatures';
-  node('p', 'Assinatura do cliente', signatures); node('p', 'Responsável pelo atendimento', signatures);
+  node('strong', 'Assinatura do cliente', node('p', '', signatures)); node('strong', 'Responsável pelo atendimento', node('p', '', signatures));
   fields(['Data', '______ / ______ / __________']);
   popup.requestAnimationFrame(() => { if (!popup.closed) { popup.focus(); popup.print(); } });
 }

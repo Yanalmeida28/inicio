@@ -133,6 +133,28 @@ test('photo saving waits for the persisted URL and never announces an unconfirme
  assert.equal(h.current.products[0].image_url,persisted.image_url);
 });
 
+test('service warranty updates existing settings directly and only publishes a confirmed saved term',async()=>{
+ const text='Garantia do serviço\nCondições de atendimento';const writes=[];let fail=false,mismatch=false;
+ const h=await harness({readResult:(table,fallback,mutation)=>{
+  if(table!=='store_settings_v2'||!mutation)return fallback;
+  writes.push(mutation);return fail?{error:{message:'Falha de conexão'}}:{data:{id:'settings',user_id:'owner',service_warranty_terms:mismatch?'antigo':text,logo_url:'logo-salva'},error:null};
+ }});
+ await act(async()=>h.current.updateStoreSettings({service_warranty_terms:text}));
+ assert.equal(writes[0].type,'update');assert.deepEqual(Object.keys(writes[0].value),['service_warranty_terms']);assert.equal(h.current.settings.service_warranty_terms,text);
+ fail=true;await act(async()=>assert.rejects(h.current.updateStoreSettings({service_warranty_terms:'Novo texto'}),error=>error.message==='Falha de conexão'));
+ assert.equal(h.current.settings.service_warranty_terms,text);
+ fail=false;mismatch=true;await act(async()=>assert.rejects(h.current.updateStoreSettings({service_warranty_terms:'Novo texto'}),/confirmar o termo/));
+ assert.equal(h.current.settings.service_warranty_terms,text);
+});
+test('first settings save falls back to an owner-scoped insert and confirms the returned row',async()=>{
+ const writes=[];
+ const h=await harness({readResult:(table,fallback,mutation)=>{
+  if(table!=='store_settings_v2'||!mutation)return fallback;
+  writes.push(mutation);return mutation.type==='update'?{data:null,error:null}:{data:{id:'settings',...mutation.value},error:null};
+ }});
+ await act(async()=>h.current.updateStoreSettings({service_warranty_terms:'Primeiro termo'}));
+ assert.deepEqual(writes.map(value=>value.type),['update','upsert']);assert.equal(writes[1].value.user_id,'owner');assert.equal(h.current.settings.service_warranty_terms,'Primeiro termo');
+});
 afterEach(async()=>{if(renderer) await act(async()=>renderer.unmount());renderer=null;});
 async function harness({initialSales=[],initialInvoices=[],initialCustomers=[],rpc,values=new Map(),readResult,branchId=null,resourceScope=null,identity: suppliedIdentity,storageClient}={}) {
   const storage={getItem:k=>values.get(k)??null,setItem:(k,v)=>values.set(k,v),removeItem:k=>values.delete(k)};
@@ -145,9 +167,11 @@ async function harness({initialSales=[],initialInvoices=[],initialCustomers=[],r
   const timeouts=new Map();
   let timerId=0;
   const client={rpc,storage:storageClient,auth:{getSession:async()=>({data:{session:{user:{id:identity.authUserId}}},error:null})},from(table){
-    queries.push(table); let first=0,last=499;
+    queries.push(table); let first=0,last=499; let mutation;
     const q={select(){return q;},eq(){return q;},order(){return q;},limit(){return q;},range(from,to){first=from;last=to;return q;},
-      maybeSingle(){return Promise.resolve(readResult?.(table,{data:null,error:null})??{data:null,error:null});},
+      update(value){mutation={type:'update',value};return q;},upsert(value){mutation={type:'upsert',value};return q;},
+      maybeSingle(){return Promise.resolve(readResult?.(table,{data:null,error:null},mutation)??{data:null,error:null});},
+      single(){return Promise.resolve(readResult?.(table,{data:null,error:null},mutation)??{data:null,error:null});},
       then(resolve,reject){const fallback={data:[...(initial[table]??[])].slice(first,last+1),error:null};return Promise.resolve(readResult?.(table,fallback)??fallback).then(resolve,reject);}};
     return q;
   },channel(name){const channel={name,handlers:[],on(event,filter,handler){channel.handlers.push({filter,handler});return channel;},subscribe(callback){channel.status=callback;return channel;}};channels.push(channel);return channel;},removeChannel(channel){channel.removed=true;return Promise.resolve('ok');}};

@@ -71,6 +71,36 @@ test('public branch lookup scopes products and does not show inactive or unknown
   assert.equal((await sql("SELECT read_public_store_catalog('loja-teste','Fechada') AS data")).rows[0].data.products.length,0);
   assert.equal((await sql("SELECT read_public_store_catalog('loja-teste','Desconhecida') AS data")).rows[0].data.products.length,0);
 });
+test('legacy settings trigger loses service terms and returning; migration restores atomic upsert and preserves unrelated fields',async()=>{
+  await login(null,'postgres');
+  await db.exec(`CREATE SCHEMA IF NOT EXISTS private;
+    CREATE FUNCTION private.store_settings_v2_before_insert() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$
+    BEGIN IF EXISTS(SELECT 1 FROM public.store_settings_v2 WHERE user_id=NEW.user_id) THEN
+      UPDATE public.store_settings_v2 SET logo_url=NEW.logo_url,primary_color=NEW.primary_color,nav_color=NEW.nav_color,internal_notice=NEW.internal_notice,
+        updated_at=coalesce(NEW.updated_at,now()),banner_url=NEW.banner_url,warranty_terms=NEW.warranty_terms,receipt_footer_text=NEW.receipt_footer_text,
+        show_logo_on_receipt=NEW.show_logo_on_receipt,show_cnpj_on_receipt=NEW.show_cnpj_on_receipt,catalog_slug=NEW.catalog_slug,catalog_enabled=NEW.catalog_enabled,
+        catalog_oos_behavior=NEW.catalog_oos_behavior,social_facebook=NEW.social_facebook,social_instagram=NEW.social_instagram,social_whatsapp=NEW.social_whatsapp,business_hours=NEW.business_hours
+      WHERE user_id=NEW.user_id; RETURN NULL; END IF; RETURN NEW; END$$;
+    CREATE TRIGGER store_settings_v2_before_insert BEFORE INSERT ON store_settings_v2 FOR EACH ROW EXECUTE FUNCTION private.store_settings_v2_before_insert();`);
+  await login(owner,'authenticated',true);
+  const save=()=>sql(`INSERT INTO store_settings_v2(user_id,service_warranty_terms,personalization) VALUES($1,$2,$3::jsonb)
+    ON CONFLICT(user_id) DO UPDATE SET service_warranty_terms=excluded.service_warranty_terms,personalization=excluded.personalization RETURNING *`,[owner,'Garantia\nCondições',JSON.stringify({receipt:{font_size:14}})]);
+  assert.equal((await save()).rows.length,0);
+  assert.equal((await sql('SELECT service_warranty_terms FROM store_settings_v2 WHERE user_id=$1',[owner])).rows[0].service_warranty_terms,null);
+  await login(null,'postgres');
+  await db.exec(await read('../migrations/20261022211858_fix_store_settings_save_return.sql'));
+  await sql("UPDATE store_settings_v2 SET warranty_terms='Garantia de produtos',catalog_slug='loja-teste',internal_notice='Preservar aviso' WHERE user_id=$1",[owner]);
+  await login(owner,'authenticated',true);
+  for(let i=0;i<2;i++){
+    const result=(await save()).rows[0];assert.equal(result.service_warranty_terms,'Garantia\nCondições');assert.equal(result.personalization.receipt.font_size,14);
+    assert.equal(result.warranty_terms,'Garantia de produtos');assert.equal(result.catalog_slug,'loja-teste');assert.equal(result.internal_notice,'Preservar aviso');
+  }
+  await login(owner); // A normal UPDATE of the OS term needs no Enterprise branding changes.
+  assert.equal((await sql("UPDATE store_settings_v2 SET service_warranty_terms='Outro termo' WHERE user_id=$1 RETURNING service_warranty_terms",[owner])).rows[0].service_warranty_terms,'Outro termo');
+  await login(other,'authenticated',true);
+  assert.equal((await sql("UPDATE store_settings_v2 SET service_warranty_terms='Não autorizado' WHERE user_id=$1 RETURNING id",[owner])).rows.length,0);
+});
+
 test('personalization remains isolated by owner and rejects non-object preferences',async()=>{
   await login(other,'authenticated',true);
   assert.equal((await sql('SELECT * FROM partner_store_settings WHERE user_id=$1',[owner])).rows.length,0);

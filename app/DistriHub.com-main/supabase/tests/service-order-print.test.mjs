@@ -27,7 +27,7 @@ test('OS prints saved customer, correct branch, totals, literal text and service
   assert.match(text, /OS-42/); assert.match(text, /Filial correta/); assert.doesNotMatch(text, /Errada|999,00/);
   assert.match(text, /75,00/); assert.match(text, /Garantia\nCondições/); assert.match(text, /21\/10\/2026/);
   assert.match(text, /Assinatura do cliente/); assert.match(text, /11999999999/);
-  assert.match(text, /Touch: Com defeito/); assert.match(text, /Touch: Funcionando/);
+  assert.match(text, /Touch:\s+Com defeito/); assert.match(text, /Touch:\s+Funcionando/);
   const customer = nodes.find(node => node.textContent?.includes('<img'));
   assert.equal(customer.children.length, 0);
   assert.equal(api.calls.length, 1);
@@ -48,8 +48,12 @@ test('entry and exit checklists print in separate equal columns with a central d
   assert.equal(columns.length, 2);
   assert.equal(columns[0].children[0].textContent, 'Entrada');
   assert.equal(columns[1].children[0].textContent, 'Saída');
-  assert.equal(columns[0].children[1].textContent, 'Touch: Com defeito');
-  assert.equal(columns[1].children[1].textContent, 'Touch: Funcionando');
+  assert.equal(columns[0].children[1].children[0].tag, 'strong');
+  assert.equal(columns[0].children[1].children[0].textContent, 'Touch:');
+  assert.equal(columns[0].children[1].children[1].tag, 'span');
+  assert.equal(columns[0].children[1].children[1].textContent, ' Com defeito');
+  assert.equal(columns[1].children[1].children[0].textContent, 'Touch:');
+  assert.equal(columns[1].children[1].children[1].textContent, ' Funcionando');
   const nodes = []; const visit = node => { nodes.push(node); node.children.forEach(visit); }; visit(api.doc.body);
   const text = nodes.map(node => node.textContent || '').join('\n');
   assert.match(text, /Observação inicial/); assert.match(text, /Cliente autorizou/);
