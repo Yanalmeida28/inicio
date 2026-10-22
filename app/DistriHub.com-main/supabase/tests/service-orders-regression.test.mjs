@@ -56,6 +56,40 @@ test('duplicate cancellation submits send once and unconfirmed responses never s
  await act(async()=>{complete({data:{...orderA,status:'aberta'},error:null});await pending;});
  assert.match(rendered(),/Cancelamento não confirmado/);assert.ok(button('Confirmar cancelamento da OS'));
 });
+test('saved photo removal requires confirmation and keeps the image after a server failure',async()=>{
+ const photo={id:'photo-front',service_order_id:orderA.id,user_id:'owner',photo_type:'entrada',label:'Frente',storage_path:'old.webp'};
+ let photos=[photo],fail=true;const changes=[];
+ await harness({detail:orderA,read:args=>args.table==='service_order_photos'?{data:photos,error:null}:undefined,serviceOverrides:{changeServicePhoto:async(...args)=>{changes.push(args);if(fail)throw Error('Falha ao remover');photos=[];}}});
+ assert.match(rendered(),/Entrada/);
+ await act(async()=>view.root.findByProps({'aria-label':'Remover foto: Frente'}).props.onClick());
+ assert.equal(changes.length,0);assert.ok(button('Confirmar remoção'));
+ await act(async()=>button('Manter foto').props.onClick());assert.equal(button('Confirmar remoção'),undefined);
+ await act(async()=>view.root.findByProps({'aria-label':'Remover foto: Frente'}).props.onClick());
+ await act(async()=>button('Confirmar remoção').props.onClick());
+ assert.match(rendered(),/Falha ao remover/);assert.equal(view.root.findAllByType('img').length,1);
+ fail=false;await act(async()=>button('Confirmar remoção').props.onClick());
+ assert.equal(view.root.findAllByType('img').length,0);assert.match(rendered(),/Foto removida da OS/);
+ assert.equal(changes[1][1].id,photo.id);
+});
+
+test('photo replacement uses the selected image and retains the current image if preparation fails',async()=>{
+ const photo={id:'photo-front',service_order_id:orderA.id,user_id:'owner',photo_type:'entry',label:'Frente',storage_path:'old.webp'};
+ let fail=true;const changes=[];
+ await harness({detail:orderA,read:args=>args.table==='service_order_photos'?{data:[photo],error:null}:undefined,serviceOverrides:{compressServicePhoto:async file=>{if(fail)throw Error('Imagem inválida');return {...file,prepared:true};},changeServicePhoto:async(...args)=>{changes.push(args);}}});
+ const pick=()=>view.root.findByProps({'aria-label':'Trocar foto: Frente'});
+ const event={target:{files:[{name:'nova.jpg'}],value:'selected'}};
+ await act(async()=>pick().props.onChange(event));assert.equal(event.target.value,'');
+ assert.match(rendered(),/Imagem inválida/);assert.equal(changes.length,0);assert.equal(view.root.findAllByType('img').length,1);
+ fail=false;await act(async()=>pick().props.onChange({target:{files:[{name:'nova.jpg'}],value:'selected'}}));
+ assert.equal(changes[0][1].id,photo.id);assert.equal(changes[0][2].prepared,true);assert.match(rendered(),/Foto substituída/);
+});
+
+test('cancelled orders disable saved photo changes',async()=>{
+ await harness({detail:{...orderA,status:'cancelada'},read:args=>args.table==='service_order_photos'?{data:[{id:'photo',photo_type:'entry',label:'Frente',storage_path:'old.webp'}],error:null}:undefined});
+ assert.equal(view.root.findByProps({'aria-label':'Trocar foto: Frente'}).props.disabled,true);
+ assert.equal(view.root.findByProps({'aria-label':'Remover foto: Frente'}).props.disabled,true);
+});
+
 test('closed service orders do not offer cancellation',async()=>{
  const h=await harness({detail:{...orderA,status:'finalizada'}});assert.equal(button('Cancelar OS'),undefined);
  await h.update({order:{...orderA,id:'closed',status:'cancelada'}});assert.equal(button('Cancelar OS'),undefined);
@@ -76,7 +110,7 @@ test('status selector cancellation also bypasses an incomplete exit checklist',a
  await act(async()=>view.root.findByType('form').props.onSubmit({preventDefault(){}}));
  assert.equal(h.calls.length,1);assert.equal(h.calls[0].args.p_status,'cancelada');assert.equal(h.calls[0].args.p_reason,'Cliente desistiu do reparo');
 });
-async function harness({orders=[],read,rpc,invoice=null,blocked=false,values=new Map(),detail=null,customers=[]}={}){
+async function harness({orders=[],read,rpc,invoice=null,blocked=false,values=new Map(),detail=null,customers=[],serviceOverrides={}}={}){
  const calls=[],queries=[];let lastCreate;let storageBlocked=blocked;
  const storage={getItem:k=>values.get(k)??null,setItem:(k,v)=>values.set(k,v),removeItem:k=>values.delete(k)};
  const win={};Object.defineProperty(win,'localStorage',{get(){if(storageBlocked)throw new Error('Armazenamento bloqueado');return storage;}});
@@ -95,7 +129,7 @@ async function harness({orders=[],read,rpc,invoice=null,blocked=false,values=new
  const load=name=>{
   if(name==='../../lib/supabase')return {supabase:client};
   if(name==='../../hooks/useSessionDraft')return {useSessionDraftState:(key,initial)=>React.useState(drafts[key]??initial)};
-  if(name==='../../lib/serviceOrders')return service;
+  if(name==='../../lib/serviceOrders')return {...service,...serviceOverrides};
   if(name==='../../lib/serviceChecklist')return checklist;
   if(name==='../../lib/serviceOrderPrint')return printing;
   if(name==='../../lib/operationAttempts')return {...attempt,pendingPhotos:async()=>[]};

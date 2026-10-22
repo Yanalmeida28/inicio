@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { PendingPhoto } from './operationAttempts';
+import type { ServiceOrderPhoto } from '../types';
 export type ServiceOrderPayload = {
   branch_id: string; customer_id: string | null; segment: string; equipment_type: string;
   manual_customer?: { name: string; email: string; address: string; phone: string };
@@ -33,6 +34,24 @@ export async function uploadServicePhotos(client: SupabaseClient, companyId: str
     const { data, error } = await client.rpc('save_service_order_photo', { p_order_id: orderId, p_photo_id: photo.id, p_path: path, p_type: photo.type, p_label: photo.label });
     if (error || data !== true) throw new Error(`OS salva; vínculo da foto "${photo.label}" ainda não foi confirmado. Tente novamente. ${error?.message ?? ''}`);
   }
+}
+
+export async function changeServicePhoto(client: SupabaseClient, photo: ServiceOrderPhoto, replacement?: File) {
+  const path = replacement ? `${photo.user_id}/${photo.service_order_id}/${crypto.randomUUID()}.webp` : null;
+  if (replacement && path) {
+    const { error } = await client.storage.from('service-order-photos').upload(path, replacement, { contentType: replacement.type, upsert: false });
+    if (error) throw new Error(`Não foi possível enviar a nova foto. A foto atual foi mantida. ${error.message}`);
+  }
+  const { data, error } = await client.rpc('manage_service_order_photo', {
+    p_order_id: photo.service_order_id, p_photo_id: photo.id, p_expected_path: photo.storage_path,
+    p_new_path: path, p_new_label: replacement?.name ?? null,
+  });
+  // Never delete a file after an uncertain response: it may still be linked.
+  if (error || data !== true) throw new Error(error?.message || 'Alteração da foto não confirmada. Recarregue os detalhes da OS antes de tentar novamente.');
+  try {
+    const { error: cleanupError } = await client.storage.from('service-order-photos').remove([photo.storage_path]);
+    return { cleanupPending: Boolean(cleanupError) };
+  } catch { return { cleanupPending: true }; }
 }
 
 export async function compressServicePhoto(file: File): Promise<File> {

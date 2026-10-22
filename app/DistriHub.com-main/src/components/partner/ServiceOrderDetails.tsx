@@ -4,7 +4,7 @@ import type { ReceiptDetails } from '../../lib/salePrint';
 import { useEffect, useRef, useState } from 'react';
 import type { PartnerCustomer, ServiceOrder, ServiceOrderItem, ServiceOrderPhoto, ServiceOrderStatus, ServiceOrderApprovalStatus } from '../../types';
 import { supabase } from '../../lib/supabase';
-import { compressServicePhoto, uploadServicePhotos } from '../../lib/serviceOrders';
+import { changeServicePhoto, compressServicePhoto, uploadServicePhotos } from '../../lib/serviceOrders';
 import { pendingPhotos, type PendingPhoto } from '../../lib/operationAttempts';
 import { money } from '../../utils';
 
@@ -28,6 +28,7 @@ function ServiceOrderDetailsContent({ order, customers, onClose, onChanged, prin
   const [customerId, setCustomerId] = useState(order.customer_id ?? '');
   const [parts, setParts] = useState<ServiceOrderItem[]>([]);
   const [photos, setPhotos] = useState<(ServiceOrderPhoto & { url?: string })[]>([]);
+  const [removingPhoto, setRemovingPhoto] = useState<string | null>(null);
   const [queuedPhotos, setQueuedPhotos] = useState<PendingPhoto[]>([]);
   const [photoType, setPhotoType] = useState<'entry' | 'exit'>('exit');
   const [invoiceId, setInvoiceId] = useState<string | null>(null);
@@ -173,12 +174,40 @@ function ServiceOrderDetailsContent({ order, customers, onClose, onChanged, prin
     </fieldset></form>
     {order.approval_notes?.includes('[Checklist de saída]') && <section aria-label="Vistoria de saída salva"><h4>Vistoria de saída salva</h4><p style={{ whiteSpace: 'pre-wrap' }}>{order.approval_notes}</p></section>}
     <h4>Peças e serviços</h4>{parts.map(p => <p key={p.id}>{p.product_name}{!p.product_id && ' (peça manual / terceiros)'} · {p.quantity} × {money.format(Number(p.unit_price))}</p>)}
-    <h4>Fotos de entrada e saída</h4><div className="service-order-photos">{photos.map(photo => <a key={photo.id} href={photo.url} target="_blank" rel="noopener noreferrer"><img src={photo.url} alt={photo.label} loading="lazy" /><span>{photo.photo_type === 'entry' ? 'Entrada' : 'Saída'} · {photo.label}</span></a>)}</div>
+    <h4>Fotos de entrada e saída</h4>
+    <div className="service-order-photos">{photos.map(photo => <div key={photo.id}>
+      <a href={photo.url} target="_blank" rel="noopener noreferrer"><img src={photo.url} alt={photo.label} loading="lazy" /><span>{['entry', 'entrada'].includes(photo.photo_type || '') ? 'Entrada' : ['exit', 'saida'].includes(photo.photo_type || '') ? 'Saída' : 'Foto'} · {photo.label}</span></a>
+      <label>Trocar foto<input type="file" aria-label={`Trocar foto: ${photo.label}`} accept="image/*" disabled={busy || loading || order.status === 'cancelada'} onChange={event => {
+        const file = event.target.files?.[0]; event.target.value = '';
+        if (!file) return;
+        void action(async () => {
+          if (!supabase) throw new Error('Conexão indisponível.');
+          const replacement = await compressServicePhoto(file);
+          await changeServicePhoto(supabase, photo, replacement);
+          if (mounted.current) { setRemovingPhoto(null); setMessage('Foto substituída.'); setReadVersion(value => value + 1); }
+        });
+      }} /></label>
+      <button type="button" aria-label={`Remover foto: ${photo.label}`} disabled={busy || loading || order.status === 'cancelada'} onClick={() => setRemovingPhoto(photo.id)}>Remover foto</button>
+      {removingPhoto === photo.id && <div role="group" aria-label={`Confirmar remoção: ${photo.label}`}>
+        <p>Remover esta foto da OS?</p>
+        <button type="button" disabled={busy || loading} onClick={() => void action(async () => {
+          if (!supabase) throw new Error('Conexão indisponível.');
+          await changeServicePhoto(supabase, photo);
+          if (mounted.current) { setPhotos(current => current.filter(value => value.id !== photo.id)); setRemovingPhoto(null); setMessage('Foto removida da OS.'); setReadVersion(value => value + 1); }
+        })}>Confirmar remoção</button>
+        <button type="button" disabled={busy} onClick={() => setRemovingPhoto(null)}>Manter foto</button>
+      </div>}
+    </div>)}</div>
     <div className="rma-form inline"><label>Tipo de foto<select disabled={busy || loading} value={photoType} onChange={e => setPhotoType(e.target.value as 'entry' | 'exit')}><option value="entry">Entrada</option><option value="exit">Saída</option></select></label><label>Adicionar fotos<input type="file" accept="image/*" multiple disabled={busy || loading || order.status === 'cancelada'} onChange={e => {
       const files = Array.from(e.target.files ?? []); e.target.value = '';
       void action(async () => { const prepared = await Promise.all(files.slice(0, 8).map(async file => ({ id: crypto.randomUUID(), file: await compressServicePhoto(file), type: photoType, label: file.name }))); if (!mounted.current) return; const queued = [...queuedPhotos, ...prepared]; await pendingPhotos(fileKey, queued); if (mounted.current) setQueuedPhotos(queued); });
     }} /></label></div>
-    {!!queuedPhotos.length && <button type="button" className="module-submit-btn" disabled={busy || loading} onClick={() => void action(async () => {
+    {!!queuedPhotos.length && <section aria-label="Fotos aguardando envio"><h4>Fotos aguardando envio</h4>{queuedPhotos.map(photo => <div key={photo.id}><span>{photo.label}</span><button type="button" disabled={busy || loading} aria-label={`Retirar foto pendente: ${photo.label}`} onClick={() => void action(async () => {
+      const remaining = queuedPhotos.filter(value => value.id !== photo.id);
+      await pendingPhotos(fileKey, remaining.length ? remaining : null);
+      if (mounted.current) setQueuedPhotos(remaining);
+    })}>Retirar foto pendente</button></div>)}</section>}
+    {!!queuedPhotos.length && <button type="button" className="module-submit-btn" disabled={busy || loading || order.status === 'cancelada'} onClick={() => void action(async () => {
       if (!supabase) throw new Error('Conexão indisponível.');
       await uploadServicePhotos(supabase, order.user_id, order.id, queuedPhotos);
       await pendingPhotos(fileKey, null); if (mounted.current) { setQueuedPhotos([]); setMessage('Fotos enviadas e vinculadas.'); setReadVersion(value => value + 1); }
