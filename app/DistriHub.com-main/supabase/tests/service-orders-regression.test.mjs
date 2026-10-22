@@ -60,6 +60,13 @@ test('closed service orders do not offer cancellation',async()=>{
  const h=await harness({detail:{...orderA,status:'finalizada'}});assert.equal(button('Cancelar OS'),undefined);
  await h.update({order:{...orderA,id:'closed',status:'cancelada'}});assert.equal(button('Cancelar OS'),undefined);
 });
+test('list cancellation opens the confirmation even when the same OS details are already open',async()=>{
+ await harness({orders:[orderA]});
+ await act(async()=>button('Abrir OS').props.onClick());
+ const listAction=view.root.findByProps({'aria-label':`Cancelar OS #${orderA.id.slice(0,8)}`});
+ await act(async()=>listAction.props.onClick());
+ assert.ok(cancelForm());
+});
 test('status selector cancellation also bypasses an incomplete exit checklist',async()=>{
  const order={...orderA,equipment_type:'Celular'};const h=await harness({detail:order});
  await act(async()=>view.root.findByProps({'aria-label':'Saída: Touch'}).props.onChange({target:{value:'Funcionando'}}));

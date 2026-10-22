@@ -37,6 +37,7 @@ function ServiceOrderDetailsContent({ order, customers, onClose, onChanged, prin
   const [message, setMessage] = useState('');
   const [cancellationOpen, setCancellationOpen] = useState(startCancellation);
   const [cancellationReason, setCancellationReason] = useState('');
+  useEffect(() => { if (startCancellation) setCancellationOpen(true); }, [startCancellation]);
   const [loading, setLoading] = useState(true);
   const [printReady, setPrintReady] = useState(false);
   const [invoiceKnown, setInvoiceKnown] = useState(false);
