@@ -15,6 +15,7 @@ export function printServiceOrder(order: ServiceOrder, items: ServiceOrderItem[]
     h1 { font-size: 23px; } h2 { font-size: 15px; border-bottom: 1px solid #aaa; padding-bottom: 6px; margin-top: 24px; }
     p { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.5; margin: 6px 0; }
     table { width: 100%; border-collapse: collapse; } th, td { text-align: left; padding: 8px; border-bottom: 1px solid #ccc; overflow-wrap: anywhere; }
+    .checklists { table-layout: fixed; } .checklists td { width: 50%; vertical-align: top; padding: 0 12px 8px; border-bottom: 0; } .checklists td + td { border-left: 1px solid #000; } .checklists h3 { font-size: 14px; margin: 8px 0; }
     thead { display: table-header-group; } tr, .signatures { break-inside: avoid; } .signatures { display: flex; gap: 30px; margin-top: 65px; } .signatures p { flex: 1; border-top: 1px solid; padding-top: 8px; text-align: center; }
     button { padding: 10px 16px; margin-bottom: 18px; cursor: pointer; } @media print { body { margin: 0; padding: 0; max-width: none; } button { display: none; } }`;
   doc.head.append(style);
@@ -52,17 +53,31 @@ export function printServiceOrder(order: ServiceOrder, items: ServiceOrderItem[]
   fields(['Telefone', order.customer_phone || savedCustomer?.phone || 'Não informado'], ['E-mail', order.customer_email || savedCustomer?.email || 'Não informado']);
   const address = savedCustomer ? [savedCustomer.address, savedCustomer.address_number, savedCustomer.complement, savedCustomer.neighborhood, savedCustomer.city, savedCustomer.state, savedCustomer.zip_code].filter(Boolean).join(', ') : '';
   fields(['Endereço', order.customer_address || address || 'Não informado']);
+  function splitChecklist(text: string | null | undefined, phase: 'entrada' | 'saída') {
+    const pattern = new RegExp(`\\[Checklist de ${phase}\\]([\\s\\S]*?)\\[/Checklist de ${phase}\\]`);
+    const match = pattern.exec(text || '');
+    return { checklist: match?.[1].trim(), notes: (text || '').replace(pattern, '').trim() };
+  }
+  const entry = splitChecklist(order.entry_notes, 'entrada');
+  const exit = splitChecklist(order.approval_notes, 'saída');
   node('h2', 'Equipamento e condições de entrada');
   for (const [label, value] of [
     ['Equipamento', order.equipment_type], ['Marca', order.equipment_brand], ['Modelo', order.equipment_model],
     ['Identificação', order.equipment_identification], ['Número de série', order.serial_number], ['IMEI', order.imei],
     ['Defeito relatado', order.reported_issue], ['Acessórios deixados', order.accessories_left], ['Condição física', order.physical_condition],
-    ['Danos na entrada', order.entry_damage], ['Observações de entrada', order.entry_notes], ['Tela', order.screen_condition],
+    ['Danos na entrada', order.entry_damage], ['Observações de entrada', entry.notes], ['Tela', order.screen_condition],
     ['Carcaça', order.shell_condition], ['Laterais', order.side_condition], ['Traseira', order.rear_condition], ['Conectores', order.connectors_condition],
     ['Botões', order.buttons_condition], ['Outros danos', order.other_damage], ['Inspeção', order.inspection_notes], ['Observações', order.observations],
   ]) if (label && value) fields([label, value]);
-  node('h2', 'Conferência de saída');
-  node('p', order.approval_notes?.includes('[Checklist de saída]') ? order.approval_notes : 'Checklist de saída não registrado.');
+  node('h2', 'Checklists de entrada e saída');
+  const checklists = node('table', ''); checklists.className = 'checklists';
+  const checklistRow = node('tr', '', node('tbody', '', checklists));
+  for (const [title, content] of [['Entrada', entry.checklist], ['Saída', exit.checklist]]) {
+    const column = node('td', '', checklistRow);
+    node('h3', title || '', column);
+    node('p', content || `Checklist de ${title === 'Entrada' ? 'entrada' : 'saída'} não registrado.`, column);
+  }
+  if (exit.notes) fields(['Observações de saída / aprovação', exit.notes]);
   node('h2', 'Peças e serviços');
   const table = node('table', ''); const header = node('tr', '', node('thead', '', table));
   for (const label of ['Descrição', 'Qtd.', 'Valor unitário', 'Subtotal']) node('th', label, header);

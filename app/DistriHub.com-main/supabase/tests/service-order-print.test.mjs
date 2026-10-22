@@ -37,6 +37,36 @@ test('blocked popup gives a recoverable error', () => {
   assert.throws(() => harness(true).printServiceOrder(order, []), /Permita a abertura/);
 });
 
+test('entry and exit checklists print in separate equal columns with a central divider and preserve notes', () => {
+  const api = harness();
+  api.printServiceOrder({ ...order,
+    entry_notes: 'Observação inicial\n[Checklist de entrada]\nTouch: Com defeito\n[/Checklist de entrada]',
+    approval_notes: 'Cliente autorizou\n[Checklist de saída]\nTouch: Funcionando\n[/Checklist de saída]',
+  }, []);
+  const table = api.doc.body.children.find(node => node.className === 'checklists');
+  const columns = table.children[0].children[0].children;
+  assert.equal(columns.length, 2);
+  assert.equal(columns[0].children[0].textContent, 'Entrada');
+  assert.equal(columns[1].children[0].textContent, 'Saída');
+  assert.equal(columns[0].children[1].textContent, 'Touch: Com defeito');
+  assert.equal(columns[1].children[1].textContent, 'Touch: Funcionando');
+  const nodes = []; const visit = node => { nodes.push(node); node.children.forEach(visit); }; visit(api.doc.body);
+  const text = nodes.map(node => node.textContent || '').join('\n');
+  assert.match(text, /Observação inicial/); assert.match(text, /Cliente autorizou/);
+  assert.doesNotMatch(text, /\[Checklist de/);
+  assert.match(api.doc.head.children[0].textContent, /\.checklists td \+ td \{ border-left: 1px solid #000/);
+  assert.match(api.doc.head.children[0].textContent, /width: 50%/);
+});
+
+test('missing checklists keep their own placeholder and legacy entry notes', () => {
+  const api = harness(); api.printServiceOrder({ ...order, entry_notes: 'Anotação antiga' }, []);
+  const table = api.doc.body.children.find(node => node.className === 'checklists');
+  const columns = table.children[0].children[0].children;
+  assert.equal(columns[0].children[1].textContent, 'Checklist de entrada não registrado.');
+  assert.equal(columns[1].children[1].textContent, 'Checklist de saída não registrado.');
+  assert.ok(api.doc.body.children.some(node => node.children.some(child => child.textContent === ' Anotação antiga')));
+});
+
 test('reprints use the saved warranty, including empty terms; legacy orders do not invent terms', () => {
   for (const [snapshot,expected] of [['Termo original',/Termo original/],['',/Nenhum termo de garantia adicional/],[null,/Termo histórico não registrado/]]) {
     const api=harness();
