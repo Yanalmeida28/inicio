@@ -45,3 +45,18 @@ test('reprints use the saved warranty, including empty terms; legacy orders do n
     assert.match(text,expected);assert.doesNotMatch(text,/Configuração nova/);
   }
 });
+
+ test('printed field labels are bold while user values remain literal normal text', () => {
+  const api = harness();
+  api.printServiceOrder({ ...order, equipment_brand: 'Marca teste' }, []);
+  const nodes = [];
+  const visit = node => { nodes.push(node); node.children.forEach(visit); }; visit(api.doc.body);
+  const labels = nodes.filter(node => node.tag === 'strong').map(node => node.textContent);
+  for (const label of ['Nome:', 'Telefone:', 'E-mail:', 'Endereço:', 'Entrada:', 'Situação:', 'Técnico:', 'Marca:', 'Peças:', 'Desconto:', 'Data:']) assert.ok(labels.includes(label), label);
+  assert.ok(!labels.some(value => value.includes(order.customer_name)));
+  const name = nodes.find(node => node.tag === 'strong' && node.textContent === 'Nome:');
+  const paragraph = nodes.find(node => node.children.includes(name));
+  assert.equal(paragraph.children[1].tag, 'span');
+  assert.equal(paragraph.children[1].textContent, ' ' + order.customer_name);
+  assert.equal(paragraph.children[1].children.length, 0);
+});

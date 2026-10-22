@@ -21,12 +21,20 @@ export function printServiceOrder(order: ServiceOrder, items: ServiceOrderItem[]
   function node(tag: string, text: string, parent: HTMLElement = doc.body) {
     const element = doc.createElement(tag); element.textContent = text; parent.append(element); return element;
   }
+  function fields(...values: [string, string][]) {
+    const paragraph = node('p', '');
+    values.forEach(([label, value], index) => {
+      if (index) node('span', ' · ', paragraph);
+      node('strong', label + ':', paragraph);
+      node('span', ' ' + value, paragraph);
+    });
+  }
   const button = node('button', 'Imprimir / Salvar como PDF');
   button.onclick = () => { popup.focus(); popup.print(); };
   const branch = details.branches?.find(value => value.id === order.branch_id);
   node('h1', details.companyName || branch?.name || 'Ordem de Serviço');
-  if (branch) node('p', `Filial: ${branch.name}`);
-  if (details.companyDocument) node('p', `CPF/CNPJ: ${details.companyDocument}`);
+  if (branch) fields(['Filial', branch.name]);
+  if (details.companyDocument) fields(['CPF/CNPJ', details.companyDocument]);
   if (branch?.address || details.companyAddress) node('p', branch?.address || details.companyAddress || '');
   node('h2', `Ordem de Serviço Nº ${order.os_number || order.id.slice(0, 8)}`);
   const date = (value: string | null) => {
@@ -35,15 +43,15 @@ export function printServiceOrder(order: ServiceOrder, items: ServiceOrderItem[]
     return Number.isNaN(parsed.getTime()) ? 'Não informada' : parsed.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
   };
   const status: Record<string, string> = { aberta: 'Aberta', em_andamento: 'Em andamento', aguardando_peca: 'Aguardando peça', aguardando_cliente: 'Aguardando cliente', pronta: 'Pronta', finalizada: 'Finalizada / entregue', cancelada: 'Cancelada', em_analise: 'Em análise', aguardando_aprovacao: 'Aguardando aprovação', aprovada: 'Aprovada', em_reparo: 'Em reparo', entregue: 'Entregue' };
-  node('p', `Entrada: ${date(order.entry_date || order.created_at)} · Previsão de entrega: ${date(order.forecast_delivery)}`);
-  node('p', `Situação: ${status[order.status] || order.status} · Técnico: ${order.technician_name || 'Não informado'}`);
+  fields(['Entrada', date(order.entry_date || order.created_at)], ['Previsão de entrega', date(order.forecast_delivery)]);
+  fields(['Situação', status[order.status] || order.status], ['Técnico', order.technician_name || 'Não informado']);
   node('h2', 'Cliente');
   const savedCustomer = customer?.id === order.customer_id ? customer : undefined;
-  node('p', `Nome: ${order.customer_name || savedCustomer?.name || 'Não informado'}`);
-  if (savedCustomer?.document) node('p', `CPF/CNPJ: ${savedCustomer.document}`);
-  node('p', `Telefone: ${order.customer_phone || savedCustomer?.phone || 'Não informado'} · E-mail: ${order.customer_email || savedCustomer?.email || 'Não informado'}`);
+  fields(['Nome', order.customer_name || savedCustomer?.name || 'Não informado']);
+  if (savedCustomer?.document) fields(['CPF/CNPJ', savedCustomer.document]);
+  fields(['Telefone', order.customer_phone || savedCustomer?.phone || 'Não informado'], ['E-mail', order.customer_email || savedCustomer?.email || 'Não informado']);
   const address = savedCustomer ? [savedCustomer.address, savedCustomer.address_number, savedCustomer.complement, savedCustomer.neighborhood, savedCustomer.city, savedCustomer.state, savedCustomer.zip_code].filter(Boolean).join(', ') : '';
-  node('p', `Endereço: ${order.customer_address || address || 'Não informado'}`);
+  fields(['Endereço', order.customer_address || address || 'Não informado']);
   node('h2', 'Equipamento e condições de entrada');
   for (const [label, value] of [
     ['Equipamento', order.equipment_type], ['Marca', order.equipment_brand], ['Modelo', order.equipment_model],
@@ -52,7 +60,7 @@ export function printServiceOrder(order: ServiceOrder, items: ServiceOrderItem[]
     ['Danos na entrada', order.entry_damage], ['Observações de entrada', order.entry_notes], ['Tela', order.screen_condition],
     ['Carcaça', order.shell_condition], ['Laterais', order.side_condition], ['Traseira', order.rear_condition], ['Conectores', order.connectors_condition],
     ['Botões', order.buttons_condition], ['Outros danos', order.other_damage], ['Inspeção', order.inspection_notes], ['Observações', order.observations],
-  ]) if (value) node('p', `${label}: ${value}`);
+  ]) if (label && value) fields([label, value]);
   node('h2', 'Conferência de saída');
   node('p', order.approval_notes?.includes('[Checklist de saída]') ? order.approval_notes : 'Checklist de saída não registrado.');
   node('h2', 'Peças e serviços');
@@ -64,7 +72,7 @@ export function printServiceOrder(order: ServiceOrder, items: ServiceOrderItem[]
     for (const value of [item.product_name, String(item.quantity), money.format(Number(item.unit_price)), money.format(Number(item.quantity) * Number(item.unit_price))]) node('td', value, row);
   }
   if (!items.length) node('p', 'Nenhuma peça ou serviço discriminado.');
-  node('p', `Peças: ${money.format(Number(order.parts_total))} · Mão de obra / serviços: ${money.format(Number(order.labor_total))} · Desconto: ${money.format(Number(order.discount_total))}`);
+  fields(['Peças', money.format(Number(order.parts_total))], ['Mão de obra / serviços', money.format(Number(order.labor_total))], ['Desconto', money.format(Number(order.discount_total))]);
   node('h2', `Total: ${money.format(Number(order.total))}`);
   node('p', 'Este documento não comprova pagamento.');
   // The current store configuration must never replace an issued order's terms.
@@ -73,6 +81,6 @@ export function printServiceOrder(order: ServiceOrder, items: ServiceOrderItem[]
   node('p', order.warranty_snapshot == null ? 'Termo histórico não registrado nesta OS.' : warrantyTerms.trim() ? warrantyTerms : 'Nenhum termo de garantia adicional registrado na abertura.');
   const signatures = node('div', ''); signatures.className = 'signatures';
   node('p', 'Assinatura do cliente', signatures); node('p', 'Responsável pelo atendimento', signatures);
-  node('p', 'Data: ______ / ______ / __________');
+  fields(['Data', '______ / ______ / __________']);
   popup.requestAnimationFrame(() => { if (!popup.closed) { popup.focus(); popup.print(); } });
 }
