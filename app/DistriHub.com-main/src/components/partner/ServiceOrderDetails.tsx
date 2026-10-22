@@ -13,11 +13,11 @@ const statuses: { value: ServiceOrderStatus; label: string }[] = [
   { value: 'aguardando_peca', label: 'Aguardando peça' }, { value: 'aguardando_cliente', label: 'Aguardando cliente' },
   { value: 'pronta', label: 'Pronta' }, { value: 'finalizada', label: 'Finalizada / entregue' }, { value: 'cancelada', label: 'Cancelada' },
 ];
-type Props = { printDetails?: ReceiptDetails; warrantyTerms?: string; order: ServiceOrder; customers: PartnerCustomer[]; onClose: () => void; onChanged: (order: ServiceOrder) => void };
+type Props = { startCancellation?: boolean; printDetails?: ReceiptDetails; warrantyTerms?: string; order: ServiceOrder; customers: PartnerCustomer[]; onClose: () => void; onChanged: (order: ServiceOrder) => void };
 export function ServiceOrderDetails(props: Props) {
   return <ServiceOrderDetailsContent key={`${props.order.user_id}:${props.order.branch_id}:${props.order.id}`} {...props} />;
 }
-function ServiceOrderDetailsContent({ order, customers, onClose, onChanged, printDetails, warrantyTerms }: Props) {
+function ServiceOrderDetailsContent({ order, customers, onClose, onChanged, printDetails, warrantyTerms, startCancellation = false }: Props) {
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const [status, setStatus] = useState(order.status);
@@ -35,12 +35,14 @@ function ServiceOrderDetailsContent({ order, customers, onClose, onChanged, prin
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [cancellationOpen, setCancellationOpen] = useState(startCancellation);
+  const [cancellationReason, setCancellationReason] = useState('');
   const [loading, setLoading] = useState(true);
   const [printReady, setPrintReady] = useState(false);
   const [invoiceKnown, setInvoiceKnown] = useState(false);
   const [readVersion, setReadVersion] = useState(0);
   const lock = useRef(false);
-  const terminal = ['cancelada', 'finalizada'].includes(order.status);
+  const terminal = ['cancelada', 'finalizada', 'entregue'].includes(order.status);
   const fileKey = 'service-order-details:' + order.user_id + ':' + order.id;
   const selectedCustomer = customers.find(customer => customer.id === customerId && (!customer.branch_id || customer.branch_id === order.branch_id));
   const showManualContact = !customerId && !order.customer_id;
@@ -87,8 +89,8 @@ function ServiceOrderDetailsContent({ order, customers, onClose, onChanged, prin
       if (!supabase) throw new Error('Conexão indisponível.');
       if (!invoiceKnown) throw new Error('Confira a cobrança da OS antes de salvar. Recarregue os detalhes.');
       const hasExit = Object.values(exitChecklist).some(Boolean);
-      if ((hasExit || ['finalizada', 'entregue'].includes(status)) && !checklistComplete(order.equipment_type, exitChecklist)) throw new Error('Complete o checklist de saída. Para itens sem teste, selecione Não testado.');
-      const savedReason = hasExit ? [reason.trim(), checklistText(order.equipment_type, exitChecklist, 'saída')].filter(Boolean).join('\n\n') : reason;
+      if (status !== 'cancelada' && (hasExit || ['finalizada', 'entregue'].includes(status)) && !checklistComplete(order.equipment_type, exitChecklist)) throw new Error('Complete o checklist de saída. Para itens sem teste, selecione Não testado.');
+      const savedReason = hasExit && status !== 'cancelada' ? [reason.trim(), checklistText(order.equipment_type, exitChecklist, 'saída')].filter(Boolean).join('\n\n') : reason;
       if (savedReason.length > 4000) throw new Error('Reduza a observação para salvar o checklist completo (limite total de 4.000 caracteres).');
       const { data, error } = await supabase.rpc('update_service_order_workflow_checked', { p_order_id: order.id, p_status: status, p_technician: technician, p_approval: approval, p_reason: savedReason, p_customer_id: customerId || null, p_clear_customer: !customerId && Boolean(order.customer_id) });
       if (error || !data) throw error ?? new Error('Situação não confirmada.');
@@ -97,10 +99,39 @@ function ServiceOrderDetailsContent({ order, customers, onClose, onChanged, prin
       onChanged(data as ServiceOrder); setMessage('Situação da OS salva.');
     });
   }
+  async function cancelOrder(event: React.FormEvent) {
+    event.preventDefault();
+    if (terminal) return;
+    await action(async () => {
+      if (!supabase) throw new Error('Conexão indisponível.');
+      const reason = cancellationReason.trim();
+      if (reason.length < 5) throw new Error('Informe o motivo do cancelamento com pelo menos 5 caracteres.');
+      const { data, error } = await supabase.rpc('update_service_order_workflow_checked', {
+        p_order_id: order.id, p_status: 'cancelada', p_technician: order.technician_name ?? '',
+        p_approval: order.approval_status ?? 'aguardando_aprovacao', p_reason: reason,
+        p_customer_id: order.customer_id, p_clear_customer: false,
+      });
+      if (error || !data) throw error ?? new Error('Cancelamento não confirmado.');
+      if (!mounted.current) return;
+      if (data.id !== order.id || data.user_id !== order.user_id || data.branch_id !== order.branch_id || data.status !== 'cancelada') throw new Error('Cancelamento não confirmado. Recarregue os detalhes.');
+      setStatus('cancelada'); setCancellationOpen(false); onChanged(data as ServiceOrder);
+      setMessage('OS cancelada. As peças baixadas foram devolvidas ao estoque.');
+    });
+  }
   return <section className="module-card service-order-details">
     <div className="module-header"><div><h3>OS #{order.id.slice(0, 8)}</h3><p>{order.equipment_type} · {order.equipment_identification || order.serial_number}</p></div><button type="button" className="rma-advance-btn" disabled={busy} onClick={onClose}>Fechar detalhes</button></div>
     {error && <p role="alert">{error}</p>}{message && <p role="status">{message}</p>}
     {loading && <p role="status">Carregando detalhes da OS...</p>}
+    {!terminal && !cancellationOpen && <button type="button" className="rma-advance-btn" disabled={busy || loading} onClick={() => setCancellationOpen(true)}>Cancelar OS</button>}
+    {!terminal && cancellationOpen && <section aria-label="Cancelamento da OS">
+      <h4>Cancelar ordem de serviço</h4>
+      <p>As peças baixadas voltam ao estoque e a fatura sem recebimentos é cancelada. Se houver valores recebidos, regularize-os no Financeiro antes de cancelar.</p>
+      <form className="rma-form" onSubmit={cancelOrder}>
+        <label>Motivo do cancelamento<textarea aria-label="Motivo do cancelamento da OS" required minLength={5} maxLength={4000} value={cancellationReason} disabled={busy || loading} onChange={event => { if (!lock.current) setCancellationReason(event.target.value); }} /></label>
+        <button type="submit" className="module-submit-btn" disabled={busy || loading}>{busy ? 'Cancelando...' : 'Confirmar cancelamento da OS'}</button>
+        <button type="button" className="rma-advance-btn" disabled={busy} onClick={() => setCancellationOpen(false)}>Voltar sem cancelar</button>
+      </form>
+    </section>}
     {error && <button type="button" disabled={busy || loading} onClick={() => setReadVersion(value => value + 1)}>Recarregar detalhes da OS</button>}
     <button type="button" className="rma-advance-btn" disabled={busy || loading || !printReady} onClick={() => {
       setError('');
@@ -149,7 +180,7 @@ function ServiceOrderDetailsContent({ order, customers, onClose, onChanged, prin
     {!!queuedPhotos.length && <button type="button" className="module-submit-btn" disabled={busy || loading} onClick={() => void action(async () => {
       if (!supabase) throw new Error('Conexão indisponível.');
       await uploadServicePhotos(supabase, order.user_id, order.id, queuedPhotos);
-      await pendingPhotos(fileKey, null); if (mounted.current) { setQueuedPhotos([]); setMessage('Fotos enviadas e vinculadas. Reabra os detalhes para visualizá-las.'); }
+      await pendingPhotos(fileKey, null); if (mounted.current) { setQueuedPhotos([]); setMessage('Fotos enviadas e vinculadas.'); setReadVersion(value => value + 1); }
     })}>{busy ? 'Enviando...' : `Enviar / recuperar ${queuedPhotos.length} foto(s)`}</button>}
     <h4>Cobrança da OS</h4>{invoiceId ? <p>Fatura #{invoiceId.slice(0, 8)} registrada. Os recebimentos são feitos no Financeiro.</p> : <div className="rma-form inline"><label>Vencimento<input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} disabled={busy || loading} /></label><button type="button" className="module-submit-btn" disabled={busy || loading || !invoiceKnown || !['pronta', 'finalizada'].includes(order.status)} onClick={() => void action(async () => { if (!supabase) throw new Error('Conexão indisponível.'); const { data, error } = await supabase.rpc('bill_service_order_once', { p_order_id: order.id, p_due_date: dueDate }); if (error || !data) throw error ?? new Error('Fatura não confirmada.'); if (!mounted.current) return; setInvoiceId(data as string); setMessage('Fatura registrada uma única vez. Abra o Financeiro para receber.'); onChanged(order); })}>Gerar fatura da OS</button></div>}
     <h4>Histórico</h4>{order.status_history?.map((entry, index) => <p key={index}>{new Date(entry.at).toLocaleString('pt-BR')} · {entry.status} · {entry.reason || 'Sem observação'}</p>)}

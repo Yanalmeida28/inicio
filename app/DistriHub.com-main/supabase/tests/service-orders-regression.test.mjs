@@ -22,6 +22,53 @@ let view;afterEach(async()=>{if(view)await act(async()=>view.unmount());view=nul
 const rendered=()=>JSON.stringify(view.toJSON());
 const button=text=>view.root.findAllByType('button').find(n=>n.children.some(child=>typeof child==='string'&&child.trim()===text));
 const save=()=>view.root.findAllByType('button').find(n=>n.props.onClick?.name==='saveOrder');
+const cancelForm=()=>view.root.findByProps({'aria-label':'Cancelamento da OS'}).findByType('form');
+test('list exposes cancellation and confirms only after the reason and server confirmation',async()=>{
+ const order={...orderA,equipment_type:'Celular'};
+ const h=await harness({orders:[order],rpc:(name)=>name==='update_service_order_workflow_checked'?{data:{...order,status:'cancelada'},error:null}:undefined});
+ await act(async()=>button('Cancelar OS').props.onClick());
+ assert.match(rendered(),/Confirmar cancelamento da OS/);assert.equal(h.calls.length,0);
+ await act(async()=>view.root.findByProps({'aria-label':'Saída: Touch'}).props.onChange({target:{value:'Funcionando'}}));
+ await act(async()=>view.root.findByProps({'aria-label':'Motivo do cancelamento da OS'}).props.onChange({target:{value:'Cliente desistiu do reparo'}}));
+ await act(async()=>cancelForm().props.onSubmit({preventDefault(){}}));
+ assert.equal(h.calls.length,1);assert.equal(h.calls[0].args.p_status,'cancelada');
+ assert.equal(h.calls[0].args.p_customer_id,order.customer_id);assert.equal(h.calls[0].args.p_clear_customer,false);
+ assert.equal(h.calls[0].args.p_reason,'Cliente desistiu do reparo');
+ assert.match(rendered(),/OS cancelada/);assert.equal(button('Cancelar OS'),undefined);
+});
+test('cancellation requires a reason and keeps financial rejection visible with the draft intact',async()=>{
+ const h=await harness({detail:orderA,rpc:()=>({error:{message:'Há recebimentos vinculados. Concilie o financeiro antes de cancelar.'}})});
+ await act(async()=>button('Cancelar OS').props.onClick());
+ await act(async()=>cancelForm().props.onSubmit({preventDefault(){}}));
+ assert.equal(h.calls.length,0);assert.match(rendered(),/pelo menos 5/);
+ await act(async()=>view.root.findByProps({'aria-label':'Motivo do cancelamento da OS'}).props.onChange({target:{value:'Cliente desistiu'}}));
+ await act(async()=>cancelForm().props.onSubmit({preventDefault(){}}));
+ assert.match(rendered(),/Concilie o financeiro/);assert.equal(view.root.findByProps({'aria-label':'Motivo do cancelamento da OS'}).props.value,'Cliente desistiu');
+ assert.doesNotMatch(rendered(),/OS cancelada\./);
+});
+test('duplicate cancellation submits send once and unconfirmed responses never show success',async()=>{
+ let complete;const h=await harness({detail:orderA,rpc:()=>new Promise(resolve=>{complete=resolve;})});
+ await act(async()=>button('Cancelar OS').props.onClick());
+ await act(async()=>view.root.findByProps({'aria-label':'Motivo do cancelamento da OS'}).props.onChange({target:{value:'Cliente desistiu'}}));
+ const submit=cancelForm().props.onSubmit;let pending;
+ await act(async()=>{pending=submit({preventDefault(){}});submit({preventDefault(){}});});
+ assert.equal(h.calls.length,1);
+ await act(async()=>{complete({data:{...orderA,status:'aberta'},error:null});await pending;});
+ assert.match(rendered(),/Cancelamento não confirmado/);assert.ok(button('Confirmar cancelamento da OS'));
+});
+test('closed service orders do not offer cancellation',async()=>{
+ const h=await harness({detail:{...orderA,status:'finalizada'}});assert.equal(button('Cancelar OS'),undefined);
+ await h.update({order:{...orderA,id:'closed',status:'cancelada'}});assert.equal(button('Cancelar OS'),undefined);
+});
+test('status selector cancellation also bypasses an incomplete exit checklist',async()=>{
+ const order={...orderA,equipment_type:'Celular'};const h=await harness({detail:order});
+ await act(async()=>view.root.findByProps({'aria-label':'Saída: Touch'}).props.onChange({target:{value:'Funcionando'}}));
+ const status=view.root.findAllByType('select').find(field=>field.props.value==='em_andamento');
+ await act(async()=>status.props.onChange({target:{value:'cancelada'}}));
+ await act(async()=>view.root.findByType('textarea').props.onChange({target:{value:'Cliente desistiu do reparo'}}));
+ await act(async()=>view.root.findByType('form').props.onSubmit({preventDefault(){}}));
+ assert.equal(h.calls.length,1);assert.equal(h.calls[0].args.p_status,'cancelada');assert.equal(h.calls[0].args.p_reason,'Cliente desistiu do reparo');
+});
 async function harness({orders=[],read,rpc,invoice=null,blocked=false,values=new Map(),detail=null,customers=[]}={}){
  const calls=[],queries=[];let lastCreate;let storageBlocked=blocked;
  const storage={getItem:k=>values.get(k)??null,setItem:(k,v)=>values.set(k,v),removeItem:k=>values.delete(k)};

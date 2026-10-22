@@ -121,6 +121,7 @@ function ServiceOrdersContent({
   const saveLock = useRef(false);
   const [pendingAttempt, setPendingAttempt] = useState<OperationAttempt<ServiceOrderPayload> | null>(null);
   const [details, setDetails] = useState<ServiceOrder | null>(null);
+  const [cancelRequestedId, setCancelRequestedId] = useState<string | null>(null);
   const attemptScope = (authUserId ?? userId) + ':' + userId + ':' + selectedBranchId;
   const scopeRef = useRef(attemptScope); scopeRef.current = attemptScope;
 
@@ -612,7 +613,7 @@ function ServiceOrdersContent({
       {pendingAttempt && <div className="module-card"><p>Existe uma OS aguardando confirmação. Recupere esta tentativa antes de cadastrar outra.</p><button type="button" disabled={saving} onClick={() => restorePayload(pendingAttempt.payload)}>Restaurar dados enviados</button></div>}
       {loadError && <div role="alert"><p>{loadError}</p><button type="button" className="rma-advance-btn" disabled={loadingOrders} onClick={() => setReadVersion(value => value + 1)}>Tentar carregar OS novamente</button></div>}
       {loadingOrders && <p role="status">Carregando Ordens de Serviço...</p>}
-      {details && <ServiceOrderDetails printDetails={printDetails} warrantyTerms={warrantyTerms} order={details} customers={customers} onClose={() => setDetails(null)} onChanged={order => { if (!mounted.current) return; readGeneration.current++; setLoadingOrders(false); setLoadError(null); setDetails(order); setOrders(current => current.map(existing => existing.id === order.id ? order : existing)); onChanged?.(); }} />}
+      {details && <ServiceOrderDetails startCancellation={cancelRequestedId === details.id} printDetails={printDetails} warrantyTerms={warrantyTerms} order={details} customers={customers} onClose={() => { setDetails(null); setCancelRequestedId(null); }} onChanged={order => { if (!mounted.current) return; readGeneration.current++; setLoadingOrders(false); setLoadError(null); setDetails(order); setOrders(current => current.map(existing => existing.id === order.id ? order : existing)); onChanged?.(); }} />}
       {open && (
         <div
           className="partner-card service-order-form"
@@ -1326,7 +1327,10 @@ function ServiceOrdersContent({
                 </small>
               </span>
 
-              <div><b>{money(order.total)}</b><p>{order.status}</p><button type="button" className="rma-advance-btn" disabled={saving || preparingPhotos} onClick={() => { if (!saveLock.current && !photoLock.current) setDetails(order); }}>Abrir OS</button></div>
+              <div><b>{money(order.total)}</b><p>{order.status}</p>
+                <button type="button" className="rma-advance-btn" disabled={saving || preparingPhotos} onClick={() => { if (!saveLock.current && !photoLock.current) { setCancelRequestedId(null); setDetails(order); } }}>Abrir OS</button>
+                {!['cancelada', 'finalizada', 'entregue'].includes(order.status) && <button type="button" className="rma-advance-btn" disabled={saving || preparingPhotos} aria-label={`Cancelar OS #${order.id.slice(0, 8)}`} onClick={() => { if (!saveLock.current && !photoLock.current) { setCancelRequestedId(order.id); setDetails(order); } }}>Cancelar OS</button>}
+              </div>
             </div>
           ))
         ) : (
