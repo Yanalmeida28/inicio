@@ -99,7 +99,7 @@ test('RMA photo retry repeats the same storage path and checks the metadata conf
 test('product photo updates preserve an omitted image and honor explicit removal',async()=>{
  const calls=[];
  const product={id:'photo-product',user_id:'owner',branch_id:'branch',name:'Produto',image_url:'https://storage.test/photo.png',cost_price:10,sale_price:20,wholesale_price:15,stock:2,min_stock:1};
- const h=await harness({readResult:(table,fallback)=>table==='partner_products'?{data:[product],error:null}:fallback,rpc:async(name,args)=>{calls.push([name,args]);return {data:product.id,error:null};}});
+ const h=await harness({readResult:(table,fallback)=>table==='partner_products'?{data:Array.isArray(fallback.data)?[product]:product,error:null}:fallback,rpc:async(name,args)=>{calls.push([name,args]);if(args.p_image_url!==undefined)product.image_url=args.p_image_url;return {data:product.id,error:null};}});
  await act(async()=>h.current.updateProduct(product.id,{name:'Produto atualizado'}));
  assert.equal(calls.findLast(call=>call[0]==='execute_partner_product_barcode_mutation')[1].p_image_url,product.image_url);
  await act(async()=>h.current.updateProduct(product.id,{image_url:null}));
@@ -118,6 +118,19 @@ test('product barcode is sent independently and partial updates preserve it unti
  assert.equal(calls.at(-1).p_barcode,null);assert.equal(h.current.products[0].barcode,null);
  await act(async()=>h.current.addProduct({...product,id:undefined,barcode:'0012345678905'}));
  assert.equal(calls.at(-1).p_sku,'INTERNO-42');assert.equal(calls.at(-1).p_barcode,'0012345678905');
+});
+test('photo saving waits for the persisted URL and never announces an unconfirmed image',async()=>{
+ const product={id:'photo-check',user_id:'owner',branch_id:'branch',name:'Produto',image_url:'https://storage.test/old.jpg',stock:2,min_stock:1,cost_price:10,sale_price:20};
+ let persisted={...product},failRead=false,reply=product.id;
+ const h=await harness({readResult:(table,fallback)=>table==='partner_products'?Array.isArray(fallback.data)?{data:[product],error:null}:failRead?{data:null,error:{message:'offline'}}:{data:persisted,error:null}:fallback,rpc:async()=>({data:reply,error:null})});
+ await act(async()=>assert.rejects(h.current.updateProduct(product.id,{image_url:'https://storage.test/new.jpg'}),/confirmar a foto/));
+ assert.equal(h.current.products[0].image_url,product.image_url);
+ persisted={...product,image_url:'https://storage.test/new.jpg'};failRead=true;
+ await act(async()=>assert.rejects(h.current.updateProduct(product.id,{image_url:persisted.image_url}),/confirmar a foto/));
+ failRead=false;reply='another-product';
+ await act(async()=>assert.rejects(h.current.updateProduct(product.id,{image_url:persisted.image_url}),/não confirmou o produto/));
+ reply=product.id;await act(async()=>h.current.updateProduct(product.id,{image_url:persisted.image_url}));
+ assert.equal(h.current.products[0].image_url,persisted.image_url);
 });
 
 afterEach(async()=>{if(renderer) await act(async()=>renderer.unmount());renderer=null;});

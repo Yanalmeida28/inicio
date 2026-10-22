@@ -339,7 +339,8 @@ function ProductsSubTab({ defaultIsService = false, isActive = true, products, a
   const [saving, setSaving] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
-  const [imageUrl, setImageUrl] = useSessionDraftState<string | null>('products:image-url', null);
+  const [productNotice, setProductNotice] = useState('');
+  const [imageUrl, setImageUrl] = useSessionDraftState<string | null>('products:image-url', null, undefined, value => value === null || typeof value === 'string');
   const [photoBusy, setPhotoBusy] = useState(false);
 
   async function deleteProduct(product: PartnerProduct) {
@@ -411,17 +412,20 @@ function ProductsSubTab({ defaultIsService = false, isActive = true, products, a
 
   function beginEdit(product: PartnerProduct) {
     setEditError(null);
+    setProductNotice('');
     setEditProduct(product);
     setOpenActionId(null);
   }
 
   async function saveEdit(updates: Partial<PartnerProduct>) {
     if (!editProduct) return;
+    setProductNotice('');
     setSavingEdit(true);
     setEditError(null);
     try {
       await onUpdateProduct(editProduct.id, updates);
       setEditProduct(null);
+      setProductNotice(updates.image_url ? 'Produto e foto salvos.' : 'Produto salvo.');
     } catch (error) {
       setEditError(error instanceof Error ? error.message : 'Não foi possível salvar o produto.');
     } finally {
@@ -438,6 +442,7 @@ function ProductsSubTab({ defaultIsService = false, isActive = true, products, a
         <ExportButtons target="produtos" products={products} customers={[]} />
       </div>
       {deleteError && <p role="alert" className="otp-error-msg">{deleteError}</p>}
+      {productNotice && <p role="status">{productNotice}</p>}
       {deletingProductId && <p role="status">Excluindo produto...</p>}
       {showForm && (
         <form className="rma-form product-entry-form" onSubmit={handleSubmit}>
