@@ -17,6 +17,7 @@ before(async()=>{
    ALTER TABLE partner_products ADD COLUMN cost_price numeric,ADD COLUMN min_stock integer,ADD COLUMN sku text,ADD COLUMN category text,ADD COLUMN image_url text,ADD COLUMN supplier_id uuid;
    CREATE TABLE partner_suppliers(id uuid,user_id uuid);`);
   await db.exec(await read('../migrations/20261014210022_fix_pdv_presales_and_customer_price_tables.sql'));
+  await db.exec(await read('../migrations/20261022185925_add_product_barcode.sql'));
  } catch(error){console.error(error.message,error.position,error.internalQuery);throw error;}
 });
 after(()=>db.close());
@@ -31,6 +32,32 @@ beforeEach(async()=>{
 const item=price=>JSON.stringify([{product_id:product,name:'Produto',quantity:1,unit_price:price}]);
 const validate=(price)=>db.query('SELECT partner_cash_private.validate_partner_pdv_negotiated_prices($1,$2,$3,$4,$5::jsonb,$6,false) AS total',[owner,branch,customer,'varejo',item(price),price]);
 const mutate=(price)=>db.query('SELECT execute_partner_product_priced_mutation(NULL,NULL,$1,$2,$3,10,100,80,10,1,NULL,NULL,false,NULL,NULL,$4) AS id',[product,branch,'Produto',price]);
+const barcodeMutation=(id,barcode,image=null)=>db.query('SELECT execute_partner_product_barcode_mutation(NULL,NULL,$1,$2,$3,10,100,80,10,1,NULL,$4,false,$6,NULL,140,$5) AS id',[id,branch,'Produto','INTERNO-42',barcode,image]);
+
+test('product photo survives database reload and barcode edits and can be explicitly removed',async()=>{
+ const image='https://storage.test/storage/v1/object/public/product-photos/photo.jpg';
+ const id=(await barcodeMutation(null,'0012345678905',image)).rows[0].id;
+ const readPhoto=async()=> (await db.query('SELECT image_url FROM partner_products WHERE id=$1',[id])).rows[0].image_url;
+ assert.equal(await readPhoto(),image);
+ await barcodeMutation(id,'0098765432109',image);assert.equal(await readPhoto(),image);
+ await barcodeMutation(id,'0098765432109',null);assert.equal(await readPhoto(),null);
+});
+
+test('barcode persists independently of SKU on create, update and clear, preserving leading zeroes',async()=>{
+ const id=(await barcodeMutation(null,' 0012345678905 ')).rows[0].id;
+ const codes=async()=> (await db.query('SELECT sku,barcode FROM partner_products WHERE id=$1',[id])).rows[0];
+ assert.deepEqual(await codes(),{sku:'INTERNO-42',barcode:'0012345678905'});
+ await barcodeMutation(id,'0098765432109');
+ assert.deepEqual(await codes(),{sku:'INTERNO-42',barcode:'0098765432109'});
+ await barcodeMutation(id,null);
+ assert.deepEqual(await codes(),{sku:'INTERNO-42',barcode:null});
+ await barcodeMutation(id,'0012345678905');
+ await db.query("SELECT set_config('test.auth_uid',$1,false)",[other]);
+ await assert.rejects(barcodeMutation(id,'999'),/Filial|empresa/);
+ assert.deepEqual(await codes(),{sku:'INTERNO-42',barcode:'0012345678905'});
+ await db.query("SELECT set_config('test.auth_uid','',false)");
+ await assert.rejects(barcodeMutation(id,'999'),/autenticado/);
+});
 const sale=(status='pre_venda')=>db.query('SELECT execute_partner_sale_mutation(NULL,NULL,$1,$2,$3,$4::jsonb,140,NULL,NULL,$5,$6,$7,$8,$9,$10,NULL) AS id',[saleId,customer,'Cliente',item(140),status==='concluida'?'pix':null,branch,status,'pdv','varejo','balcao']);
 
 test('customer price table overrides commercial type and Premium requires its own product price',async()=>{

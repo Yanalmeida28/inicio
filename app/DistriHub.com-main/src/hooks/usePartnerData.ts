@@ -1014,7 +1014,7 @@ read('sales', () => fetchAllPages((from, to) => client
 
       const { data: created, error: rpcError } =
         await client.rpc(
-          'execute_partner_product_priced_mutation',
+          'execute_partner_product_barcode_mutation',
           {
             p_salesperson_id: effectiveOperatorId,
             p_pin: effectiveOperatorPin,
@@ -1028,6 +1028,7 @@ read('sales', () => fetchAllPages((from, to) => client
             p_min_stock: product.min_stock,
             p_category: product.category,
             p_sku: product.sku,
+            p_barcode: product.barcode?.trim() || null,
             p_is_service: product.is_service,
             p_image_url: product.image_url ?? null,
             p_supplier_id: product.supplier_id ?? null,
@@ -1098,7 +1099,7 @@ read('sales', () => fetchAllPages((from, to) => client
 
       const {  error: rpcError } =
         await supabase.rpc(
-          'execute_partner_product_priced_mutation',
+          'execute_partner_product_barcode_mutation',
           {
             p_salesperson_id: effectiveOperatorId,
             p_pin: effectiveOperatorPin,
@@ -1119,6 +1120,7 @@ read('sales', () => fetchAllPages((from, to) => client
             p_category:
               product.category ?? existing.category,
             p_sku: product.sku ?? existing.sku,
+            p_barcode: product.barcode === undefined ? existing.barcode ?? null : product.barcode?.trim() || null,
             p_is_service:
               product.is_service ?? existing.is_service,
             p_image_url:

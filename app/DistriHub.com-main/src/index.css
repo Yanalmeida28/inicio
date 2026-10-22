@@ -2239,7 +2239,9 @@ html, body {
 .partner-panel .product-registration-header { display: grid; grid-template-columns: 144px minmax(0, 1fr); align-items: start; gap: 12px; min-width: 0; padding-bottom: 10px; }
 .partner-panel .product-registration-header > .product-form-section { min-width: 0; padding: 0; border: 0; gap: 8px; }
 .partner-panel .product-registration-header .product-identity-row,
-.partner-panel .product-registration-header .product-registration-fields { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; gap: 8px; }
+.partner-panel .product-registration-header .product-registration-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); min-width: 0; gap: 8px; }
+.partner-panel .product-registration-header .product-identity-row > label:first-child,
+.partner-panel .product-registration-header .product-registration-fields > label:first-child { grid-column: 1 / -1; }
 .partner-panel .product-registration-header label,
 .partner-panel .product-registration-header input { min-width: 0; width: 100%; }
 .partner-panel .product-entry-form > .product-form-section { padding: 10px 0; gap: 8px; }
@@ -2275,6 +2277,8 @@ html, body {
 .partner-panel .cadastros-scope .category-product-heading h4 { margin: 0; color: var(--dh-text); font-size: 15px; }
 .partner-panel .cadastros-scope .category-product-heading span { color: var(--dh-text-secondary); font-size: 12px; }
 @media (max-width: 520px) {
+  .partner-panel .product-registration-header .product-identity-row,
+  .partner-panel .product-registration-header .product-registration-fields { grid-template-columns: minmax(0, 1fr); }
   .partner-panel .product-identity-row { grid-template-columns: 1fr; }
   .partner-panel .rma-history-selection { grid-template-columns: 1fr; }
   .partner-panel .rma-history-product-summary { grid-template-columns: 1fr; }

@@ -660,7 +660,7 @@ function PdvCheckout({ products, customers, credits, rmaRequests = [], hasPendin
       // Aplica o filtro local apenas quando uma filial específica está selecionada,
       // mantendo a Visão Consolidada do proprietário funcional.
       if (selectedBranchId && p.branch_id !== selectedBranchId) return false;
-      return normalize(p.name).includes(term) || normalize(p.sku ?? '').includes(term);
+      return normalize(p.name).includes(term) || normalize(p.sku ?? '').includes(term) || normalize(p.barcode ?? '').includes(term);
     });
   }, [products, search, selectedBranchId]);
 
@@ -689,15 +689,15 @@ function PdvCheckout({ products, customers, credits, rmaRequests = [], hasPendin
     const normalizedCode = code.trim().toLocaleLowerCase();
     const matches = products.filter((product) =>
       (!selectedBranchId || product.branch_id === selectedBranchId)
-      && product.sku?.trim().toLocaleLowerCase() === normalizedCode,
+      && [product.barcode, product.sku].some(value => !!value?.trim() && value.trim().toLocaleLowerCase() === normalizedCode),
     );
     setSearch('');
     if (matches.length === 1) {
       addToCart(matches[0], true);
     } else if (matches.length > 1) {
-      showSelectionNotice('Este código está vinculado a mais de um produto nesta filial. Corrija o SKU cadastrado.');
+      showSelectionNotice('Este código está vinculado a mais de um produto nesta filial. Corrija o código de barras ou SKU cadastrado.');
     } else {
-      showSelectionNotice('Código não encontrado. Cadastre o código de barras no campo SKU do produto.');
+      showSelectionNotice('Código não encontrado. Preencha o campo Código de barras no cadastro do produto.');
     }
   }
 
@@ -880,13 +880,13 @@ function PdvCheckout({ products, customers, credits, rmaRequests = [], hasPendin
     event.preventDefault();
     if (!barcodeScannerEnabled || !canChangeCart()) return;
     const code = search.trim().toLocaleLowerCase();
-    const matches = filtered.filter((product) => product.sku?.trim().toLocaleLowerCase() === code);
+    const matches = filtered.filter((product) => [product.barcode, product.sku].some(value => !!value?.trim() && value.trim().toLocaleLowerCase() === code));
     if (matches.length === 1) {
       addToCart(matches[0], true);
     } else if (matches.length > 1) {
-      showSelectionNotice('Este código está vinculado a mais de um produto nesta filial. Corrija o SKU cadastrado.');
+      showSelectionNotice('Este código está vinculado a mais de um produto nesta filial. Corrija o código de barras ou SKU cadastrado.');
     } else {
-      showSelectionNotice('Código não encontrado. Cadastre o código de barras no campo SKU do produto.');
+      showSelectionNotice('Código não encontrado. Preencha o campo Código de barras no cadastro do produto.');
     }
   }}
   placeholder="Buscar por nome, SKU ou código de barras..."
@@ -1219,7 +1219,7 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
     const term = search.toLowerCase();
     return products.filter((p) => {
       if (!selectedBranchId || p.branch_id !== selectedBranchId) return false;
-      return !term || p.name.toLowerCase().includes(term) || (p.sku ?? '').toLowerCase().includes(term);
+      return !term || p.name.toLowerCase().includes(term) || (p.sku ?? '').toLowerCase().includes(term) || (p.barcode ?? '').toLowerCase().includes(term);
     });
   }, [products, search, selectedBranchId]);
 

@@ -185,6 +185,7 @@ export interface PartnerProduct {
   user_id: string;
   name: string;
   sku: string | null;
+  barcode?: string | null;
   cost_price: number;
   sale_price: number;
   wholesale_price: number;

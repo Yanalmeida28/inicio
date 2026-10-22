@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Camera } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { prepareProductPhoto } from '../../lib/productPhoto';
 
 export function ProductPhotoField({ value, onChange, disabled, onBusyChange }: { value: string | null; onChange: (value: string | null) => void; disabled: boolean; onBusyChange: (busy: boolean) => void }) {
   const [busy, setBusy] = useState(false);
@@ -16,9 +17,9 @@ export function ProductPhotoField({ value, onChange, disabled, onBusyChange }: {
   async function upload(file: File) {
     if (disabled || lock.current) return;
     setError('');
-    if (!['image/jpeg','image/png','image/webp'].includes(file.type) || !file.size || file.size>2*1024*1024) { setError('Use foto JPG, PNG ou WebP de até 2 MB.'); return; }
     lock.current=true;setBusy(true);onBusyChange(true);
     try {
+      file = await prepareProductPhoto(file);
       if (!supabase) throw new Error('Conecte-se para enviar a foto.');
       const { data, error: authError } = await supabase.auth.getUser();
       if (authError || !data.user) throw new Error('Sessão indisponível. Entre novamente para enviar a foto.');
@@ -60,7 +61,7 @@ export function ProductPhotoField({ value, onChange, disabled, onBusyChange }: {
       if(file)void upload(file);else setError('Copie uma imagem para colar a foto do produto.');
     }}>
       <input ref={cameraInput} hidden type="file" accept="image/jpeg,image/png,image/webp" capture="environment" aria-label="Tirar foto do produto" disabled={disabled||busy||pasting} onChange={event=>{const file=event.currentTarget.files?.[0];event.currentTarget.value='';if(file)void upload(file);}}/>
-      <input ref={galleryInput} hidden type="file" accept="image/jpeg,image/png,image/webp" aria-label="Escolher foto nos arquivos ou galeria" disabled={disabled||busy||pasting} onChange={event=>{const file=event.currentTarget.files?.[0];event.currentTarget.value='';if(file)void upload(file);}}/>
+      <input ref={galleryInput} hidden type="file" accept="image/*,.heic,.heif,.jfif" aria-label="Escolher foto nos arquivos ou galeria" disabled={disabled||busy||pasting} onChange={event=>{const file=event.currentTarget.files?.[0];event.currentTarget.value='';if(file)void upload(file);}}/>
       <button type="button" className="product-photo-camera" aria-label="Opções da foto do produto" title="Foto do produto: tirar, escolher, colar ou remover" aria-haspopup="menu" aria-expanded={menuOpen} disabled={disabled||busy||pasting} onClick={()=>setMenuOpen(open=>!open)}>{value ? <img src={value} alt="Foto do produto" /> : <Camera size={64} aria-hidden="true" />}</button>
       {menuOpen && <div className="product-photo-menu" role="menu" aria-label="Ações da foto do produto">
         <button type="button" role="menuitem" disabled={disabled||busy||pasting} onClick={()=>cameraInput.current?.click()}>Tirar foto</button>
@@ -69,7 +70,8 @@ export function ProductPhotoField({ value, onChange, disabled, onBusyChange }: {
         <button type="button" role="menuitem" disabled={disabled||busy||pasting||!value} onClick={()=>{onChange(null);setMenuOpen(false);setError('');}}>Remover foto</button>
       </div>}
     </div>
-    {(busy||pasting) && <p role="status">Enviando foto...</p>}
+    {(busy||pasting) && <p role="status">Preparando e enviando foto...</p>}
+    {value && !busy && !pasting && <small>Para guardar esta foto no cadastro, salve o produto.</small>}
     {error && <p role="alert" className="form-error-msg">{error}</p>}
   </section>;
 }

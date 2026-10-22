@@ -101,11 +101,25 @@ test('product photo updates preserve an omitted image and honor explicit removal
  const product={id:'photo-product',user_id:'owner',branch_id:'branch',name:'Produto',image_url:'https://storage.test/photo.png',cost_price:10,sale_price:20,wholesale_price:15,stock:2,min_stock:1};
  const h=await harness({readResult:(table,fallback)=>table==='partner_products'?{data:[product],error:null}:fallback,rpc:async(name,args)=>{calls.push([name,args]);return {data:product.id,error:null};}});
  await act(async()=>h.current.updateProduct(product.id,{name:'Produto atualizado'}));
- assert.equal(calls.findLast(call=>call[0]==='execute_partner_product_priced_mutation')[1].p_image_url,product.image_url);
+ assert.equal(calls.findLast(call=>call[0]==='execute_partner_product_barcode_mutation')[1].p_image_url,product.image_url);
  await act(async()=>h.current.updateProduct(product.id,{image_url:null}));
- assert.equal(calls.findLast(call=>call[0]==='execute_partner_product_priced_mutation')[1].p_image_url,null);
+ assert.equal(calls.findLast(call=>call[0]==='execute_partner_product_barcode_mutation')[1].p_image_url,null);
  assert.equal(h.current.products.find(item=>item.id===product.id).image_url,null);
 });
+test('product barcode is sent independently and partial updates preserve it until explicit clearing',async()=>{
+ const calls=[];const product={id:'codes-product',user_id:'owner',branch_id:'branch',name:'Produto',sku:'INTERNO-42',barcode:'0012345678905',cost_price:10,sale_price:20,wholesale_price:15,stock:2,min_stock:1};
+ const h=await harness({readResult:(table,fallback)=>table==='partner_products'?{data:[product],error:null}:fallback,rpc:async(name,args)=>{calls.push(args);return {data:product.id,error:null};}});
+ await act(async()=>h.current.updateProduct(product.id,{name:'Outro nome'}));
+ assert.equal(calls.at(-1).p_sku,'INTERNO-42');assert.equal(calls.at(-1).p_barcode,'0012345678905');
+ await act(async()=>h.current.updateProduct(product.id,{barcode:'0098765432109'}));
+ assert.equal(calls.at(-1).p_sku,'INTERNO-42');assert.equal(calls.at(-1).p_barcode,'0098765432109');
+ assert.equal(h.current.products[0].barcode,'0098765432109');
+ await act(async()=>h.current.updateProduct(product.id,{barcode:null}));
+ assert.equal(calls.at(-1).p_barcode,null);assert.equal(h.current.products[0].barcode,null);
+ await act(async()=>h.current.addProduct({...product,id:undefined,barcode:'0012345678905'}));
+ assert.equal(calls.at(-1).p_sku,'INTERNO-42');assert.equal(calls.at(-1).p_barcode,'0012345678905');
+});
+
 afterEach(async()=>{if(renderer) await act(async()=>renderer.unmount());renderer=null;});
 async function harness({initialSales=[],initialInvoices=[],initialCustomers=[],rpc,values=new Map(),readResult,branchId=null,resourceScope=null,identity: suppliedIdentity,storageClient}={}) {
   const storage={getItem:k=>values.get(k)??null,setItem:(k,v)=>values.set(k,v),removeItem:k=>values.delete(k)};

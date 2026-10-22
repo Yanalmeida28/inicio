@@ -44,7 +44,9 @@ test('product photos are owner-scoped and RMA attachments are additive, private 
 });
 async function component(file,client,extra={}) {
  const exports={};let id=0;
- vm.runInNewContext(ts.transpileModule(await readFile(new URL(`../../src/components/partner/${file}.tsx`,import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,target:ts.ScriptTarget.ES2020}}).outputText,{exports,Error,crypto:{randomUUID:()=>`photo-${++id}`},URL:{createObjectURL:file=>`blob:${file.name}`,revokeObjectURL(){}},require:name=>name==='../../lib/supabase'?{supabase:client}:require(name),...extra});
+ const photos={};
+ vm.runInNewContext(ts.transpileModule(await readFile(new URL('../../src/lib/productPhoto.ts',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText,{exports:photos,Error,File});
+ vm.runInNewContext(ts.transpileModule(await readFile(new URL(`../../src/components/partner/${file}.tsx`,import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,target:ts.ScriptTarget.ES2020}}).outputText,{exports,Error,crypto:{randomUUID:()=>`photo-${++id}`},URL:{createObjectURL:file=>`blob:${file.name}`,revokeObjectURL(){}},require:name=>name==='../../lib/supabase'?{supabase:client}:name==='../../lib/productPhoto'?photos:require(name),...extra});
  return exports[file];
 }
 test('product photo rejects unsupported files, uploads to the current user folder and permits removal',async()=>{
@@ -55,7 +57,8 @@ test('product photo rejects unsupported files, uploads to the current user folde
   assert.equal(view.root.findAllByType('input').filter(input=>!input.props.hidden).length,0);
   const select=async file=>act(async()=>view.root.findByProps({className:'product-photo-control'}).props.onPaste({preventDefault(){},clipboardData:{files:[file]}}));
   await select({name:'bad.svg',type:'image/svg+xml',size:10});assert.equal(uploads.length,0);
-  await select({name:'large.png',type:'image/png',size:3*1024*1024});assert.equal(uploads.length,0);
+  await select({name:'large.png',type:'image/png',size:26*1024*1024});assert.equal(uploads.length,0);
+  busy.length=0;
   await select({name:'ok.png',type:'image/png',size:100});assert.equal(uploads.length,1);assert.equal(uploads[0][0],'product-photos');assert.equal(uploads[0][1],`${owner}/photo-1.png`);
   assert.deepEqual(busy,[true,false]);assert.equal(changes.length,1);
   act(()=>view.update(React.createElement(Field,{value:changes[0],onChange:value=>changes.push(value),disabled:false,onBusyChange(){}})));

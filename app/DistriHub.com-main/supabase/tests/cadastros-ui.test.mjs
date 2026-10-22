@@ -18,6 +18,8 @@ vm.runInNewContext(compile(await readFile(new URL('../../src/components/partner/
   if(name==='./ImportExportModule')return {ExportButtons:()=>null};
   if(name==='../../lib/cadastroXml')return {parseStockXml:()=>invoice};
   if(name==='./CustomerPhoto')return {CustomerPhoto:()=>null};
+  if(name==='./ProductPhotoField')return {ProductPhotoField:()=>null};
+  if(name==='./ProductProfitPreview')return {ProductProfitPreview:()=>null};
   if(name==='../../utils')return {money:new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}),normalizeDocument:value=>value.replace(/\D/g,''),isValidCpf:()=>true,isValidCnpj:()=>true};
   if(name==='../../hooks/useSessionDraft')return {useSessionDraftState:(_key,value)=>React.useState(value)};
   if(['./ProductProfitPreview','./ProductPhotoField','./ProductLabelModal','./ImportExportModule','../../lib/saleReturns'].includes(name))return {};
@@ -28,6 +30,23 @@ let renderer;
 afterEach(async()=>{if(renderer)await act(async()=>renderer.unmount());renderer=null;});
 const rendered=()=>JSON.stringify(renderer.toJSON());
 const submit=()=>renderer.root.findByType('form').props.onSubmit({preventDefault(){}});
+test('product registration keeps SKU and barcode independent and reader Enter does not submit',async()=>{
+ let payload;
+ await act(async()=>{renderer=TestRenderer.create(React.createElement(exports.Products,{products:[],allProducts:[],branches:[],selectedBranchId:'branch',categories:[],suppliers:[],segment:'assistencia',onAddSupplier:async()=>{},onAddProduct:async value=>{payload=value;},onUpdateProduct:async()=>{},onDeleteProduct:async()=>{}}));});
+ await act(async()=>renderer.root.findByProps({className:'module-action-btn'}).props.onClick());
+ const input=placeholder=>renderer.root.findByProps({placeholder});
+ await act(async()=>{
+  input('Ex: Display Moto G8').props.onChange({target:{value:'Produto'}});
+  input('Código do produto. Ex: DH-MG8-012').props.onChange({target:{value:'INTERNO-42'}});
+  input('Clique aqui e passe o leitor').props.onChange({target:{value:'0012345678905'}});
+  renderer.root.findAllByType('input').find(field=>field.props.required&&field.props.type==='number').props.onChange({target:{value:'20'}});
+ });
+ let prevented=false;
+ input('Clique aqui e passe o leitor').props.onKeyDown({key:'Enter',preventDefault(){prevented=true;}});
+ assert.equal(prevented,true);assert.equal(payload,undefined);
+ await act(async()=>submit());
+ assert.equal(payload.sku,'INTERNO-42');assert.equal(payload.barcode,'0012345678905');
+});
 async function productDeleteAction(onDeleteProduct) {
  const product={id:'p',name:'Produto teste',stock:5,min_stock:1,sale_price:10,cost_price:5,branch_id:'branch'};
  await act(async()=>{renderer=TestRenderer.create(React.createElement(exports.Products,{products:[product],allProducts:[product],branches:[],selectedBranchId:'branch',categories:[],suppliers:[],segment:'assistencia',onAddSupplier:async()=>{},onAddProduct:async()=>{},onUpdateProduct:async()=>{},onDeleteProduct}));});

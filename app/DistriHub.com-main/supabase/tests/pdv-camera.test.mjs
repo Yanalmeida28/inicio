@@ -35,6 +35,22 @@ const props={products:[{id:'product',name:'Produto',sku:'0789012345678',branch_i
 const search=()=>renderer.root.findByProps({'aria-label':'Buscar produto por nome ou SKU'});
 const qty=()=>renderer.root.findAllByProps({'data-label':'Quantidade'})[0]?.findByType('b').children.join('');
 async function mount(h,overrides={}){await act(async()=>{renderer=TestRenderer.create(React.createElement(h.exports.Checkout,{...props,...overrides}),{createNodeMock:()=>({focus(){}})});});}
+test('keyboard reader finds a separate barcode with leading zeroes while SKU is internal',async()=>{
+ const h=harness();await mount(h,{products:[{...props.products[0],sku:'INTERNO-42',barcode:'0789012345678'}]});
+ await typeCode();await act(async()=>enter());assert.equal(qty(),'1');
+});
+test('camera finds a separate barcode while preserving the internal SKU',async()=>{
+ const h=harness();await mount(h,{products:[{...props.products[0],sku:'INTERNO-42',barcode:'0789012345678'}]});
+ await openCamera();await act(async()=>h.detect('0789012345678'));assert.equal(qty(),'1');
+});
+test('duplicate barcode in the same branch never adds an arbitrary product',async()=>{
+ const h=harness();await mount(h,{products:[{...props.products[0],sku:'A',barcode:'0789012345678'},{...props.products[0],id:'second',sku:'B',barcode:'0789012345678'}]});
+ await typeCode();await act(async()=>enter());assert.equal(qty(),undefined);
+});
+test('barcode in another branch is ignored',async()=>{
+ const h=harness();await mount(h,{products:[{...props.products[0],sku:'A',barcode:'0789012345678'},{...props.products[0],id:'second',branch_id:'other',sku:'B',barcode:'0789012345678'}]});
+ await typeCode();await act(async()=>enter());assert.equal(qty(),'1');
+});
 async function typeCode(){await act(async()=>search().props.onChange({target:{value:'0789012345678'}}));}
 function enter(){search().props.onKeyDown({key:'Enter',preventDefault(){}});}
 async function openCamera(){await act(async()=>renderer.root.findByProps({'aria-label':'Ler código pela câmera'}).props.onClick());}

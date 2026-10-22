@@ -299,11 +299,12 @@ function ProductsSubTab({ defaultIsService = false, isActive = true, products, a
     const normalize = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
     const term = normalize(productSearch.trim());
     return products.filter((product) =>
-      normalize(product.name).includes(term) || normalize(product.sku ?? '').includes(term),
+      normalize(product.name).includes(term) || normalize(product.sku ?? '').includes(term) || normalize(product.barcode ?? '').includes(term),
     );
   }, [products, productSearch]);
   const [name, setName] = useSessionDraftState('products:name', '');
   const [sku, setSku] = useSessionDraftState('products:sku', '');
+  const [barcode, setBarcode] = useSessionDraftState('products:barcode', '');
   const [cost, setCost] = useSessionDraftState('products:cost', '');
   const [sale, setSale] = useSessionDraftState('products:sale', '');
   const [wholesale, setWholesale] = useSessionDraftState('products:wholesale', '');
@@ -370,7 +371,7 @@ function ProductsSubTab({ defaultIsService = false, isActive = true, products, a
     setFormError(null);
     try {
       await onAddProduct({
-        name, sku: sku || null, cost_price: Number(cost) || 0, sale_price: Number(sale) || 0,
+        name, sku: sku.trim() || null, barcode: barcode.trim() || null, cost_price: Number(cost) || 0, sale_price: Number(sale) || 0,
         wholesale_price: Number(wholesale) || 0, premium_price: premium.trim() ? Number(premium) : null,
         stock: Number(stock) || 0, min_stock: Number(minStock) || 0,
         image_url: imageUrl, supplier_id: supplierId || null, category: category || null, is_service: isService, branch_id: selectedBranchId,
@@ -382,7 +383,7 @@ function ProductsSubTab({ defaultIsService = false, isActive = true, products, a
         image: undefined,
         description: undefined
       });
-      setName(''); setSku(''); setCost(''); setSale(''); setWholesale(''); setPremium(''); setStock(''); setMinStock('5'); setCategory(''); setSupplierId(''); setIsService(defaultIsService);
+      setName(''); setSku(''); setBarcode(''); setCost(''); setSale(''); setWholesale(''); setPremium(''); setStock(''); setMinStock('5'); setCategory(''); setSupplierId(''); setIsService(defaultIsService);
       setNcm(''); setCfop(''); setCstCsosn(''); setIcmsRate(''); setPisRate(''); setCofinsRate('');
       setShowForm(false);
       setImageUrl(null);
@@ -451,7 +452,12 @@ function ProductsSubTab({ defaultIsService = false, isActive = true, products, a
             </label>
             <label>
               SKU
-              <input value={sku} onChange={(e) => setSku(e.target.value)} placeholder="Ex: DH-MG8-012" />
+              <input value={sku} onChange={(e) => setSku(e.target.value)} placeholder="Código do produto. Ex: DH-MG8-012" />
+            </label>
+            <label>
+              Código de barras
+              <input type="text" value={barcode} onChange={(e) => setBarcode(e.target.value)} placeholder="Clique aqui e passe o leitor" autoComplete="off" onKeyDown={(event) => { if (event.key === 'Enter') event.preventDefault(); }} />
+              <small>Leia a etiqueta ou digite o código de barras para usar no PDV.</small>
             </label>
           </div>
           </section>
@@ -541,8 +547,8 @@ function ProductsSubTab({ defaultIsService = false, isActive = true, products, a
           type="search"
           value={productSearch}
           onChange={(event) => setProductSearch(event.target.value)}
-          placeholder="Pesquisar produto, modelo ou SKU..."
-          aria-label="Pesquisar produto, modelo ou SKU"
+          placeholder="Pesquisar produto, modelo, SKU ou código de barras..."
+          aria-label="Pesquisar produto, modelo, SKU ou código de barras"
         />
       </div>
       <div className="stock-table-wrap directory-card-wrap">
@@ -558,7 +564,7 @@ function ProductsSubTab({ defaultIsService = false, isActive = true, products, a
             ) : (
               matchingProducts.map((p) => (
                 <tr key={p.id} className={p.image_url ? 'product-with-photo' : undefined}>
-                  <td className="directory-card-title"><div className="product-identity">{p.image_url && <img className="product-list-photo" src={p.image_url} alt={p.name} loading="lazy" />}<div className="product-identity-text"><strong>{p.name}</strong><small>SKU: {p.sku ?? '—'}</small>{p.is_service && <small className="tag-service">Serviço</small>}</div></div></td>
+                  <td className="directory-card-title"><div className="product-identity">{p.image_url && <img className="product-list-photo" src={p.image_url} alt={p.name} loading="lazy" />}<div className="product-identity-text"><strong>{p.name}</strong><small>SKU: {p.sku ?? '—'}</small>{p.barcode && <small>Código de barras: {p.barcode}</small>}{p.is_service && <small className="tag-service">Serviço</small>}</div></div></td>
                   <td data-label="Custo">{money.format(p.cost_price)}</td>
                   <td data-label="Varejo">{money.format(p.sale_price)}</td>
                   <td data-label="Atacado">{p.wholesale_price > 0 ? money.format(p.wholesale_price) : '—'}</td>
@@ -701,6 +707,7 @@ function ProductEditModal({ product, categories, suppliers, onAddSupplier, savin
   const [photoBusy, setPhotoBusy] = useState(false);
   const [name, setName] = useState(product.name);
   const [sku, setSku] = useState(product.sku ?? '');
+  const [barcode, setBarcode] = useState(product.barcode ?? '');
   const [cost, setCost] = useState(String(product.cost_price));
   const [sale, setSale] = useState(String(product.sale_price));
   const [wholesale, setWholesale] = useState(String(product.wholesale_price));
@@ -725,7 +732,7 @@ function ProductEditModal({ product, categories, suppliers, onAddSupplier, savin
     if (!name.trim() || !sale) return;
     await onSave({
       image_url: imageUrl,
-      name: name.trim(), sku: sku.trim() || null, cost_price: Number(cost) || 0,
+      name: name.trim(), sku: sku.trim() || null, barcode: barcode.trim() || null, cost_price: Number(cost) || 0,
       sale_price: Number(sale) || 0, wholesale_price: Number(wholesale) || 0, premium_price: premium.trim() ? Number(premium) : null,
       stock: Math.max(0, Number(stock) || 0), min_stock: Math.max(0, Number(minStock) || 0),
       supplier_id: supplierId || null, category: category || null, is_service: isService, ncm: ncm || null,
@@ -741,7 +748,11 @@ function ProductEditModal({ product, categories, suppliers, onAddSupplier, savin
         <div className="product-edit-body">
           <div className="product-registration-header">
           <ProductPhotoField value={imageUrl} onChange={setImageUrl} disabled={saving} onBusyChange={setPhotoBusy} />
-          <div className="form-row product-registration-fields"><label>Nome<input value={name} onChange={(e) => setName(e.target.value)} required /></label><label>SKU<input value={sku} onChange={(e) => setSku(e.target.value)} /></label></div>
+          <div className="form-row product-registration-fields">
+            <label>Nome<input value={name} onChange={(e) => setName(e.target.value)} required /></label>
+            <label>SKU<input value={sku} onChange={(e) => setSku(e.target.value)} placeholder="Código do produto" /></label>
+            <label>Código de barras<input type="text" value={barcode} onChange={(e) => setBarcode(e.target.value)} placeholder="Clique aqui e passe o leitor" autoComplete="off" onKeyDown={(event) => { if (event.key === 'Enter') event.preventDefault(); }} /><small>Leia a etiqueta ou digite o código de barras para usar no PDV.</small></label>
+          </div>
           </div>
           <h4>Preços e rentabilidade</h4>
           <div className="form-row"><label>Preço de custo<input type="number" min="0" step="0.01" value={cost} onChange={(e) => setCost(e.target.value)} /></label><label>Preço varejo<input type="number" min="0" step="0.01" value={sale} onChange={(e) => setSale(e.target.value)} required /></label><label>Preço atacado<input type="number" min="0" step="0.01" value={wholesale} onChange={(e) => setWholesale(e.target.value)} /></label></div>
