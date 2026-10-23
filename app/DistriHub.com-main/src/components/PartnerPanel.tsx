@@ -35,6 +35,7 @@ import { usePartnerData } from '../hooks/usePartnerData';
 import { branchDirectoryRows } from '../lib/partnerSync';
 import { useSaasSubscription } from '../hooks/useSaasSubscription';
 import { canUseSaasFeature } from '../lib/saas';
+import { DeviceAccessGate } from './partner/DeviceSessions';
 import { canViewBusinessIntelligence } from '../lib/businessIntelligence';
 import { useDeviceHeartbeat } from '../hooks/useDeviceHeartbeat';
 
@@ -295,7 +296,11 @@ export function PartnerPanel({
   useEffect(() => {
     setVisitedTabs((current) => current.has(activeTab) ? current : new Set(current).add(activeTab));
   }, [activeTab, setVisitedTabs]);
-  const [selectedBranchId, setSelectedBranchId] = useState<string>('');
+  const [selectedBranchId, setSelectedBranchId] = useState<string>(() => {
+    if (!identity || identity.salespersonId) return '';
+    try { return new OperatorSelectionStore(sessionStorage, `${identity.authUserId}:${identity.companyUserId}`).read()?.branchId ?? ''; }
+    catch { return ''; }
+  });
   const [sidebarOpen, setSidebarOpen] = useState(false);
   useEffect(() => {
     if (!sidebarOpen) return;
@@ -340,7 +345,8 @@ export function PartnerPanel({
   }, [activeTab]);
 
   const [cadastroDataScope, setCadastroDataScope] = useState('produtos');
-  const partner = usePartnerData(identity, identity?.salespersonId ? identity.branchId : selectedBranchId || null, activeTab === 'cadastros' ? 'cadastros:' + cadastroDataScope : activeTab);
+  const deviceSession = useDeviceHeartbeat(identity?.companyUserId, identity?.salespersonId ? identity.branchId : selectedBranchId || null);
+  const partner = usePartnerData(deviceSession.ready ? identity : null, identity?.salespersonId ? identity.branchId : selectedBranchId || null, activeTab === 'cadastros' ? 'cadastros:' + cadastroDataScope : activeTab);
   const saas = useSaasSubscription(identity?.companyUserId);
   const [pdvRevision, setPdvRevision] = useState(0);
   const [preSaleToCheckout, setPreSaleToCheckout] = useState<PartnerSale | null>(null);
@@ -391,7 +397,6 @@ export function PartnerPanel({
     setOperatorConfirming(false);
     setOperatorPinInput('');
   }, [identity?.authUserId, identity?.companyUserId, effectiveBranchId, identity?.salespersonId]);
-  useDeviceHeartbeat(identity?.companyUserId, effectiveBranchId);
 
   useEffect(() => {
     if (!effectiveBranchId || partner.loading || (activeTab !== 'pdv' && activeTab !== 'pedidos')) return;
@@ -432,28 +437,28 @@ export function PartnerPanel({
   const operatorScope = `${identity?.authUserId}:${identity?.companyUserId}`;
   useEffect(() => { setManagedCashSession(null); }, [operatorScope, effectiveBranchId, currentSalespersonId]);
   useEffect(() => {
-    if (!identity || partner.loading || operatorRestoredScope.current === operatorScope) return;
+    if (!identity || !deviceSession.ready || partner.loading || partner.resourcesReady === false || operatorRestoredScope.current === operatorScope) return;
     operatorRestoredScope.current = operatorScope;
     setOperatorSelectionScope(operatorScope);
     if (isEmployeeRestricted) return;
     setCurrentSalespersonId(null);
     setActiveOperatorPin(null);
-    setSelectedBranchId('');
+    if (selectedBranchId && !partner.branches.some(branch => branch.id === selectedBranchId)) setSelectedBranchId('');
     setShowOperatorModal(false);
     let saved;
     try { saved = new OperatorSelectionStore(sessionStorage, operatorScope).read(); }
     catch { return; }
     if (!saved) return;
-    if (partner.branches.some(branch => branch.id === saved.branchId)) setSelectedBranchId(saved.branchId);
+    if (!selectedBranchId && partner.branches.some(branch => branch.id === saved.branchId)) setSelectedBranchId(saved.branchId);
     const operator = partner.salespeople.find(person => person.id === saved.operatorId && (person.active ?? person.is_active) !== false);
-    if (operator && (!operator.branch_id || operator.branch_id === saved.branchId)) {
+    if (operator && (!selectedBranchId || selectedBranchId === saved.branchId) && (!operator.branch_id || operator.branch_id === saved.branchId)) {
       setCurrentSalespersonId(operator.id);
       setActiveOperatorPin(null);
       setSelectedOperatorId(operator.id);
       setOperatorPinError('Confirme o PIN para retomar o operador e o caixa selecionados.');
       setShowOperatorModal(true);
     }
-  }, [identity, partner.loading, partner.branches, partner.salespeople, operatorScope, isEmployeeRestricted]);
+  }, [identity, deviceSession.ready, partner.loading, partner.resourcesReady, partner.branches, partner.salespeople, selectedBranchId, operatorScope, isEmployeeRestricted]);
   useEffect(() => {
     if (operatorSelectionScope !== operatorScope || !identity || isEmployeeRestricted) return;
     try { new OperatorSelectionStore(sessionStorage, operatorScope).save({ branchId: selectedBranchId, operatorId: currentSalespersonId }); }
@@ -1662,6 +1667,11 @@ export function PartnerPanel({
         <button type="button" className="rma-advance-btn" onClick={onBack}>Sair da conta</button>
       </div>
     );
+  }
+
+  if (identity && !deviceSession.ready) {
+    return <DeviceAccessGate companyId={identity.companyUserId} branchId={identity.salespersonId ? identity.branchId ?? '' : selectedBranchId}
+      error={deviceSession.error} onBranchChange={setSelectedBranchId} onRetry={deviceSession.retry} onLogout={onBack} />;
   }
 
   function preloadTab(tab: Tab) {

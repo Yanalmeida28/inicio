@@ -24,7 +24,7 @@ Deno.serve(async (request: Request) => {
     const start = Math.max(Date.now() + 60000, Date.parse(attempt.trial_ends_at));
     sentToProvider = true;
     const subscription = await mp<MpSubscription>('/preapproval', 'POST', {
-      reason: `DistriHub · Plano ${attempt.plan_id}`, external_reference: attempt.id, payer_email: user.email,
+      reason: `DistriHub · Plano ${attempt.plan_id}${attempt.extra_branches ? ` + ${attempt.extra_branches} filiais adicionais` : ''}`, external_reference: attempt.id, payer_email: user.email,
       auto_recurring: { frequency: 1, frequency_type: 'months', transaction_amount: Number(attempt.amount),
         currency_id: 'BRL', start_date: new Date(start).toISOString() },
       back_url: backUrl.href, status: 'pending',

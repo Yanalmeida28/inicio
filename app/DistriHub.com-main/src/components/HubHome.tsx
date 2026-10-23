@@ -16,6 +16,8 @@ import {
   X,
 } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { planCatalog } from '../lib/planCatalog';
+import { money } from '../utils';
 
 type HubHomeProps = {
   onAccessPanel: () => void;
@@ -289,7 +291,51 @@ export function HubHome({ onAccessPanel, onAccessSuperAdmin, superAdminActive }:
       <section id="planos" className="hub-plans">
         <div className="page-container">
           <Reveal><div className="hub-section-head"><div className="eyebrow">PLANOS PARA CRESCER</div><h2>Comece simples. Escale sem trocar de sistema.</h2><p>Escolha o plano ideal para a estrutura atual da sua operação.</p></div></Reveal>
-          <div className="hub-plan-grid">{[['Plano Básico','R$ 49,90',['1 loja','PDV ilimitado','Cadastros básicos','Relatórios simples']],['Plano Profissional','R$ 99,90',['Até 3 lojas','Gestão de estoque','Relatórios & CRM avançado','Gestão de entregas','Cupons de desconto']],['Plano Enterprise','R$ 199,90',['Lojas ilimitadas','Integração Instagram','API & Webhooks','Suporte prioritário','White-label completo']]].map(([name, price, features], index) => <Reveal key={name as string}><div className={`hub-plan ${index === 1 ? 'featured' : ''}`}>{index === 1 && <span className="hub-plan-badge">MAIS POPULAR</span>}<strong>{name as string}</strong><div className="hub-plan-price">{price as string}<em>/ mês</em></div><ul>{(features as string[]).map(feature => <li key={feature}><Check size={14} /> {feature}</li>)}</ul><button onClick={openPanel}>{index === 1 ? 'Escolher plano' : 'Selecionar plano'} <ArrowRight size={14} /></button></div></Reveal>)}</div>
+          <div className="hub-plan-grid">{[
+            { ...planCatalog.basico, features: ['1 filial', '3 dispositivos simultâneos por filial', 'PDV, caixa e pedidos', 'Cadastros e histórico de vendas', 'Relatórios simples', 'Configurações e suporte'] },
+            { ...planCatalog.profissional, features: ['Tudo do Básico', 'Até 3 filiais', '5 dispositivos simultâneos por filial', 'Estoque, financeiro e entregas', 'Ordens de serviço, RMA e fiscal', 'CRM, cupons e relatórios avançados', 'Administrativo e permissões'] },
+            { ...planCatalog.enterprise, features: ['Tudo do Profissional', 'Até 5 filiais', '8 dispositivos simultâneos por filial', `Filial adicional por ${money.format(planCatalog.enterprise.extraBranchPrice)}/mês`, 'Personalização White-label', 'Suporte prioritário'] },
+          ].map((plan, index) => <Reveal key={plan.name}><div className={`hub-plan ${index === 1 ? 'featured' : ''}`}>{index === 1 && <span className="hub-plan-badge">MAIS POPULAR</span>}<strong>Plano {plan.name}</strong><div className="hub-plan-price">{money.format(plan.price)}<em>/ mês</em></div><ul>{plan.features.map(feature => <li key={feature}><Check size={14} /> {feature}</li>)}</ul><button onClick={openPanel}>{index === 1 ? 'Escolher plano' : 'Selecionar plano'} <ArrowRight size={14} /></button></div></Reveal>)}</div>
+          <div className="hub-plan-comparison">
+            <h3>Compare o que está incluído em cada plano</h3>
+            <p>Veja os módulos disponíveis e escolha o plano para sua operação.</p>
+            <div className="hub-plan-table-scroll" role="region" aria-label="Comparação dos planos" tabIndex={0}>
+              <table className="hub-plan-table">
+                <caption>Módulos e limites dos planos DistriHub</caption>
+                <thead><tr><th scope="col">Módulo e recursos</th><th scope="col">Básico</th><th scope="col">Profissional</th><th scope="col">Enterprise</th></tr></thead>
+                <tbody>
+                  {[
+                    ['Lojas / filiais', 'Quantidade de unidades incluídas na assinatura', '1', 'Até 3', 'Até 5'],
+                    ['Dispositivos simultâneos', 'Acessos conectados ao mesmo tempo, por filial', '3', '5', '8'],
+                    ['Filial adicional', 'Sujeita à aprovação e confirmação do pagamento', '—', '—', `${money.format(planCatalog.enterprise.extraBranchPrice)}/mês`],
+                    ['Cadastros', 'Produtos, serviços, SKU, código de barras, fotos, categorias, clientes e fornecedores', 'Incluído', 'Incluído', 'Incluído'],
+                    ['PDV & Vendas', 'Atendimento, carrinho e fechamento de vendas', 'Incluído', 'Incluído', 'Incluído'],
+                    ['Caixa', 'Abertura, movimentações e fechamento', 'Incluído', 'Incluído', 'Incluído'],
+                    ['Pedidos em aberto', 'Acompanhamento e conclusão de vendas pendentes', 'Incluído', 'Incluído', 'Incluído'],
+                    ['Histórico', 'Consulta das vendas realizadas e seus detalhes', 'Incluído', 'Incluído', 'Incluído'],
+                    ['Relatórios', 'Acompanhamento das vendas e dos resultados', 'Simples', 'Avançados', 'Avançados'],
+                    ['Estoque', 'Saldos, estoque mínimo, reposição e ajustes por filial', '—', 'Incluído', 'Incluído'],
+                    ['CRM', 'Histórico dos clientes e acompanhamento comercial', '—', 'Incluído', 'Incluído'],
+                    ['Entregas', 'Organização e acompanhamento das entregas', '—', 'Incluído', 'Incluído'],
+                    ['Financeiro', 'Contas a pagar e receber e fluxo financeiro', '—', 'Incluído', 'Incluído'],
+                    ['Ordens de serviço', 'Cadastro e acompanhamento dos serviços e aparelhos', '—', 'Incluído', 'Incluído'],
+                    ['RMA & Devoluções', 'Solicitações de devolução, troca e reembolso', '—', 'Incluído', 'Incluído'],
+                    ['Fiscal', 'Recursos de notas fiscais', '—', 'Incluído', 'Incluído'],
+                    ['Administrativo', 'Gestão da empresa, equipe e permissões', '—', 'Incluído', 'Incluído'],
+                    ['Cupons', 'Cupons de desconto para vendas', '—', 'Incluído', 'Incluído'],
+                    ['Personalização', 'Identidade visual White-label e preferências do sistema', '—', '—', 'Incluído'],
+                    ['Configurações', 'Dados da conta e assinatura', 'Incluído', 'Incluído', 'Incluído'],
+                    ['Suporte', 'Atendimento para sua empresa', 'Incluído', 'Incluído', 'Prioritário'],
+                  ].map(([module, description, ...values]) => (
+                    <tr key={module}>
+                      <th scope="row">{module}<small>{description}</small></th>
+                      {values.map((value, index) => <td key={index}>{value === '—' ? <span aria-label="Não incluído">—</span> : value}</td>)}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       </section>
 

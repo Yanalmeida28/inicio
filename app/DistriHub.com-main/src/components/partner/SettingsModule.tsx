@@ -11,6 +11,7 @@ import { supabase } from '../../lib/supabase';
 import { money } from '../../utils';
 import { SaasBillingModule } from './SaasBillingModule';
 import { useSaasSubscription } from '../../hooks/useSaasSubscription';
+import { planCatalog } from '../../lib/planCatalog';
 
 type Props = {
   user: SupabaseUser | null;
@@ -33,24 +34,24 @@ const plans: Plan[] = [
   {
     id: 'basico',
     name: 'Básico',
-    price: 49.90,
+    price: planCatalog.basico.price,
     icon: Building2,
-    features: ['1 loja', 'PDV ilimitado', 'Cadastros básicos', 'Relatórios simples'],
+    features: ['1 filial', '3 dispositivos simultâneos por filial', 'PDV, caixa e pedidos', 'Cadastros e histórico', 'Relatórios simples'],
   },
   {
     id: 'profissional',
     name: 'Profissional',
-    price: 99.90,
+    price: planCatalog.profissional.price,
     icon: Zap,
     highlighted: true,
-    features: ['Até 3 lojas', 'Gestão de estoque', 'Relatórios & CRM avançado', 'Gestão de entregas', 'Cupons de desconto'],
+    features: ['Tudo do Básico', 'Até 3 filiais', '5 dispositivos simultâneos por filial', 'Estoque, financeiro e entregas', 'OS, RMA e fiscal', 'CRM, cupons e relatórios avançados'],
   },
   {
     id: 'enterprise',
     name: 'Enterprise',
-    price: 199.90,
+    price: planCatalog.enterprise.price,
     icon: Crown,
-    features: ['Lojas ilimitadas', 'Integração Instagram', 'API & Webhooks', 'Suporte prioritário', 'White-label completo'],
+    features: ['Tudo do Profissional', 'Até 5 filiais', '8 dispositivos simultâneos por filial', 'Filial adicional por R$ 39,90/mês', 'Suporte prioritário', 'White-label completo'],
   },
 ];
 

@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 
 export function deviceIdentity(userId: string) {
@@ -9,6 +9,10 @@ export function deviceIdentity(userId: string) {
 }
 
 export function useDeviceHeartbeat(userId?: string, branchId?: string | null) {
+  const scope = `${userId ?? ''}:${branchId ?? ''}`;
+  const [result, setResult] = useState<{ scope: string; error: string | null } | null>(null);
+  const [revision, setRevision] = useState(0);
+  const retry = useCallback(() => setRevision(value => value + 1), []);
   useEffect(() => {
     if (!userId || !supabase) return;
     let active = true;
@@ -18,13 +22,19 @@ export function useDeviceHeartbeat(userId?: string, branchId?: string | null) {
       pending = true;
       try {
         const device = deviceIdentity(userId);
-        await supabase!.rpc('touch_partner_device', { p_device_key: device.id, p_name: device.name, p_branch_id: branchId || null });
-      } catch { /* A tela de terminais permite consultar e repetir o registro. */ }
+        const { error } = await supabase!.rpc('touch_partner_device', { p_device_key: device.id, p_name: device.name, p_branch_id: branchId || null });
+        if (error) throw error;
+        if (active) setResult({ scope, error: null });
+      } catch (failure) {
+        if (active) setResult({ scope, error: failure instanceof Error ? failure.message : (failure as { message?: string })?.message ?? 'Não foi possível verificar este dispositivo.' });
+      }
       finally { pending = false; }
     };
     void touch();
-    const timer = window.setInterval(() => void touch(), 60_000);
+    const timer = window.setInterval(() => void touch(), 30_000);
     window.addEventListener('focus', touch);
     return () => { active = false; window.clearInterval(timer); window.removeEventListener('focus', touch); };
-  }, [userId, branchId]);
+  }, [userId, branchId, scope, revision]);
+  const current = result?.scope === scope ? result : null;
+  return { ready: Boolean(current && !current.error), error: current?.error ?? null, retry };
 }

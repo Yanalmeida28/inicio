@@ -11,6 +11,8 @@ const require = createRequire(import.meta.url);
 const read = name => readFile(new URL(name, import.meta.url), 'utf8');
 const compile = text => ts.transpileModule(text, { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2020 } }).outputText;
 const saas = {};
+const catalog = {};
+vm.runInNewContext(compile(await read('../../src/lib/planCatalog.ts')), { exports: catalog });
 vm.runInNewContext(compile(await read('../../src/lib/saas.ts')), { exports: saas, Date, require: () => ({}) });
 const helpers = {};
 vm.runInNewContext(compile(await read('../../src/lib/saasAdminControls.ts')), { exports: helpers, Date, require: () => saas });
@@ -26,10 +28,10 @@ const company = (changes = {}) => ({
   billing_mode: 'paid', full_access: false, can_access: true, auto_renew: false, monthly_amount: 49.90,
   paid_until: '2030-01-01T00:00:00Z', admin_access_until: null, trial_ends_at: '2020-01-01T00:00:00Z', features: ['pdv'], ...changes,
 });
-async function harness({ subscriptions = [company()], mutation, initialCompanyId } = {}) {
+async function harness({ subscriptions = [company()], mutation, initialCompanyId, branchRequests = [] } = {}) {
   const calls = []; let changed = 0;
   const client = { rpc: async (name, args) => {
-    if (name === 'get_saas_admin_overview') return { data: { subscriptions, invoices: [], jobs: [] } };
+    if (name === 'get_saas_admin_overview') return { data: { subscriptions, invoices: [], jobs: [], branch_requests: branchRequests } };
     calls.push({ name, args });
     return mutation ? mutation(name, args) : { data: { can_access: args.p_status !== 'suspended' } };
   } };
@@ -37,6 +39,8 @@ async function harness({ subscriptions = [company()], mutation, initialCompanyId
   vm.runInNewContext(source, { exports, Date, Error, require: name => {
     if (name === '../lib/supabase') return { supabase: client };
     if (name === '../lib/saas') return saas;
+    if (name === '../lib/planCatalog') return catalog;
+    if (name === './partner/DeviceSessions') return { DeviceSessions: () => null };
     if (name === '../lib/saasAdminControls') return helpers;
     if (name === '../lib/adminOverview') return overview;
     if (name === './AdminResponsiveTable') return responsive;
@@ -60,7 +64,7 @@ test('Super Admin suspende uma empresa pela tela e envia empresa e motivo à RPC
   await act(async () => button('Suspender acesso').props.onClick());
   assert.equal(field('Situação do acesso', 'select').props.value, 'suspended');
   await reason(); await submit();
-  assert.equal(h.calls[0].name, 'admin_update_saas_subscription');
+  assert.equal(h.calls[0].name, 'admin_save_saas_configuration');
   assert.equal(h.calls[0].args.p_company_id, 'owner'); assert.equal(h.calls[0].args.p_status, 'suspended');
   assert.equal(h.calls[0].args.p_reason, 'Decisão do administrador'); assert.equal(h.changed, 1);
   assert.match(JSON.stringify(renderer.toJSON()), /Acesso ao aplicativo bloqueado/);
@@ -159,4 +163,24 @@ test('resposta sem confirmação preserva o rascunho e não anuncia salvamento',
   assert.equal(h.changed, 0);
   assert.equal(renderer.root.findAllByType('form').length, 1);
   assert.match(renderer.root.findByProps({ role: 'alert' }).children.join(''), /não confirmou/);
+});
+
+test('editor envia adicionais e cortesias separadamente sem registrar pagamento', async () => {
+  const h = await harness({ subscriptions: [company({ plan_id: 'enterprise', effective_plan: 'enterprise' })] });
+  await act(async () => button('Gerenciar').props.onClick());
+  await act(async () => field('Filiais adicionais pagas (Enterprise)', 'input').props.onChange({ target: { value: '2', valueAsNumber: 2 } }));
+  await act(async () => field('Filiais de cortesia', 'input').props.onChange({ target: { value: '1', valueAsNumber: 1 } }));
+  assert.match(JSON.stringify(renderer.toJSON()), /329,70/);
+  await reason(); await submit();
+  assert.equal(h.calls[0].args.p_extra_branches, 2); assert.equal(h.calls[0].args.p_courtesy_branches, 1);
+  assert.equal('p_paid_until' in h.calls[0].args, false);
+});
+test('revisão de solicitação vincula decisão ao pedido e à quantidade mostrada', async () => {
+  const h = await harness({ subscriptions: [company({ plan_id: 'enterprise', effective_plan: 'enterprise' })],
+    branchRequests: [{ id: 'request-1', company_id: 'owner', extra_branches: 2, status: 'pending' }] });
+  await act(async () => button('Revisar solicitação').props.onClick());
+  assert.equal(field('Filiais adicionais pagas (Enterprise)', 'input').props.value, 2);
+  assert.ok(button('Aprovar solicitação e preparar cobrança'));
+  await reason(); await submit();
+  assert.equal(h.calls[0].args.p_request_id, 'request-1'); assert.equal(h.calls[0].args.p_extra_branches, 2);
 });

@@ -7,6 +7,8 @@ import { accessDeadline, accessExplanation, adminDay, downloadAdminCsv, matchesP
 import { AdminActivityModule, AdminPendingSummary } from './AdminActivityModule';
 import { AdminResponsiveTable } from './AdminResponsiveTable';
 import { AdminManagementCharts } from './AdminManagementCharts';
+import { planCatalog } from '../lib/planCatalog';
+import { DeviceSessions } from './partner/DeviceSessions';
 
 const date = (value: string | null) => value ? new Date(value).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : '—';
 export function AdminSaasModule({ view, initialCompanyId, onChanged, onNavigate }: { view: 'subscriptions' | 'invoices' | 'financial' | 'overview' | 'history'; initialCompanyId?: string | null; onChanged?: () => void; onNavigate?: (tab: 'assinaturas' | 'faturas' | 'suporte' | 'planos') => void }) {
@@ -16,6 +18,7 @@ export function AdminSaasModule({ view, initialCompanyId, onChanged, onNavigate 
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState<SaasSubscription | null>(null);
   const [reason, setReason] = useState('');
+  const [branchRequestId, setBranchRequestId] = useState<string | null>(null);
   const [cancelInvoice, setCancelInvoice] = useState<string | null>(null);
   const [cancelRenewal, setCancelRenewal] = useState<string | null>(null);
   const [search, setSearch] = useState('');
@@ -46,6 +49,7 @@ export function AdminSaasModule({ view, initialCompanyId, onChanged, onNavigate 
     if (company) { openedCompany.current = initialCompanyId; setEditing(saasAdminDraft(company, 'manage')); }
   }, [initialCompanyId, data]);
   function edit(subscription: SaasSubscription, action: SaasAdminAction = 'manage') {
+    setBranchRequestId(null);
     setEditing(saasAdminDraft(subscription, action)); setCancelInvoice(null); setCancelRenewal(null); setReason(''); setError(null); setMessage(null);
   }
   async function save(event: React.FormEvent) {
@@ -59,17 +63,19 @@ export function AdminSaasModule({ view, initialCompanyId, onChanged, onNavigate 
     mutationPending.current = true;
     setBusy(true); setError(null); setMessage(null);
     try {
-      const result = editing ? await supabase.rpc('admin_update_saas_subscription', {
+      const result = editing ? await supabase.rpc('admin_save_saas_configuration', {
         p_company_id: editing.company_id, p_plan_id: editing.plan_id, p_billing_mode: editing.billing_mode,
         p_full_access: editing.full_access, p_status: editing.status, p_reason: reason.trim(),
         p_admin_access_until: editing.admin_access_until,
+        p_extra_branches: editing.extra_branches ?? 0, p_courtesy_branches: editing.courtesy_branches ?? 0,
+        p_request_id: branchRequestId,
       }) : cancelRenewal ? await supabase.rpc('cancel_saas_renewal', { p_company_id: cancelRenewal, p_reason: reason })
         : await supabase.rpc('admin_cancel_saas_invoice', { p_invoice_id: cancelInvoice, p_reason: reason });
       if (result.error) throw result.error;
       if (editing && !result.data) throw new Error('O servidor não confirmou o salvamento. Suas alterações continuam no formulário.');
       setMessage(editing ? `${editing.company_name}: configuração salva. ${result.data?.can_access ? 'Acesso ao aplicativo liberado.' : 'Acesso ao aplicativo bloqueado.'}`
         : cancelRenewal ? 'Renovação cancelada. O período já pago permanece disponível.' : 'Cancelamento da cobrança registrado.');
-      setEditing(null); setCancelInvoice(null); setCancelRenewal(null); setReason('');
+      setEditing(null); setBranchRequestId(null); setCancelInvoice(null); setCancelRenewal(null); setReason('');
       await refresh();
       onChanged?.();
     } catch (failure) { setError(saasAdminError(failure)); }
@@ -109,6 +115,16 @@ export function AdminSaasModule({ view, initialCompanyId, onChanged, onNavigate 
       {!expiring.length && <p>Nenhum vencimento nos próximos 7 dias.</p>}
     </>}
     {data && view === 'subscriptions' && <>
+      {!!data.branch_requests?.length && <div className="module-card"><h4>Solicitações de filiais adicionais</h4>
+        {data.branch_requests.map(request => <div className="module-card" key={request.id}>
+          <strong>{subscriptions.find(s => s.company_id === request.company_id)?.company_name}</strong>
+          <p>Total de adicionais pagos solicitado: {request.extra_branches}. A aprovação prepara a cobrança; a capacidade paga depende da confirmação do pagamento.</p>
+          <button className="rma-advance-btn" disabled={busy} onClick={() => {
+            const subscription = subscriptions.find(s => s.company_id === request.company_id);
+            if (subscription) { edit(subscription); setEditing({ ...saasAdminDraft(subscription, 'manage'), extra_branches: request.extra_branches }); setBranchRequestId(request.id); }
+          }}>Revisar solicitação</button>
+        </div>)}
+      </div>}
       <div className="admin-financial-kpis">
         {[
           ['Empresas cadastradas', subscriptions.length], ['Acesso liberado', subscriptions.filter(s => s.can_access).length],
@@ -146,9 +162,20 @@ export function AdminSaasModule({ view, initialCompanyId, onChanged, onNavigate 
     {(editing || cancelInvoice || cancelRenewal) && <form className="rma-form module-card admin-access-editor" aria-busy={busy} onSubmit={save}>
       <h4>{editing ? `Controlar acesso: ${editing.company_name}` : cancelRenewal ? 'Cancelar renovação' : 'Cancelar cobrança pendente'}</h4>
       {editing && <>
-        <label>Plano<select value={editing.plan_id} disabled={busy} onChange={e => setEditing({ ...editing, plan_id: e.target.value as SaasPlanId })}>
+        <label>Plano<select value={editing.plan_id} disabled={busy} onChange={e => setEditing({ ...editing, plan_id: e.target.value as SaasPlanId, extra_branches: e.target.value === 'enterprise' ? editing.extra_branches ?? 0 : 0 })}>
           <option value="basico">Básico</option><option value="profissional">Profissional</option><option value="enterprise">Enterprise</option>
         </select></label>
+        <div className="form-row">
+          <label>Filiais adicionais pagas (Enterprise)<input type="number" min="0" max="1000" step="1" required disabled={busy || editing.plan_id !== 'enterprise'} value={editing.extra_branches ?? 0}
+            onChange={e => setEditing({ ...editing, extra_branches: e.target.value === '' ? 0 : e.target.valueAsNumber })} /></label>
+          <label>Filiais de cortesia<input type="number" min="0" max="1000" step="1" required disabled={busy} value={editing.courtesy_branches ?? 0}
+            onChange={e => setEditing({ ...editing, courtesy_branches: e.target.value === '' ? 0 : e.target.valueAsNumber })} /></label>
+        </div>
+        <p>{planCatalog[editing.plan_id].branches} filiais incluídas · {planCatalog[editing.plan_id].devices} dispositivos simultâneos por filial.</p>
+        <p>Mensalidade proposta: <strong>{money.format(editing.billing_mode === 'exempt' ? 0 : planCatalog[editing.plan_id].price + (editing.extra_branches ?? 0) * planCatalog[editing.plan_id].extraBranchPrice)}</strong>.
+          {' '}Cada adicional Enterprise custa {money.format(planCatalog.enterprise.extraBranchPrice)}/mês. Cortesias não aumentam a cobrança.</p>
+        <p>Alterar os adicionais pagos cancela a autorização anterior. O titular precisa autorizar o novo valor no Mercado Pago. O período já pago é preservado; novos adicionais são liberados após o pagamento do novo ciclo.</p>
+        <DeviceSessions companyId={editing.company_id} />
         <label>Cobrança da empresa<select value={editing.billing_mode} disabled={busy} onChange={e => setEditing({ ...editing, billing_mode: e.target.value as 'paid' | 'exempt', full_access: false })}>
           <option value="paid">Cobrar mensalidade do plano</option><option value="exempt">Isentar de cobrança</option>
         </select></label>
@@ -170,13 +197,23 @@ export function AdminSaasModule({ view, initialCompanyId, onChanged, onNavigate 
         onChange={e => setReason(e.target.value)} /></label>
       <small id="admin-change-reason-help">Informe de 5 a 500 caracteres. O motivo fica registrado junto com a alteração.</small>
       {error && <p className="admin-editor-error">{error}</p>}
-      <div className="subscription-actions admin-save-actions"><button type="submit" className="module-submit-btn" disabled={busy}>{busy ? 'Salvando...' : editing ? 'Salvar alterações' : 'Confirmar cancelamento'}</button>
-        <button type="button" className="rma-advance-btn" disabled={busy} onClick={() => { setEditing(null); setCancelInvoice(null); setCancelRenewal(null); setReason(''); setError(null); }}>Cancelar edição</button></div>
+      <div className="subscription-actions admin-save-actions"><button type="submit" className="module-submit-btn" disabled={busy}>{busy ? 'Salvando...' : editing ? branchRequestId ? 'Aprovar solicitação e preparar cobrança' : 'Salvar alterações' : 'Confirmar cancelamento'}</button>
+        {editing && branchRequestId && <button type="button" className="rma-advance-btn" disabled={busy} onClick={async () => {
+          if (!supabase || reason.trim().length < 5 || mutationPending.current) { setError('Informe o motivo com pelo menos 5 caracteres.'); return; }
+          mutationPending.current = true; setBusy(true); setError(null);
+          try {
+            const { error: failure } = await supabase.rpc('admin_reject_saas_branch_request', { p_request_id: branchRequestId, p_reason: reason.trim() });
+            if (failure) throw failure;
+            setBranchRequestId(null); setEditing(null); setMessage('Solicitação rejeitada.'); await refresh(); onChanged?.();
+          } catch (failure) { setError(saasAdminError(failure)); }
+          finally { mutationPending.current = false; setBusy(false); }
+        }}>Rejeitar solicitação com este motivo</button>}
+        <button type="button" className="rma-advance-btn" disabled={busy} onClick={() => { setEditing(null); setBranchRequestId(null); setCancelInvoice(null); setCancelRenewal(null); setReason(''); setError(null); }}>Cancelar edição</button></div>
     </form>}
     {data && view === 'subscriptions' && <AdminResponsiveTable><table className="rma-table">
       <thead><tr><th>Empresa</th><th>Plano</th><th>Cobrança</th><th>Status</th><th>Acesso ao app</th><th>Renovação</th><th>Vencimentos</th><th>Controles</th></tr></thead>
       <tbody>{filtered.map(s => <tr key={s.company_id}>
-        <td>{s.company_name}</td><td><span className="admin-plan-badge">{s.effective_plan}</span></td><td>{s.billing_mode === 'exempt' ? 'Isenta' : money.format(s.monthly_amount)}</td>
+        <td>{s.company_name}</td><td><span className="admin-plan-badge">{s.effective_plan}</span><small className="admin-cell-note">Filiais: {s.branch_count ?? '—'} / {s.branch_limit ?? 'Sem limite'}</small><small className="admin-cell-note">{s.device_limit ?? planCatalog[s.effective_plan].devices} dispositivos por filial</small></td><td>{s.billing_mode === 'exempt' ? 'Isenta' : money.format(s.monthly_amount)}<small className="admin-cell-note">Adicionais pagos: {s.extra_branches ?? 0} · Cortesias: {s.courtesy_branches ?? 0}</small></td>
         <td>{saasStatusLabels[s.status]}</td><td><span className={`admin-access-badge ${s.can_access ? 'allowed' : 'blocked'}`}>{s.can_access ? 'Liberado' : 'Bloqueado'}</span><small className="admin-cell-note">{accessExplanation(s)}</small></td><td>{s.auto_renew ? 'Ativa' : 'Desativada'}</td>
         <td><small className="admin-cell-note">Teste: {date(s.trial_ends_at)}</small><small className="admin-cell-note">Pago até: {date(s.paid_until)}</small><small className="admin-cell-note">Manual: {date(s.admin_access_until)}</small>{s.status === 'past_due' && <small className="admin-cell-note">Tolerância: {date(s.grace_until ?? null)}</small>}</td>
         <td><div className="subscription-actions">
