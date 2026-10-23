@@ -1,3 +1,4 @@
+import { SupportUnreadBadge } from './SupportUnreadBadge';
 import { useEffect, useRef, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
 import type { AdminCompany } from '../types';
@@ -5,7 +6,7 @@ import { supabase } from '../lib/supabase';
 import { SupportChatModule, type SupportMessage } from './partner/SupportChatModule';
 import { saasAdminError } from '../lib/saasAdminControls';
 type Conversation = SupportMessage & { priority: 'normal' | 'high'; closed_at: string | null; closed_message_position: number | null; closed: boolean; company_name: string };
-export function AdminSupportInbox({ companies }: { companies: AdminCompany[] }) {
+export function AdminSupportInbox({ companies, unreadCounts = {} }: { companies: AdminCompany[]; unreadCounts?: Record<string, number> }) {
   const [user, setUser] = useState<User | null>(null); const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selected, setSelected] = useState<Conversation | null>(null); const [search, setSearch] = useState(''); const [filter, setFilter] = useState('all');
   const [page, setPage] = useState(0); const [total, setTotal] = useState(0); const [pending, setPending] = useState(0);
@@ -71,7 +72,7 @@ export function AdminSupportInbox({ companies }: { companies: AdminCompany[] }) 
     {error && <p role="alert" className="admin-feedback admin-feedback-error">{error}</p>}
     <div className="rma-form inline admin-filters"><label>Buscar atendimento<input type="search" maxLength={200} value={search} onChange={e => setSearch(e.target.value)} placeholder="Empresa ou última mensagem" /></label><label>Mostrar<select value={filter} onChange={e => setFilter(e.target.value)}><option value="all">Todos</option><option value="pending">Aguardando resposta</option><option value="closed">Encerrados</option><option value="high">Prioridade alta</option></select></label></div>
     {loading && <p role="status">Carregando atendimentos...</p>}
-    <div className="admin-support-conversations">{conversations.map(conversation => <button type="button" className={'admin-support-conversation ' + (selected?.user_id === conversation.user_id ? 'active' : '')} key={conversation.user_id} onClick={() => setSelected(conversation)}><strong>{conversation.company_name}</strong><span>{conversation.message}</span><small>{new Date(conversation.created_at).toLocaleString('pt-BR')} · {conversation.closed ? 'Encerrado' : conversation.sender_role === 'cliente' ? 'Aguardando resposta' : 'Respondido'}{conversation.priority === 'high' ? ' · Prioridade alta' : ''}</small></button>)}</div>
+    <div className="admin-support-conversations">{conversations.map(conversation => <button type="button" className={'admin-support-conversation ' + (selected?.user_id === conversation.user_id ? 'active' : '')} key={conversation.user_id} onClick={() => setSelected(conversation)}><strong>{conversation.company_name}<SupportUnreadBadge count={unreadCounts[conversation.user_id] ?? 0} /></strong><span>{conversation.message}</span><small>{new Date(conversation.created_at).toLocaleString('pt-BR')} · {conversation.closed ? 'Encerrado' : conversation.sender_role === 'cliente' ? 'Aguardando resposta' : 'Respondido'}{conversation.priority === 'high' ? ' · Prioridade alta' : ''}</small></button>)}</div>
     {!loading && !conversations.length && <p>Nenhum atendimento encontrado.</p>}
     <div className="subscription-actions"><button type="button" disabled={loading || page === 0} onClick={() => setPage(p => p - 1)}>Anterior</button><span>Página {page + 1} · {total} atendimento(s)</span><button type="button" disabled={loading || (page + 1) * 25 >= total} onClick={() => setPage(p => p + 1)}>Próxima</button></div>
     {selected && user && <div className="module-card"><h4>{companies.find(c => c.user_id === selected.user_id)?.business_name ?? selected.company_name}</h4><div className="subscription-actions"><button type="button" className="rma-advance-btn" disabled={saving} onClick={() => void update(selected.priority === 'high' ? 'priority_normal' : 'priority_high')}>{selected.priority === 'high' ? 'Remover prioridade alta' : 'Marcar prioridade alta'}</button><button type="button" className="rma-advance-btn" disabled={saving} onClick={() => void update(selected.closed ? 'reopen' : 'close')}>{selected.closed ? 'Reabrir atendimento' : 'Encerrar atendimento'}</button></div><SupportChatModule key={selected.user_id} user={user} conversationUserId={selected.user_id} admin /></div>}

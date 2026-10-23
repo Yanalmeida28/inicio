@@ -1,3 +1,5 @@
+import { useSupportUnread } from '../hooks/useSupportUnread';
+import { SupportUnreadBadge } from './SupportUnreadBadge';
 import { ModuleBoundary } from './ModuleBoundary';
 import { moduleLoader } from '../lib/moduleLoading';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
@@ -292,6 +294,7 @@ export function PartnerPanel({
     'cadastros',
     `user:${user?.id ?? identity?.authUserId ?? 'pending'}`,
   );
+  const supportUnread = useSupportUnread(user?.id);
   const [visitedTabs, setVisitedTabs] = useState<Set<Tab>>(() => new Set(['cadastros']));
   useEffect(() => {
     setVisitedTabs((current) => current.has(activeTab) ? current : new Set(current).add(activeTab));
@@ -2045,7 +2048,7 @@ export function PartnerPanel({
                 }
               >
                 <Icon size={20} />
-                <span className="sidebar-nav-label">{label}</span>
+                <span className="sidebar-nav-label">{label}</span>{id === 'suporte' && <SupportUnreadBadge count={supportUnread.total} />}
               </button>
             ),
           )}

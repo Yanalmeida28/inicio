@@ -24,7 +24,7 @@ async function fixture(legacy=false){
  await db.exec(workspace.slice(workspace.indexOf('CREATE TABLE public.admin_support_states'),workspace.indexOf('ALTER TABLE public.partner_plan_change_requests')));
  await db.exec(workspace.slice(workspace.indexOf('CREATE FUNCTION public.get_super_admin_pending_summary'),workspace.lastIndexOf('COMMIT;')));
  if(legacy)await db.query("INSERT INTO support_messages(user_id,sender_role,message,created_at) VALUES($1,'cliente',$2,'2099-01-01')",[owner,'x'.repeat(2500)]);
- await db.exec(migration);return db;
+ await db.exec(migration);await db.exec(await read('20261023202213_support_unread_receipts.sql'));return db;
 }
 let db;
 const sql=(s,p=[])=>db.query(s,p);
@@ -33,7 +33,7 @@ const send=async(id=randomUUID(),text='Ajuda',user=owner,asAdmin=false)=>(await 
 const state=async(action,user=owner,position=null)=>(await sql('SELECT to_jsonb(update_admin_support_state($1,$2,$3)) state',[user,action,position])).rows[0].state;
 const inbox=async()=>(await sql('SELECT get_admin_support_inbox() result')).rows[0].result;
 before(async()=>{db=await fixture();});after(async()=>db?.close());
-beforeEach(async()=>{await db.exec('RESET ROLE;TRUNCATE support_messages,admin_support_states');await login(owner);});
+beforeEach(async()=>{await db.exec('RESET ROLE;TRUNCATE support_messages,admin_support_states,partner_support_private.read_receipts');await login(owner);});
 test('support retries return the same row and changed data or actor cannot reuse the attempt',async()=>{
  const id=randomUUID();const first=await send(id);assert.deepEqual(await send(id),first);
  assert.equal((await sql('SELECT count(*)::int n FROM support_messages')).rows[0].n,1);
@@ -92,4 +92,28 @@ test('support migration preserves legacy oversized/future messages but newer rep
   const summary=(await isolated.query('SELECT get_admin_support_inbox() result')).rows[0].result;
   assert.equal(summary.conversations[0].id,reply.id);assert.equal(summary.conversations[0].closed,true);assert.equal(Number(summary.pending),0);
  }finally{await isolated.close();}
+});
+
+const unread=async(adminMode=false)=>(await sql('SELECT get_support_unread_counts($1) result',[adminMode])).rows[0].result;
+const markRead=async(user,position,adminMode=false)=>(await sql('SELECT mark_support_messages_read($1,$2,$3) result',[user,position,adminMode])).rows[0].result;
+test('unread support counts incoming messages only, persists by actor and never acknowledges newer messages',async()=>{
+ const first=await send();assert.equal(Number((await unread()).total),0);
+ await login(admin);assert.equal(Number((await unread(true)).total),1);
+ const second=await send(randomUUID(),'Resposta',owner,true);
+ await markRead(owner,first.message_position,true);assert.equal(Number((await unread(true)).total),0);
+ await login(secondAdmin);assert.equal(Number((await unread(true)).total),1);
+ await login(owner);assert.equal(Number((await unread()).total),1);
+ await login(admin);const third=await send(randomUUID(),'Nova resposta',owner,true);
+ await login(owner);await markRead(owner,second.message_position);assert.equal(Number((await unread()).total),1);
+ await markRead(owner,third.message_position);await markRead(owner,second.message_position);assert.equal(Number((await unread()).total),0);
+ await login(other);assert.equal(Number((await unread()).total),0);
+});
+test('unread RPCs reject impersonation, future cursors, outgoing messages and anonymous access',async()=>{
+ const first=await send();await assert.rejects(unread(true),/autorizado/);
+ await assert.rejects(markRead(other,first.message_position),/autorizado/);
+ await assert.rejects(markRead(owner,first.message_position),/inválida/);
+ await assert.rejects(markRead(owner,999999),/inválida/);
+ await assert.rejects(sql('SELECT * FROM partner_support_private.read_receipts'),/permission denied/);
+ await login(null);await assert.rejects(unread(),/autenticado/);
+ await db.exec('RESET ROLE;SET ROLE anon');await assert.rejects(unread(),/permission denied/);
 });

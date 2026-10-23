@@ -1,3 +1,5 @@
+import { useSupportUnread } from '../hooks/useSupportUnread';
+import { SupportUnreadBadge } from './SupportUnreadBadge';
 import { useEffect, useState } from 'react';
 import {
   ArrowLeft, Users, Check, BarChart3, ClipboardList,
@@ -21,6 +23,8 @@ type AdminTab = 'visao' | 'historico' | 'lojistas' | 'financeiro' | 'faturas' | 
 
 
 export function AdminPanel({ onBack }: AdminPanelProps) {
+  const [supportActorId, setSupportActorId] = useState<string>();
+  const supportUnread = useSupportUnread(supportActorId, true);
   const [tab, setTab] = useState<AdminTab>('visao');
   const [search, setSearch] = useState('');
   const [clientFilter, setClientFilter] = useState('all');
@@ -57,6 +61,7 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
         const loj = await supabase.rpc('get_super_admin_company_overview_auth');
         if (loj.error) throw loj.error;
         if (cancelled) return;
+        setSupportActorId(userData.user.id);
         setLojistas((loj.data as AdminCompany[]) ?? []);
       } catch (loadError) {
         if (!cancelled) setError(loadError instanceof Error ? loadError.message : 'Não foi possível carregar o painel master.');
@@ -135,7 +140,7 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
         <div className="partner-tabs">
           {tabs.map(({ id, label, icon: Icon }) => (
             <button key={id} className={`partner-tab ${tab === id ? 'active' : ''}`} onClick={() => { setAccessCompanyId(null); setTab(id); }}>
-              <Icon size={17} /> {label}
+              <Icon size={17} /> {label}{id === 'suporte' && <SupportUnreadBadge count={supportUnread.total} />}
             </button>
           ))}
         </div>
@@ -221,7 +226,7 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
           {tab === 'faturas' && <AdminSaasModule view="invoices" />}
           {tab === 'assinaturas' && <AdminSaasModule view="subscriptions" initialCompanyId={accessCompanyId} onChanged={() => setCompaniesVersion(version => version + 1)} />}
 
-          {tab === 'suporte' && <AdminSupportInbox companies={lojistas} />}
+          {tab === 'suporte' && <AdminSupportInbox companies={lojistas} unreadCounts={supportUnread.conversations} />}
 
           {tab === 'planos' && <AdminPlanRequestsModule onChanged={() => setCompaniesVersion(v => v + 1)} />}
 

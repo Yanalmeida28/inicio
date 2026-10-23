@@ -50,6 +50,7 @@ function SupportChat({ user, conversationUserId, admin = false, isActive = true 
   const reload = useRef<(() => void) | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
   const latestMessageId = messages[messages.length - 1]?.id;
+  const acknowledgedPosition = useRef(0);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const recoverAttempt = useCallback(() => {
     try {
@@ -106,6 +107,29 @@ function SupportChat({ user, conversationUserId, admin = false, isActive = true 
     const interval = window.setInterval(() => { void loadMessages(); }, 10000);
     return () => { live = false; reload.current = null; window.clearInterval(interval); void client.removeChannel(channel); };
   }, [actorId, userId, admin, isActive, scope]);
+
+  useEffect(() => {
+    if (!supabase || !actorId || !userId || !isActive || loading || typeof document === 'undefined') return;
+    const client = supabase;
+    const incoming = messages.filter(row => row.sender_role === (admin ? 'cliente' : 'suporte'));
+    const lastPosition = incoming.length ? Math.max(...incoming.map(position)) : 0;
+    if (!lastPosition) return;
+    let live = true;
+    const acknowledge = async () => {
+      if (!live || document.visibilityState !== 'visible' || lastPosition <= acknowledgedPosition.current) return;
+      try {
+        const {error} = await client.rpc('mark_support_messages_read', {p_user_id: userId, p_position: lastPosition, p_admin: admin});
+        if (!error && live) {
+          acknowledgedPosition.current = Math.max(acknowledgedPosition.current, lastPosition);
+          window.dispatchEvent(new Event('distrihub:support-read'));
+        }
+      } catch { /* The next conversation refresh retries the acknowledgement. */ }
+    };
+    void acknowledge();
+    document.addEventListener('visibilitychange', acknowledge);
+    window.addEventListener('focus', acknowledge);
+    return () => { live = false; document.removeEventListener('visibilitychange', acknowledge); window.removeEventListener('focus', acknowledge); };
+  }, [actorId, userId, admin, isActive, loading, messages]);
 
   async function loadOlder() {
     if (!supabase || !userId || !messages[0] || olderLock.current || !active.current) return;

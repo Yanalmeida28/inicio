@@ -15,16 +15,16 @@ const inboxSource=compile(await readFile(new URL('../../src/components/AdminSupp
 const row=(n,user='owner')=>({id:'message-'+n,user_id:user,sender_role:'cliente',message:'Mensagem '+n,message_position:n,created_at:'2026-10-14T12:00:00Z'});
 const button=(view,label)=>view.root.findAllByType('button').find(b=>b.children.some(c=>typeof c==='string'&&c.trim()===label));
 const text=view=>JSON.stringify(view.toJSON());
-async function chat({rows=[],send,read,values=new Map(),storageBlocked=false,extra={}}={}){
- const rpcCalls=[],reads=[],intervals=new Map();let timer=0;let props={user:{id:'owner'},...extra};let server=rows;
+async function chat({rows=[],send,read,values=new Map(),storageBlocked=false,extra={},visibility='visible'}={}){
+ const acknowledgements=[],rpcCalls=[],reads=[],intervals=new Map();let timer=0;let props={user:{id:'owner'},...extra};let server=rows;
  const storage={getItem:k=>values.get(k)??null,setItem:(k,v)=>values.set(k,v),removeItem:k=>values.delete(k)};
- const client={rpc:async(name,args)=>{rpcCalls.push({name,args});return send?send(args):{data:{...row(server.length+1,args.p_user_id),id:args.p_request_id,message:args.p_message,sender_role:args.p_admin?'suporte':'cliente'},error:null};},from(){
+ const client={rpc:async(name,args)=>{if(name==='mark_support_messages_read'){acknowledgements.push(args);return {data:args.p_position,error:null};}rpcCalls.push({name,args});return send?send(args):{data:{...row(server.length+1,args.p_user_id),id:args.p_request_id,message:args.p_message,sender_role:args.p_admin?'suporte':'cliente'},error:null};},from(){
   const query={user:null,gt:null,lt:null,ascending:false,limit:50};const q={select(){return q;},eq(_,v){query.user=v;return q;},gt(_,v){query.gt=v;return q;},lt(_,v){query.lt=v;return q;},order(_,o){query.ascending=o.ascending;return q;},limit(v){query.limit=v;return q;},then(resolve){reads.push({...query});const result=read?read(query):{data:server.filter(r=>r.user_id===query.user&&(query.gt===null||r.message_position>query.gt)&&(query.lt===null||r.message_position<query.lt)).sort((a,b)=>query.ascending?a.message_position-b.message_position:b.message_position-a.message_position).slice(0,query.limit),error:null};return Promise.resolve(result).then(resolve);}};return q;
  },channel(){const q={on(){return q;},subscribe(){return q;}};return q;},removeChannel(){}};
- const exports={};const window={setInterval:f=>{intervals.set(++timer,f);return timer;},clearInterval:id=>intervals.delete(id)};Object.defineProperty(window,'sessionStorage',{get(){if(storageBlocked)throw new Error('Blocked');return storage;}});
- vm.runInNewContext(chatSource,{exports,Error,window,require:n=>n==='../../lib/supabase'?{supabase:client}:n==='../../lib/operationAttempts'?operations:n==='lucide-react'?new Proxy({},{get:()=>()=>null}):require(n)});
+ const listeners=new Map();const document={visibilityState:visibility,addEventListener:(n,f)=>listeners.set(f,n),removeEventListener:(n,f)=>listeners.delete(f)};const exports={};const window={setInterval:f=>{intervals.set(++timer,f);return timer;},clearInterval:id=>intervals.delete(id),addEventListener:(n,f)=>listeners.set(f,n),removeEventListener:(n,f)=>listeners.delete(f),dispatchEvent(){}};Object.defineProperty(window,'sessionStorage',{get(){if(storageBlocked)throw new Error('Blocked');return storage;}});
+ vm.runInNewContext(chatSource,{exports,Error,window,document,Event:class {},require:n=>n==='../../lib/supabase'?{supabase:client}:n==='../../lib/operationAttempts'?operations:n==='lucide-react'?new Proxy({},{get:()=>()=>null}):require(n)});
  let view;await act(async()=>{view=create(React.createElement(exports.SupportChatModule,props));});
- return {view,rpcCalls,reads,values,setRows:r=>{server=r;},async type(value){await act(async()=>view.root.findByType('input').props.onChange({target:{value}}));},async submit(){await act(async()=>view.root.findByType('form').props.onSubmit({preventDefault(){}}));},async tick(){await act(async()=>{for(const f of intervals.values())f();});},async update(change){props={...props,...change};await act(async()=>view.update(React.createElement(exports.SupportChatModule,props)));},async close(){await act(async()=>view.unmount());}};
+ return {view,rpcCalls,reads,values,acknowledgements,async visibility(value){document.visibilityState=value;await act(async()=>{for(const f of listeners.keys())await f();});},setRows:r=>{server=r;},async type(value){await act(async()=>view.root.findByType('input').props.onChange({target:{value}}));},async submit(){await act(async()=>view.root.findByType('form').props.onSubmit({preventDefault(){}}));},async tick(){await act(async()=>{for(const f of intervals.values())f();});},async update(change){props={...props,...change};await act(async()=>view.update(React.createElement(exports.SupportChatModule,props)));},async close(){await act(async()=>view.unmount());}};
 }
 test('support locks synchronous submits and input, and confirms only one persistent attempt',async()=>{
  let release;const h=await chat({send:()=>new Promise(r=>{release=r;})});
@@ -66,7 +66,7 @@ async function inbox({mutate,detail}={}){
   if(name==='get_admin_support_conversation')return detail?detail(args):{data:entries.find(r=>r.user_id===args.p_user_id),error:null};
   return mutate?mutate(args):{data:{user_id:args.p_user_id,priority:'high',closed_at:null,closed_message_position:null},error:null};
  },channel(){const q={on(){return q;},subscribe(){return q;}};return q;},removeChannel(){}};
- const exports={};vm.runInNewContext(inboxSource,{exports,require:n=>n==='../lib/supabase'?{supabase:client}:n==='./partner/SupportChatModule'?{SupportChatModule:p=>React.createElement('support-chat',p)}:n==='../lib/saasAdminControls'?{saasAdminError:e=>e.message}:require(n),window:{setInterval:f=>{intervals.push(f);return intervals.length;},clearInterval(){}}});
+ const exports={};vm.runInNewContext(inboxSource,{exports,require:n=>n==='./SupportUnreadBadge'?{SupportUnreadBadge:()=>null}:n==='../lib/supabase'?{supabase:client}:n==='./partner/SupportChatModule'?{SupportChatModule:p=>React.createElement('support-chat',p)}:n==='../lib/saasAdminControls'?{saasAdminError:e=>e.message}:require(n),window:{setInterval:f=>{intervals.push(f);return intervals.length;},clearInterval(){}}});
  let view;await act(async()=>{view=create(React.createElement(exports.AdminSupportInbox,{companies:[]}));});
  return {view,calls,setEntries:r=>{entries=r;},async select(index){await act(async()=>view.root.findAllByType('button').filter(b=>String(b.props.className??'').startsWith('admin-support-conversation'))[index].props.onClick());},async tick(){await act(async()=>intervals.forEach(f=>f()));},async close(){await act(async()=>view.unmount());}};
 }
@@ -86,4 +86,14 @@ test('admin support refreshes selected status and sends only the requested actio
 test('admin support ignores a late detail read after selecting another customer',async()=>{
  let release;const h=await inbox({detail:args=>args.p_user_id==='owner'?new Promise(r=>{release=r;}):{data:conversation(2,'other'),error:null}});
  try{await h.select(0);await h.select(1);await act(async()=>release({data:conversation(1),error:null}));assert.equal(h.view.root.findByType('support-chat').props.conversationUserId,'other');}finally{await h.close();}
+});
+
+test('support acknowledges only rendered incoming messages while the conversation and document are visible',async()=>{
+ const incoming={...row(2),sender_role:'suporte'};
+ const h=await chat({rows:[row(1),incoming],visibility:'hidden'});
+ try{assert.equal(h.acknowledgements.length,0);await h.visibility('visible');assert.equal(h.acknowledgements.at(-1).p_position,2);
+ await h.update({isActive:false});h.setRows([row(1),incoming,{...row(3),sender_role:'suporte'}]);await h.tick();assert.equal(h.acknowledgements.at(-1).p_position,2);
+ await h.update({isActive:true});assert.equal(h.acknowledgements.at(-1).p_position,3);
+ await h.visibility('hidden');const count=h.acknowledgements.length;h.setRows([incoming,{...row(4),sender_role:'suporte'}]);await h.tick();assert.equal(h.acknowledgements.length,count);
+ }finally{await h.close();}
 });
