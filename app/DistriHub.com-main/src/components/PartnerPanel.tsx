@@ -2177,6 +2177,10 @@ export function PartnerPanel({
                 onCreatePreSale={
                   handleCreatePreSale
                 }
+                onUpdatePreSale={async (id, edits) => {
+                  const { operatorId, operatorPin } = getOperatorContext();
+                  await partner.updatePreSale(id, edits, operatorId, operatorPin);
+                }}
                 onFinalizePreSale={
                   handleFinalizePreSale
                 }

@@ -10,7 +10,7 @@ import type { DeliveryType, PartnerProduct, PartnerCustomer, PartnerSale, SalePa
 import { SalePriceInput } from './SalePriceInput';
 import { money } from '../../utils';
 import { draftPayments, emptySplitPaymentDraft, splitPaymentDraft, splitPaymentError, billedSaleError, pdvErrorMessage, pdvTotal, saleChargeTotal, validSalePrice, type CustomerCredit, customerPriceTable, productTablePrice, type PriceTable } from '../../lib/pdv';
-import { SessionDraftProvider, useSessionDraftScope, useSessionDraftState } from '../../hooks/useSessionDraft';
+import { SessionDraftProvider, useSessionDraftScope, useSessionDraftState, clearConfirmedPdvDraft } from '../../hooks/useSessionDraft';
 
 type ClientType = 'varejo' | 'atacado';
 type PdvSubTab = 'pdv' | 'pre-venda';
@@ -347,6 +347,7 @@ type Props = {
     draft_scope?: string; branch_id?: string | null;
   }) => Promise<PartnerSale | void>;
   onFinalizePreSale: (id: string, paymentMethod: string, paymentSplits?: SalePayment[], edits?: Parameters<Props['onCreateSale']>[0]) => Promise<void>;
+  onUpdatePreSale?: (id: string, edits: Parameters<Props['onCreateSale']>[0]) => Promise<void>;
   onCancelSale: (id: string, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
   onDeleteSale: (id: string, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
 };
@@ -359,7 +360,7 @@ export function PdvModule({
   products, customers, sales, credits, rmaRequests = [], hasPendingSale, isActive = true, salespeople, segment, selectedBranchId,
   barcodeScannerEnabled = true, cameraScannerEnabled = false,
   preSaleToCheckout, onConsumePreSale, onRequestPreSale,
-  activeSalespersonId, activeBranchName, receiptDetails, currentRole, canEditPrice, onCreateSale, onCreatePreSale, onFinalizePreSale, onCancelSale, onDeleteSale,
+  activeSalespersonId, activeBranchName, receiptDetails, currentRole, canEditPrice, onCreateSale, onCreatePreSale, onFinalizePreSale, onUpdatePreSale, onCancelSale, onDeleteSale,
 }: Props) {
   const parentDraftScope = useSessionDraftScope();
   const legacyParentDraftScope = useSessionDraftScope(true);
@@ -367,8 +368,10 @@ export function PdvModule({
   const [subTab, setSubTab] = useSessionDraftState<PdvSubTab>(`pdv:active-subtab:${contextKey}`, 'pdv');
   const [visitedSubTabs, setVisitedSubTabs] = useState<Set<PdvSubTab>>(() => new Set(['pdv', subTab]));
   const [checkoutPreSale, setCheckoutPreSale] = useState<PartnerSale | null>(null);
+  const [savedRescueNotice, setSavedRescueNotice] = useState<string | null>(null);
   useEffect(() => {
     if (!preSaleToCheckout) return;
+    setSavedRescueNotice(null);
     setCheckoutPreSale(preSaleToCheckout);
     setVisitedSubTabs((current) => current.has('pdv') ? current : new Set(current).add('pdv'));
     setSubTab('pdv');
@@ -443,6 +446,7 @@ export function PdvModule({
       </div>}
       </div>
 
+      {savedRescueNotice && <p className="sent-message" role="status">{savedRescueNotice}</p>}
       {subTab === 'pdv' && checkoutPreSale && (
         <SessionDraftProvider key={checkoutPreSale.id} scope={`${parentDraftScope}:pdv:${contextKey}:rescued:${checkoutPreSale.id}`}>
         <PdvCheckout
@@ -463,6 +467,15 @@ export function PdvModule({
           cameraScannerEnabled={cameraScannerEnabled}
           receiptDetails={receiptDetails}
           onExitRescue={() => { setCheckoutPreSale(null); onConsumePreSale?.(); }}
+          onSavePreSale={onUpdatePreSale ? async edits => {
+            const current = sales.find(sale => sale.id === checkoutPreSale.id) ?? checkoutPreSale;
+            if (current.status !== 'pre_venda' || current.branch_id !== selectedBranchId) throw new Error('Pré-venda indisponível nesta filial. Atualize os pedidos.');
+            await onUpdatePreSale(current.id, edits);
+          } : undefined}
+          onPreSaleSaved={() => {
+            setSavedRescueNotice('Pré-venda atualizada. O pedido continua em aberto, sem registrar pagamento.');
+            setCheckoutPreSale(null); onConsumePreSale?.();
+          }}
           onCreateSale={async (edits) => {
             const current = sales.find(sale => sale.id === checkoutPreSale.id) ?? checkoutPreSale;
             if (current.status !== 'pre_venda' || current.branch_id !== selectedBranchId) throw new Error('Pré-venda indisponível nesta filial. Atualize os pedidos.');
@@ -522,9 +535,11 @@ export function PdvModule({
 
 /* ============ PDV Checkout ============ */
 
-function PdvCheckout({ products, customers, credits, rmaRequests = [], hasPendingSale, isActive = true, barcodeScannerEnabled = true, cameraScannerEnabled = false, salespeople, activeSalespersonId, selectedBranchId, canCheckout, canEditPrice, receiptDetails, onCreateSale, rescuedSale, onExitRescue }: {
+function PdvCheckout({ products, customers, credits, rmaRequests = [], hasPendingSale, isActive = true, barcodeScannerEnabled = true, cameraScannerEnabled = false, salespeople, activeSalespersonId, selectedBranchId, canCheckout, canEditPrice, receiptDetails, onCreateSale, rescuedSale, onExitRescue, onSavePreSale, onPreSaleSaved }: {
   rescuedSale?: PartnerSale;
   onExitRescue?: () => void;
+  onSavePreSale?: (edits: Parameters<Props['onCreateSale']>[0]) => Promise<void>;
+  onPreSaleSaved?: () => void;
   products: PartnerProduct[];
   customers: PartnerCustomer[];
   credits: CustomerCredit[];
@@ -588,7 +603,10 @@ function PdvCheckout({ products, customers, credits, rmaRequests = [], hasPendin
   const [salespersonId, setSalespersonId] = useSessionDraftState('checkout:salesperson-id', rescuedSale?.salesperson_id ?? '');
   const [completed, setCompleted] = useState(false);
   const [isCheckingOut, setIsCheckingOut] = useState(false);
+  const [isSavingPreSale, setIsSavingPreSale] = useState(false);
   const checkoutInFlight = useRef(false);
+  const checkoutMounted = useRef(true);
+  useEffect(() => { checkoutMounted.current = true; return () => { checkoutMounted.current = false; }; }, []);
   const activityRef = useRef({ isActive, hasPendingSale });
   activityRef.current = { isActive, hasPendingSale };
   const cartLocked = isCheckingOut || Boolean(hasPendingSale) || !isActive;
@@ -761,6 +779,24 @@ function PdvCheckout({ products, customers, credits, rmaRequests = [], hasPendin
     updateCart((prev) => prev.filter((i) => i.product_id !== id));
   }
 
+  async function handleSavePreSale() {
+    if (!rescuedSale || !onSavePreSale || !canCheckout || !canChangeCart() || !cartRef.current.length || cartHasWrongBranch) return;
+    if (!selectedBranchId || selectedBranchId !== rescuedSale.branch_id) { setCheckoutError('Selecione a filial original da pré-venda para salvar.'); return; }
+    if (!validSalePrice(freightAmount) || cartRef.current.some(item => !validSalePrice(item.unit_price))) { setCheckoutError('Informe preços e frete válidos com até duas casas decimais.'); return; }
+    const customer = customers.find(candidate => candidate.id === customerId);
+    if (customer?.is_active === false) { setCheckoutError('Cliente inativo. Selecione outro cliente.'); return; }
+    checkoutInFlight.current = true; setIsCheckingOut(true); setIsSavingPreSale(true); setCheckoutError(null); setCameraOpen(false);
+    try {
+      await onSavePreSale({ customer_id: customerId || null, customer_name: customerName || customer?.name || (clientType === 'atacado' ? 'Cliente Atacado' : 'Cliente Varejo'),
+        items: cartRef.current, total: pdvTotal(cartRef.current), freight_fee: freightAmount,
+        customer_type: clientType, delivery_type: deliveryType, payment_method: paymentMethod,
+        salesperson_id: salespersonId || null, branch_id: selectedBranchId });
+      clearConfirmedPdvDraft(draftScope, 'checkout');
+      if (checkoutMounted.current) onPreSaleSaved?.();
+    } catch (error) { if (checkoutMounted.current) setCheckoutError(pdvErrorMessage(error)); }
+    finally { checkoutInFlight.current = false; if (checkoutMounted.current) { setIsCheckingOut(false); setIsSavingPreSale(false); } }
+  }
+
   async function handleCheckout(shouldPrint = false) {
     if (cartRef.current.length === 0 || !canChangeCart()) return;
     const checkoutCart = cartRef.current;
@@ -851,7 +887,7 @@ function PdvCheckout({ products, customers, credits, rmaRequests = [], hasPendin
   return (
     <>
       {rescuedSale && <div className="pdv-cash-context" role="status">
-        <span>Editando pré-venda {rescuedSale.sale_number || ''}. As alterações serão salvas ao finalizar.</span>
+        <span>Editando pré-venda {rescuedSale.sale_number || ''}. Salve as alterações para manter o pedido em aberto ou finalize a venda.</span>
         <button type="button" className="rma-advance-btn" disabled={isCheckingOut || hasPendingSale} onClick={onExitRescue}>Voltar ao PDV</button>
       </div>}
       {cameraOpen && cameraScannerEnabled && !cartLocked && (
@@ -1102,6 +1138,9 @@ function PdvCheckout({ products, customers, credits, rmaRequests = [], hasPendin
 
               {canCheckout ? (
                 <>
+                {rescuedSale && onSavePreSale && <button type="button" className="module-submit-btn pdv-save-presale-btn" onClick={() => void handleSavePreSale()} disabled={cart.length === 0 || isCheckingOut || hasPendingSale || cartHasWrongBranch}>
+                  <ClipboardList size={18} /> {isSavingPreSale ? 'Salvando alterações...' : 'Salvar alterações da pré-venda'}
+                </button>}
                 <button className="module-submit-btn pdv-checkout-btn" onClick={() => handleCheckout(true)} disabled={cart.length === 0 || isCheckingOut || billedSaleBlocked || hasPendingSale || cartHasWrongBranch}>
                   <Printer size={18} /> {isCheckingOut ? 'Finalizando...' : 'Finalizar e imprimir'}
                 </button>

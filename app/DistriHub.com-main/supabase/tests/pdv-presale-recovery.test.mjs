@@ -75,6 +75,38 @@ test('rescue uses the full checkout, preserves the other cart and finalizes the 
  assert.equal(JSON.parse(storage.get('distrihub:draft:' + scope + ':pdv:branch:checkout:cart'))[0].quantity, 1);
 });
 
+test('rescued pre-sale saves corrections on its original ID without finalization and preserves the normal cart',async()=>{
+ const scope='save-rescued-quote';let finalized=0,created=0,consumed=0,saves=0,saved,release;
+ const sale={id:'save-original',status:'pre_venda',sale_number:8,branch_id:'branch',customer_id:null,customer_name:'Cliente',customer_type:'varejo',delivery_type:'balcao',items:[{product_id:'product',name:'Produto A',quantity:2,unit_price:100}],total:200};
+ const props={...base,currentRole:'gerente',onCreateSale:async()=>{created++;},onFinalizePreSale:async()=>{finalized++;},onConsumePreSale:()=>{consumed++;},onUpdatePreSale:async(id,edits)=>{saves++;saved={id,edits};await new Promise(resolve=>{release=resolve;});}};
+ await act(async()=>{view=TestRenderer.create(wrapped(components.PdvModule,props,scope));});await add();
+ await act(async()=>view.update(wrapped(components.PdvModule,{...props,preSaleToCheckout:sale},scope)));
+ const checkout=()=>view.root.findAll(node=>typeof node.type==='function'&&node.type.name==='PdvCheckout').find(node=>node.props.rescuedSale);
+ await act(async()=>checkout().findByProps({'aria-label':'Aumentar quantidade de Produto A'}).props.onClick());
+ const save=checkout().findByProps({className:'module-submit-btn pdv-save-presale-btn'}).props.onClick;
+ await act(async()=>{save();save();});assert.equal(saves,1);assert.equal(saved.id,sale.id);assert.equal(saved.edits.items[0].quantity,3);assert.equal(saved.edits.total,300);
+ assert.equal(checkout().findByType('fieldset').props.disabled,true);
+ assert.equal(checkout().findByProps({className:'module-submit-btn pdv-save-presale-btn'}).props.disabled,true);
+ await act(async()=>release());
+ assert.equal(finalized,0);assert.equal(created,0);assert.equal(consumed,1);
+ assert.match(JSON.stringify(view.toJSON()),/Pré-venda atualizada/);
+ assert.equal(JSON.parse(storage.get('distrihub:draft:'+scope+':pdv:branch:checkout:cart'))[0].quantity,1);
+ assert.equal([...storage.keys()].some(key=>key.includes(':rescued:save-original:checkout:cart')),false);
+});
+
+test('failed rescued pre-sale save retains corrections and never consumes or finalizes the order',async()=>{
+ const sale={id:'save-rejected',status:'pre_venda',branch_id:'branch',customer_id:null,customer_name:'Cliente',customer_type:'varejo',delivery_type:'balcao',items:[{product_id:'product',name:'Produto A',quantity:2,unit_price:100}],total:200};
+ let consumed=0,finalized=0;
+ const props={...base,currentRole:'gerente',preSaleToCheckout:sale,onConsumePreSale:()=>{consumed++;},onFinalizePreSale:async()=>{finalized++;},onUpdatePreSale:async()=>{throw new Error('Sem permissão para alterar o preço');}};
+ await act(async()=>{view=TestRenderer.create(wrapped(components.PdvModule,props,'save-rejected'));});
+ const checkout=()=>view.root.findAll(node=>typeof node.type==='function'&&node.type.name==='PdvCheckout').find(node=>node.props.rescuedSale);
+ await act(async()=>checkout().findByProps({'aria-label':'Aumentar quantidade de Produto A'}).props.onClick());
+ await act(async()=>checkout().findByProps({className:'module-submit-btn pdv-save-presale-btn'}).props.onClick());
+ assert.match(JSON.stringify(view.toJSON()),/Sem permissão/);assert.doesNotMatch(JSON.stringify(view.toJSON()),/Pré-venda atualizada/);
+ assert.equal(consumed,0);assert.equal(finalized,0);assert.equal(checkout().findByType('fieldset').props.disabled,false);
+ assert.ok([...storage.entries()].some(([key,value])=>key.includes(':rescued:save-rejected:checkout:cart')&&JSON.parse(value)[0].quantity===3));
+});
+
 test('confirmed recovery clears only the original checkout draft and cannot resubmit it',async()=>{
  let sale;
  const props={...base,isActive:true,hasPendingSale:false,onCreateSale:async value=>{sale=value;return {...value,id:'new-id'};}};

@@ -1765,6 +1765,43 @@ read('sales', () => fetchAllPages((from, to) => client
     [createSale],
   );
 
+  const updatePreSale = useCallback(async (id: string, edits: Pick<PartnerSale, 'customer_id' | 'customer_name' | 'items' | 'total' | 'customer_type' | 'delivery_type'> & Partial<Pick<PartnerSale, 'freight_fee' | 'salesperson_id' | 'payment_method' | 'branch_id'>>, operatorId?: string | null, operatorPin?: string | null) => {
+    if (saleInFlight.current) throw new Error('Aguarde a operação em andamento.');
+    saleInFlight.current = true;
+    try {
+      const currentIdentity = requireIdentity();
+      const saved = data.sales.find(item => item.id === id);
+      if (!saved?.branch_id || saved.status !== 'pre_venda' || saved.online_payment || saved.payment_status === 'pago') throw new Error('Somente pré-vendas pendentes podem ser salvas. Atualize os pedidos.');
+      ensureEmployeeBranch(currentIdentity, saved.branch_id);
+      if (edits.branch_id && edits.branch_id !== saved.branch_id) throw new Error('Não é permitido transferir a pré-venda para outra filial.');
+      if (!edits.items.length || edits.items.some(item => !Number.isSafeInteger(item.quantity) || item.quantity <= 0 || !validSalePrice(item.unit_price)) || !validSalePrice(edits.freight_fee ?? 0)) throw new Error('Confira os produtos, quantidades, preços e frete antes de salvar.');
+      const total = edits.items.reduce((sum, item) => sum + Math.round(item.unit_price * 100) * item.quantity, 0) / 100;
+      const updated = { ...saved, customer_id: edits.customer_id, customer_name: edits.customer_name,
+        items: edits.items, total, freight_fee: edits.freight_fee ?? 0, customer_type: edits.customer_type,
+        delivery_type: edits.delivery_type, salesperson_id: edits.salesperson_id ?? null,
+        // Split payments belong to finalization, never to a pending quote.
+        payment_method: edits.payment_method === 'misto' ? saved.payment_method : edits.payment_method ?? saved.payment_method };
+      if (isSupabaseConfigured && supabase) {
+        const { data: confirmedId, error } = await supabase.rpc('execute_partner_sale_mutation', {
+          p_salesperson_id: operatorId ?? null, p_pin: operatorPin ?? null,
+          p_commercial_salesperson_id: updated.salesperson_id, p_sale_id: id,
+          p_customer_id: updated.customer_id, p_customer_name: updated.customer_name,
+          p_items: updated.items, p_total: total, p_freight_fee: updated.freight_fee,
+          p_imei: saved.imei, p_serial_number: saved.serial_number, p_payment_method: updated.payment_method,
+          p_branch_id: saved.branch_id, p_status: 'pre_venda', p_origin: saved.origin,
+          p_customer_type: updated.customer_type, p_delivery_type: updated.delivery_type,
+        });
+        if (error) throw new Error(pdvErrorMessage(error));
+        if (confirmedId !== id) throw new Error('O servidor não confirmou o salvamento da pré-venda. Confira os pedidos antes de tentar novamente.');
+      }
+      if (identityScopeRef.current === currentIdentity.authUserId + ':' + currentIdentity.companyUserId) {
+        dataRevisionRef.current.invalidate(['sales']);
+        setData(previous => ({ ...previous, sales: previous.sales.map(item => item.id === id ? updated : item) }));
+        if (isSupabaseConfigured && supabase) await syncConfirmedSale(saved.branch_id);
+      }
+    } finally { saleInFlight.current = false; }
+  }, [data.sales, requireIdentity, syncConfirmedSale]);
+
   const updatePreSaleItems = useCallback(async (id: string, items: PartnerSale['items'], operatorId?: string | null, operatorPin?: string | null) => {
     if (saleInFlight.current) throw new Error('Aguarde a operação em andamento.');
     saleInFlight.current = true;
@@ -4038,6 +4075,7 @@ read('sales', () => fetchAllPages((from, to) => client
     createSale,
     createPreSale,
     updatePreSaleItems,
+    updatePreSale,
     updateOpenOrderCustomer,
     updateDelivery,
     finalizePreSale,

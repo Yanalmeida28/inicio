@@ -515,6 +515,27 @@ test('editing pre-sale retains its ID and metadata while replacing items and tot
   await act(async()=>{await assert.rejects(h.current.updatePreSaleItems(original.id,[]),/pelo menos um/);});
 });
 
+test('saved rescued corrections update the same pending quote atomically without a cash session or checkout',async()=>{
+ const original={...payload(),id:'saved-rescued',user_id:'owner',status:'pre_venda',origin:'pdv',payment_status:'pendente',payment_method:'pix',imei:'trace',serial_number:null};
+ const edits={...original,customer_name:'Cliente corrigido',items:[{...original.items[0],quantity:3}],total:999,freight_fee:25,delivery_type:'entrega',payment_method:'misto'};
+ let mutation;const h=await harness({initialSales:[original],rpc:async(name,args)=>{
+  if(name==='execute_partner_sale_mutation'){mutation=args;return {data:original.id,error:null};}
+  return {data:snapshot({sales:[{...original,...edits,total:300,payment_method:'pix'}]}),error:null};
+ }});
+ await act(async()=>h.current.updatePreSale(original.id,edits));
+ assert.equal(mutation.p_sale_id,original.id);assert.equal(mutation.p_status,'pre_venda');assert.equal(mutation.p_total,300);
+ assert.equal(mutation.p_freight_fee,25);assert.equal(mutation.p_customer_name,'Cliente corrigido');assert.equal(mutation.p_imei,'trace');
+ assert.equal(mutation.p_payment_method,'pix');assert.equal('p_cash_session_id' in mutation,false);
+ assert.equal(h.current.sales.length,1);assert.equal(h.current.sales[0].status,'pre_venda');assert.equal(h.current.sales[0].total,300);
+});
+test('failed save retains the persisted quote and rejects a branch change',async()=>{
+ const original={...payload(),id:'rescued-fail',user_id:'owner',status:'pre_venda',origin:'pdv',payment_status:'pendente'};
+ const h=await harness({initialSales:[original],rpc:async()=>({error:{message:'Estoque insuficiente'}})});
+ await act(async()=>assert.rejects(h.current.updatePreSale(original.id,{...original,items:[{...original.items[0],quantity:2}]}),/Estoque insuficiente/));
+ assert.equal(h.current.sales[0].total,original.total);
+ await act(async()=>assert.rejects(h.current.updatePreSale(original.id,{...original,branch_id:'foreign'}),/outra filial/));
+});
+
 test('receipt frontend declares exact remaining cents for full payment',async()=>{
   let received;
   const h=await harness({initialInvoices:[{id:'invoice',user_id:'owner',amount:0.3,paid_amount:0.1,status:'parcial'}],rpc:async(name,args)=>{
