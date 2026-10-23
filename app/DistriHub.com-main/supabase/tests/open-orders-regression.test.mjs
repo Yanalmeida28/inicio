@@ -9,6 +9,7 @@ import ts from '../../node_modules/typescript/lib/typescript.js';
 const require=createRequire(import.meta.url);
 const compile=source=>ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,target:ts.ScriptTarget.ES2020}}).outputText;
 const pdv={},filters={},editor={},mod={};
+let quoteCalls=[]; let quoteFailure=null; let quotePending=null;
 vm.runInNewContext(compile(await readFile(new URL('../../src/lib/pdv.ts',import.meta.url),'utf8')),{exports:pdv});
 vm.runInNewContext(compile(await readFile(new URL('../../src/lib/openOrderFilters.ts',import.meta.url),'utf8')),{exports:filters,Intl,Date});
 const load=name=>{
@@ -20,10 +21,11 @@ const load=name=>{
  if(name==='./SplitPaymentFields')return {SplitPaymentFields:()=>null};
  if(name==='./SalePriceInput')return {SalePriceInput:()=>null};
  if(name==='../../lib/salePrint'||name==='../../lib/saleShare')return {};
+ if(name==='../../lib/orderQuotePdf')return {downloadOrderQuotePdf:async(...args)=>{quoteCalls.push(args);if(quotePending)await quotePending;if(quoteFailure)throw quoteFailure;}};
  return require(name);
 };
 vm.runInNewContext(compile(await readFile(new URL('../../src/components/partner/OpenOrderItemsEditor.tsx',import.meta.url),'utf8')),{exports:editor,require:load});
-vm.runInNewContext(compile(await readFile(new URL('../../src/components/partner/OpenOrdersModule.tsx',import.meta.url),'utf8')),{exports:mod,Date,require:load});
+vm.runInNewContext(compile(await readFile(new URL('../../src/components/partner/OpenOrdersModule.tsx',import.meta.url),'utf8')),{exports:mod,Date,Error,require:load});
 const sale={id:'order-one',user_id:'owner',branch_id:'branch',customer_id:'customer',customer_name:'Cliente A',status:'pre_venda',payment_status:'pendente',online_payment:false,total:100,freight_fee:15,items:[{product_id:'product',name:'Produto',quantity:1,unit_price:100}],created_at:'2026-10-14T15:00:00Z',payment_method:'pix'};
 const product={id:'product',branch_id:'branch',name:'Produto',sale_price:100,wholesale_price:90,stock:10};
 const base={canEditPrice:false,products:[product],sales:[sale],customers:[],salespeople:[],currentRole:'administrador',onUpdateItems:async()=>{},onUpdateCustomer:async()=>{},onFinalizePreSale:async()=>{},onCancelSale:async()=>{},onDeleteSale:async()=>{}};
@@ -31,6 +33,21 @@ let view;afterEach(async()=>{if(view)await act(async()=>view.unmount());view=nul
 const mount=async(props={})=>act(async()=>{view=TestRenderer.create(React.createElement(mod.OpenOrdersModule,{...base,...props}));});
 const button=text=>view.root.findAllByType('button').find(node=>node.children.some(child=>typeof child==='string'&&child.trim()===text));
 const rendered=()=>JSON.stringify(view.toJSON());
+
+test('download do orçamento usa o pedido e cliente vinculados sem finalizar ou imprimir',async()=>{
+ quoteCalls=[];quoteFailure=null;quotePending=null;let finalized=0;
+ await mount({customers:[{id:'customer',name:'Cliente A',email:'a@example.com'}],onFinalizePreSale:async()=>{finalized++;}});
+ await act(async()=>view.root.findByType('sale-actions').props.onDownloadQuote());
+ assert.equal(quoteCalls.length,1);assert.equal(quoteCalls[0][0].id,sale.id);assert.equal(quoteCalls[0][1].customer.email,'a@example.com');
+ assert.equal(finalized,0);assert.match(rendered(),/Download do orçamento iniciado/);
+});
+test('download duplicado é bloqueado e falha oferece nova tentativa sem mensagem de sucesso',async()=>{
+ quoteCalls=[];quoteFailure=new Error('Falha ao gerar PDF');let release;quotePending=new Promise(resolve=>{release=resolve;});
+ await mount();const download=view.root.findByType('sale-actions').props.onDownloadQuote;
+ await act(async()=>{download();download();});assert.equal(quoteCalls.length,1);
+ await act(async()=>release());assert.match(rendered(),/Falha ao gerar PDF/);assert.doesNotMatch(rendered(),/Download do orçamento iniciado/);
+ assert.equal(typeof view.root.findByType('sale-actions').props.onDownloadQuote,'function');quoteFailure=null;quotePending=null;
+});
 
 test('business date filter includes all of the Sao Paulo day and excludes adjoining days independent of browser zone',()=>{
  for(const date of ['2026-10-14T03:00:00Z','2026-10-15T02:59:59.999Z','2026-10-14T15:00:00Z'])assert.equal(filters.orderMatchesDate(date,'2026-10-14','2026-10-14'),true);

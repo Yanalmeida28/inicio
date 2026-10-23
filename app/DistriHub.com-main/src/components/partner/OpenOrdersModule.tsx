@@ -116,6 +116,22 @@ export function OpenOrdersModule({ canEditPrice, products, onUpdateItems, onUpda
 
   const [documentError, setDocumentError] = useState<string | null>(null);
   const [shareNotice, setShareNotice] = useState<string | null>(null);
+  const quoteInFlight = useRef(false);
+  const [downloadingQuote, setDownloadingQuote] = useState(false);
+  async function handleDownloadQuote(sale: PartnerSale) {
+    if (!canApply() || quoteInFlight.current) return;
+    quoteInFlight.current = true; setDownloadingQuote(true); setDocumentError(null); setShareNotice(null);
+    try {
+      const { downloadOrderQuotePdf } = await import('../../lib/orderQuotePdf');
+      if (!canApply()) return;
+      await downloadOrderQuotePdf(sale, { ...receiptDetails,
+        customer: customers.find(customer => customer.id === sale.customer_id),
+        salespersonName: salespeople.find(person => person.id === sale.salesperson_id)?.name });
+      if (canApply()) setShareNotice('Download do orçamento iniciado. Você pode compartilhar o arquivo PDF com o cliente.');
+    } catch (error) {
+      if (canApply()) setDocumentError(error instanceof Error ? error.message : 'Não foi possível gerar o PDF do orçamento.');
+    } finally { quoteInFlight.current = false; if (mounted.current) setDownloadingQuote(false); }
+  }
 
   async function handlePrint(sale: PartnerSale, format: 'receipt' | 'label') {
     setDocumentError(null);
@@ -422,6 +438,7 @@ export function OpenOrdersModule({ canEditPrice, products, onUpdateItems, onUpda
                           </button>
                         )}
                         <SaleActionsMenu
+                          onDownloadQuote={!downloadingQuote ? () => { void handleDownloadQuote(s); } : undefined}
                           onChangeCustomer={canChangeCustomer && s.payment_status === 'pendente' && !s.online_payment ? () => {
                             if (!canApply() || finalizeInFlight.current || cancelInFlight.current || customerInFlight.current) return;
                             setCustomerTarget(s); setNewCustomerId(s.customer_id ?? ''); setCustomerTerm(''); setCustomerError(null);

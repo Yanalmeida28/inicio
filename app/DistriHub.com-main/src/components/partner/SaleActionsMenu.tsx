@@ -1,6 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { type LucideIcon, Ban, Mail, MessageCircle, MoreVertical, Printer, QrCode, Pencil, UserRound } from 'lucide-react';
+import { type LucideIcon, Ban, Mail, MessageCircle, MoreVertical, Printer, QrCode, Pencil, UserRound, FileDown } from 'lucide-react';
 
 type Props = {
   onPrintReceipt: () => void;
@@ -10,12 +10,14 @@ type Props = {
   onCancel?: () => void;
   onEditItems?: () => void;
   onChangeCustomer?: () => void;
+  onDownloadQuote?: () => void;
 };
 
 export function SaleActionsMenu(props: Props) {
   const actions = [
     ...(props.onChangeCustomer ? [{ label: 'Alterar cliente', icon: UserRound, run: props.onChangeCustomer }] : []),
     ...(props.onEditItems ? [{ label: 'Editar produtos', icon: Pencil, run: props.onEditItems }] : []),
+    ...(props.onDownloadQuote ? [{ label: 'Baixar orçamento em PDF', icon: FileDown, run: props.onDownloadQuote }] : []),
     { label: 'Imprimir cupom', icon: Printer, run: props.onPrintReceipt },
     { label: 'Imprimir etiqueta', icon: QrCode, run: props.onPrintLabel },
     { label: 'Enviar por WhatsApp', icon: MessageCircle, run: props.onWhatsApp },
