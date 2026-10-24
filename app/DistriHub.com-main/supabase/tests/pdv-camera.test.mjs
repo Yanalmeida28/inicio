@@ -32,7 +32,7 @@ function harness({secure=true,error=null,pending=false}={}){
  return {exports,document,get stops(){return stops;},detect(code){callback({getText:()=>code},null,controls);},resolve(){resolve(controls);}};
 }
 const props={products:[{id:'product',name:'Produto',sku:'0789012345678',branch_id:'branch',stock:5,sale_price:100}],customers:[],salespeople:[],credits:[],selectedBranchId:'branch',segment:'assistencia',canCheckout:true,canEditPrice:false,cameraScannerEnabled:true,onCreateSale:async()=>{}};
-const search=()=>renderer.root.findByProps({'aria-label':'Buscar produto por nome ou SKU'});
+const search=()=>renderer.root.findByProps({'aria-label':'Buscar produto por nome, SKU ou código de barras'});
 const qty=()=>renderer.root.findAllByProps({'data-label':'Quantidade'})[0]?.findByType('b').children.join('');
 async function mount(h,overrides={}){await act(async()=>{renderer=TestRenderer.create(React.createElement(h.exports.Checkout,{...props,...overrides}),{createNodeMock:()=>({focus(){}})});});}
 test('keyboard reader finds a separate barcode with leading zeroes while SKU is internal',async()=>{

@@ -62,7 +62,7 @@ test('rescue uses the full checkout, preserves the other cart and finalizes the 
  await act(async () => view.update(wrapped(components.PdvModule, { ...props, preSaleToCheckout: sale }, scope)));
  const checkout = view.root.findAll(node => typeof node.type === 'function' && node.type.name === 'PdvCheckout').find(node => node.props.rescuedSale);
  assert.ok(checkout);
- assert.ok(checkout.findByProps({ 'aria-label': 'Buscar produto por nome ou SKU' }));
+ assert.ok(checkout.findByProps({ 'aria-label': 'Buscar produto por nome, SKU ou código de barras' }));
  assert.ok(checkout.findByProps({ 'aria-label': 'Tipo de atendimento da venda' }));
  await act(async () => checkout.findByProps({ 'aria-label': 'Aumentar quantidade de Produto A' }).props.onClick());
  await act(async () => checkout.findByProps({ className: 'module-cancel-btn pdv-checkout-btn' }).props.onClick());
@@ -111,7 +111,7 @@ test('confirmed recovery clears only the original checkout draft and cannot resu
  let sale;
  const props={...base,isActive:true,hasPendingSale:false,onCreateSale:async value=>{sale=value;return {...value,id:'new-id'};}};
  await act(async()=>{view=TestRenderer.create(wrapped(components.Checkout,props,'audit-recovery'));});
- await act(async()=>view.root.findByProps({'aria-label':'Buscar produto por nome ou SKU'}).props.onChange({target:{value:'Produto'}}));await add();
+ await act(async()=>view.root.findByProps({'aria-label':'Buscar produto por nome, SKU ou código de barras'}).props.onChange({target:{value:'Produto'}}));await add();
  storage.set('distrihub:draft:audit-recovery:presale:cart',JSON.stringify([{product_id:'unrelated'}]));
  drafts.clearConfirmedPdvDraft('audit-recovery','checkout');
  await act(async()=>view.update(wrapped(components.Checkout,props,'audit-recovery','after-confirmed-recovery')));
@@ -153,7 +153,7 @@ for (const kind of ['Checkout','Presale']) test(`${kind} applies the registered 
  const customers=[{id:'premium',name:'Cliente Premium',customer_type:'varejo',price_table:'premium',is_active:true},{id:'inactive',name:'Cliente Inativo',customer_type:'varejo',is_active:false}];
  const props={...base,products:[{...product,premium_price:140}],customers,isActive:true,onCreateSale:async value=>{submitted=value;return {...value,id:'sale'};},onCreatePreSale:async value=>{submitted=value;return {...value,id:'pre'};}};
  await act(async()=>{view=TestRenderer.create(wrapped(components[kind],props,'premium-'+kind));});
- if(kind==='Checkout')await act(async()=>view.root.findByProps({'aria-label':'Buscar produto por nome ou SKU'}).props.onChange({target:{value:'Produto'}}));
+ if(kind==='Checkout')await act(async()=>view.root.findByProps({'aria-label':'Buscar produto por nome, SKU ou código de barras'}).props.onChange({target:{value:'Produto'}}));
  await add();
  const picker=()=>view.root.findAll(node=>typeof node.type==='function'&&node.type.name==='CustomerSearchPicker')[0];
  await act(async()=>picker().props.onSelect('premium'));

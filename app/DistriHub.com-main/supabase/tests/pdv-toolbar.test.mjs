@@ -105,7 +105,7 @@ test('rescued sale opens the full editable checkout with saved fields and submit
 test('split checkout rejects a missing balance, completes remaining PIX and submits each part including freight',async()=>{
   let submitted;
   await act(async()=>{renderer=TestRenderer.create(React.createElement(module.exports.Checkout,{...props,onCreateSale:async sale=>{submitted=sale;}}));});
-  await act(async()=>renderer.root.findByProps({'aria-label':'Buscar produto por nome ou SKU'}).props.onChange({target:{value:'Produto'}}));
+  await act(async()=>renderer.root.findByProps({'aria-label':'Buscar produto por nome, SKU ou código de barras'}).props.onChange({target:{value:'Produto'}}));
   await act(async()=>renderer.root.findByProps({className:'pdv-product-card'}).props.onClick());
   await act(async()=>renderer.root.findByProps({'aria-label':'Tipo de atendimento da venda'}).props.onChange({target:{value:'entrega'}}));
   await act(async()=>renderer.root.findByProps({'aria-label':'Frete terceirizado'}).props.onChange({target:{value:'15'}}));
@@ -148,7 +148,7 @@ test('leitor de código adiciona o produto pelo SKU e leituras repetidas aumenta
       products: [{ ...props.products[0], sku: '0789012345678' }],
     }));
   });
-  const searchInput = renderer.root.findByProps({ 'aria-label': 'Buscar produto por nome ou SKU' });
+  const searchInput = renderer.root.findByProps({ 'aria-label': 'Buscar produto por nome, SKU ou código de barras' });
   const scan = async () => {
     await act(async () => searchInput.props.onChange({ target: { value: '0789012345678' } }));
     let prevented = false;
@@ -167,7 +167,7 @@ test('leitor desativado não adiciona produto ao confirmar a busca com Enter', a
       products: [{ ...props.products[0], sku: '0789012345678' }],
     }));
   });
-  const searchInput = renderer.root.findByProps({ 'aria-label': 'Buscar produto por nome ou SKU' });
+  const searchInput = renderer.root.findByProps({ 'aria-label': 'Buscar produto por nome, SKU ou código de barras' });
   await act(async () => searchInput.props.onChange({ target: { value: '0789012345678' } }));
   let prevented = false;
   await act(async () => searchInput.props.onKeyDown({ key: 'Enter', preventDefault: () => { prevented = true; } }));
@@ -176,7 +176,7 @@ test('leitor desativado não adiciona produto ao confirmar a busca com Enter', a
 });
 test('selecionar e remover o último produto mantém as opções da venda visíveis', async () => {
   await act(async () => { renderer = TestRenderer.create(React.createElement(module.exports.Checkout, props)); });
-  await act(async () => renderer.root.findByProps({ 'aria-label': 'Buscar produto por nome ou SKU' }).props.onChange({ target: { value: 'Produto' } }));
+  await act(async () => renderer.root.findByProps({ 'aria-label': 'Buscar produto por nome, SKU ou código de barras' }).props.onChange({ target: { value: 'Produto' } }));
   await act(async () => renderer.root.findByProps({ className: 'pdv-product-card' }).props.onClick());
   assertVisibleControls();
   await act(async () => renderer.root.findByProps({ 'aria-label': 'Remover Produto' }).props.onClick());
@@ -193,7 +193,7 @@ test('botão da câmera aparece apenas quando leitura pela câmera está ativada
 test('checkout collects freight separately and resets it after the confirmed sale', async () => {
   let submitted;
   await act(async () => { renderer = TestRenderer.create(React.createElement(module.exports.Checkout, {...props,onCreateSale:async sale=>{submitted=sale;}})); });
-  await act(async () => renderer.root.findByProps({ 'aria-label': 'Buscar produto por nome ou SKU' }).props.onChange({ target: { value: 'Produto' } }));
+  await act(async () => renderer.root.findByProps({ 'aria-label': 'Buscar produto por nome, SKU ou código de barras' }).props.onChange({ target: { value: 'Produto' } }));
   await act(async () => renderer.root.findByProps({ className: 'pdv-product-card' }).props.onClick());
   await act(async()=>renderer.root.findByProps({'aria-label':'Tipo de atendimento da venda'}).props.onChange({target:{value:'entrega'}}));
   await act(async () => renderer.root.findByProps({ 'aria-label': 'Frete terceirizado' }).props.onChange({ target: { value:'15.25' } }));
@@ -213,7 +213,7 @@ test('freight zero can be cleared and an empty field is submitted as zero', asyn
   await act(async()=>renderer.root.findByProps({'aria-label':'Tipo de atendimento da venda'}).props.onChange({target:{value:'entrega'}}));
   await act(async()=>renderer.root.findByProps({'aria-label':'Frete terceirizado'}).props.onChange({target:{value:''}}));
   assert.equal(renderer.root.findByProps({'aria-label':'Frete terceirizado'}).props.value,'');
-  await act(async () => renderer.root.findByProps({ 'aria-label': 'Buscar produto por nome ou SKU' }).props.onChange({ target: { value: 'Produto' } }));
+  await act(async () => renderer.root.findByProps({ 'aria-label': 'Buscar produto por nome, SKU ou código de barras' }).props.onChange({ target: { value: 'Produto' } }));
   await act(async () => renderer.root.findByProps({ className: 'pdv-product-card' }).props.onClick());
   await act(async()=>renderer.root.findByProps({className:'module-cancel-btn pdv-checkout-btn'}).props.onClick());
   assert.equal(submitted.freight_fee,0);
@@ -336,7 +336,7 @@ test('direct receipt printing awaits the saved sale and never opens a browser po
  let calls=0,printed=0;
  const checkout=loadCheckout(React,{direct:true,open:()=>{throw Error('Browser dialog must not open');},printSale:async sale=>{assert.equal(sale.id,'confirmed-direct');printed++;}}).Checkout;
  await act(async()=>{renderer=TestRenderer.create(React.createElement(checkout,{...props,onCreateSale:async sale=>{calls++;return {...sale,id:'confirmed-direct',status:'concluida',created_at:new Date().toISOString()};}}));});
- await act(async()=>renderer.root.findByProps({'aria-label':'Buscar produto por nome ou SKU'}).props.onChange({target:{value:'Produto'}}));
+ await act(async()=>renderer.root.findByProps({'aria-label':'Buscar produto por nome, SKU ou código de barras'}).props.onChange({target:{value:'Produto'}}));
  await act(async()=>renderer.root.findByProps({className:'pdv-product-card'}).props.onClick());
  const printButton=renderer.root.findAllByType('button').find(button=>button.props.className?.includes('pdv-checkout') && button.children.some(child=>typeof child==='string' && child.toLowerCase().includes('imprimir')));
  assert.ok(printButton);await act(async()=>printButton.props.onClick());assert.equal(calls,1);assert.equal(printed,1);

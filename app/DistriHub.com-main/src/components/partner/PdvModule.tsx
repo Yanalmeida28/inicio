@@ -926,7 +926,7 @@ function PdvCheckout({ products, customers, credits, rmaRequests = [], hasPendin
     }
   }}
   placeholder="Buscar por nome, SKU ou código de barras..."
-  aria-label="Buscar produto por nome ou SKU"
+  aria-label="Buscar produto por nome, SKU ou código de barras"
 />
             {cameraScannerEnabled && (
               <button type="button" className="pdv-camera-button" aria-label="Ler código pela câmera" disabled={cartLocked} onClick={() => { if (canChangeCart()) setCameraOpen(true); }}>

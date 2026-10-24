@@ -30,7 +30,6 @@ let renderer;
 afterEach(async()=>{if(renderer)await act(async()=>renderer.unmount());renderer=null;});
 const rendered=()=>JSON.stringify(renderer.toJSON());
 const submit=()=>renderer.root.findByType('form').props.onSubmit({preventDefault(){}});
-
 test('product list remains usable while suppliers load and prevents saving an incomplete supplier selection',async()=>{
  let writes=0;
  const props={products:[{id:'p',name:'Produto existente',stock:1,min_stock:0,sale_price:20,cost_price:10,branch_id:'branch'}],allProducts:[],branches:[],selectedBranchId:'branch',categories:[],suppliers:[],suppliersReady:false,segment:'assistencia',onAddSupplier:async()=>{},onAddProduct:async()=>{writes++;},onUpdateProduct:async()=>{},onDeleteProduct:async()=>{}};
