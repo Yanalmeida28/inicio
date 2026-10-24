@@ -347,9 +347,11 @@ export function PartnerPanel({
     setVisitedTabs((current) => current.has(activeTab) ? current : new Set(current).add(activeTab));
   }, [activeTab]);
 
+  const [adminDataScope, setAdminDataScope] = useState('dashboard');
+  const [reportDataScope, setReportDataScope] = useState('vendas');
   const [cadastroDataScope, setCadastroDataScope] = useState('produtos');
   const deviceSession = useDeviceHeartbeat(identity?.companyUserId, identity?.salespersonId ? identity.branchId : selectedBranchId || null);
-  const partner = usePartnerData(deviceSession.ready ? identity : null, identity?.salespersonId ? identity.branchId : selectedBranchId || null, activeTab === 'cadastros' ? 'cadastros:' + cadastroDataScope : activeTab);
+  const partner = usePartnerData(deviceSession.ready ? identity : null, identity?.salespersonId ? identity.branchId : selectedBranchId || null, activeTab === 'cadastros' || (activeTab === 'administrativo' && adminDataScope === 'cadastros') ? 'cadastros:' + cadastroDataScope : activeTab === 'relatorios' || (activeTab === 'administrativo' && adminDataScope === 'relatorios') ? 'relatorios:' + reportDataScope : activeTab === 'administrativo' ? 'administrativo:' + adminDataScope : activeTab);
   const saas = useSaasSubscription(identity?.companyUserId);
   const [pdvRevision, setPdvRevision] = useState(0);
   const [preSaleToCheckout, setPreSaleToCheckout] = useState<PartnerSale | null>(null);
@@ -1680,7 +1682,7 @@ export function PartnerPanel({
   function preloadTab(tab: Tab) {
     if (blockedTabs.includes(tab) || !canUseSaasFeature(saas.subscription, tab)) return;
     void tabCodeLoaders[tab]().catch(() => {});
-    void partner.prefetchModule(tab === 'cadastros' ? 'cadastros:' + cadastroDataScope : tab);
+    void partner.prefetchModule(tab === 'cadastros' ? 'cadastros:' + cadastroDataScope : tab === 'administrativo' ? 'administrativo:' + adminDataScope : tab === 'relatorios' ? 'relatorios:' + reportDataScope : tab);
     if (tab === 'historico') void loadOrderHistoryModule().catch(() => {});
     if (tab === 'pedidos') void loadCatalogOrdersModule().catch(() => {});
   }
@@ -1721,7 +1723,8 @@ export function PartnerPanel({
               <CadastrosModule
                 key={target ?? 'principal'}
                 isActive={activeTab === (target ? 'administrativo' : 'cadastros')}
-                onDataScopeChange={target ? undefined : setCadastroDataScope}
+                onDataScopeChange={setCadastroDataScope}
+                suppliersReady={partner.suppliersReady}
                 adminTarget={target}
                 initialTab={cadastroDestination(target).tab}
                 productType={cadastroDestination(target).productType}
@@ -2379,6 +2382,8 @@ export function PartnerPanel({
               <div hidden={activeTab !== 'administrativo'}>
               {renderTab('administrativo',
               <AdminModule
+                onDataScopeChange={setAdminDataScope}
+                onReportScopeChange={setReportDataScope}
                 intelligenceAllowed={canViewBusinessIntelligence(Boolean(identity && !identity.salespersonId && identity.authUserId === identity.companyUserId), !currentSalespersonId,
                   ['administrativo', 'relatorios', 'financeiro'].filter(module => !blockedTabs.includes(module as Tab) && canUseSaasFeature(saas.subscription, module)))}
                 intelligenceDataReady={partner.resourcesReady && !partner.loading && !partner.syncing}
@@ -2574,6 +2579,8 @@ export function PartnerPanel({
               <div hidden={activeTab !== 'relatorios'}>
               {renderTab('relatorios',
               <ReportsModule
+                isActive={activeTab === 'relatorios'}
+                onDataScopeChange={setReportDataScope}
                 invoices={filteredInvoices}
                 branchId={effectiveBranchId || null}
                 companyUserId={identity?.companyUserId ?? null}

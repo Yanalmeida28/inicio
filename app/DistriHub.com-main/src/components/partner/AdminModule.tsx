@@ -65,6 +65,8 @@ class AdminErrorBoundary extends Component<
 }
 
 type Props = {
+  onDataScopeChange?: (tab: string) => void;
+  onReportScopeChange?: (tab: string) => void;
   intelligenceAllowed?: boolean;
   intelligenceDataReady?: boolean;
   intelligenceDataError?: string | null;
@@ -186,6 +188,7 @@ const sidebarSections: {
 ];
 
 export function AdminModule({
+  onDataScopeChange, onReportScopeChange,
   intelligenceAllowed = false, intelligenceDataReady = false, intelligenceDataError, lastSyncedAt,
   renderSettings,
   renderCadastros,
@@ -195,7 +198,7 @@ export function AdminModule({
 }: Props) {
   return (
     <AdminErrorBoundary>
-      <AdminModuleInner intelligenceAllowed={intelligenceAllowed} intelligenceDataReady={intelligenceDataReady} intelligenceDataError={intelligenceDataError} lastSyncedAt={lastSyncedAt} allowedModules={allowedModules} key={contextKey} contextKey={contextKey} isActive={isActive} recoveries={recoveries} recoveryError={recoveryError}
+      <AdminModuleInner onDataScopeChange={onDataScopeChange} onReportScopeChange={onReportScopeChange} intelligenceAllowed={intelligenceAllowed} intelligenceDataReady={intelligenceDataReady} intelligenceDataError={intelligenceDataError} lastSyncedAt={lastSyncedAt} allowedModules={allowedModules} key={contextKey} contextKey={contextKey} isActive={isActive} recoveries={recoveries} recoveryError={recoveryError}
         renderSettings={renderSettings}
         renderCadastros={renderCadastros}
         invoices={invoices}
@@ -220,6 +223,7 @@ export function AdminModule({
 }
 
 function AdminModuleInner({
+  onDataScopeChange, onReportScopeChange,
   intelligenceAllowed = false, intelligenceDataReady = false, intelligenceDataError, lastSyncedAt,
   renderSettings,
   renderCadastros,
@@ -238,6 +242,7 @@ function AdminModuleInner({
   const canViewCurrent = allowed(currentModule) && (currentModule !== 'configuracoes' || ownerView);
   const [branchFilter, setBranchFilter] = useState(selectedBranchId);
   const [reportsInitialTab, setReportsInitialTab] = useState<'vendas' | 'sem-giro'>('vendas');
+  useEffect(() => { if (isActive) onDataScopeChange?.(activeAdminTab); }, [activeAdminTab, isActive, onDataScopeChange]);
   const payables = usePayables(userId);
   const scopedInvoices = invoices.filter(invoice => !branchFilter || invoice.branch_id === branchFilter);
   const scopedPayables = payables.accounts.filter(account => !branchFilter || account.branch_id === branchFilter);
@@ -254,6 +259,7 @@ function AdminModuleInner({
   function handleItemClick(item: { id: string; label: string; tab?: string; page?: AdminPage }) {
     const module = item.tab ?? (item.page === 'dashboard' ? 'dashboard' : 'configuracoes');
     if (!allowed(module) || (module === 'configuracoes' && !ownerView)) return;
+    onDataScopeChange?.(item.tab ?? item.page ?? 'dashboard');
     setActiveItemId(item.id);
     if (item.tab === 'relatorios') setReportsInitialTab('vendas');
     if (item.tab) {
@@ -320,6 +326,7 @@ function AdminModuleInner({
           {!canViewCurrent ? <p role="alert">Acesso a esta seção indisponível para este usuário ou assinatura. Selecione outra seção.</p> : <>
           {activeAdminTab === 'dashboard' && (
             <ExecutiveDashboard
+              isActive={isActive}
               sales={sales}
               products={products}
               movements={movements}
@@ -338,6 +345,8 @@ function AdminModuleInner({
           )}
           {activeAdminTab === 'relatorios' && (
             <ReportsModule
+              isActive={isActive}
+              onDataScopeChange={onReportScopeChange}
               companyUserId={userId ?? null}
               branchId={branchFilter || null}
               invoices={scopedInvoices}
@@ -462,8 +471,9 @@ function GrowthBadge({ pct }: { pct: number | null }) {
 /* ============ Executive Dashboard ============ */
 
 function ExecutiveDashboard({
-  sales, products, movements = [], salespeople = [], customers, branches, branchFilter, onBranchChange, onOpenStagnantStock,
+  isActive = true, sales, products, movements = [], salespeople = [], customers, branches, branchFilter, onBranchChange, onOpenStagnantStock,
 }: {
+  isActive?: boolean;
   sales: PartnerSale[];
   products: PartnerProduct[];
   movements?: StockMovement[];
@@ -475,7 +485,7 @@ function ExecutiveDashboard({
   onOpenStagnantStock?: () => void;
 }) {
   const scopedProducts = useMemo(() => branchFilter ? products.filter((p) => p.branch_id === branchFilter) : products, [products, branchFilter]);
-  const stagnant = useStagnantStock(scopedProducts, sales, movements);
+  const stagnant = useStagnantStock(scopedProducts, sales, movements, isActive);
 
   const [period, setPeriod] = useState<TimePeriod>('30dias');
   const [customStart, setCustomStart] = useState('');

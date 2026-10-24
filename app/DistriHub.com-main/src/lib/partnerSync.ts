@@ -26,9 +26,25 @@ const moduleCollections: Record<string, PartnerCollection[]> = {
   financeiro: ['invoices', 'customers', 'rmas'],
   relatorios: ['sales', 'products', 'customers', 'invoices', 'movements', 'categories'],
   administrativo: ['sales', 'products', 'customers', 'invoices', 'movements', 'categories', 'suppliers', 'rmas', 'combos', 'modifiers', 'auditLogs'],
+  'administrativo:dashboard': ['sales', 'products', 'customers', 'movements'],
+  'administrativo:inteligencia': ['sales', 'products', 'customers', 'invoices', 'movements', 'categories', 'rmas'],
+  'administrativo:financeiro': ['invoices', 'customers', 'rmas', 'suppliers', 'sales', 'products', 'movements'],
+  'administrativo:fiscal': ['sales', 'products', 'customers'],
+  'administrativo:auditoria': ['sales'],
+  'administrativo:gestao-dados': ['products', 'sales', 'customers', 'suppliers', 'categories', 'invoices', 'movements'],
+  'relatorios:vendas': ['sales', 'products', 'customers'],
+  'relatorios:financeiro': ['sales', 'products', 'customers'],
+  'relatorios:estoque': ['products', 'sales', 'customers'],
+  'relatorios:sem-giro': ['products', 'sales', 'movements'],
+  'relatorios:crm': ['sales', 'products', 'customers', 'invoices'],
 };
 export function partnerResources(scope: string | null): PartnerCollection[] {
   return scope === null ? [...partnerCollections] : [...new Set([...baseCollections, ...(moduleCollections[scope] ?? [])])];
+}
+
+// The product list can open before its supplier editor is ready.
+export function partnerRequiredResources(scope: string | null): PartnerCollection[] {
+  return partnerResources(scope).filter(key => key !== 'suppliers' || !['cadastros', 'cadastros:produtos'].includes(scope ?? ''));
 }
 
 export function withLoadTimeout<T>(loader: () => PromiseLike<T>, message: string, timeoutMs = 20_000): Promise<T> {
@@ -42,18 +58,26 @@ export class PartnerLoadCache {
   private scope = '';
   private loaded = new Map<string, number>();
   private pending = new Map<string, Promise<unknown>>();
+  private controllers = new Map<string, AbortController>();
   reset(scope: string): boolean {
     if (this.scope === scope) return false;
+    for (const controller of this.controllers.values()) controller.abort();
+    this.controllers.clear();
     this.scope = scope; this.loaded.clear(); this.pending.clear(); return true;
   }
   has(key: string): boolean { return this.loaded.has(key); }
   needs(key: string, now = Date.now()): boolean { return !this.loaded.has(key) || now - this.loaded.get(key)! >= 30_000; }
   stale(key: string): void { if (this.loaded.has(key)) this.loaded.set(key, 0); }
   mark(key: string): void { this.loaded.set(key, Date.now()); }
-  read<T>(key: string, loader: () => PromiseLike<T>): Promise<T> {
+  read<T>(key: string, loader: (signal: AbortSignal) => PromiseLike<T>): Promise<T> {
     const existing = this.pending.get(key);
     if (existing) return existing as Promise<T>;
-    const request = withLoadTimeout(loader, 'A consulta demorou demais. Tente carregar novamente.');
+    const controller = new AbortController();
+    this.controllers.set(key, controller);
+    const request = withLoadTimeout(() => loader(controller.signal), 'A consulta demorou demais. Tente carregar novamente.').finally(() => {
+      controller.abort();
+      if (this.controllers.get(key) === controller) this.controllers.delete(key);
+    });
     this.pending.set(key, request);
     void request.finally(() => { if (this.pending.get(key) === request) this.pending.delete(key); }).catch(() => {});
     return request;

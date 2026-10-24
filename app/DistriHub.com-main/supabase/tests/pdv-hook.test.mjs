@@ -178,7 +178,7 @@ async function harness({initialSales=[],initialInvoices=[],initialCustomers=[],r
   const helperModule={exports:{}};
   vm.runInNewContext(compile(helperSource),{exports:helperModule.exports,require});
   const syncModule={exports:{}};
-  vm.runInNewContext(compile(syncSource),{exports:syncModule.exports,Date,setTimeout(callback){const id=++timerId;timeouts.set(id,callback);return id;},clearTimeout(id){timeouts.delete(id);}});
+  vm.runInNewContext(compile(syncSource),{exports:syncModule.exports,AbortController,Date,setTimeout(callback){const id=++timerId;timeouts.set(id,callback);return id;},clearTimeout(id){timeouts.delete(id);}});
   const hookModule={exports:{}};
   vm.runInNewContext(compile(source),{
     exports:hookModule.exports,sessionStorage:storage,crypto:{randomUUID},console,
@@ -801,7 +801,7 @@ test('lazy finance refresh preserves employee-authorized invoice snapshots inste
 });
 
 test('collection cache deduplicates in-flight reads and never shares them between identity scopes',async()=>{
-  const exports={};vm.runInNewContext(compile(syncSource),{exports,setTimeout,clearTimeout});const cache=new exports.PartnerLoadCache();cache.reset('first');let oldResolve,newResolve,calls=0;
+  const exports={};vm.runInNewContext(compile(syncSource),{exports,AbortController,setTimeout,clearTimeout});const cache=new exports.PartnerLoadCache();cache.reset('first');let oldResolve,newResolve,calls=0;
   const first=cache.read('products',()=>{calls++;return new Promise(resolve=>{oldResolve=resolve;});});
   assert.equal(cache.read('products',()=>{throw Error('Duplicate read');}),first);
   await Promise.resolve();assert.equal(calls,1);cache.reset('second');
@@ -814,7 +814,7 @@ test('collection cache deduplicates in-flight reads and never shares them betwee
 
 test('a stalled data request times out, releases the shared read and permits a fresh retry',async()=>{
  const timers=new Map();let id=0;
- const exports={};vm.runInNewContext(compile(syncSource),{exports,setTimeout(callback){timers.set(++id,callback);return id;},clearTimeout(key){timers.delete(key);}});
+ const exports={};vm.runInNewContext(compile(syncSource),{exports,AbortController,setTimeout(callback){timers.set(++id,callback);return id;},clearTimeout(key){timers.delete(key);}});
  const cache=new exports.PartnerLoadCache();cache.reset('owner');let oldResolve;
  const stalled=cache.read('invoices',()=>new Promise(resolve=>{oldResolve=resolve;}));
  const failure=assert.rejects(stalled,/demorou demais/);

@@ -36,7 +36,7 @@ export function ProductPhotoField({ value, onChange, disabled, onBusyChange }: {
     if (disabled || lock.current || clipboardLock.current) return;
     clipboardLock.current=true;setPasting(true);setError('');onBusyChange(true);
     try {
-      if (!navigator.clipboard?.read) throw new Error('Copie uma imagem e use Ctrl+V sobre a câmera.');
+      if (!navigator.clipboard?.read) throw new Error('Copie uma imagem e use Ctrl+V (⌘V no Mac) sobre a câmera.');
       const items=await navigator.clipboard.read();
       if (!mounted.current) return;
       for (const item of items) {
@@ -49,7 +49,7 @@ export function ProductPhotoField({ value, onChange, disabled, onBusyChange }: {
       }
       setError('Nenhuma imagem encontrada. Copie a foto e tente novamente.');
     } catch (cause) {
-      if (mounted.current) setError(cause instanceof Error && cause.name!=='NotAllowedError' ? cause.message : 'Não foi possível acessar a imagem copiada. Use Ctrl+V sobre a câmera.');
+      if (mounted.current) setError(cause instanceof Error && cause.name!=='NotAllowedError' ? cause.message : 'Não foi possível acessar a imagem copiada. Use Ctrl+V (⌘V no Mac) sobre a câmera.');
     } finally { clipboardLock.current=false;if(mounted.current){setPasting(false);onBusyChange(false);} }
   }
   return <section className="product-form-section">

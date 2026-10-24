@@ -1,10 +1,16 @@
 const endpoint = 'http://localhost:17891';
 const storageKey = 'distrihub:receipt-printer:v1';
 export type PrinterPreferences = { name: string; width: '58' | '80'; mode?: 'personalized' | 'text' | 'image' };
+export function isMacComputer(): boolean {
+  return typeof navigator !== 'undefined' && /Macintosh|MacIntel|MacPPC|Mac68K/.test(navigator.userAgent + ' ' + navigator.platform);
+}
 export function printerPreferences(): PrinterPreferences | null {
   try {
     const value = JSON.parse(localStorage.getItem(storageKey) ?? 'null');
-    return value && typeof value.name === 'string' && value.name.trim() && ['58', '80'].includes(value.width) ? value : null;
+    if (!value || typeof value.name !== 'string' || !value.name.trim() || !['58', '80'].includes(value.width)) return null;
+    // The bundled connector is Windows-only. Restored preferences must not
+    // route Mac receipts to a service that cannot be installed on this device.
+    return isMacComputer() ? { ...value, mode: 'personalized' } : value;
   } catch { return null; }
 }
 export function savePrinter(value: PrinterPreferences | null) {

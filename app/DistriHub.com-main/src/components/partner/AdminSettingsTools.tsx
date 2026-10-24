@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import * as XLSX from 'xlsx';
+
 import { supabase } from '../../lib/supabase';
 import { deviceIdentity } from '../../hooks/useDeviceHeartbeat';
 import type { PartnerBranch, PartnerCustomer, PartnerProduct, PartnerSale } from '../../types';
@@ -19,7 +19,7 @@ export function AdminDataExports({ products, sales, customers, branchId, extra }
   const productRows = products.map(p => ({ Produto: safeText(p.name), SKU: safeText(p.sku), Estoque: p.stock, Custo: p.cost_price, Venda: p.sale_price, NCM: p.ncm ?? '', Filial: p.branch_id ?? '' }));
   const saleRows = sales.map(s => ({ ID: s.id, Data: s.created_at, Cliente: safeText(s.customer_name), Total: s.total, Status: s.status, Pagamento: safeText(s.payment_method), Filial: s.branch_id ?? '' }));
   const customerRows = customers.map(c => ({ Cliente: safeText(c.name), Telefone: safeText(c.phone), Email: safeText(c.email), ID: c.id }));
-  function exportFile(kind: 'json' | 'produtos' | 'vendas' | 'clientes') {
+  async function exportFile(kind: 'json' | 'produtos' | 'vendas' | 'clientes') {
     setError(''); setNotice('');
     try {
       const date = new Date().toISOString().slice(0, 10);
@@ -30,6 +30,7 @@ export function AdminDataExports({ products, sales, customers, branchId, extra }
       } else {
         const rows = kind === 'produtos' ? productRows : kind === 'vendas' ? saleRows : customerRows;
         if (!rows.length) throw new Error('Nenhum registro disponível nesta visão para exportar.');
+        const XLSX = await import('xlsx');
         const sheet = XLSX.utils.json_to_sheet(rows);
         if (kind === 'produtos') { const workbook = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(workbook, sheet, 'Produtos'); XLSX.writeFile(workbook, `produtos-${date}.xlsx`); }
         else download(`${kind}-${date}.csv`, '\uFEFF' + XLSX.utils.sheet_to_csv(sheet, { FS: ';' }), 'text/csv;charset=utf-8');

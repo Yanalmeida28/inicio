@@ -30,6 +30,7 @@ type PartnerCustomerUpdate = Partial<
 };
 
 type Props = {
+  suppliersReady?: boolean;
   adminTarget?: string;
   initialTab?: SubTab;
   isActive?: boolean;
@@ -100,7 +101,7 @@ function getActionPopoverPosition(event: React.MouseEvent<HTMLButtonElement>, wi
 export function CadastrosModule({
   adminTarget,
   initialTab = 'produtos', productType = 'todos',
-  isActive = true, onDataScopeChange,
+  isActive = true, onDataScopeChange, suppliersReady = true,
   products, branches, selectedBranchId, categories, suppliers, salespeople, combos, modifiers, customers, sales,
   allSales, rmaRequests = [], segment, onAddProduct, onUpdateProduct, onDeleteProduct,
   onReplenishStock, onImportXml,
@@ -161,6 +162,7 @@ export function CadastrosModule({
             branches={branches}
             selectedBranchId={selectedBranchId}
             categories={categories}
+            suppliersReady={suppliersReady}
             suppliers={suppliers}
             onAddSupplier={onAddSupplier}
             segment={segment}
@@ -277,7 +279,8 @@ function StockAdjustmentSubTab({ products, branchId, onUpdate }: {
   </div>;
 }
 
-function ProductsSubTab({ defaultIsService = false, isActive = true, products, allProducts, branches, selectedBranchId, categories, suppliers, onAddSupplier, segment, onAddProduct, onUpdateProduct, onDeleteProduct }: {
+function ProductsSubTab({ suppliersReady = true, defaultIsService = false, isActive = true, products, allProducts, branches, selectedBranchId, categories, suppliers, onAddSupplier, segment, onAddProduct, onUpdateProduct, onDeleteProduct }: {
+  suppliersReady?: boolean;
   defaultIsService?: boolean;
   isActive?: boolean;
   products: PartnerProduct[];
@@ -362,7 +365,7 @@ function ProductsSubTab({ defaultIsService = false, isActive = true, products, a
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (saving || photoBusy) return;
+    if (saving || photoBusy || !suppliersReady) return;
     if (!name.trim() || !sale) return;
     if (!selectedBranchId) {
       window.alert('Selecione uma filial antes de cadastrar produtos para manter o estoque separado por filial.');
@@ -510,7 +513,8 @@ function ProductsSubTab({ defaultIsService = false, isActive = true, products, a
             </label>
           </div>
           </section>
-          <SupplierField suppliers={suppliers} value={supplierId} onChange={setSupplierId} onAdd={onAddSupplier} disabled={saving} onBusyChange={setSupplierSaving} />
+          {!suppliersReady && <p role="status">Aguarde o carregamento dos fornecedores para salvar. Se houver falha, use Sincronizar no painel.</p>}
+          <SupplierField suppliers={suppliers} value={supplierId} onChange={setSupplierId} onAdd={onAddSupplier} disabled={saving || !suppliersReady} onBusyChange={setSupplierSaving} />
           <section className="product-form-section">
             <h4>Dados fiscais</h4>
           <div className="form-row product-form-row">
@@ -543,7 +547,7 @@ function ProductsSubTab({ defaultIsService = false, isActive = true, products, a
           </div>
           </section>
           {formError && <p className="form-error-msg" style={{ color: '#e3829b', fontSize: '13px' }}>{formError}</p>}
-          <button type="submit" className="module-submit-btn" disabled={saving || supplierSaving || photoBusy}>{saving ? 'Salvando...' : 'Cadastrar'}</button>
+          <button type="submit" className="module-submit-btn" disabled={saving || supplierSaving || photoBusy || !suppliersReady}>{saving ? 'Salvando...' : 'Cadastrar'}</button>
         </form>
       )}
 
@@ -636,6 +640,7 @@ function ProductsSubTab({ defaultIsService = false, isActive = true, products, a
 
       {editProduct && (
         <ProductEditModal
+          suppliersReady={suppliersReady}
           product={editProduct}
           categories={categories}
           suppliers={suppliers}
@@ -697,7 +702,8 @@ function SupplierField({ suppliers, value, onChange, onAdd, disabled, onBusyChan
   </section>;
 }
 
-function ProductEditModal({ product, categories, suppliers, onAddSupplier, saving, error, onClose, onSave }: {
+function ProductEditModal({ suppliersReady = true, product, categories, suppliers, onAddSupplier, saving, error, onClose, onSave }: {
+  suppliersReady?: boolean;
   product: PartnerProduct;
   categories: PartnerCategory[];
   suppliers: PartnerSupplier[];
@@ -735,6 +741,7 @@ function ProductEditModal({ product, categories, suppliers, onAddSupplier, savin
     event.preventDefault();
     if (saving || photoBusy) return;
     if (!name.trim() || !sale) return;
+    if (!suppliersReady) return;
     await onSave({
       image_url: imageUrl,
       name: name.trim(), sku: sku.trim() || null, barcode: barcode.trim() || null, cost_price: Number(cost) || 0,
@@ -764,13 +771,14 @@ function ProductEditModal({ product, categories, suppliers, onAddSupplier, savin
           <label>Preço Premium (opcional)<input aria-label="Preço Premium" type="number" min="0" max="99999999.99" step="0.01" value={premium} onChange={event => setPremium(event.target.value)} placeholder="Não configurado" /></label>
           <ProductProfitPreview cost={cost} retail={sale} wholesale={wholesale} />
           <div className="form-row"><label>Estoque<input type="number" min="0" step="1" value={stock} onChange={(e) => setStock(e.target.value)} /></label><label>Estoque mínimo<input type="number" min="0" step="1" value={minStock} onChange={(e) => setMinStock(e.target.value)} /></label><label>Categoria<select value={category} onChange={(e) => setCategory(e.target.value)}><option value="">Selecione...</option>{categories.map((item) => <option key={item.id} value={item.name}>{item.name}</option>)}</select></label></div>
-          <SupplierField suppliers={suppliers} value={supplierId} onChange={setSupplierId} onAdd={onAddSupplier} disabled={saving} onBusyChange={setSupplierSaving} />
+          {!suppliersReady && <p role="status">Aguarde o carregamento dos fornecedores para salvar. Se houver falha, use Sincronizar no painel.</p>}
+          <SupplierField suppliers={suppliers} value={supplierId} onChange={setSupplierId} onAdd={onAddSupplier} disabled={saving || !suppliersReady} onBusyChange={setSupplierSaving} />
           <label className="checkbox-label"><input type="checkbox" checked={isService} onChange={(e) => setIsService(e.target.checked)} /> É um serviço (sem estoque)</label>
           <div className="form-row"><label>NCM<input value={ncm} onChange={(e) => setNcm(e.target.value)} /></label><label>CFOP<input value={cfop} onChange={(e) => setCfop(e.target.value)} /></label><label>CST/CSOSN<input value={cstCsosn} onChange={(e) => setCstCsosn(e.target.value)} /></label></div>
           <div className="form-row"><label>ICMS (%)<input type="number" min="0" step="0.01" value={icmsRate} onChange={(e) => setIcmsRate(e.target.value)} /></label><label>PIS (%)<input type="number" min="0" step="0.01" value={pisRate} onChange={(e) => setPisRate(e.target.value)} /></label><label>COFINS (%)<input type="number" min="0" step="0.01" value={cofinsRate} onChange={(e) => setCofinsRate(e.target.value)} /></label></div>
           {error && <div className="branch-action-error" role="alert">{error}</div>}
         </div>
-        <div className="product-edit-footer"><button type="button" className="rma-advance-btn" onClick={onClose} disabled={saving || photoBusy}>Cancelar</button><button type="submit" className="module-submit-btn" disabled={saving || supplierSaving || photoBusy}>{saving ? 'Salvando...' : 'Salvar alterações'}</button></div>
+        <div className="product-edit-footer"><button type="button" className="rma-advance-btn" onClick={onClose} disabled={saving || photoBusy}>Cancelar</button><button type="submit" className="module-submit-btn" disabled={saving || supplierSaving || photoBusy || !suppliersReady}>{saving ? 'Salvando...' : 'Salvar alterações'}</button></div>
       </form>
     </div>
   );
@@ -1674,7 +1682,7 @@ function CustomerProfileModal({ customer, sales, rmaRequests, salespeople, onUpd
     if (isSaving || photoPasting) return;
     setPhotoPasting(true); setError(null);
     try {
-      if (!navigator.clipboard?.read) throw new Error('Copie uma imagem e use Ctrl+V sobre o ícone da câmera.');
+      if (!navigator.clipboard?.read) throw new Error('Copie uma imagem e use Ctrl+V (⌘V no Mac) sobre o ícone da câmera.');
       const items = await navigator.clipboard.read();
       for (const item of items) {
         const type = item.types.find(value => ['image/png', 'image/jpeg', 'image/webp'].includes(value));
@@ -1685,7 +1693,7 @@ function CustomerProfileModal({ customer, sales, rmaRequests, salespeople, onUpd
       }
       setError('Nenhuma imagem encontrada. Copie a foto e tente colar novamente.');
     } catch (cause) {
-      setError(cause instanceof Error && cause.name !== 'NotAllowedError' ? cause.message : 'Não foi possível acessar a imagem copiada. Use Ctrl+V sobre o ícone da câmera.');
+      setError(cause instanceof Error && cause.name !== 'NotAllowedError' ? cause.message : 'Não foi possível acessar a imagem copiada. Use Ctrl+V (⌘V no Mac) sobre o ícone da câmera.');
     } finally { setPhotoPasting(false); }
   }
 

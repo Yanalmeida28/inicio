@@ -3,7 +3,7 @@ import {
   Upload, FileText, Download, Table, FileSpreadsheet, File, Check, X, ArrowRight,
   Users,
 } from 'lucide-react';
-import * as XLSX from 'xlsx';
+
 import type { PartnerProduct, PartnerCustomer } from '../../types';
 import { money } from '../../utils';
 import { buildCsv, escapeHtml } from '../../lib/exportSafety';
@@ -111,7 +111,8 @@ function parseCSV(text: string): ParsedData {
 // Lê a primeira planilha de um arquivo .xlsx/.xls e converte para a mesma
 // estrutura interna do CSV. Células são convertidas para texto bruto
 // (raw: true) para que a normalização de números brasileiros decida o valor.
-function parseXLS(data: ArrayBuffer): ParsedData {
+async function parseXLS(data: ArrayBuffer): Promise<ParsedData> {
+  const XLSX = await import('xlsx');
   const workbook = XLSX.read(data, { type: 'array' });
   const sheetName = workbook.SheetNames[0];
   if (!sheetName) return { headers: [], rows: [] };
@@ -252,8 +253,10 @@ function downloadFile(content: string, filename: string, mime: string) {
   const a = document.createElement('a');
   a.href = url;
   a.download = filename;
+  document.body.append(a);
   a.click();
-  URL.revokeObjectURL(url);
+  a.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function exportProductsCSV(products: PartnerProduct[]) {
@@ -266,7 +269,8 @@ function exportProductsCSV(products: PartnerProduct[]) {
   downloadFile(csv, 'produtos.csv', 'text/csv;charset=utf-8');
 }
 
-function exportProductsExcel(products: PartnerProduct[]) {
+async function exportProductsExcel(products: PartnerProduct[]) {
+  const XLSX = await import('xlsx');
   const headers = ['Nome', 'SKU', 'Custo', 'Varejo', 'Atacado', 'Estoque', 'Categoria'];
   const rows = products.map((p) => [
     p.name, p.sku ?? '', p.cost_price, p.sale_price,
@@ -295,7 +299,8 @@ function exportCustomersCSV(customers: PartnerCustomer[]) {
   downloadFile(csv, 'clientes.csv', 'text/csv;charset=utf-8');
 }
 
-function exportCustomersExcel(customers: PartnerCustomer[]) {
+async function exportCustomersExcel(customers: PartnerCustomer[]) {
+  const XLSX = await import('xlsx');
   const headers = ['Nome', 'CPF/CNPJ', 'WhatsApp', 'E-mail', 'Endereço', 'Bairro', 'Cidade', 'Tipo'];
   const rows = customers.map((c) => [
     c.name, c.document ?? '', c.phone ?? '', c.email ?? '',
@@ -315,10 +320,21 @@ function exportCustomersPDF(customers: PartnerCustomer[]) {
 }
 
 export function ExportButtons({ target, products, customers }: { target: ImportTarget; products: PartnerProduct[]; customers: PartnerCustomer[] }) {
+  const [exportError, setExportError] = useState('');
+  const [exporting, setExporting] = useState(false);
+  const exportLock = useRef(false);
+  async function runExport(action: () => Promise<void>) {
+    if (exportLock.current) return;
+    exportLock.current = true; setExporting(true); setExportError('');
+    try { await action(); }
+    catch { setExportError('Não foi possível gerar a planilha. Confira a conexão e tente novamente.'); }
+    finally { exportLock.current = false; setExporting(false); }
+  }
   if (target === 'produtos') {
     return (
       <div className="export-btn-group">
-        <button className="rma-advance-btn" onClick={() => exportProductsExcel(products)} title="Exportar para Excel">
+        {exportError && <p role="alert">{exportError}</p>}
+        <button className="rma-advance-btn" disabled={exporting} onClick={() => void runExport(() => exportProductsExcel(products))} title="Exportar para Excel">
           <FileSpreadsheet size={14} /> Excel
         </button>
         <button className="rma-advance-btn" onClick={() => exportProductsCSV(products)} title="Exportar CSV">
@@ -332,7 +348,8 @@ export function ExportButtons({ target, products, customers }: { target: ImportT
   }
   return (
     <div className="export-btn-group">
-      <button className="rma-advance-btn" onClick={() => exportCustomersExcel(customers)} title="Exportar para Excel">
+      {exportError && <p role="alert">{exportError}</p>}
+      <button className="rma-advance-btn" disabled={exporting} onClick={() => void runExport(() => exportCustomersExcel(customers))} title="Exportar para Excel">
         <FileSpreadsheet size={14} /> Excel
       </button>
       <button className="rma-advance-btn" onClick={() => exportCustomersCSV(customers)} title="Exportar CSV">
@@ -426,9 +443,9 @@ export function ImportExportModule({ products, customers, selectedBranchId, onAd
 
     if (ext === 'xlsx' || ext === 'xls') {
       const reader = new FileReader();
-      reader.onload = (ev) => {
+      reader.onload = async (ev) => {
         try {
-          const data = parseXLS(ev.target?.result as ArrayBuffer);
+          const data = await parseXLS(ev.target?.result as ArrayBuffer);
           if (data.headers.length === 0) {
             setFileError('Não foi possível ler a planilha: arquivo vazio ou sem dados.');
             return;

@@ -5,7 +5,7 @@ import { InvoicePaymentAttempts, FinancialOperationAttempts, type FinancialRecov
 import type { XmlStockImport } from '../lib/cadastroXml';
 import { OperationAttempts } from '../lib/operationAttempts';
 import type { RmaPhotoFile } from '../components/partner/RmaPhotoUpload';
-import { mergePartnerChange, PartnerDataVersions, PartnerLoadCache, partnerResources, withLoadTimeout, type PartnerCollection } from '../lib/partnerSync';
+import { mergePartnerChange, PartnerDataVersions, PartnerLoadCache, partnerResources, partnerRequiredResources, withLoadTimeout, type PartnerCollection } from '../lib/partnerSync';
 import { splitPaymentError, billedSaleError, saleChargeTotal, validSalePrice, isDefinitiveSaleRejection, PdvSaleAttemptStore, pdvErrorMessage, type CustomerCredit } from '../lib/pdv';
 import type {
   AdminCompany,
@@ -209,10 +209,15 @@ const DATA_PAGE_SIZE = 500;
 
 async function fetchAllPages<T>(
   fetchPage: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: PostgrestError | null }>,
+  signal?: AbortSignal,
 ): Promise<{ data: T[] | null; error: PostgrestError | null }> {
   const rows: T[] = [];
   for (let from = 0; ; from += DATA_PAGE_SIZE) {
-    const { data, error } = await fetchPage(from, from + DATA_PAGE_SIZE - 1);
+    if (signal?.aborted) throw new Error('Consulta cancelada.');
+    const pageQuery = fetchPage(from, from + DATA_PAGE_SIZE - 1);
+    const cancellable = pageQuery as typeof pageQuery & { abortSignal?: (signal: AbortSignal) => typeof pageQuery };
+    const { data, error } = await (signal && cancellable.abortSignal ? cancellable.abortSignal(signal) : pageQuery);
+    if (signal?.aborted) throw new Error('Consulta cancelada.');
     if (error) return { data: null, error };
     const page = data ?? [];
     rows.push(...page);
@@ -339,7 +344,7 @@ export function usePartnerData(identity: PartnerIdentity | null, syncBranchId: s
     setError(null);
   }, []);
 
-  const loadData = useCallback(async (background = false, collections?: PartnerCollection[], force = true) => {
+  const loadBatch = useCallback(async (collections?: PartnerCollection[], force = true) => {
     // Scope generations isolate identities; per-collection versions order overlapping reads.
     // A prefetch or a tab change must not discard another collection's valid response.
     const currentRequestId = requestIdRef.current;
@@ -347,26 +352,23 @@ export function usePartnerData(identity: PartnerIdentity | null, syncBranchId: s
     if (loadCacheRef.current.reset(loadScope)) { clearData(); dataSnapshotRef.current = initialData; authorizedPdvScopeRef.current = ''; setLastSyncedAt(null); setSyncError(null); }
     const requested = new Set((collections ?? requestedResourcesRef.current).filter(key => force || loadCacheRef.current.needs(key)));
     const readRevision = dataRevisionRef.current.begin([...requested]);
-    const read = <T,>(key: PartnerCollection, loader: () => PromiseLike<T>, queryKey: string = key): Promise<T | { data: null; error: null }> =>
-      requested.has(key) ? loadCacheRef.current.read(queryKey, loader) : Promise.resolve({ data: null, error: null });
-    if (!requested.size) { if (mountedRef.current) setLoading(false); return; }
+    const read = <T,>(key: PartnerCollection, loader: (signal: AbortSignal) => PromiseLike<T>, queryKey: string = key): Promise<T | { data: null; error: null }> =>
+      requested.has(key) ? loadCacheRef.current.read(queryKey, signal => {
+        const query = loader(signal);
+        const cancellable = query as typeof query & { abortSignal?: (signal: AbortSignal) => typeof query };
+        return cancellable.abortSignal ? cancellable.abortSignal(signal) : query;
+      }) : Promise.resolve({ data: null, error: null });
+    if (!requested.size) return null;
 
     if (!identity) {
       clearData();
-      setLoading(false);
-      return;
+      return null;
     }
 
     if (!isSupabaseConfigured || !supabase) {
-      setLoading(false);
-      return;
+      return null;
     }
 
-    if (requestedResourcesRef.current.every(key => loadCacheRef.current.has(key))) setLoading(false);
-    else if (!background) setLoading(true);
-    if (!background) {
-      setError(null);
-    }
 
     try {
       const currentIdentity = requireIdentity();
@@ -398,62 +400,62 @@ export function usePartnerData(identity: PartnerIdentity | null, syncBranchId: s
   .eq('id', companyUserId)
   .maybeSingle()),
 
-read('branches', () => fetchAllPages((from, to) => client
+read('branches', (signal) => fetchAllPages((from, to) => client
   .from('partner_branches')
   .select('*')
   .eq('user_id', companyUserId)
   .order('name')
   .order('id')
-  .range(from, to))),
+  .range(from, to), signal)),
 
-read('customers', () => fetchAllPages((from, to) => client
+read('customers', (signal) => fetchAllPages((from, to) => client
   .from('partner_customers')
   .select('*')
   .eq('user_id', companyUserId)
   .order('name')
   .order('id')
-  .range(from, to))),
+  .range(from, to), signal)),
 
-read('products', () => fetchAllPages((from, to) => client
+read('products', (signal) => fetchAllPages((from, to) => client
   .from('partner_products')
   .select('*')
   .eq('user_id', companyUserId)
   .order('name')
   .order('id')
-  .range(from, to))),
+  .range(from, to), signal)),
 
-read('salespeople', () => fetchAllPages((from, to) => fetchSalespeople().range(from, to))),
+read('salespeople', (signal) => fetchAllPages((from, to) => fetchSalespeople().range(from, to), signal)),
 
-read('sales', () => fetchAllPages((from, to) => client
+read('sales', (signal) => fetchAllPages((from, to) => client
   .from('partner_sales')
   .select('*')
   .eq('user_id', companyUserId)
   .order('created_at', { ascending: false })
   .order('id', { ascending: false })
-  .range(from, to))),
+  .range(from, to), signal)),
       ]);
 
       // Consultas secundárias: falham individualmente sem derrubar o
       // carregamento; cada uma assume fallback seguro ([], null).
       const secondaryReads = Promise.all([
-        read('suppliers', () => fetchAllPages((from, to) => client
+        read('suppliers', (signal) => fetchAllPages((from, to) => client
           .from('partner_suppliers')
           .select('*')
           .eq('user_id', companyUserId)
-          .order('name').order('id').range(from, to))),
+          .order('name').order('id').range(from, to), signal)),
 
-        read('categories', () => fetchAllPages((from, to) => client
+        read('categories', (signal) => fetchAllPages((from, to) => client
           .from('partner_categories')
           .select('*')
           .eq('user_id', companyUserId)
-          .order('name').order('id').range(from, to))),
+          .order('name').order('id').range(from, to), signal)),
 
-        read('movements', () => fetchAllPages((from, to) => client
+        read('movements', (signal) => fetchAllPages((from, to) => client
           .from('partner_stock_movements')
           .select('*')
           .eq('user_id', companyUserId)
           .order('created_at', { ascending: false })
-          .order('id', { ascending: false }).range(from, to))),
+          .order('id', { ascending: false }).range(from, to), signal)),
 
         read('settings', () => client
           .from('partner_store_settings')
@@ -461,26 +463,26 @@ read('sales', () => fetchAllPages((from, to) => client
           .eq('user_id', companyUserId)
           .maybeSingle()),
 
-        read('rmas', () => fetchAllPages((from, to) => client
+        read('rmas', (signal) => fetchAllPages((from, to) => client
           .from('rma_requests_v2')
           .select('*')
           .eq('user_id', companyUserId)
           .order('created_at', { ascending: false })
-          .order('id', { ascending: false }).range(from, to))),
+          .order('id', { ascending: false }).range(from, to), signal)),
 
-        read('combos', () => fetchAllPages((from, to) => client
+        read('combos', (signal) => fetchAllPages((from, to) => client
           .from('partner_combos')
           .select('*')
           .eq('user_id', companyUserId)
-          .order('name').order('id').range(from, to))),
+          .order('name').order('id').range(from, to), signal)),
 
-        read('modifiers', () => fetchAllPages((from, to) => client
+        read('modifiers', (signal) => fetchAllPages((from, to) => client
           .from('partner_modifiers')
           .select('*')
           .eq('user_id', companyUserId)
-          .order('name').order('id').range(from, to))),
+          .order('name').order('id').range(from, to), signal)),
 
-        read('invoices', () => {
+        read('invoices', (signal) => {
           const employeeScope = currentIdentity.authUserId + ':' + currentIdentity.companyUserId;
           if (resourceScopeRef.current !== null && currentIdentity.salespersonId && currentIdentity.branchId && authorizedPdvScopeRef.current === employeeScope) {
             return Promise.resolve(client.rpc('get_partner_pdv_snapshot', { p_branch_id: currentIdentity.branchId })).then(({ data: snapshot, error }) => {
@@ -494,47 +496,47 @@ read('sales', () => fetchAllPages((from, to) => client
           .from('partner_invoices')
           .select('*')
           .eq('user_id', companyUserId)
-          .order('due_date').order('id').range(from, to));
+          .order('due_date').order('id').range(from, to), signal);
         }),
 
-        read('orders', () => fetchAllPages((from, to) => client
+        read('orders', (signal) => fetchAllPages((from, to) => client
           .from('b2b_orders')
           .select('*')
           .eq('user_id', companyUserId)
           .order('created_at', { ascending: false })
-          .order('id', { ascending: false }).range(from, to))),
+          .order('id', { ascending: false }).range(from, to), signal)),
 
-        read('auditLogs', () => fetchAllPages((from, to) => client
+        read('auditLogs', (signal) => fetchAllPages((from, to) => client
           .from('partner_audit_logs')
           .select('*')
           .eq('user_id', companyUserId)
           .order('created_at', { ascending: false })
-          .order('id', { ascending: false }).range(from, to))),
+          .order('id', { ascending: false }).range(from, to), signal)),
 
-        read('serviceOrders', () => fetchAllPages((from, to) => client
+        read('serviceOrders', (signal) => fetchAllPages((from, to) => client
           .from('service_orders')
           .select('*')
           .eq('user_id', companyUserId)
           .order('created_at', { ascending: false })
-          .order('id', { ascending: false }).range(from, to))),
+          .order('id', { ascending: false }).range(from, to), signal)),
 
-        read('serviceOrderItems', () => fetchAllPages((from, to) => client
+        read('serviceOrderItems', (signal) => fetchAllPages((from, to) => client
           .from('service_order_items')
           .select('*')
           .eq('user_id', companyUserId)
-          .range(from, to))),
+          .range(from, to), signal)),
 
-        read('serviceOrderPhotos', () => fetchAllPages((from, to) => client
+        read('serviceOrderPhotos', (signal) => fetchAllPages((from, to) => client
           .from('service_order_photos')
           .select('*')
           .eq('user_id', companyUserId)
           .order('created_at')
-          .order('id').range(from, to))),
-        read('rmas', () => fetchAllPages((from, to) => client
+          .order('id').range(from, to), signal)),
+        read('rmas', (signal) => fetchAllPages((from, to) => client
           .from('partner_rma_credit_applications')
           .select('id,rma_id,amount')
           .eq('user_id', companyUserId)
-          .order('id').range(from, to)), 'rmaCreditApplications'),
+          .order('id').range(from, to), signal), 'rmaCreditApplications'),
       ]);
 
       const [essentialData, secondaryData] = await Promise.all([essentialReads, secondaryReads]);
@@ -640,7 +642,6 @@ read('sales', () => fetchAllPages((from, to) => client
         const key = ({ partner_profiles: 'profile', partner_branches: 'branches', partner_customers: 'customers', partner_products: 'products', partner_salespeople: 'salespeople', partner_sales: 'sales', partner_suppliers: 'suppliers', partner_categories: 'categories', partner_stock_movements: 'movements', partner_store_settings: 'settings', rma_requests_v2: 'rmas', partner_combos: 'combos', partner_modifiers: 'modifiers', partner_invoices: 'invoices', b2b_orders: 'orders', partner_audit_logs: 'auditLogs', service_orders: 'serviceOrders', service_order_items: 'serviceOrderItems', service_order_photos: 'serviceOrderPhotos', partner_rma_credit_applications: 'rmas' } as Record<string, PartnerCollection>)[table];
         if (requested.has(key) && !result.error && dataRevisionRef.current.isCurrent(readRevision, key) && !(key === 'rmas' && (rmasResult.error || rmaCreditApplicationsResult.error))) loadCacheRef.current.mark(key);
       }
-      setError(null);
       setData((previous) => {
         const snapshot: PartnerDataState = {
         profile:
@@ -736,30 +737,36 @@ read('sales', () => fetchAllPages((from, to) => client
         }
         return snapshot;
       });
-      setLastSyncedAt(new Date());
-      setSyncError(secondaryResults.some(([, result]) => result.error)
+      return secondaryResults.some(([, result]) => result.error)
         ? 'Alguns módulos não foram atualizados. Os dados anteriores foram preservados; tente sincronizar novamente.'
-        : null);
+        : null;
     } catch (err) {
-      if (
-        !mountedRef.current ||
-        currentRequestId !== requestIdRef.current
-      ) {
-        return;
-      }
-
-      const normalized = normalizeError(err);
-      if (background) setSyncError(normalized.message);
-      else setError(normalized.message);
-    } finally {
-      if (
-        mountedRef.current &&
-        currentRequestId === requestIdRef.current
-      ) {
-        setLoading(false);
-      }
+      if (!mountedRef.current || currentRequestId !== requestIdRef.current) return null;
+      return normalizeError(err).message;
     }
   }, [clearData, identity, requireIdentity]);
+
+  const loadData = useCallback(async (background = false, collections?: PartnerCollection[], force = true) => {
+    const generation = requestIdRef.current;
+    const activeScope = resourceScopeRef.current;
+    const keys = collections ?? requestedResourcesRef.current;
+    const ready = () => partnerRequiredResources(resourceScopeRef.current).every(key => loadCacheRef.current.has(key));
+    if (!background) setError(null);
+    setLoading(!ready() && !background);
+    const results = await Promise.all(keys.map(async key => {
+      const failure = await loadBatch([key], force);
+      if (mountedRef.current && generation === requestIdRef.current && ready()) setLoading(false);
+      return failure;
+    }));
+    if (!mountedRef.current || generation !== requestIdRef.current) return false;
+    const failure = results.find((result): result is string => typeof result === 'string');
+    if (activeScope !== resourceScopeRef.current) return !failure;
+    if (background) setSyncError(failure ?? null);
+    else { setError(failure ?? null); setSyncError(failure ?? null); }
+    if (!failure) setLastSyncedAt(new Date());
+    setLoading(false);
+    return !failure;
+  }, [loadBatch]);
 
   useEffect(() => {
     const alreadyLoaded = requestedResourcesRef.current.every(key => loadCacheRef.current.has(key));
@@ -1562,7 +1569,7 @@ read('sales', () => fetchAllPages((from, to) => client
     setSyncing(true);
     try {
       if (syncBranchId && (resourceScopeRef.current === null || ['pdv', 'pedidos', 'caixa'].includes(resourceScopeRef.current))) await refreshPdv(syncBranchId);
-      else await loadData(true);
+      else { await loadData(true); return; }
       if (scope === identityScopeRef.current) {
         setLastSyncedAt(new Date());
         setSyncError(null);
@@ -4038,7 +4045,8 @@ read('sales', () => fetchAllPages((from, to) => client
     loadData,
     mergeHistorySales,
     prefetchModule,
-    resourcesReady: requestedResourcesRef.current.every(key => loadCacheRef.current.has(key)),
+    resourcesReady: partnerRequiredResources(resourceScopeRef.current).every(key => loadCacheRef.current.has(key)),
+    suppliersReady: loadCacheRef.current.has('suppliers'),
     refreshCollections: (keys: PartnerCollection[]) => loadData(true, keys.filter(key => loadCacheRef.current.has(key) || requestedResourcesRef.current.includes(key))),
     synchronize,
     syncing,

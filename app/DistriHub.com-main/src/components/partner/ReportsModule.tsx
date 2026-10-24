@@ -1,5 +1,5 @@
 import { saleRevenuePayments } from '../../lib/pdv';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   BarChart3, TrendingUp, TrendingDown, Package, Users, Cake, MessageCircle, DollarSign,
   ShoppingCart, Wrench, UserCheck, CreditCard, Banknote, Wallet, Trophy, Crown, Medal, Download,
@@ -24,6 +24,8 @@ import { useStagnantStock } from '../../hooks/useStagnantStock';
 import { CrmWorkspace } from './CrmWorkspace';
 
 type Props = {
+  isActive?: boolean;
+  onDataScopeChange?: (tab: string) => void;
   companyUserId?: string | null;
   branchId?: string | null;
   invoices?: import('../../types').PartnerInvoice[];
@@ -79,11 +81,12 @@ const roleLabels: Record<SalespersonRole, string> = {
   logistica: 'Logística / Entregador',
 };
 
-export function ReportsModule({ sales, products, customers, salespeople, movements = [], companyUserId = null, branchId = null, invoices = [], initialTab = 'vendas' }: Props) {
+export function ReportsModule({ isActive = true, onDataScopeChange, sales, products, customers, salespeople, movements = [], companyUserId = null, branchId = null, invoices = [], initialTab = 'vendas' }: Props) {
   const [tab, setTab] = useState<ReportTab>(initialTab);
   const [range, setRange] = useState<SalesRange>('30d');
   const [startDate, setStartDate] = useState(() => localDateInput(new Date(Date.now() - 30 * 86_400_000)));
   const [endDate, setEndDate] = useState(() => localDateInput(new Date()));
+  useEffect(() => { if (isActive) onDataScopeChange?.(tab); }, [tab, isActive, onDataScopeChange]);
   const [rangeError, setRangeError] = useState<string | null>(null);
   const [customerFilter, setCustomerFilter] = useState('');
   const [sellerFilter, setSellerFilter] = useState('');
@@ -135,7 +138,7 @@ export function ReportsModule({ sales, products, customers, salespeople, movemen
 
       <div className="subtab-bar" style={{ marginBottom: '12px' }}>
         {tabs.map(({ id, label, icon: Icon }) => (
-          <button key={id} className={`subtab ${tab === id ? 'active' : ''}`} onClick={() => { setTab(id); setRangeError(null); }}>
+          <button key={id} className={`subtab ${tab === id ? 'active' : ''}`} onClick={() => { onDataScopeChange?.(id); setTab(id); setRangeError(null); }}>
             <Icon size={15} /> {label}
           </button>
         ))}
@@ -180,7 +183,7 @@ export function ReportsModule({ sales, products, customers, salespeople, movemen
         {tab === 'vendas' && <SalesReport sales={visibleSales} products={products} salespeople={salespeople} />}
         {tab === 'financeiro' && <FinancialReport sales={visibleSales} allSales={completedSales} products={products} />}
         {tab === 'estoque' && <StockReport products={products} sales={visibleSales} />}
-        {tab === 'sem-giro' && <StagnantStockReport products={products} sales={sales} movements={movements} />}
+        {tab === 'sem-giro' && <StagnantStockReport isActive={isActive} products={products} sales={sales} movements={movements} />}
         {tab === 'crm' && <><CrmReport customers={customers} sales={visibleSales} /><CrmWorkspace customers={customers} sales={completedSales} invoices={invoices} salespeople={salespeople} companyUserId={companyUserId} branchId={branchId} /></>}
         {(tab === 'vendas' || tab === 'financeiro') && <details><summary>Vendas que compõem os totais ({visibleSales.length})</summary><div className="stock-table-wrap"><table className="rma-table"><thead><tr><th>Venda</th><th>Data</th><th>Cliente</th><th>Pagamento</th><th>Total</th></tr></thead><tbody>{visibleSales.map(s=><tr key={s.id}><td>#{s.id.slice(0,8)}</td><td>{new Date(s.created_at).toLocaleString('pt-BR')}</td><td>{s.customer_name}</td><td>{s.payment_method}</td><td>{money.format(s.total)}</td></tr>)}</tbody></table></div></details>}
       </div>
@@ -519,10 +522,10 @@ function FinancialReport({ sales, allSales, products }: { sales: PartnerSale[]; 
   );
 }
 
-function StagnantStockReport({ products, sales, movements }: { products: PartnerProduct[]; sales: PartnerSale[]; movements: StockMovement[] }) {
+function StagnantStockReport({ isActive = true, products, sales, movements }: { isActive?: boolean; products: PartnerProduct[]; sales: PartnerSale[]; movements: StockMovement[] }) {
   const [level, setLevel] = useState<StagnantLevel | 'todos'>('todos');
   const [query, setQuery] = useState('');
-  const summary = useStagnantStock(products, sales, movements);
+  const summary = useStagnantStock(products, sales, movements, isActive);
   const term = query.trim().toLowerCase();
   const rows = summary.items.filter((item) =>
     (level === 'todos' || item.level === level)

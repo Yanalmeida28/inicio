@@ -30,6 +30,19 @@ let renderer;
 afterEach(async()=>{if(renderer)await act(async()=>renderer.unmount());renderer=null;});
 const rendered=()=>JSON.stringify(renderer.toJSON());
 const submit=()=>renderer.root.findByType('form').props.onSubmit({preventDefault(){}});
+
+test('product list remains usable while suppliers load and prevents saving an incomplete supplier selection',async()=>{
+ let writes=0;
+ const props={products:[{id:'p',name:'Produto existente',stock:1,min_stock:0,sale_price:20,cost_price:10,branch_id:'branch'}],allProducts:[],branches:[],selectedBranchId:'branch',categories:[],suppliers:[],suppliersReady:false,segment:'assistencia',onAddSupplier:async()=>{},onAddProduct:async()=>{writes++;},onUpdateProduct:async()=>{},onDeleteProduct:async()=>{}};
+ await act(async()=>{renderer=TestRenderer.create(React.createElement(exports.Products,props));});
+ assert.match(rendered(),/Produto existente/);
+ await act(async()=>renderer.root.findByProps({className:'module-action-btn'}).props.onClick());
+ const save=()=>renderer.root.findAllByType('button').find(button=>button.props.type==='submit'&&button.children.includes('Cadastrar'));
+ assert.equal(save().props.disabled,true);
+ await act(async()=>submit());assert.equal(writes,0);
+ await act(async()=>renderer.update(React.createElement(exports.Products,{...props,suppliersReady:true})));
+ assert.equal(save().props.disabled,false);
+});
 test('product registration keeps SKU and barcode independent and reader Enter does not submit',async()=>{
  let payload;
  await act(async()=>{renderer=TestRenderer.create(React.createElement(exports.Products,{products:[],allProducts:[],branches:[],selectedBranchId:'branch',categories:[],suppliers:[],segment:'assistencia',onAddSupplier:async()=>{},onAddProduct:async value=>{payload=value;},onUpdateProduct:async()=>{},onDeleteProduct:async()=>{}}));});

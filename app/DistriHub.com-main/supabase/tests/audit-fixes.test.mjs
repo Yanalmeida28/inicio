@@ -92,8 +92,8 @@ test('product/customer PDF and CSV exports treat malicious fields as text; Excel
     '../../utils': { money }, '../../lib/exportSafety': safety,
     xlsx: { ...XLSX, writeFile: (...args) => books.push(args) },
   }, { Blob, URL: { createObjectURL(blob) { blobs.push(blob); return 'blob:test'; }, revokeObjectURL() {} },
-    document: { createElement() { return { click() {} }; } },
-    window: { open: () => ({ document: { write: value => html.push(value), close() {} }, print() {} }) },
+    document: { body: { append() {} }, createElement() { return { click() {}, remove() {} }; } },
+    window: { setTimeout: callback => callback(), open: () => ({ document: { write: value => html.push(value), close() {} }, print() {} }) },
   }, '\nexports.productPdf=exportProductsPDF; exports.customerPdf=exportCustomersPDF; exports.productCsv=exportProductsCSV; exports.customerCsv=exportCustomersCSV; exports.excel=exportProductsExcel;');
   const marker = '<img src=x onerror="alert(1)">';
   module.productPdf([{ name: marker, sku: marker, category: marker, cost_price: 1, sale_price: 2, wholesale_price: 0, stock: 1 }]);
@@ -103,7 +103,7 @@ test('product/customer PDF and CSV exports treat malicious fields as text; Excel
   module.customerCsv([{ name: '@SUM(1)', email: 'a"b' }]);
   assert.match(await blobs[0].text(), /"'=1\+1"/); assert.match(await blobs[0].text(), /a"";b/);
   assert.match(await blobs[1].text(), /"'@SUM/);
-  module.excel([{ name: '=1+1', cost_price: 1, sale_price: 2, wholesale_price: 0, stock: 1 }]);
+  await module.excel([{ name: '=1+1', cost_price: 1, sale_price: 2, wholesale_price: 0, stock: 1 }]);
   assert.match(books[0][1], /\.xlsx$/); assert.equal(books[0][0].Sheets.Produtos.A2.t, 's'); assert.equal(books[0][0].Sheets.Produtos.A2.f, undefined);
 });
 
