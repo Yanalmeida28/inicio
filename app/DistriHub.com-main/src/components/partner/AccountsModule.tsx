@@ -11,7 +11,7 @@ type Props = {
   branches: PartnerBranch[];
   suppliers: PartnerSupplier[];
   branchId: string;
-  onReceive?: (id: string, amount: number) => Promise<void>;
+  onReceive?: (id: string, amount: number, requestId?: string) => Promise<void>;
 };
 
 const categories = { fornecedor: 'Fornecedor', aluguel: 'Aluguel', energia: 'Energia', salarios: 'Salários', impostos: 'Impostos', outros: 'Outras despesas' };
@@ -68,7 +68,7 @@ export function AccountsModule({ kind, invoices, payables, branches, suppliers, 
       if (kind === 'pagar') await payables.pay(account.id, value, payment.token);
       else {
         if (!onReceive) throw new Error('Recebimento indisponível.');
-        await onReceive(account.id, value);
+        await onReceive(account.id, value, payment.token);
       }
       setPayment(null); setSuccess(kind === 'pagar' ? 'Pagamento registrado.' : 'Recebimento registrado.');
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Não foi possível registrar.'); }
@@ -84,7 +84,7 @@ export function AccountsModule({ kind, invoices, payables, branches, suppliers, 
     <div className="report-cards">
       <div className="report-card"><small>Saldo em aberto</small><strong>{money.format(open)}</strong></div>
       <div className="report-card"><small>Vencido</small><strong>{money.format(overdue)}</strong></div>
-      <div className="report-card"><small>{kind === 'pagar' ? 'Pago' : 'Recebido'}</small><strong>{money.format(paid)}</strong></div>
+      <div className="report-card"><small>{kind === 'pagar' ? 'Pago' : 'Liquidado (dinheiro + créditos)'}</small><strong>{money.format(paid)}</strong></div>
     </div>
     <div className="orders-filter-row" style={{ margin: '16px 0', flexWrap: 'wrap' }}>
       {['abertas', 'vencidas', 'pagas', 'todas'].map(value => <button key={value} type="button" className={`rma-advance-btn ${filter === value ? 'active' : ''}`} onClick={() => setFilter(value)}>{value[0].toUpperCase() + value.slice(1)}</button>)}
@@ -94,7 +94,7 @@ export function AccountsModule({ kind, invoices, payables, branches, suppliers, 
     {success && <p role="status">{success}</p>}
     {error && <p className="otp-error-msg" role="alert">{error}</p>}
     {creating && <form onSubmit={saveAccount} className="accounts-entry-form">
-      <label>Filial<select required value={form.branchId} disabled={busy} onChange={e => setForm({ ...form, branchId: e.target.value })}><option value="">Selecione</option>{branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select></label>
+      <label>Filial<select required value={form.branchId} disabled={busy} onChange={e => setForm({ ...form, branchId: e.target.value })}><option value="">Selecione</option>{branches.filter(branch => branch.is_active !== false).map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select></label>
       <label>Descrição<input required maxLength={200} value={form.description} disabled={busy} onChange={e => setForm({ ...form, description: e.target.value })} /></label>
       <label>Categoria<select value={form.category} disabled={busy} onChange={e => setForm({ ...form, category: e.target.value })}>{Object.entries(categories).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
       <label>Fornecedor (opcional)<select value={form.supplierId} disabled={busy} onChange={e => { const supplier = suppliers.find(s => s.id === e.target.value); setForm({ ...form, supplierId: e.target.value, creditor: supplier?.name ?? form.creditor, category: supplier ? 'fornecedor' : form.category }); }}><option value="">Sem fornecedor</option>{suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
@@ -104,7 +104,7 @@ export function AccountsModule({ kind, invoices, payables, branches, suppliers, 
       <div><button className="module-submit-btn" disabled={busy}>{busy ? 'Salvando…' : 'Cadastrar'}</button> <button type="button" className="rma-advance-btn" disabled={busy} onClick={() => setCreating(false)}>Cancelar</button></div>
     </form>}
     <div className="stock-table-wrap"><table className="rma-table">
-      <thead><tr><th>{kind === 'pagar' ? 'Conta / Credor' : 'Cliente / Fatura'}</th><th>Original</th><th>{kind === 'pagar' ? 'Pago' : 'Recebido'}</th><th>Saldo</th><th>Vencimento</th><th>Status</th><th>Ação</th></tr></thead>
+      <thead><tr><th>{kind === 'pagar' ? 'Conta / Credor' : 'Cliente / Fatura'}</th><th>Original</th><th>{kind === 'pagar' ? 'Pago' : 'Liquidado'}</th><th>Saldo</th><th>Vencimento</th><th>Status</th><th>Ação</th></tr></thead>
       <tbody>{visible.length === 0 ? <tr><td colSpan={7} className="empty-row">Nenhuma conta nesta seleção.</td></tr> : visible.map(a => <tr key={a.id}>
         <td>{'description' in a ? <><strong>{a.description}</strong><br />{a.creditor_name}</> : <><strong>{a.customer_name}</strong><br />{a.number}</>}</td>
         <td>{money.format(a.amount)}</td><td>{money.format(accountPaid(a))}</td><td>{money.format(accountBalance(a))}</td>

@@ -10,6 +10,12 @@ vm.runInNewContext(ts.transpileModule(await readFile(new URL('../../src/lib/acco
 }).outputText, { exports });
 const { accountBalance, accountPaid, financialAccounts, isOverdue } = exports;
 
+test('crédito de devolução liquida saldo sem aumentar dinheiro recebido', () => {
+  const invoices = [{ amount: 100, paid_amount: 100, return_credit_amount: 70, status: 'paga' }, { amount: 50, paid_amount: 50, return_credit_amount: 50, status: 'paga' }];
+  assert.equal(financialAccounts(invoices, []).received, 30);
+  assert.equal(financialAccounts(invoices, []).receivable, 0);
+});
+
 test('recebimentos parciais reduzem saldo e faturas canceladas não geram saldo ou receita', () => {
   const invoices = [
     { amount: 100, paid_amount: 40, status: 'parcial' },

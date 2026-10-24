@@ -21,7 +21,7 @@ type SignUpData = {
 };
 
 type UseAuthReturn = AuthState & {
-  signUp: (data: SignUpData) => Promise<{ error: string | null }>;
+  signUp: (data: SignUpData) => Promise<{ error: string | null; needsEmailConfirmation?: boolean }>;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
   requestPasswordReset: (email: string) => Promise<{ error: string | null }>;
@@ -125,7 +125,18 @@ export function useAuth(): UseAuthReturn {
       throw new Error(`Não foi possível validar a identidade do proprietário: ${ownerError.message}`);
     }
     if (!ownerProfile) {
-      throw new Error('Usuário autenticado não possui vínculo de proprietário ou funcionário.');
+      const { data: verified, error: userError } = await supabase.auth.getUser();
+      if (userError || verified.user?.id !== authUserId) throw new Error('Sessão inválida para concluir o cadastro.');
+      // Metadata supplies contact fields only. Roles, plans and access are resolved by the database.
+      const metadata = verified.user.user_metadata;
+      if (typeof metadata.business_name !== 'string' || !metadata.business_name.trim()
+        || typeof metadata.whatsapp !== 'string' || !metadata.whatsapp.trim()) {
+        throw new Error('Conta sem cadastro de empresa. Conclua os dados do cadastro para acessar o painel.');
+      }
+      const { error: createError } = await supabase.from('partner_profiles').upsert({
+        id: authUserId, business_name: metadata.business_name.trim(), whatsapp: metadata.whatsapp.trim(), segment: 'assistencia',
+      }, { onConflict: 'id', ignoreDuplicates: true });
+      if (createError) throw new Error(`Não foi possível concluir o cadastro: ${createError.message}`);
     }
 
     return { authUserId, companyUserId: authUserId, role: 'administrador', salespersonId: null, branchId: null };
@@ -154,6 +165,7 @@ export function useAuth(): UseAuthReturn {
     }
 
     let cancelled = false;
+    let authEventReceived = false;
     let resolvedUserId: string | null = null;
 
     const applySession = async (session: Session | null, passwordRecovery = false) => {
@@ -217,7 +229,7 @@ export function useAuth(): UseAuthReturn {
     };
 
     supabase.auth.getSession().then(({ data }) => {
-      if (!cancelled) {
+      if (!cancelled && !authEventReceived) {
         void applySession(data.session);
       }
     });
@@ -225,6 +237,7 @@ export function useAuth(): UseAuthReturn {
     const { data: listener } = supabase.auth.onAuthStateChange(
       (event, session) => {
         if (cancelled) return;
+        authEventReceived = true;
 
         dispatch({
           type: 'SET_SESSION',
@@ -262,7 +275,7 @@ export function useAuth(): UseAuthReturn {
     };
   }, [loadProfile, resolveIdentity]);
 
-  const signUp = useCallback(async (data: SignUpData): Promise<{ error: string | null }> => {
+  const signUp = useCallback(async (data: SignUpData): Promise<{ error: string | null; needsEmailConfirmation?: boolean }> => {
     if (!isSupabaseConfigured || !supabase) return { error: 'Supabase não configurado.' };
 
     signupInProgressRef.current = true;
@@ -270,19 +283,15 @@ export function useAuth(): UseAuthReturn {
       const { data: authData, error } = await supabase.auth.signUp({
         email: data.email,
         password: data.password,
+        options: {
+          data: { business_name: data.businessName.trim(), whatsapp: data.whatsapp.trim() },
+          emailRedirectTo: `${window.location.origin}/`,
+        },
       });
 
       if (error) return { error: error.message };
       if (!authData.user) return { error: 'Falha ao criar conta.' };
-
-      const { error: profileError } = await supabase.from('partner_profiles').insert({
-        id: authData.user.id,
-        business_name: data.businessName,
-        whatsapp: data.whatsapp,
-        segment: 'assistencia',
-      });
-
-      if (profileError) return { error: profileError.message };
+      if (!authData.session) return { error: null, needsEmailConfirmation: true };
 
       const identity = await resolveIdentity(authData.user.id);
       const profile = await loadProfile(identity.companyUserId);
@@ -332,7 +341,7 @@ export function useAuth(): UseAuthReturn {
 
     if (error) {
       dispatch({ type: 'SET_ERROR', error: error.message });
-      return;
+      throw new Error(error.message);
     }
 
     dispatch({ type: 'RESET' });

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Building2, Lock, Mail, Phone, MessageCircle, Check, KeyRound } from 'lucide-react';
+import { ArrowLeft, Building2, Lock, Mail, Phone, Check, KeyRound } from 'lucide-react';
 
 type AuthScreenProps = {
   onBack: () => void;
@@ -9,7 +9,7 @@ type AuthScreenProps = {
     whatsapp: string;
     email: string;
     password: string;
-  }) => Promise<{ error: string | null }>;
+  }) => Promise<{ error: string | null; needsEmailConfirmation?: boolean }>;
   onRequestPasswordReset: (email: string) => Promise<{ error: string | null }>;
   onUpdatePassword: (password: string) => Promise<{ error: string | null }>;
   recoveryMode?: boolean;
@@ -19,6 +19,7 @@ export function AuthScreen({ onBack, onSignIn, onSignUp, onRequestPasswordReset,
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [signupInfo, setSignupInfo] = useState<string | null>(null);
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -27,91 +28,74 @@ export function AuthScreen({ onBack, onSignIn, onSignUp, onRequestPasswordReset,
 
   // Password recovery state
   const [showRecovery, setShowRecovery] = useState(false);
-  const [recoveryStep, setRecoveryStep] = useState<'identify' | 'otp' | 'reset'>('identify');
+  const [recoveryStep, setRecoveryStep] = useState<'identify' | 'reset'>('identify');
   const [recoveryEmail, setRecoveryEmail] = useState('');
-  const [, setRecoveryWhatsapp] = useState('');
-  const [recoveryOtp, setRecoveryOtp] = useState(['', '', '', '']);
-  const [recoveryOtpError, setRecoveryOtpError] = useState(false);
-  const [recoveryOtpSent, setRecoveryOtpSent] = useState(false);
-  const [resendTimer, setResendTimer] = useState(0);
   const [newPassword, setNewPassword] = useState('');
   const [recoveryDone, setRecoveryDone] = useState(false);
+  const [passwordUpdated, setPasswordUpdated] = useState(false);
 
   useEffect(() => {
     if (recoveryMode) {
       setShowRecovery(true);
       setRecoveryStep('reset');
+      setRecoveryDone(false);
+      setPasswordUpdated(false);
     }
   }, [recoveryMode]);
 
-  useEffect(() => {
-    if (resendTimer > 0) {
-      const t = setTimeout(() => setResendTimer(resendTimer - 1), 1000);
-      return () => clearTimeout(t);
-    }
-  }, [resendTimer]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setLoading(true);
 
-    if (mode === 'login') {
-      const { error } = await onSignIn(email, password);
-      if (error) setError(error);
-    } else {
-      if (!businessName.trim() || !whatsapp.trim()) {
-        setError('Preencha todos os campos do cadastro.');
-        setLoading(false);
-        return;
+    try {
+      if (mode === 'login') {
+        const { error } = await onSignIn(email, password);
+        if (error) setError(error);
+      } else {
+        if (!businessName.trim() || !whatsapp.trim()) {
+          setError('Preencha todos os campos do cadastro.');
+          setLoading(false);
+          return;
+        }
+        const result = await onSignUp({ businessName, whatsapp, email, password });
+        if (result.error) setError(result.error);
+        else if (result.needsEmailConfirmation) {
+          setSignupInfo('Confira seu e-mail para confirmar a conta. Depois, faça login para concluir o cadastro.');
+          setPassword('');
+          setMode('login');
+        }
       }
-      const { error } = await onSignUp({ businessName, whatsapp, email, password });
-      if (error) setError(error);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Não foi possível concluir a autenticação.');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }
 
   function startRecovery() {
     setShowRecovery(true);
     setRecoveryStep('identify');
     setRecoveryEmail('');
-    setRecoveryWhatsapp('');
-    setRecoveryOtp(['', '', '', '']);
-    setRecoveryOtpError(false);
-    setRecoveryOtpSent(false);
     setNewPassword('');
     setRecoveryDone(false);
+    setPasswordUpdated(false);
     setError(null);
   }
 
-  async function sendRecoveryOtp() {
+  async function sendRecoveryLink() {
     setError(null);
-    const result = await onRequestPasswordReset(recoveryEmail);
-    if (result.error) {
-      setError(result.error);
-      return;
-    }
-    setRecoveryDone(true);
-  }
-
-  function handleRecoveryOtpChange(idx: number, val: string) {
-    if (!/\d?/.test(val)) return;
-    const next = [...recoveryOtp];
-    next[idx] = val.slice(-1);
-    setRecoveryOtp(next);
-    setRecoveryOtpError(false);
-    if (val && idx < 3) {
-      const nextInput = document.getElementById(`recovery-otp-${idx + 1}`);
-      nextInput?.focus();
-    }
-  }
-
-  function verifyRecoveryOtp() {
-    const entered = recoveryOtp.join('');
-    if (entered.length === 4 && entered === '1234') {
-      setRecoveryStep('reset');
-    } else {
-      setRecoveryOtpError(true);
+    setLoading(true);
+    try {
+      const result = await onRequestPasswordReset(recoveryEmail);
+      if (result.error) { setError(result.error); return; }
+      setPasswordUpdated(false);
+      setRecoveryDone(true);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Não foi possível solicitar o link.');
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -122,14 +106,18 @@ export function AuthScreen({ onBack, onSignIn, onSignUp, onRequestPasswordReset,
       return;
     }
     setLoading(true);
-    const result = await onUpdatePassword(newPassword);
-    setLoading(false);
-    if (result.error) {
-      setError(result.error);
-      return;
+    setError(null);
+    try {
+      const result = await onUpdatePassword(newPassword);
+      if (result.error) { setError(result.error); return; }
+      setRecoveryDone(true);
+      setPasswordUpdated(true);
+      setRecoveryStep('identify');
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Não foi possível alterar a senha.');
+    } finally {
+      setLoading(false);
     }
-    setRecoveryDone(true);
-    setRecoveryStep('identify');
   }
 
   function closeRecovery() {
@@ -233,7 +221,6 @@ export function AuthScreen({ onBack, onSignIn, onSignUp, onRequestPasswordReset,
               className={inputClass}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="seu@email.com"
               required
             />
           </label>
@@ -247,12 +234,12 @@ export function AuthScreen({ onBack, onSignIn, onSignUp, onRequestPasswordReset,
               className={inputClass}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="Mínimo 6 caracteres"
               minLength={6}
               required
             />
           </label>
 
+          {signupInfo && <p role="status" className="text-sm text-green-400">{signupInfo}</p>}
           {error && (
             <div className="bg-red-500/10 border border-red-500/30 text-red-400 text-sm rounded-lg p-3">
               {error}
@@ -312,8 +299,8 @@ export function AuthScreen({ onBack, onSignIn, onSignUp, onRequestPasswordReset,
                 <div className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-green-500/15 text-green-400 mb-4">
                   <Check size={30} />
                 </div>
-                <h4 className="text-white font-semibold mb-2">Verifique seu e-mail</h4>
-                <p className="text-sm text-slate-400 mb-6">Enviamos um link seguro para redefinir sua senha.</p>
+                <h4 className="text-white font-semibold mb-2">{passwordUpdated ? 'Senha redefinida com sucesso!' : 'Verifique seu e-mail'}</h4>
+                <p className="text-sm text-slate-400 mb-6">{passwordUpdated ? 'Sua nova senha foi salva. Faça login para continuar.' : 'Se o e-mail estiver cadastrado, você receberá um link seguro para redefinir sua senha.'}</p>
                 <button
                   onClick={() => { setShowRecovery(false); setRecoveryDone(false); setMode('login'); }}
                   className="w-full bg-cyan-500 hover:bg-cyan-400 text-white font-semibold py-3 rounded-lg transition"
@@ -323,6 +310,7 @@ export function AuthScreen({ onBack, onSignIn, onSignUp, onRequestPasswordReset,
               </div>
             ) : recoveryStep === 'identify' ? (
               <div className="space-y-4">
+                {error && <p role="alert" className="text-sm text-red-400">{error}</p>}
                 <p className="text-sm text-slate-400">
                   Informe o e-mail cadastrado. Enviaremos um link seguro para redefinir sua senha.
                 </p>
@@ -335,60 +323,16 @@ export function AuthScreen({ onBack, onSignIn, onSignUp, onRequestPasswordReset,
                     className={inputClass}
                     value={recoveryEmail}
                     onChange={(e) => setRecoveryEmail(e.target.value)}
-                    placeholder="seu@email.com"
                     required
                   />
                 </label>
                 <button
-                  onClick={sendRecoveryOtp}
+                  onClick={sendRecoveryLink}
                   disabled={!recoveryEmail.trim() || loading}
                   className="w-full bg-cyan-500 hover:bg-cyan-400 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-lg transition flex items-center justify-center gap-2"
                 >
                   <Mail size={18} /> Enviar link por e-mail
                 </button>
-              </div>
-            ) : recoveryStep === 'otp' ? (
-              <div className="space-y-4">
-                {recoveryOtpSent && (
-                  <p className="flex items-center gap-2 text-sm text-green-400 bg-green-500/10 border border-green-500/20 rounded-lg p-3">
-                    <MessageCircle size={15} /> Código de verificação enviado para o contato cadastrado.
-                  </p>
-                )}
-                <p className="text-sm text-slate-400">Digite o código de 4 dígitos enviado para seu WhatsApp.</p>
-                <div className="flex gap-3 justify-center">
-                  {recoveryOtp.map((digit, idx) => (
-                    <input
-                      key={idx}
-                      id={`recovery-otp-${idx}`}
-                      type="text"
-                      inputMode="numeric"
-                      maxLength={1}
-                      value={digit}
-                      onChange={(e) => handleRecoveryOtpChange(idx, e.target.value)}
-                      className={`w-14 h-16 text-center text-2xl font-bold text-white border-2 rounded-lg bg-slate-800 focus:outline-none transition ${
-                        recoveryOtpError ? 'border-red-500' : 'border-slate-700 focus:border-cyan-500'
-                      }`}
-                    />
-                  ))}
-                </div>
-                {recoveryOtpError && (
-                  <p className="text-sm text-red-400 text-center">Código incorreto. Tente novamente.</p>
-                )}
-                <div className="flex gap-3">
-                  <button
-                    onClick={sendRecoveryOtp}
-                    disabled={resendTimer > 0}
-                    className="flex-1 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-300 font-medium py-3 rounded-lg transition"
-                  >
-                    {resendTimer > 0 ? `Reenviar em ${resendTimer}s` : 'Reenviar código'}
-                  </button>
-                  <button
-                    onClick={verifyRecoveryOtp}
-                    className="flex-1 bg-cyan-500 hover:bg-cyan-400 text-white font-semibold py-3 rounded-lg transition"
-                  >
-                    Verificar
-                  </button>
-                </div>
               </div>
             ) : recoveryStep === 'reset' ? (
               <form onSubmit={completeRecovery} className="space-y-4">
@@ -402,7 +346,6 @@ export function AuthScreen({ onBack, onSignIn, onSignUp, onRequestPasswordReset,
                     className={inputClass}
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="Mínimo 6 caracteres"
                     minLength={6}
                     required
                   />
@@ -414,6 +357,7 @@ export function AuthScreen({ onBack, onSignIn, onSignUp, onRequestPasswordReset,
                 )}
                 <button
                   type="submit"
+                  disabled={loading}
                   className="w-full bg-cyan-500 hover:bg-cyan-400 text-white font-semibold py-3 rounded-lg transition"
                 >
                   Alterar senha

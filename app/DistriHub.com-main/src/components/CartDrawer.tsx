@@ -1,11 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import {
   ArrowRight, Check, Minus, Plus, ShoppingBag, Trash2, X,
   QrCode, CreditCard, Wallet, Truck, Store, ShieldCheck, MessageCircle,
 } from 'lucide-react';
 import type { CartItem } from '../types';
-import { money, formatWhatsAppMessage, openWhatsApp, generateOrderId } from '../utils';
+import { money, formatWhatsAppMessage, openWhatsApp } from '../utils';
 import { paymentMethods, deliveryMethods, WHATSAPP_NUMBER } from '../data';
+import { B2bOrderRejected } from '../lib/b2bOrder';
 
 type CartDrawerProps = {
   open: boolean;
@@ -22,7 +23,7 @@ type CartDrawerProps = {
   onRemove: (id: number) => void;
   onBusinessNameChange: (value: string) => void;
   onCityChange: (value: string) => void;
-  onSendOrder: (paymentMethod?: string, deliveryMethod?: string) => void | Promise<void>;
+  onSendOrder: (paymentMethod: string, deliveryMethod: string, requestId: string) => Promise<{ id: string; total: number }>;
   onExplore: () => void;
   isAuthenticated: boolean;
   onLoginRequired: () => void;
@@ -37,12 +38,11 @@ export function CartDrawer({
   const [step, setStep] = useState<'cart' | 'checkout' | 'confirmation'>('cart');
   const [paymentMethod, setPaymentMethod] = useState('pix');
   const [deliveryMethod, setDeliveryMethod] = useState('balcao');
-  const [showOtp, setShowOtp] = useState(false);
-  const [otpCode, setOtpCode] = useState(['', '', '', '']);
-  const [otpError, setOtpError] = useState(false);
-  const [otpSent, setOtpSent] = useState(false);
-  const [resendTimer, setResendTimer] = useState(0);
-  const [otpVerified, setOtpVerified] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [confirmedTotal, setConfirmedTotal] = useState(0);
+  const submittingRef = useRef(false);
+  const pendingRef = useRef<{ id: string; fingerprint: string; uncertain: boolean } | null>(null);
   const [confirmedOrderId, setConfirmedOrderId] = useState('');
   const [whatsappTarget, setWhatsappTarget] = useState<'store' | 'customer' | 'both'>(() => {
     if (customerWhatsapp && storeWhatsapp) return 'store';
@@ -50,57 +50,15 @@ export function CartDrawer({
     return 'store';
   });
 
-  const needsOtp = (paymentMethod === 'faturado' || paymentMethod === 'rma') && !otpVerified;
+  const creditPayment = paymentMethod === 'faturado' || paymentMethod === 'rma';
   const whatsappOptions = [
     { value: 'store' as const, label: 'Loja', enabled: Boolean(storeWhatsapp || WHATSAPP_NUMBER) },
     { value: 'customer' as const, label: 'Cliente', enabled: Boolean(customerWhatsapp) },
     { value: 'both' as const, label: 'Loja + cliente', enabled: Boolean(storeWhatsapp || WHATSAPP_NUMBER) && Boolean(customerWhatsapp) },
   ].filter((option) => option.enabled);
 
-  useEffect(() => {
-    if (resendTimer > 0) {
-      const t = setTimeout(() => setResendTimer(resendTimer - 1), 1000);
-      return () => clearTimeout(t);
-    }
-  }, [resendTimer]);
-
-  function sendOtp() {
-    setOtpSent(true);
-    setResendTimer(30);
-    setOtpCode(['', '', '', '']);
-    setOtpError(false);
-  }
-
-  function handleOtpChange(idx: number, val: string) {
-    if (!/\d?/.test(val)) return;
-    const next = [...otpCode];
-    next[idx] = val.slice(-1);
-    setOtpCode(next);
-    setOtpError(false);
-    if (val && idx < 3) {
-      const nextInput = document.getElementById(`otp-${idx + 1}`);
-      nextInput?.focus();
-    }
-  }
-
-  function verifyOtp() {
-    const entered = otpCode.join('');
-    if (entered.length === 4 && entered === '1234') {
-      setOtpVerified(true);
-      setShowOtp(false);
-      setOtpSent(false);
-    } else {
-      setOtpError(true);
-    }
-  }
-
   function handleConfirmClick() {
-    if (needsOtp) {
-      sendOtp();
-      setShowOtp(true);
-      return;
-    }
-    submitOrder();
+    void submitOrder(false);
   }
 
   function openSelectedWhatsApp(message: string) {
@@ -122,28 +80,46 @@ export function CartDrawer({
     });
   }
 
-  function submitOrder() {
-    const orderId = generateOrderId();
-    setConfirmedOrderId(orderId);
-    onSendOrder(paymentMethod, deliveryMethod);
-    if (paymentMethod === 'pix') {
-      const msg = formatWhatsAppMessage(cart, businessName, city, grandTotal, orderId, paymentMethod, deliveryMethod);
-      openSelectedWhatsApp(msg);
+  async function submitOrder(share: boolean) {
+    if (submittingRef.current) return;
+    if (!isAuthenticated) { onLoginRequired(); return; }
+    if (!cart.length || !businessName.trim() || !city.trim()) return;
+    if (creditPayment) {
+      setSubmitError('Pagamento com crédito precisa de autorização do estabelecimento. Escolha PIX ou cartão para enviar o pedido.');
+      return;
     }
-    setStep('confirmation');
+    const fingerprint = JSON.stringify({ cart, businessName, city, paymentMethod, deliveryMethod });
+    if (pendingRef.current && pendingRef.current.fingerprint !== fingerprint) {
+      setSubmitError('Há um envio sem confirmação. Restaure os dados do pedido anterior e tente novamente antes de enviar outro pedido.');
+      return;
+    }
+    const attempt = pendingRef.current ?? { id: crypto.randomUUID(), fingerprint, uncertain: false };
+    pendingRef.current = attempt;
+    submittingRef.current = true;
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      const saved = await onSendOrder(paymentMethod, deliveryMethod, attempt.id);
+      setConfirmedOrderId(saved.id);
+      setConfirmedTotal(saved.total);
+      pendingRef.current = null;
+      setStep('confirmation');
+      if (share || paymentMethod === 'pix') {
+        const message = formatWhatsAppMessage(cart, businessName, city, saved.total, saved.id, paymentMethod, deliveryMethod);
+        openSelectedWhatsApp(message);
+      }
+    } catch (error) {
+      if (error instanceof B2bOrderRejected && !attempt.uncertain) pendingRef.current = null;
+      else attempt.uncertain = true;
+      setSubmitError(error instanceof Error ? error.message : 'Não foi possível confirmar o pedido. Tente novamente.');
+    } finally {
+      submittingRef.current = false;
+      setSubmitting(false);
+    }
   }
 
   function handleWhatsAppDirectOrder() {
-    if (!isAuthenticated) {
-      onLoginRequired();
-      return;
-    }
-    const orderId = generateOrderId();
-    setConfirmedOrderId(orderId);
-    const msg = formatWhatsAppMessage(cart, businessName, city, cartTotal, orderId, paymentMethod, deliveryMethod);
-    openSelectedWhatsApp(msg);
-    onSendOrder(paymentMethod, deliveryMethod);
-    setStep('confirmation');
+    void submitOrder(true);
   }
 
   if (!open) return null;
@@ -161,10 +137,9 @@ export function CartDrawer({
   }
 
   function handleClose() {
+    if (submittingRef.current) return;
     setStep('cart');
-    setOtpVerified(false);
-    setOtpSent(false);
-    setOtpCode(['', '', '', '']);
+    setSubmitError(null);
     onClose();
   }
 
@@ -179,6 +154,7 @@ export function CartDrawer({
   return (
     <div className="cart-backdrop" onClick={handleClose}>
       <aside className="cart-drawer" onClick={(e) => e.stopPropagation()}>
+        {submitError && <p role="alert" className="otp-error-msg">{submitError}</p>}
         <div className="drawer-header">
           <div>
             <span className="section-kicker">
@@ -207,14 +183,14 @@ export function CartDrawer({
                         <strong>{item.name}</strong>
                         <small>{money.format(item.price)} / un.</small>
                         <div className="quantity-control">
-                          <button onClick={() => onDecrement(item.id)} className="qty-btn-touch"><Minus size={14} /></button>
+                          <button disabled={submitting} onClick={() => onDecrement(item.id)} className="qty-btn-touch"><Minus size={14} /></button>
                           <b>{item.quantity}</b>
-                          <button onClick={() => onIncrement(item.id)} className="qty-btn-touch"><Plus size={14} /></button>
+                          <button disabled={submitting} onClick={() => onIncrement(item.id)} className="qty-btn-touch"><Plus size={14} /></button>
                         </div>
                       </div>
                       <div className="drawer-item-end">
                         <strong>{money.format(item.price * item.quantity)}</strong>
-                        <button onClick={() => onRemove(item.id)} aria-label="Remover item" className="qty-btn-touch">
+                        <button disabled={submitting} onClick={() => onRemove(item.id)} aria-label="Remover item" className="qty-btn-touch">
                           <Trash2 size={15} />
                         </button>
                       </div>
@@ -226,11 +202,11 @@ export function CartDrawer({
                   <span className="section-kicker">Para enviar o pedido</span>
                   <label>
                     Nome da empresa/assistência
-                    <input value={businessName} onChange={(e) => onBusinessNameChange(e.target.value)} placeholder="Ex: Conserta Tudo" />
+                    <input disabled={submitting} value={businessName} onChange={(e) => onBusinessNameChange(e.target.value)} placeholder="Ex: Conserta Tudo" />
                   </label>
                   <label>
                     Cidade
-                    <input value={city} onChange={(e) => onCityChange(e.target.value)} placeholder="Ex: São Paulo, SP" />
+                    <input disabled={submitting} value={city} onChange={(e) => onCityChange(e.target.value)} placeholder="Ex: São Paulo, SP" />
                   </label>
                 </div>
 
@@ -240,13 +216,13 @@ export function CartDrawer({
                     <strong>{money.format(cartTotal)}</strong>
                   </div>
                   <small>Valores de atacado • Frete calculado no checkout</small>
-                  <button className="whatsapp-button" onClick={handleCheckout} disabled={!canSubmit}>
+                  <button className="whatsapp-button" onClick={handleCheckout} disabled={!canSubmit || submitting}>
                     Ir para checkout <ArrowRight size={17} />
                   </button>
                   <button
                     className="whatsapp-direct-button"
                     onClick={handleWhatsAppDirectOrder}
-                    disabled={!canSubmit}
+                    disabled={!canSubmit || submitting}
                   >
                     <MessageCircle size={18} /> Fazer Pedido via WhatsApp
                   </button>
@@ -276,6 +252,7 @@ export function CartDrawer({
                     <button
                       key={pm.value}
                       className={`payment-option ${paymentMethod === pm.value ? 'selected' : ''}`}
+                      disabled={submitting}
                       onClick={() => setPaymentMethod(pm.value)}
                     >
                       <Icon size={18} /> {pm.label}
@@ -294,6 +271,7 @@ export function CartDrawer({
                     <button
                       key={dm.value}
                       className={`delivery-option ${deliveryMethod === dm.value ? 'selected' : ''}`}
+                      disabled={submitting}
                       onClick={() => setDeliveryMethod(dm.value)}
                     >
                       <Icon size={18} /> {dm.label}
@@ -345,64 +323,13 @@ export function CartDrawer({
               </div>
             </div>
 
-            {otpVerified && (
-              <div className="sent-message" style={{ marginBottom: '12px' }}>
-                <Check size={15} /> WhatsApp verificado! Você pode confirmar o pedido.
-              </div>
-            )}
-
+            {creditPayment && <p role="note">Pagamentos com crédito dependem de autorização do estabelecimento e estão indisponíveis neste checkout.</p>}
             <div className="checkout-actions">
-              <button className="rma-advance-btn" onClick={() => setStep('cart')}>Voltar</button>
-              <button className="module-submit-btn" onClick={handleConfirmClick}>
-                {needsOtp ? <><MessageCircle size={16} /> Verificar WhatsApp</> : <><Check size={16} /> Confirmar Pedido</>}
+              <button className="rma-advance-btn" disabled={submitting} onClick={() => setStep('cart')}>Voltar</button>
+              <button className="module-submit-btn" disabled={!canSubmit || submitting || creditPayment} onClick={handleConfirmClick}>
+                <Check size={16} /> {submitting ? 'Enviando...' : 'Confirmar Pedido'}
               </button>
             </div>
-
-            {showOtp && (
-              <div className="modal-backdrop" onClick={() => setShowOtp(false)}>
-                <div className="modal-content otp-modal" onClick={(e) => e.stopPropagation()}>
-                  <div className="modal-header">
-                    <h3>Verificação por WhatsApp</h3>
-                    <button onClick={() => setShowOtp(false)}><X size={18} /></button>
-                  </div>
-                  <p className="otp-description">
-                    Para pagamentos com desconto de atacado ou crédito B2B, digite o código de 4 dígitos enviado para o WhatsApp cadastrado.
-                  </p>
-                  {otpSent && (
-                    <p className="otp-sent-hint">
-                      <MessageCircle size={14} /> Código de verificação enviado para o contato cadastrado.
-                    </p>
-                  )}
-                  <div className="otp-input-row">
-                    {otpCode.map((digit, idx) => (
-                      <input
-                        key={idx}
-                        id={`otp-${idx}`}
-                        type="text"
-                        inputMode="numeric"
-                        maxLength={1}
-                        value={digit}
-                        onChange={(e) => handleOtpChange(idx, e.target.value)}
-                        className={`otp-digit ${otpError ? 'error' : ''}`}
-                      />
-                    ))}
-                  </div>
-                  {otpError && <p className="otp-error-msg">Código incorreto. Tente novamente.</p>}
-                  <div className="otp-actions">
-                    <button
-                      className="rma-advance-btn"
-                      onClick={sendOtp}
-                      disabled={resendTimer > 0}
-                    >
-                      {resendTimer > 0 ? `Reenviar em ${resendTimer}s` : 'Reenviar código'}
-                    </button>
-                    <button className="module-submit-btn" onClick={verifyOtp}>
-                      <Check size={16} /> Verificar
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
         )}
 
@@ -418,7 +345,7 @@ export function CartDrawer({
               <div><span>Pedido:</span><strong>#{confirmedOrderId}</strong></div>
               <div><span>Pagamento:</span><strong>{paymentMethods.find((p) => p.value === paymentMethod)?.label}</strong></div>
               <div><span>Entrega:</span><strong>{deliveryMethods.find((d) => d.value === deliveryMethod)?.label}</strong></div>
-              <div><span>Total:</span><strong>{money.format(grandTotal)}</strong></div>
+              <div><span>Total:</span><strong>{money.format(confirmedTotal)}</strong></div>
             </div>
             {paymentMethod === 'pix' && (
               <div className="confirmation-pix-area">
@@ -427,8 +354,15 @@ export function CartDrawer({
             )}
             {paymentMethod !== 'pix' && (
               <p className="confirmation-hint">
-                <MessageCircle size={14} /> Os dados do pedido foram enviados via WhatsApp. Entraremos em contato para confirmar o pagamento.
+                <MessageCircle size={14} /> Seu pedido foi registrado. Entre em contato com o estabelecimento para combinar o pagamento.
               </p>
+            )}
+            {whatsappOptions.length > 0 && (
+              <button className="whatsapp-direct-button" onClick={() => openSelectedWhatsApp(
+                formatWhatsAppMessage(cart, businessName, city, confirmedTotal, confirmedOrderId, paymentMethod, deliveryMethod),
+              )}>
+                <MessageCircle size={18} /> Enviar pedido pelo WhatsApp
+              </button>
             )}
             <button className="primary-button" onClick={handleClose}>
               Concluir <ArrowRight size={16} />

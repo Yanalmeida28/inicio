@@ -6,6 +6,7 @@ import {
 import * as XLSX from 'xlsx';
 import type { PartnerProduct, PartnerCustomer } from '../../types';
 import { money } from '../../utils';
+import { buildCsv, escapeHtml } from '../../lib/exportSafety';
 
 type ImportTarget = 'produtos' | 'clientes';
 
@@ -261,8 +262,8 @@ function exportProductsCSV(products: PartnerProduct[]) {
     p.name, p.sku ?? '', String(p.cost_price), String(p.sale_price),
     String(p.wholesale_price), String(p.stock), p.category ?? '',
   ]);
-  const csv = [headers, ...rows].map((r) => r.map((c) => `"${c}"`).join(';')).join('\n');
-  downloadFile('\uFEFF' + csv, 'produtos.csv', 'text/csv;charset=utf-8');
+  const csv = buildCsv([headers, ...rows]);
+  downloadFile(csv, 'produtos.csv', 'text/csv;charset=utf-8');
 }
 
 function exportProductsExcel(products: PartnerProduct[]) {
@@ -271,14 +272,15 @@ function exportProductsExcel(products: PartnerProduct[]) {
     p.name, p.sku ?? '', p.cost_price, p.sale_price,
     p.wholesale_price, p.stock, p.category ?? '',
   ]);
-  const html = `<table xmlns:x="urn:schemas-microsoft-com:office:excel"><thead><tr>${headers.map((h) => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
-  downloadFile(html, 'produtos.xls', 'application/vnd.ms-excel');
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([headers, ...rows]), 'Produtos');
+  XLSX.writeFile(workbook, 'produtos.xlsx');
 }
 
 function exportProductsPDF(products: PartnerProduct[]) {
   const win = window.open('', '_blank');
   if (!win) return;
-  win.document.write(`<html><head><title>Relatório de Produtos</title><style>body{font-family:sans-serif;padding:20px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:6px;text-align:left;font-size:12px}th{background:#f0f0f0}h1{font-size:16px}</style></head><body><h1>Relatório de Produtos</h1><table><thead><tr><th>Nome</th><th>SKU</th><th>Custo</th><th>Varejo</th><th>Atacado</th><th>Estoque</th><th>Categoria</th></tr></thead><tbody>${products.map((p) => `<tr><td>${p.name}</td><td>${p.sku ?? '—'}</td><td>${money.format(p.cost_price)}</td><td>${money.format(p.sale_price)}</td><td>${p.wholesale_price > 0 ? money.format(p.wholesale_price) : '—'}</td><td>${p.stock}</td><td>${p.category ?? '—'}</td></tr>`).join('')}</tbody></table></body></html>`);
+  win.document.write(`<html><head><title>Relatório de Produtos</title><style>body{font-family:sans-serif;padding:20px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:6px;text-align:left;font-size:12px}th{background:#f0f0f0}h1{font-size:16px}</style></head><body><h1>Relatório de Produtos</h1><table><thead><tr><th>Nome</th><th>SKU</th><th>Custo</th><th>Varejo</th><th>Atacado</th><th>Estoque</th><th>Categoria</th></tr></thead><tbody>${products.map((p) => `<tr><td>${escapeHtml(p.name)}</td><td>${escapeHtml(p.sku ?? '—')}</td><td>${money.format(p.cost_price)}</td><td>${money.format(p.sale_price)}</td><td>${p.wholesale_price > 0 ? money.format(p.wholesale_price) : '—'}</td><td>${escapeHtml(p.stock)}</td><td>${escapeHtml(p.category ?? '—')}</td></tr>`).join('')}</tbody></table></body></html>`);
   win.document.close();
   win.print();
 }
@@ -289,8 +291,8 @@ function exportCustomersCSV(customers: PartnerCustomer[]) {
     c.name, c.document ?? '', c.phone ?? '', c.email ?? '',
     c.address ?? '', c.neighborhood ?? '', c.city ?? '', c.customer_type ?? 'varejo',
   ]);
-  const csv = [headers, ...rows].map((r) => r.map((c) => `"${c}"`).join(';')).join('\n');
-  downloadFile('\uFEFF' + csv, 'clientes.csv', 'text/csv;charset=utf-8');
+  const csv = buildCsv([headers, ...rows]);
+  downloadFile(csv, 'clientes.csv', 'text/csv;charset=utf-8');
 }
 
 function exportCustomersExcel(customers: PartnerCustomer[]) {
@@ -299,14 +301,15 @@ function exportCustomersExcel(customers: PartnerCustomer[]) {
     c.name, c.document ?? '', c.phone ?? '', c.email ?? '',
     c.address ?? '', c.neighborhood ?? '', c.city ?? '', c.customer_type ?? 'varejo',
   ]);
-  const html = `<table xmlns:x="urn:schemas-microsoft-com:office:excel"><thead><tr>${headers.map((h) => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
-  downloadFile(html, 'clientes.xls', 'application/vnd.ms-excel');
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([headers, ...rows]), 'Clientes');
+  XLSX.writeFile(workbook, 'clientes.xlsx');
 }
 
 function exportCustomersPDF(customers: PartnerCustomer[]) {
   const win = window.open('', '_blank');
   if (!win) return;
-  win.document.write(`<html><head><title>Relatório de Clientes</title><style>body{font-family:sans-serif;padding:20px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:6px;text-align:left;font-size:12px}th{background:#f0f0f0}h1{font-size:16px}</style></head><body><h1>Relatório de Clientes</h1><table><thead><tr><th>Nome</th><th>CPF/CNPJ</th><th>WhatsApp</th><th>E-mail</th><th>Cidade</th><th>Tipo</th></tr></thead><tbody>${customers.map((c) => `<tr><td>${c.name}</td><td>${c.document ?? '—'}</td><td>${c.phone ?? '—'}</td><td>${c.email ?? '—'}</td><td>${c.city ?? '—'}</td><td>${c.customer_type ?? 'varejo'}</td></tr>`).join('')}</tbody></table></body></html>`);
+  win.document.write(`<html><head><title>Relatório de Clientes</title><style>body{font-family:sans-serif;padding:20px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:6px;text-align:left;font-size:12px}th{background:#f0f0f0}h1{font-size:16px}</style></head><body><h1>Relatório de Clientes</h1><table><thead><tr><th>Nome</th><th>CPF/CNPJ</th><th>WhatsApp</th><th>E-mail</th><th>Cidade</th><th>Tipo</th></tr></thead><tbody>${customers.map((c) => `<tr><td>${escapeHtml(c.name)}</td><td>${escapeHtml(c.document ?? '—')}</td><td>${escapeHtml(c.phone ?? '—')}</td><td>${escapeHtml(c.email ?? '—')}</td><td>${escapeHtml(c.city ?? '—')}</td><td>${escapeHtml(c.customer_type ?? 'varejo')}</td></tr>`).join('')}</tbody></table></body></html>`);
   win.document.close();
   win.print();
 }

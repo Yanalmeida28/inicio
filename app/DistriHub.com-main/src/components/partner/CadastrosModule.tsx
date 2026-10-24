@@ -14,6 +14,7 @@ import type {
   PersonType, RmaRequest,
 } from '../../types';
 import { formatCnpj, formatCpf, isValidCnpj, isValidCpf, money, normalizeDocument } from '../../utils';
+import { ProductProfitPreview } from './ProductProfitPreview';
 import { ImportExportModule, ExportButtons } from './ImportExportModule';
 import { saleReturnLabel, saleItemDescription } from '../../lib/saleReturns';
 
@@ -185,6 +186,7 @@ export function CadastrosModule({
           <div hidden={subTab !== 'clientes'}>
           <CustomersSubTab
             customers={customers}
+            branches={branches}
             isActive={isActive && subTab === 'clientes'}
             sales={allSales}
             rmaRequests={rmaRequests}
@@ -327,16 +329,7 @@ function ProductsSubTab({ defaultIsService = false, isActive = true, products, a
   const [savingEdit, setSavingEdit] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
 
-  function getGainPercentage(price: string) {
-    if (!cost.trim() || !price.trim()) return null;
-    const costValue = Number(cost);
-    const priceValue = Number(price);
-    if (!Number.isFinite(costValue) || !Number.isFinite(priceValue) || costValue <= 0 || priceValue <= 0) return null;
-    return ((priceValue - costValue) / costValue) * 100;
-  }
 
-  const retailGain = getGainPercentage(sale);
-  const wholesaleGain = getGainPercentage(wholesale);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -430,7 +423,7 @@ function ProductsSubTab({ defaultIsService = false, isActive = true, products, a
           </div>
           </section>
           <section className="product-form-section">
-            <h4>Preços e ganho</h4>
+            <h4>Preços e rentabilidade</h4>
           <div className="form-row product-form-row">
             <label>
               Preço de Custo
@@ -445,11 +438,7 @@ function ProductsSubTab({ defaultIsService = false, isActive = true, products, a
               <input type="number" step="0.01" value={wholesale} onChange={(e) => setWholesale(e.target.value)} placeholder="0,00" />
             </label>
           </div>
-          <div className="product-gain-preview" aria-live="polite">
-            <span>Ganho no varejo: <strong className={retailGain !== null && retailGain < 0 ? 'is-loss' : ''}>{retailGain === null ? 'Informe custo e preço' : `${retailGain.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`}</strong></span>
-            <span>Ganho no atacado: <strong className={wholesaleGain !== null && wholesaleGain < 0 ? 'is-loss' : ''}>{wholesaleGain === null ? 'Informe custo e preço' : `${wholesaleGain.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`}</strong></span>
-            <small>Percentual calculado sobre o preço de custo.</small>
-          </div>
+          <ProductProfitPreview cost={cost} retail={sale} wholesale={wholesale} />
           </section>
           <section className="product-form-section">
             <h4>Estoque e categoria</h4>
@@ -542,13 +531,13 @@ function ProductsSubTab({ defaultIsService = false, isActive = true, products, a
                   <td>{p.is_service ? '—' : p.stock}</td>
                   <td>
                     {!p.is_service && p.stock <= (p.min_stock || 0) && p.stock > 0 && (
-                      <span className="rma-status-badge" style={{ color: '#B45309', borderColor: '#B45309' }}>Estoque baixo</span>
+                      <span className="rma-status-badge stock-low">Estoque baixo</span>
                     )}
                     {!p.is_service && p.stock === 0 && (
-                      <span className="rma-status-badge" style={{ color: '#B91C1C', borderColor: '#B91C1C' }}>Sem estoque</span>
+                      <span className="rma-status-badge stock-empty">Sem estoque</span>
                     )}
                     {!p.is_service && p.stock > (p.min_stock || 0) && (
-                      <span className="rma-status-badge" style={{ color: '#15803D', borderColor: '#15803D' }}>OK</span>
+                      <span className="rma-status-badge stock-ok">OK</span>
                     )}
                   </td>
                   <td className="product-actions-cell">
@@ -687,15 +676,7 @@ function ProductEditModal({ product, categories, suppliers, onAddSupplier, savin
   const [pisRate, setPisRate] = useState(String(product.pis_rate ?? 0));
   const [cofinsRate, setCofinsRate] = useState(String(product.cofins_rate ?? 0));
 
-  function getGainPercentage(price: string) {
-    const costValue = Number(cost);
-    const priceValue = Number(price);
-    if (!cost.trim() || !price.trim() || !Number.isFinite(costValue) || !Number.isFinite(priceValue) || costValue <= 0 || priceValue <= 0) return null;
-    return ((priceValue - costValue) / costValue) * 100;
-  }
 
-  const retailGain = getGainPercentage(sale);
-  const wholesaleGain = getGainPercentage(wholesale);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -716,13 +697,9 @@ function ProductEditModal({ product, categories, suppliers, onAddSupplier, savin
         <div className="modal-header"><h4>Editar produto</h4><button type="button" className="modal-close" onClick={onClose} aria-label="Fechar">×</button></div>
         <div className="product-edit-body">
           <div className="form-row"><label>Nome<input value={name} onChange={(e) => setName(e.target.value)} required /></label><label>SKU<input value={sku} onChange={(e) => setSku(e.target.value)} /></label></div>
-          <h4>Preços e ganho</h4>
+          <h4>Preços e rentabilidade</h4>
           <div className="form-row"><label>Preço de custo<input type="number" min="0" step="0.01" value={cost} onChange={(e) => setCost(e.target.value)} /></label><label>Preço varejo<input type="number" min="0" step="0.01" value={sale} onChange={(e) => setSale(e.target.value)} required /></label><label>Preço atacado<input type="number" min="0" step="0.01" value={wholesale} onChange={(e) => setWholesale(e.target.value)} /></label></div>
-          <div className="product-gain-preview" aria-live="polite">
-            <span>Ganho no varejo: <strong className={retailGain !== null && retailGain < 0 ? 'is-loss' : ''}>{retailGain === null ? 'Informe custo e preço' : `${retailGain.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`}</strong></span>
-            <span>Ganho no atacado: <strong className={wholesaleGain !== null && wholesaleGain < 0 ? 'is-loss' : ''}>{wholesaleGain === null ? 'Informe custo e preço' : `${wholesaleGain.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`}</strong></span>
-            <small>Percentual calculado sobre o preço de custo.</small>
-          </div>
+          <ProductProfitPreview cost={cost} retail={sale} wholesale={wholesale} />
           <div className="form-row"><label>Estoque<input type="number" min="0" step="1" value={stock} onChange={(e) => setStock(e.target.value)} /></label><label>Estoque mínimo<input type="number" min="0" step="1" value={minStock} onChange={(e) => setMinStock(e.target.value)} /></label><label>Categoria<select value={category} onChange={(e) => setCategory(e.target.value)}><option value="">Selecione...</option>{categories.map((item) => <option key={item.id} value={item.name}>{item.name}</option>)}</select></label></div>
           <SupplierField suppliers={suppliers} value={supplierId} onChange={setSupplierId} onAdd={onAddSupplier} disabled={saving} onBusyChange={setSupplierSaving} />
           <label className="checkbox-label"><input type="checkbox" checked={isService} onChange={(e) => setIsService(e.target.checked)} /> É um serviço (sem estoque)</label>
@@ -838,7 +815,7 @@ function CategoriesSubTab({ categories, products, onAdd, onDelete }: {
   onDelete: (id: string) => Promise<void>;
 }) {
   const [name, setName] = useSessionDraftState('categories:name', '');
-  const [selectedCategoryId, setSelectedCategoryId] = useSessionDraftState<string | null>('categories:selected-id', null);
+  const [selectedCategoryId, setSelectedCategoryId] = useSessionDraftState<string | null>('categories:selected-id', null, undefined, value => value === null || typeof value === 'string');
   const selectedCategory = categories.find((category) => category.id === selectedCategoryId) ?? null;
   const categoryProducts = selectedCategory
     ? products.filter((product) => product.category === selectedCategory.name)
@@ -1195,10 +1172,11 @@ function ModifiersSubTab({ modifiers, products, onAdd, onDelete }: {
   );
 }
 
-function CustomersSubTab({ isActive = true, customers, sales, rmaRequests, salespeople, selectedBranchId, onAdd, onUpdate, onDelete, onLoadCustomer }: {
+function CustomersSubTab({ isActive = true, customers, branches, sales, rmaRequests, salespeople, selectedBranchId, onAdd, onUpdate, onDelete, onLoadCustomer }: {
   isActive?: boolean;
   rmaRequests: RmaRequest[];
   customers: PartnerCustomer[];
+  branches: PartnerBranch[];
   sales: PartnerSale[];
   salespeople: PartnerSalesperson[];
   onLoadCustomer: (id: string) => Promise<PartnerCustomer>;
@@ -1208,8 +1186,15 @@ function CustomersSubTab({ isActive = true, customers, sales, rmaRequests, sales
   onDelete: (id: string) => Promise<void>;
 }) {
   const [showForm, setShowForm] = useSessionDraftState('customers:show-form', false);
-  const [editingCustomerId, setEditingCustomerId] = useSessionDraftState<string | null>('customers:editing-id', null);
+  const [editingCustomerId, setEditingCustomerId] = useSessionDraftState<string | null>('customers:editing-id', null, undefined, value => value === null || typeof value === 'string');
   const [name, setName] = useSessionDraftState('customers:name', '');
+  const [customerBranchId, setCustomerBranchId] = useSessionDraftState('customers:branch-id', '');
+  const [branchError, setBranchError] = useState<string | null>(null);
+  const editingCustomer = editingCustomerId ? customers.find(customer => customer.id === editingCustomerId) : null;
+  const existingBranchId = editingCustomer?.branch_id;
+  const isSharedCustomer = Boolean(editingCustomer && !existingBranchId);
+  const validDraftBranchId = branches.some(branch => branch.id === customerBranchId) ? customerBranchId : '';
+  const targetBranchId = existingBranchId || selectedBranchId || validDraftBranchId || (branches.length === 1 ? branches[0].id : '');
   const [document, setDocument] = useSessionDraftState('customers:document', '');
   const [personType, setPersonType] = useSessionDraftState<PersonType | ''>('customers:person-type', 'PF');
   const [phone, setPhone] = useSessionDraftState('customers:phone', '');
@@ -1233,12 +1218,14 @@ function CustomersSubTab({ isActive = true, customers, sales, rmaRequests, sales
   }, [isActive]);
 
   function resetForm() {
+    setCustomerBranchId(''); setBranchError(null);
     setName(''); setDocument(''); setPersonType('PF'); setPhone(''); setEmail(''); setBirthday(''); setAddress('');
     setNeighborhood(''); setCity(''); setDevice(''); setNotes(''); setCustomerType('varejo');
     setEditingCustomerId(null); setShowForm(false);
   }
 
   function openEditForm(customer: PartnerCustomer) {
+    setCustomerBranchId(''); setBranchError(null);
     setEditingCustomerId(customer.id);
     setName(customer.name ?? '');
     const normDoc = customer.document ? normalizeDocument(customer.document) : '';
@@ -1260,10 +1247,11 @@ function CustomersSubTab({ isActive = true, customers, sales, rmaRequests, sales
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) return;
-    if (!selectedBranchId && !editingCustomerId) {
-      window.alert('Selecione uma filial antes de cadastrar clientes para manter a separação entre filiais.');
+    if (!targetBranchId && !isSharedCustomer) {
+      setBranchError(branches.length ? 'Selecione a filial do cliente no campo abaixo para salvar.' : 'Cadastre uma filial em Configurações antes de salvar o cliente.');
       return;
     }
+    setBranchError(null);
 
     const normalizedDocument = normalizeDocument(document);
     let effectivePersonType = personType;
@@ -1306,10 +1294,10 @@ function CustomersSubTab({ isActive = true, customers, sales, rmaRequests, sales
       device_model: device || null,
       notes: notes || null,
       customer_type: customerType,
-      branch_id: editingCustomerId ? (customers.find((customer) => customer.id === editingCustomerId)?.branch_id ?? selectedBranchId) : selectedBranchId,
+      branch_id: isSharedCustomer ? null : targetBranchId,
     };
 
-    if (!payload.branch_id) {
+    if (!payload.branch_id && !isSharedCustomer) {
       window.alert('Não foi possível localizar a filial atual do cliente. Selecione uma filial antes de salvar.');
       return;
     }
@@ -1382,6 +1370,7 @@ function CustomersSubTab({ isActive = true, customers, sales, rmaRequests, sales
           }
           setShowForm(!showForm);
           if (!showForm) {
+            setCustomerBranchId(''); setBranchError(null);
             setName(''); setDocument(''); setPersonType('PF'); setPhone(''); setEmail(''); setBirthday(''); setAddress('');
             setNeighborhood(''); setCity(''); setDevice(''); setNotes(''); setCustomerType('varejo');
             setEditingCustomerId(null);
@@ -1402,6 +1391,14 @@ function CustomersSubTab({ isActive = true, customers, sales, rmaRequests, sales
       />
       {showForm && (
         <form className="rma-form" onSubmit={handleSubmit}>
+          {isSharedCustomer ? <p>Cliente compartilhado entre filiais. O vínculo será preservado ao salvar.</p> : <label>Filial do cliente
+            <select aria-label="Filial do cliente" value={targetBranchId} disabled={Boolean(existingBranchId || selectedBranchId)}
+              onChange={event => { setCustomerBranchId(event.target.value); setBranchError(null); }}>
+              <option value="">Selecione uma filial</option>
+              {branches.filter(branch => branch.is_active !== false || branch.id === targetBranchId).map(branch => <option key={branch.id} value={branch.id}>{branch.name}{branch.is_active === false ? ' (arquivada)' : ''}</option>)}
+            </select>
+          </label>}
+          {branchError && <p className="otp-error-msg" role="alert">{branchError}</p>}
           <div className="form-row">
             <label>
               Nome Completo / Razão Social
@@ -1450,7 +1447,7 @@ function CustomersSubTab({ isActive = true, customers, sales, rmaRequests, sales
             </label>
             <label>
               E-mail
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="cliente@email.com" />
+              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}  />
             </label>
             <label>
               Data de Nascimento
@@ -1492,7 +1489,7 @@ function CustomersSubTab({ isActive = true, customers, sales, rmaRequests, sales
         </form>
       )}
 
-      <div className="stock-table-wrap">
+      <div className="stock-table-wrap customer-list-wrap">
         <table className="rma-table customer-list-table">
           <colgroup><col className="customer-col-name" /><col className="customer-col-document" /><col className="customer-col-phone" /><col className="customer-col-location" /><col className="customer-col-birthday" /><col className="customer-col-actions" /></colgroup>
           <thead><tr><th>Nome</th><th>CPF/CNPJ</th><th>WhatsApp</th><th>Bairro/Cidade</th><th>Aniversário</th><th className="customer-actions-heading">Ações</th></tr></thead>
@@ -1507,11 +1504,11 @@ function CustomersSubTab({ isActive = true, customers, sales, rmaRequests, sales
 
                 return (
                   <tr key={c.id}>
-                    <td>
+                    <td data-label="Nome">
                       <strong>{c.name}</strong>
                       {c.customer_type === 'atacado' && <small className="tag-service">Atacado</small>}
                     </td>
-                    <td>
+                    <td data-label="CPF/CNPJ">
                       <div>
                         <span>{formattedDoc}</span>
                         {normDoc && (
@@ -1521,10 +1518,10 @@ function CustomersSubTab({ isActive = true, customers, sales, rmaRequests, sales
                         )}
                       </div>
                     </td>
-                    <td>{c.phone ?? '—'}</td>
-                    <td>{[c.neighborhood, c.city].filter(Boolean).join(', ') || '—'}</td>
-                    <td>{c.birthday ? new Date(c.birthday).toLocaleDateString('pt-BR') : '—'}</td>
-                    <td className="customer-actions-cell">
+                    <td data-label="WhatsApp">{c.phone ?? '—'}</td>
+                    <td data-label="Bairro/Cidade">{[c.neighborhood, c.city].filter(Boolean).join(', ') || '—'}</td>
+                    <td data-label="Aniversário">{c.birthday ? new Date(c.birthday).toLocaleDateString('pt-BR') : '—'}</td>
+                    <td className="customer-actions-cell" data-label="Ações">
                       <div className="product-actions-menu">
                         <button type="button" className="product-actions-trigger" onClick={(event) => { setOpenCustomerActionId(openCustomerActionId === c.id ? null : c.id); setCustomerActionPosition(openCustomerActionId === c.id ? null : getActionPopoverPosition(event, 245, 204)); }} aria-label={`Ações de ${c.name}`} aria-expanded={openCustomerActionId === c.id}>
                           <MoreVertical size={18} />
@@ -1751,7 +1748,7 @@ function SuppliersSubTab({ suppliers, onAdd, onUpdate, onDelete }: {
   const [name, setName] = useSessionDraftState('suppliers:name', '');
   const [phone, setPhone] = useSessionDraftState('suppliers:phone', '');
   const [notes, setNotes] = useSessionDraftState('suppliers:notes', '');
-  const [editingId, setEditingId] = useSessionDraftState<string | null>('suppliers:editing-id', null);
+  const [editingId, setEditingId] = useSessionDraftState<string | null>('suppliers:editing-id', null, undefined, value => value === null || typeof value === 'string');
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -1879,7 +1876,7 @@ function SalespeopleSubTab({
   const [role, setRole] = useSessionDraftState<SalespersonRole>('salespeople:role', 'vendedor');
   const [branchId, setBranchId] = useSessionDraftState('salespeople:branch-id', '');
 
-  const [editingId, setEditingId] = useSessionDraftState<string | null>('salespeople:editing-id', null);
+  const [editingId, setEditingId] = useSessionDraftState<string | null>('salespeople:editing-id', null, undefined, value => value === null || typeof value === 'string');
   const [editName, setEditName] = useSessionDraftState('salespeople:edit-name', '');
   const [editEmail, setEditEmail] = useSessionDraftState('salespeople:edit-email', '');
   const [editRate, setEditRate] = useSessionDraftState('salespeople:edit-rate', '');
@@ -1920,13 +1917,6 @@ function SalespeopleSubTab({
       return;
     }
 
-    if (!normalizedEmail) {
-      setFormError(
-        'Informe o e-mail do colaborador para criar o acesso ao sistema.'
-      );
-      return;
-    }
-
     setSaving(true);
     setFormError(null);
 
@@ -1939,7 +1929,7 @@ function SalespeopleSubTab({
         role,
         branch_id: branchId || null,
         phone: null,
-        email: normalizedEmail,
+        email: normalizedEmail || null,
         is_active: true,
       });
 
@@ -2003,17 +1993,10 @@ function SalespeopleSubTab({
       return;
     }
 
-    if (!normalizedEmail) {
-      setEditError(
-        'Informe o e-mail do colaborador.'
-      );
-      return;
-    }
-
     try {
       await onUpdate(id, {
         name: normalizedName,
-        email: normalizedEmail,
+        email: normalizedEmail || null,
         commission_rate:
           Number(editRate) || 0,
         new_pin: editPin || null,
@@ -2041,7 +2024,7 @@ function SalespeopleSubTab({
   ) {
     if (
       !window.confirm(
-        `Excluir o colaborador "${salespersonName}"?`
+        `Desativar o acesso de "${salespersonName}"? O histórico do colaborador será preservado.`
       )
     ) {
       return;
@@ -2078,15 +2061,13 @@ function SalespeopleSubTab({
           </label>
 
           <label>
-            E-mail de acesso
+            E-mail de acesso (opcional)
             <input
               type="email"
               value={email}
               onChange={(e) =>
                 setEmail(e.target.value)
               }
-              placeholder="joao@email.com"
-              required
             />
           </label>
 
@@ -2116,7 +2097,6 @@ function SalespeopleSubTab({
                     .slice(0, 4)
                 )
               }
-              placeholder="4 dígitos"
               maxLength={4}
             />
           </label>
@@ -2169,12 +2149,12 @@ function SalespeopleSubTab({
                 Todas as Filiais (Acesso Livre / Admin)
               </option>
 
-              {branches.map((branch) => (
+              {branches.filter(branch => branch.is_active !== false || branch.id === branchId).map((branch) => (
                 <option
                   key={branch.id}
                   value={branch.id}
                 >
-                  {branch.name}
+                  {branch.name}{branch.is_active === false ? ' (arquivada)' : ''}
                 </option>
               ))}
             </select>
@@ -2245,221 +2225,167 @@ function SalespeopleSubTab({
                   salesperson.id
                 ) {
                   return (
-                    <tr
-                      key={salesperson.id}
-                    >
-                      <td>
-                        <input
-                          className="rma-edit-input"
-                          value={editName}
-                          onChange={(e) =>
-                            setEditName(
-                              e.target.value
-                            )
-                          }
-                          placeholder="Nome"
-                          style={{
-                            width: '100%',
-                          }}
-                        />
-                      </td>
-
-                      <td>
-                        <input
-                          className="rma-edit-input"
-                          type="email"
-                          value={editEmail}
-                          onChange={(e) =>
-                            setEditEmail(
-                              e.target.value
-                            )
-                          }
-                          placeholder="E-mail"
-                          style={{
-                            width: '100%',
-                          }}
-                        />
-                      </td>
-
-                      <td>
-                        <select
-                          className="rma-edit-input"
-                          value={editRole}
-                          onChange={(e) =>
-                            setEditRole(
-                              e.target
-                                .value as SalespersonRole
-                            )
-                          }
-                        >
-                          <option value="administrador">
-                            Administrador
-                          </option>
-                          <option value="gerente">
-                            Gerente
-                          </option>
-                          <option value="caixa">
-                            Caixa
-                          </option>
-                          <option value="vendedor">
-                            Vendedor / Balcão
-                          </option>
-                          <option value="tecnico">
-                            Técnico
-                          </option>
-                          <option value="atendente">
-                            Atendente
-                          </option>
-                          <option value="logistica">
-                            Logística / Entregador
-                          </option>
-                        </select>
-                      </td>
-
-                      <td>
-                        <select
-                          className="rma-edit-input"
-                          value={editBranchId}
-                          onChange={(e) =>
-                            setEditBranchId(
-                              e.target.value
-                            )
-                          }
-                        >
-                          <option value="">
-                            Todas as Filiais
-                          </option>
-
-                          {branches.map(
-                            (branch) => (
-                              <option
-                                key={branch.id}
-                                value={branch.id}
-                              >
-                                {branch.name}
-                              </option>
-                            )
-                          )}
-                        </select>
-                      </td>
-
-                      <td>
-                        <input
-                          className="rma-edit-input"
-                          type="number"
-                          step="0.01"
-                          value={editRate}
-                          onChange={(e) =>
-                            setEditRate(
-                              e.target.value
-                            )
-                          }
-                          style={{
-                            width: '60px',
-                          }}
-                        />
-                      </td>
-
-                      <td>
-                        <input
-                          className="rma-edit-input"
-                          type="password"
-                          inputMode="numeric"
-                          value={editPin}
-                          onChange={(e) =>
-                            setEditPin(
-                              e.target.value
-                                .replace(
-                                  /\D/g,
-                                  ''
-                                )
-                                .slice(0, 4)
-                            )
-                          }
-                          placeholder="PIN"
-                          maxLength={4}
-                          style={{
-                            width: '60px',
-                          }}
-                        />
-                      </td>
-
-                      <td>
-                        <label
-                          className="checkbox-label"
-                          style={{
-                            display: 'flex',
-                            alignItems:
-                              'center',
-                            gap: '4px',
-                          }}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={editActive}
-                            onChange={(e) =>
-                              setEditActive(
-                                e.target.checked
-                              )
-                            }
-                          />
-
-                          {editActive
-                            ? 'Ativo'
-                            : 'Inativo'}
-                        </label>
-                        <details open>
-                          <summary>Acessos aos módulos</summary>
-                          <p className="otp-description">Marque os módulos liberados. Opções desabilitadas são restritas pela função; altere a função para habilitá-las.</p>
-                          {Object.entries({cadastros:'Cadastros',pdv:'PDV',caixa:'Caixa',pedidos:'Pedidos',os:'Ordens de Serviço',historico:'Histórico',suporte:'Suporte',fiscal:'Nota Fiscal',administrativo:'Administrativo',entregas:'Entregas',financeiro:'Financeiro',rma:'RMA e Devoluções',relatorios:'Relatórios', 'white-label':'Personalização',configuracoes:'Configurações'}).map(([module, label]) => (
-                            <label key={module} className="checkbox-label" style={{display:'flex',gap:6,marginTop:6}}>
-                              <input type="checkbox" aria-label={`Acesso a ${label}`} disabled={roleRestrictedModules[editRole].includes(module)} checked={!editBlockedModules.includes(module) && !roleRestrictedModules[editRole].includes(module)} onChange={event => setEditBlockedModules(previous => event.target.checked ? previous.filter(item => item !== module) : [...previous,module])} />
-                              {label}
+                    <tr key={salesperson.id} className="salesperson-edit-row">
+                      <td colSpan={8}>
+                        <div className="salesperson-edit-panel">
+                          <div className="salesperson-edit-fields">
+                            <label>
+                              Nome do colaborador
+                              <input
+                                className="rma-edit-input"
+                                value={editName}
+                                onChange={event => setEditName(event.target.value)}
+                                placeholder="Nome"
+                              />
                             </label>
-                          ))}
-                        </details>
-                      </td>
 
-                      <td>
-                        <div className="row-action-group">
-                          <button
-                            type="button"
-                            className="rma-advance-btn"
-                            onClick={() =>
-                              saveEdit(
-                                salesperson.id
-                              )
-                            }
-                            title="Salvar alterações"
-                          >
-                            <Check size={14} />
-                          </button>
+                            <label>
+                              E-mail de acesso (opcional)
+                              <input
+                                className="rma-edit-input"
+                                type="email"
+                                value={editEmail}
+                                onChange={event => setEditEmail(event.target.value)}
+                              />
+                            </label>
 
-                          <button
-                            type="button"
-                            className="rma-advance-btn"
-                            onClick={
-                              cancelEdit
-                            }
-                            title="Cancelar"
-                          >
-                            <X size={14} />
-                          </button>
+                            <label>
+                              Função
+                              <select
+                                className="rma-edit-input"
+                                value={editRole}
+                                onChange={event => setEditRole(event.target.value as SalespersonRole)}
+                              >
+                                <option value="administrador">Administrador</option>
+                                <option value="gerente">Gerente</option>
+                                <option value="caixa">Caixa</option>
+                                <option value="vendedor">Vendedor / Balcão</option>
+                                <option value="tecnico">Técnico</option>
+                                <option value="atendente">Atendente</option>
+                                <option value="logistica">Logística / Entregador</option>
+                              </select>
+                            </label>
+
+                            <label>
+                              Filial vinculada
+                              <select
+                                className="rma-edit-input"
+                                value={editBranchId}
+                                onChange={event => setEditBranchId(event.target.value)}
+                              >
+                                <option value="">Todas as filiais</option>
+                                {branches.filter(branch => branch.is_active !== false || branch.id === editBranchId).map(branch => (
+                                  <option key={branch.id} value={branch.id}>
+                                    {branch.name}{branch.is_active === false ? ' (arquivada)' : ''}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+
+                            <label>
+                              Taxa de comissão (%)
+                              <input
+                                className="rma-edit-input"
+                                type="number"
+                                step="0.01"
+                                value={editRate}
+                                onChange={event => setEditRate(event.target.value)}
+                              />
+                            </label>
+
+                            <label>
+                              PIN de acesso
+                              <input
+                                className="rma-edit-input"
+                                type="password"
+                                inputMode="numeric"
+                                value={editPin}
+                                onChange={event => setEditPin(event.target.value.replace(/\D/g, '').slice(0, 4))}
+                                maxLength={4}
+                              />
+                            </label>
+
+                            <label className="salesperson-edit-active">
+                              <input
+                                type="checkbox"
+                                checked={editActive}
+                                onChange={event => setEditActive(event.target.checked)}
+                              />
+                              Acesso {editActive ? 'ativo' : 'inativo'}
+                            </label>
+                          </div>
+
+                          <fieldset className="salesperson-edit-permissions">
+                            <legend>Acessos aos módulos</legend>
+                            <p className="otp-description">
+                              Marque os módulos liberados. Opções desabilitadas são restritas pela função; altere a função para habilitá-las.
+                            </p>
+                            <div className="salesperson-module-grid">
+                              {Object.entries({
+                                cadastros: 'Cadastros',
+                                pdv: 'PDV',
+                                caixa: 'Caixa',
+                                pedidos: 'Pedidos',
+                                os: 'Ordens de Serviço',
+                                historico: 'Histórico',
+                                suporte: 'Suporte',
+                                fiscal: 'Nota Fiscal',
+                                administrativo: 'Administrativo',
+                                entregas: 'Entregas',
+                                financeiro: 'Financeiro',
+                                rma: 'RMA e Devoluções',
+                                relatorios: 'Relatórios',
+                                'white-label': 'Personalização',
+                                configuracoes: 'Configurações',
+                              }).map(([module, label]) => {
+                                const restricted = roleRestrictedModules[editRole].includes(module);
+
+                                return (
+                                  <label
+                                    key={module}
+                                    className={`salesperson-module-option${restricted ? ' restricted' : ''}`}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      aria-label={`Acesso a ${label}`}
+                                      disabled={restricted}
+                                      checked={!editBlockedModules.includes(module) && !restricted}
+                                      onChange={event => setEditBlockedModules(previous => (
+                                        event.target.checked
+                                          ? previous.filter(item => item !== module)
+                                          : [...previous, module]
+                                      ))}
+                                    />
+                                    <span>{label}</span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </fieldset>
+
+                          {editError && (
+                            <p className="form-error-msg salesperson-edit-error" role="alert">
+                              {editError}
+                            </p>
+                          )}
+
+                          <div className="salesperson-edit-actions">
+                            <button
+                              type="button"
+                              className="rma-advance-btn"
+                              onClick={cancelEdit}
+                            >
+                              <X size={14} /> Cancelar
+                            </button>
+                            <button
+                              type="button"
+                              className="module-submit-btn"
+                              onClick={() => saveEdit(salesperson.id)}
+                            >
+                              <Check size={14} /> Salvar alterações
+                            </button>
+                          </div>
                         </div>
-
-                        {editError && (
-                          <p
-                            className="form-error-msg"
-                            style={{
-                              color:
-                                '#e3829b',
-                              fontSize:
-                                '12px',
-                            }}
-                          >
-                            {editError}
-                          </p>
-                        )}
                       </td>
                     </tr>
                   );
@@ -2560,7 +2486,8 @@ function SalespeopleSubTab({
                               salesperson.name
                             )
                           }
-                          title="Excluir"
+                          title="Desativar acesso"
+                          aria-label={`Desativar acesso de ${salesperson.name}`}
                         >
                           <Trash2 size={14} />
                         </button>
@@ -2644,7 +2571,7 @@ function ReplenishmentSubTab({ products, sales, selectedBranchId, onReplenishSto
   const classB = abcAnalysis.filter((p) => p.abcClass === 'B');
   const classC = abcAnalysis.filter((p) => p.abcClass === 'C');
 
-  const abcColors: Record<string, string> = { A: '#15803D', B: '#B45309', C: '#475569' };
+
 
   async function handleReplenish(e: React.FormEvent) {
     e.preventDefault();
@@ -2714,7 +2641,7 @@ function ReplenishmentSubTab({ products, sales, selectedBranchId, onReplenishSto
         </div>
         <div className="report-card">
           <small><Package size={13} /> Itens Classe C (Baixo Giro)</small>
-          <strong style={{ color: '#475569' }}>{classC.length}</strong>
+          <strong style={{ color: '#7bc8ff' }}>{classC.length}</strong>
           <small>10% da receita</small>
         </div>
         <div className="report-card">
@@ -2730,7 +2657,7 @@ function ReplenishmentSubTab({ products, sales, selectedBranchId, onReplenishSto
       {lowStockHighDemand.length === 0 ? (
         <p className="admin-empty-hint">Nenhum alerta de reposição no momento. Todos os produtos com demanda estão com estoque adequado.</p>
       ) : (
-        <div className="stock-table-wrap">
+        <div className="stock-table-wrap replenishment-alert-table">
           <table className="rma-table">
             <thead>
               <tr>
@@ -2745,11 +2672,11 @@ function ReplenishmentSubTab({ products, sales, selectedBranchId, onReplenishSto
                     <td><strong>{p.name}</strong></td>
                     <td>{p.sku ?? '—'}</td>
                     <td>
-                      <span className="rma-status-badge" style={{ color: abcColors[p.abcClass], borderColor: abcColors[p.abcClass] }}>
+                      <span className={`rma-status-badge status-${p.abcClass === 'A' ? 'success' : p.abcClass === 'B' ? 'warning' : 'info'}`}>
                         Classe {p.abcClass}
                       </span>
                     </td>
-                    <td className="text-red"><strong>{p.stock}</strong></td>
+                    <td className={p.stock <= 0 ? 'stock-empty-value' : 'stock-low-value'}><strong>{p.stock}</strong></td>
                     <td>{p.minStock}</td>
                     <td>{p.totalSold}</td>
                     <td>{money.format(p.revenue)}</td>
@@ -2790,7 +2717,48 @@ function ReplenishmentSubTab({ products, sales, selectedBranchId, onReplenishSto
       {abcAnalysis.length === 0 ? (
         <p className="admin-empty-hint">Nenhuma venda registrada para análise. Conclua vendas no PDV para gerar dados preditivos.</p>
       ) : (
-        <div className="stock-table-wrap">
+        <>
+        <div className="replenishment-class-cards">
+          {([
+            { label: 'A', description: 'Alto Giro', items: classA },
+            { label: 'B', description: 'Médio Giro', items: classB },
+            { label: 'C', description: 'Baixo Giro', items: classC },
+          ] as const).map(({ label, description, items }) => (
+            <section key={label} className={`replenishment-class-card replenishment-class-${label.toLowerCase()}`} aria-label={`Produtos Classe ${label}`}>
+              <div className="replenishment-class-header">
+                <div><h5>Classe {label}</h5><span>{description}</span></div>
+                <span className="replenishment-class-count">{items.length} {items.length === 1 ? 'produto' : 'produtos'}</span>
+              </div>
+              {items.length === 0 ? <p className="admin-empty-hint">Nenhum produto nesta classe.</p> : (
+                <div className="replenishment-class-products">
+                  {items.map((p) => {
+                    const lowStock = p.stock <= (p.minStock || 0);
+                    const suggestedQty = Math.max(p.totalSold, p.minStock * 2) - p.stock;
+                    return (
+                      <article key={p.id} className="replenishment-product-card">
+                        <div className="replenishment-product-heading">
+                          <div><strong>{p.name}</strong><small>SKU: {p.sku || '—'}</small></div>
+                          <span className={`rma-status-badge ${p.stock <= 0 ? 'stock-empty' : lowStock ? 'stock-low' : 'stock-ok'}`}>
+                            {p.stock <= 0 ? 'Sem estoque' : lowStock ? 'Baixo' : 'OK'}
+                          </span>
+                        </div>
+                        <dl className="replenishment-product-stats">
+                          <div><dt>Estoque</dt><dd className={lowStock ? 'stock-low-value' : ''}>{p.stock}</dd></div>
+                          <div><dt>Mínimo</dt><dd>{p.minStock}</dd></div>
+                          <div><dt>Vendidos</dt><dd>{p.totalSold}</dd></div>
+                          <div><dt>Receita</dt><dd>{money.format(p.revenue)}</dd></div>
+                        </dl>
+                        {lowStock && p.totalSold > 0 && suggestedQty > 0 && <p className="replenishment-suggestion">Reposição sugerida: +{suggestedQty} un.</p>}
+                        <button type="button" className="module-submit-btn" onClick={() => { setSelectedProduct(products.find((product) => product.id === p.id) ?? null); setError(null); setSuccess(null); }}>Repor estoque</button>
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+          ))}
+        </div>
+        <div className="stock-table-wrap replenishment-analysis-table">
           <table className="rma-table">
             <thead>
               <tr>
@@ -2803,7 +2771,7 @@ function ReplenishmentSubTab({ products, sales, selectedBranchId, onReplenishSto
                   <td><strong>{p.name}</strong></td>
                   <td>{p.sku ?? '—'}</td>
                   <td>
-                    <span className="rma-status-badge" style={{ color: abcColors[p.abcClass], borderColor: abcColors[p.abcClass] }}>
+                    <span className={`rma-status-badge status-${p.abcClass === 'A' ? 'success' : p.abcClass === 'B' ? 'warning' : 'info'}`}>
                       {p.abcClass}
                     </span>
                   </td>
@@ -2813,11 +2781,11 @@ function ReplenishmentSubTab({ products, sales, selectedBranchId, onReplenishSto
                   <td>{p.stock}</td>
                   <td>
                     {p.stock === 0 ? (
-                      <span className="rma-status-badge" style={{ color: '#B91C1C', borderColor: '#B91C1C' }}>Sem estoque</span>
+                      <span className="rma-status-badge stock-empty">Sem estoque</span>
                     ) : p.stock <= (p.minStock || 0) ? (
-                      <span className="rma-status-badge" style={{ color: '#B45309', borderColor: '#B45309' }}>Baixo</span>
+                      <span className="rma-status-badge stock-low">Baixo</span>
                     ) : (
-                      <span className="rma-status-badge" style={{ color: '#15803D', borderColor: '#15803D' }}>OK</span>
+                      <span className="rma-status-badge stock-ok">OK</span>
                     )}
                   </td>
                   <td><button type="button" className="module-submit-btn compact" onClick={() => { setSelectedProduct(products.find((product) => product.id === p.id) ?? null); setError(null); setSuccess(null); }}>Repor estoque</button></td>
@@ -2826,6 +2794,7 @@ function ReplenishmentSubTab({ products, sales, selectedBranchId, onReplenishSto
             </tbody>
           </table>
         </div>
+        </>
       )}
     </div>
   );

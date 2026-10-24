@@ -72,6 +72,11 @@ export function OrderHistoryModule({ orders = [], salesHistory }: Props) {
           <label className="orders-filter-field">
             <Search size={14} /> Buscar pedido
             <input
+              type="search"
+              name="purchase-history-search"
+              autoComplete="off"
+              data-lpignore="true"
+              data-1p-ignore="true"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Pedido, loja ou pagamento"

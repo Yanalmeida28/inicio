@@ -8,11 +8,12 @@ type MultiStoreModuleProps = {
   selectedBranchId: string | null;
   onAddBranch: (name: string, address: string) => Promise<void>;
   onUpdateBranch: (id: string, name: string, address: string) => Promise<void>;
-  onDeleteBranch: (id: string) => Promise<void>;
+  onArchiveBranch: (id: string) => Promise<void>;
+  onRestoreBranch: (id: string) => Promise<void>;
 };
 
 export function MultiStoreModule({
-  branches, selectedBranchId, onAddBranch, onUpdateBranch, onDeleteBranch,
+  branches, selectedBranchId, onAddBranch, onUpdateBranch, onArchiveBranch, onRestoreBranch,
 }: MultiStoreModuleProps) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [newName, setNewName] = useState('');
@@ -26,7 +27,7 @@ export function MultiStoreModule({
   const [editState, setEditState] = useState('');
   const [editCep, setEditCep] = useState('');
   const [saving, setSaving] = useState(false);
-  const [deletingBranchId, setDeletingBranchId] = useState<string | null>(null);
+  const [updatingBranchId, setUpdatingBranchId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function handleAdd(e: React.FormEvent) {
@@ -74,27 +75,36 @@ export function MultiStoreModule({
     }
   }
 
-  async function handleDelete(branch: PartnerBranch) {
-    if (!window.confirm(`Tem certeza que deseja excluir a filial '${branch.name}'?`)) return;
-    setDeletingBranchId(branch.id);
+  async function handleArchive(branch: PartnerBranch) {
+    if (!window.confirm(`Arquivar a filial '${branch.name}'? Os registros e o histórico serão preservados, e ela poderá ser reativada depois.`)) return;
+    setUpdatingBranchId(branch.id);
     setError(null);
     try {
-      await onDeleteBranch(branch.id);
+      await onArchiveBranch(branch.id);
       setEditingBranch(null);
     } catch (error) {
-      const databaseError = error as { code?: string; message?: string };
-      setError(databaseError.code === '23503'
-        ? 'Não é possível excluir esta filial porque existem registros vinculados a ela. Para preservar o histórico, mantenha a filial cadastrada.'
-        : databaseError.message ?? 'Não foi possível excluir a filial. Tente novamente.');
+      setError(error instanceof Error ? error.message : 'Não foi possível arquivar a filial.');
     } finally {
-      setDeletingBranchId(null);
+      setUpdatingBranchId(null);
+    }
+  }
+
+  async function handleRestore(branch: PartnerBranch) {
+    setUpdatingBranchId(branch.id);
+    setError(null);
+    try {
+      await onRestoreBranch(branch.id);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Não foi possível reativar a filial.');
+    } finally {
+      setUpdatingBranchId(null);
     }
   }
 
   return (
     <section className="branch-management" aria-label="Gerenciar filiais">
       <div className="branch-selector">
-        <p>Cadastre, edite ou exclua suas filiais. Para trocar a filial ativa, use o seletor no topo do painel.</p>
+        <p>Cadastre e edite filiais. Ao arquivar, o histórico é preservado; para voltar a usá-la, basta reativá-la. Para trocar a filial ativa, use o seletor no topo do painel.</p>
         <div className="branch-cards">
           {branches.map((branch) => (
             <div key={branch.id} className={`branch-card branch-card-container ${selectedBranchId === branch.id ? 'active' : ''}`}>
@@ -103,7 +113,7 @@ export function MultiStoreModule({
             >
               <MapPin size={15} />
               <div>
-                <strong>{branch.name}</strong>
+                <strong>{branch.name}{branch.is_active === false ? ' (arquivada)' : ''}</strong>
                 <small>{branch.address}</small>
               </div>
               {selectedBranchId === branch.id && (
@@ -112,10 +122,12 @@ export function MultiStoreModule({
             </div>
               <ActionsMenu
                 label={`Ações da filial ${branch.name}`}
-                disabled={Boolean(deletingBranchId)}
+                disabled={Boolean(updatingBranchId)}
                 actions={[
                   { label: 'Editar filial', icon: Pencil, run: () => startEdit(branch) },
-                  { label: 'Excluir filial', icon: Trash2, run: () => { void handleDelete(branch); }, danger: true },
+                  ...(branch.is_active === false
+                    ? [{ label: 'Reativar filial', icon: CheckCircle2, run: () => { void handleRestore(branch); } }]
+                    : [{ label: 'Arquivar filial', icon: Trash2, run: () => { void handleArchive(branch); }, danger: true }]),
                 ]}
               />
             </div>

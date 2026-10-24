@@ -1,9 +1,11 @@
+import { printSale, type ReceiptDetails } from '../../lib/salePrint';
 import { SplitPaymentFields } from './SplitPaymentFields';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Search, Trash2, ShoppingCart, Check,
+  Search, Trash2, ShoppingCart, Check, Printer, Camera,
   X, Tag, Ban, Lock, ClipboardList, Wallet, Lock as LockIcon,
 } from 'lucide-react';
+import type { IScannerControls } from '@zxing/browser';
 import type { DeliveryType, PartnerProduct, PartnerCustomer, PartnerSale, SalePayment, PartnerSalesperson, SaleItem, SalespersonRole } from '../../types';
 import { SalePriceInput } from './SalePriceInput';
 import { PreSaleCheckout } from './PreSaleCheckout';
@@ -14,6 +16,78 @@ import { SessionDraftProvider, useSessionDraftScope, useSessionDraftState } from
 type PriceTable = 'varejo' | 'atacado';
 type ClientType = 'varejo' | 'atacado';
 type PdvSubTab = 'pdv' | 'pre-venda';
+
+function BarcodeCameraDialog({ onDetected, onClose }: { onDetected: (code: string) => void; onClose: () => void }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const callbacksRef = useRef({ onDetected, onClose });
+  callbacksRef.current = { onDetected, onClose };
+  const [error, setError] = useState<string | null>(null);
+  const scannerControlsRef = useRef<IScannerControls | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    let controls: IScannerControls | null = null;
+
+    async function startScanner() {
+      if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+        setError('A leitura pela câmera exige uma conexão HTTPS e um navegador com suporte à câmera.');
+        return;
+      }
+
+      try {
+        const { BrowserMultiFormatReader } = await import('@zxing/browser');
+        if (cancelled || !videoRef.current) return;
+
+        controls = await new BrowserMultiFormatReader().decodeFromConstraints(
+          { video: { facingMode: { ideal: 'environment' } } },
+          videoRef.current,
+          (result, _error, activeControls) => {
+            if (!result || cancelled) return;
+            cancelled = true;
+            activeControls.stop();
+            callbacksRef.current.onDetected(result.getText());
+          },
+        );
+
+        if (cancelled) controls.stop();
+        else scannerControlsRef.current = controls;
+      } catch (cause) {
+        if (cancelled) return;
+        const name = cause && typeof cause === 'object' && 'name' in cause ? String(cause.name) : '';
+        if (name === 'NotAllowedError' || name === 'SecurityError') {
+          setError('Permita o acesso à câmera nas configurações do navegador e tente novamente.');
+        } else if (name === 'NotFoundError' || name === 'OverconstrainedError') {
+          setError('Não foi encontrada uma câmera disponível neste dispositivo.');
+        } else if (name === 'NotReadableError') {
+          setError('A câmera está em uso por outro aplicativo. Feche-o e tente novamente.');
+        } else {
+          setError('Não foi possível iniciar a câmera. Verifique a permissão e tente novamente.');
+        }
+      }
+    }
+
+    void startScanner();
+    return () => {
+      cancelled = true;
+      scannerControlsRef.current?.stop();
+      scannerControlsRef.current = null;
+      controls?.stop();
+    };
+  }, []);
+
+  return (
+    <div className="modal-overlay" onClick={() => callbacksRef.current.onClose()}>
+      <section className="modal-content pdv-camera-dialog" role="dialog" aria-modal="true" aria-labelledby="pdv-camera-title" onClick={event => event.stopPropagation()}>
+        <div className="modal-header">
+          <h3 id="pdv-camera-title">Ler código pela câmera</h3>
+          <button type="button" className="modal-close" aria-label="Fechar leitor de câmera" onClick={() => callbacksRef.current.onClose()}><X size={18} /></button>
+        </div>
+        <video ref={videoRef} className="pdv-camera-video" autoPlay muted playsInline aria-label="Visualização da câmera para leitura do código de barras" />
+        {error ? <p role="alert" className="otp-error-msg">{error}</p> : <p role="status">Aponte a câmera para o código de barras.</p>}
+      </section>
+    </div>
+  );
+}
 
 function CustomerSearchPicker({ id, customers, customerId, clientType, onSelect }: {
   id: string;
@@ -232,6 +306,9 @@ type Props = {
   sales: PartnerSale[];
   credits: CustomerCredit[];
   hasPendingSale?: boolean;
+  isActive?: boolean;
+  barcodeScannerEnabled?: boolean;
+  cameraScannerEnabled?: boolean;
   preSaleToCheckout?: PartnerSale | null;
   onConsumePreSale?: () => void;
   onRequestPreSale?: (sale: PartnerSale) => void;
@@ -241,6 +318,7 @@ type Props = {
   segment: string;
   selectedBranchId: string | null;
   currentRole: SalespersonRole;
+  receiptDetails?: ReceiptDetails;
   onCreateSale: (sale: {
     customer_id: string | null;
     customer_name: string;
@@ -254,7 +332,7 @@ type Props = {
     payment_method?: string; payment_splits?: SalePayment[];
     salesperson_id?: string | null;
     branch_id?: string | null;
-  }) => Promise<void>;
+  }) => Promise<PartnerSale>;
   onCreatePreSale: (sale: {
     customer_id: string | null;
     customer_name: string;
@@ -279,9 +357,10 @@ const PRODUCT_PAGE_SIZE = 30;
 
 export function PdvModule({
   cashContext, onOpenCash, onConfirmCashOperator,
-  products, customers, sales, credits, hasPendingSale, salespeople, segment, selectedBranchId,
+  products, customers, sales, credits, hasPendingSale, isActive = true, salespeople, segment, selectedBranchId,
+  barcodeScannerEnabled = true, cameraScannerEnabled = false,
   preSaleToCheckout, onConsumePreSale, onRequestPreSale,
-  activeSalespersonId, activeBranchName, currentRole, canEditPrice, onCreateSale, onCreatePreSale, onFinalizePreSale, onCancelSale, onDeleteSale,
+  activeSalespersonId, activeBranchName, receiptDetails, currentRole, canEditPrice, onCreateSale, onCreatePreSale, onFinalizePreSale, onCancelSale, onDeleteSale,
 }: Props) {
   const parentDraftScope = useSessionDraftScope();
   const contextKey = `${selectedBranchId ?? 'all'}:${activeSalespersonId ?? 'owner'}`;
@@ -380,12 +459,16 @@ export function PdvModule({
           customers={customers}
           credits={credits}
           hasPendingSale={hasPendingSale}
+          isActive={isActive && subTab === 'pdv' && !checkoutPreSale}
+          barcodeScannerEnabled={barcodeScannerEnabled}
+          cameraScannerEnabled={cameraScannerEnabled}
           salespeople={salespeople}
           activeSalespersonId={activeSalespersonId}
           segment={segment}
           selectedBranchId={selectedBranchId}
           canCheckout={canCheckout}
           canEditPrice={canEditPrice}
+          receiptDetails={receiptDetails}
           onCreateSale={onCreateSale}
         />
         </div>
@@ -418,26 +501,39 @@ export function PdvModule({
 
 /* ============ PDV Checkout ============ */
 
-function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople, activeSalespersonId, selectedBranchId, canCheckout, canEditPrice, onCreateSale }: {
+function PdvCheckout({ products, customers, credits, hasPendingSale, isActive = true, barcodeScannerEnabled = true, cameraScannerEnabled = false, salespeople, activeSalespersonId, selectedBranchId, canCheckout, canEditPrice, receiptDetails, onCreateSale }: {
   products: PartnerProduct[];
   customers: PartnerCustomer[];
   credits: CustomerCredit[];
   canEditPrice: boolean;
   hasPendingSale?: boolean;
+  isActive?: boolean;
+  barcodeScannerEnabled?: boolean;
+  cameraScannerEnabled?: boolean;
   salespeople: PartnerSalesperson[];
   activeSalespersonId?: string | null;
   segment: string;
   selectedBranchId: string | null;
   canCheckout: boolean;
-  onCreateSale: (sale: { customer_id: string | null; customer_name: string; items: SaleItem[]; total: number; freight_fee?: number; customer_type: ClientType; delivery_type: DeliveryType; imei?: string; serial_number?: string; payment_method?: string; payment_splits?: SalePayment[]; salesperson_id?: string | null; branch_id?: string | null }) => Promise<void>;
+  receiptDetails?: ReceiptDetails;
+  onCreateSale: (sale: { customer_id: string | null; customer_name: string; items: SaleItem[]; total: number; freight_fee?: number; customer_type: ClientType; delivery_type: DeliveryType; imei?: string; serial_number?: string; payment_method?: string; payment_splits?: SalePayment[]; salesperson_id?: string | null; branch_id?: string | null }) => Promise<PartnerSale>;
 }) {
   const [search, setSearch] = useSessionDraftState('checkout:product-search', '');
   const [visibleProductCount, setVisibleProductCount] = useState(PRODUCT_PAGE_SIZE);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const [cameraOpen, setCameraOpen] = useState(false);
   useEffect(() => {
     setVisibleProductCount(PRODUCT_PAGE_SIZE);
   }, [search, selectedBranchId]);
   const [cart, setCart] = useSessionDraftState<{ product_id: string; name: string; quantity: number; unit_price: number }[]>('checkout:cart', []);
+  const cartRef = useRef(cart);
+  cartRef.current = cart;
+  function updateCart(update: typeof cart | ((previous: typeof cart) => typeof cart), force = false) {
+    if (!force && !canChangeCart()) return;
+    const next = typeof update === 'function' ? update(cartRef.current) : update;
+    cartRef.current = next;
+    setCart(next);
+  }
   const previousBranchId = useRef(selectedBranchId);
   const [branchChangedWithCart, setBranchChangedWithCart] = useState(false);
   useEffect(() => {
@@ -457,12 +553,28 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
   const [paymentMethod, setPaymentMethod] = useSessionDraftState('checkout:payment-method', 'pix');
   const [paymentDraft, setPaymentDraft] = useSessionDraftState('checkout:split-payments', { ...emptySplitPaymentDraft });
   const [deliveryType, setDeliveryType] = useSessionDraftState<DeliveryType>('checkout:delivery-type', 'balcao');
-  const [freightFee, setFreightFee] = useSessionDraftState<number | string>('checkout:freight-fee', 0);
+  const [freightFee, setFreightFee] = useSessionDraftState<number | string>('checkout:freight-fee', 0, undefined, value => typeof value === 'string' || (typeof value === 'number' && Number.isFinite(value)));
   const freightAmount = freightFee === '' ? 0 : Number(freightFee);
   const [salespersonId, setSalespersonId] = useSessionDraftState('checkout:salesperson-id', '');
   const [completed, setCompleted] = useState(false);
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const checkoutInFlight = useRef(false);
+  const activityRef = useRef({ isActive, hasPendingSale });
+  activityRef.current = { isActive, hasPendingSale };
+  const cartLocked = isCheckingOut || Boolean(hasPendingSale) || !isActive;
+  function canChangeCart() {
+    return !checkoutInFlight.current && !activityRef.current.hasPendingSale && activityRef.current.isActive
+      && (typeof document === 'undefined' || document.visibilityState !== 'hidden');
+  }
+  useEffect(() => {
+    setCameraOpen(false);
+  }, [isActive, hasPendingSale, isCheckingOut, cameraScannerEnabled, selectedBranchId]);
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const closeHiddenCamera = () => { if (document.visibilityState === 'hidden') setCameraOpen(false); };
+    document.addEventListener('visibilitychange', closeHiddenCamera);
+    return () => document.removeEventListener('visibilitychange', closeHiddenCamera);
+  }, []);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [priceTable, setPriceTable] = useSessionDraftState<PriceTable>('checkout:price-table', 'varejo');
   const [selectionNotice, setSelectionNotice] = useState<string | null>(null);
@@ -487,7 +599,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
     setPriceTable(type);
     setCustomerId('');
     setCustomerName('');
-    setCart((prev) => prev.map((item) => {
+    updateCart((prev) => prev.map((item) => {
       const product = products.find((p) => p.id === item.product_id);
       if (!product) return item;
       return { ...item, unit_price: getPriceForProduct(product, type) };
@@ -512,7 +624,6 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
   const filtered = useMemo(() => {
     const normalize = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
     const term = normalize(search.trim());
-    if (!term) return [];
     return products.filter((p) => {
       // `products` já chega filtrado pela filial ativa (ou pela filial fixa do funcionário).
       // Aplica o filtro local apenas quando uma filial específica está selecionada,
@@ -536,7 +647,26 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
     noticeTimeoutRef.current = window.setTimeout(() => setSelectionNotice(null), 3500);
   }
 
+  function handleCameraCode(code: string) {
+    setCameraOpen(false);
+    if (!canChangeCart()) return;
+    const normalizedCode = code.trim().toLocaleLowerCase();
+    const matches = products.filter((product) =>
+      (!selectedBranchId || product.branch_id === selectedBranchId)
+      && product.sku?.trim().toLocaleLowerCase() === normalizedCode,
+    );
+    setSearch('');
+    if (matches.length === 1) {
+      addToCart(matches[0], true);
+    } else if (matches.length > 1) {
+      showSelectionNotice('Este código está vinculado a mais de um produto nesta filial. Corrija o SKU cadastrado.');
+    } else {
+      showSelectionNotice('Código não encontrado. Cadastre o código de barras no campo SKU do produto.');
+    }
+  }
+
   function addToCart(product: PartnerProduct, fromScanner = false) {
+    if (!canChangeCart()) return;
     // Ignora disparo duplicado do mesmo toque/clique (ex.: double-tap acidental no mobile).
     const now = Date.now();
     if (!fromScanner) {
@@ -545,7 +675,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
     }
 
     if (!product.is_service) {
-      const inCart = cart.find((i) => i.product_id === product.id)?.quantity ?? 0;
+      const inCart = cartRef.current.find((i) => i.product_id === product.id)?.quantity ?? 0;
       if (product.stock <= 0) {
         showSelectionNotice(`"${product.name}" está sem estoque nesta filial.`);
         return;
@@ -557,7 +687,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
     }
 
     const price = getPriceForProduct(product, priceTable);
-    setCart((prev) => {
+    updateCart((prev) => {
       const existing = prev.find((i) => i.product_id === product.id);
       if (existing) return prev.map((i) => i.product_id === product.id ? { ...i, quantity: i.quantity + 1 } : i);
       return [...prev, { product_id: product.id, name: product.name, quantity: 1, unit_price: price }];
@@ -573,15 +703,16 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
   }
 
   function changeQty(id: string, delta: number) {
+    if (!canChangeCart()) return;
     if (delta > 0) {
       const product = products.find((p) => p.id === id);
-      const inCart = cart.find((i) => i.product_id === id)?.quantity ?? 0;
+      const inCart = cartRef.current.find((i) => i.product_id === id)?.quantity ?? 0;
       if (product && !product.is_service && inCart + 1 > product.stock) {
         showSelectionNotice(`Estoque insuficiente: apenas ${product.stock} un. de "${product.name}" disponíveis.`);
         return;
       }
     }
-    setCart((prev) => prev.flatMap((i) => {
+    updateCart((prev) => prev.flatMap((i) => {
       if (i.product_id !== id) return [i];
       const q = i.quantity + delta;
       return q > 0 ? [{ ...i, quantity: q }] : [];
@@ -589,12 +720,16 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
   }
 
   function removeFromCart(id: string) {
-    setCart((prev) => prev.filter((i) => i.product_id !== id));
+    if (!canChangeCart()) return;
+    updateCart((prev) => prev.filter((i) => i.product_id !== id));
   }
 
-  async function handleCheckout() {
-    if (cart.length === 0 || checkoutInFlight.current || hasPendingSale) return;
-    if (!validSalePrice(freightAmount) || cart.some(item => !validSalePrice(item.unit_price))) {
+  async function handleCheckout(shouldPrint = false) {
+    if (cartRef.current.length === 0 || !canChangeCart()) return;
+    const checkoutCart = cartRef.current;
+    const checkoutTotal = pdvTotal(checkoutCart);
+    const checkoutChargeTotal = saleChargeTotal({ total: checkoutTotal, freight_fee: freightAmount });
+    if (!validSalePrice(freightAmount) || checkoutCart.some(item => !validSalePrice(item.unit_price))) {
       setCheckoutError('Informe preços e frete válidos com até duas casas decimais.');
       return;
     }
@@ -604,22 +739,25 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
     }
     const customer = customers.find((c) => c.id === customerId);
     if (paymentMethod === 'faturado') {
-      const message = billedSaleError(credit, customerId || null, chargeTotal);
+      const message = billedSaleError(credit, customerId || null, checkoutChargeTotal);
       if (message) { setCheckoutError(message); return; }
     }
     const parts = paymentMethod === 'misto' ? draftPayments(paymentDraft) : [];
-    const validation = paymentMethod === 'misto' ? splitPaymentError(chargeTotal, parts) : null;
+    const validation = paymentMethod === 'misto' ? splitPaymentError(checkoutChargeTotal, parts) : null;
     if (validation) { setCheckoutError(validation); return; }
     const fallbackName = clientType === 'atacado' ? 'Cliente Atacado' : 'Cliente Varejo';
+    const printWindow = shouldPrint ? window.open('', '_blank', 'width=440,height=700') : null;
+    if (printWindow) printWindow.document.body.textContent = 'Aguardando confirmação da venda...';
     checkoutInFlight.current = true;
     setIsCheckingOut(true);
+    setCameraOpen(false);
     setCheckoutError(null);
     try {
-      await onCreateSale({
+      const confirmedSale = await onCreateSale({
         customer_id: customerId || null,
         customer_name: customerName || customer?.name || fallbackName,
-        items: cart,
-        total,
+        items: checkoutCart,
+        total: checkoutTotal,
         freight_fee: freightAmount,
         customer_type: clientType,
         delivery_type: deliveryType,
@@ -628,7 +766,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
         salesperson_id: salespersonId || null,
         branch_id: selectedBranchId,
       });
-      setCart([]); setFreightFee(0); setCustomerId(''); setCustomerName(''); setSalespersonId('');
+      updateCart([], true); setFreightFee(0); setCustomerId(''); setCustomerName(''); setSalespersonId('');
       setCompleted(true);
       setClientType('varejo');
       setPriceTable('varejo');
@@ -639,7 +777,21 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
       setVisibleProductCount(PRODUCT_PAGE_SIZE);
       setSelectionNotice(null);
       setLastAddedId(null);
+      if (shouldPrint) {
+        try {
+          if (!printWindow || printWindow.closed) throw new Error('Permita pop-ups no navegador e reimprima pelo Histórico.');
+          printSale(confirmedSale, 'receipt', {
+            ...receiptDetails,
+            customer: customers.find(c => c.id === confirmedSale.customer_id),
+            salespersonName: salespeople.find(person => person.id === confirmedSale.salesperson_id)?.name,
+          }, printWindow);
+        } catch (error) {
+          printWindow?.close();
+          setCheckoutError('Venda finalizada. ' + (error instanceof Error ? error.message : 'Não foi possível imprimir. Reimprima pelo Histórico.'));
+        }
+      }
     } catch (error) {
+      printWindow?.close();
       setCheckoutError(pdvErrorMessage(error));
     } finally {
       checkoutInFlight.current = false;
@@ -649,13 +801,18 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
 
   return (
     <>
+      {cameraOpen && cameraScannerEnabled && !cartLocked && (
+        <BarcodeCameraDialog onDetected={handleCameraCode} onClose={() => setCameraOpen(false)} />
+      )}
+      <fieldset disabled={cartLocked} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
       <div className="pdv-layout pdv-checkout-layout">
         <div className="pdv-left">
           <div className="pdv-search-bar">
             <Search size={18} />
-           <input
+            <input
   type="search"
   ref={searchInputRef}
+  disabled={cartLocked}
   name="new-product-search"
   autoComplete="new-password"
   autoCorrect="off"
@@ -668,6 +825,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
   onKeyDown={(event) => {
     if (event.key !== 'Enter' || !search.trim()) return;
     event.preventDefault();
+    if (!barcodeScannerEnabled || !canChangeCart()) return;
     const code = search.trim().toLocaleLowerCase();
     const matches = filtered.filter((product) => product.sku?.trim().toLocaleLowerCase() === code);
     if (matches.length === 1) {
@@ -681,19 +839,22 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
   placeholder="Buscar por nome, SKU ou código de barras..."
   aria-label="Buscar produto por nome ou SKU"
 />
-
+            {cameraScannerEnabled && (
+              <button type="button" className="pdv-camera-button" aria-label="Ler código pela câmera" disabled={cartLocked} onClick={() => { if (canChangeCart()) setCameraOpen(true); }}>
+                <Camera size={18} />
+              </button>
+            )}
           </div>
 
           {selectionNotice && (
             <p className="pdv-selection-notice" role="alert">{selectionNotice}</p>
           )}
 
-          {search.trim() && (
           <div className="pdv-product-search-results" aria-label="Resultados da pesquisa">
           <div className="pdv-product-grid">
             {filtered.length === 0 ? (
               <p className="empty-row">
-                {`Nenhum produto encontrado para "${search.trim()}".`}
+                {search.trim() ? `Nenhum produto encontrado para "${search.trim()}".` : 'Nenhum produto disponível nesta filial.'}
               </p>
             ) : (
               filtered.slice(0, visibleProductCount).map((p) => {
@@ -706,7 +867,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
                     type="button"
                     className={`pdv-product-card${justAdded ? ' added' : ''}`}
                     onClick={() => addToCart(p)}
-                    disabled={outOfStock}
+                    disabled={outOfStock || cartLocked}
                   >
                     <strong>{p.name}</strong>
                     {p.sku && <small>SKU: {p.sku}</small>}
@@ -737,12 +898,13 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
             </button>
           )}
           </div>
-          )}
+        </div>
+        <div className="pdv-right" role="region" aria-label="Opções da venda">
           <section className="pdv-cart-main" aria-label="Carrinho">
           <div className="pdv-cart-header">
             <h4>Carrinho · {cart.reduce((count, item) => count + item.quantity, 0)} itens</h4>
             {cart.length > 0 && (
-              <button className="rma-advance-btn danger" onClick={() => setCart([])}>
+              <button className="rma-advance-btn danger" onClick={() => updateCart([])}>
                 <X size={14} /> Limpar
               </button>
             )}
@@ -753,21 +915,21 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
             <thead><tr><th>Produto</th><th>Quantidade</th><th>Preço</th><th>Subtotal</th><th>Remover</th></tr></thead>
             <tbody>
             {cart.length === 0 ? (
-              <tr><td colSpan={5} className="empty-row">Carrinho vazio. Pesquise um produto acima para começar.</td></tr>
+              <tr><td colSpan={5} className="empty-row">Carrinho vazio. Selecione um produto à esquerda para começar.</td></tr>
             ) : (
               cart.map((item) => (
                 <tr key={item.product_id}>
-                  <td>
+                  <td data-label="Produto">
                     <strong>{item.name}</strong>
                   </td>
-                  <td><div className="pdv-item-controls">
-                    <button aria-label={`Diminuir quantidade de ${item.name}`} onClick={() => changeQty(item.product_id, -1)}>−</button>
+                  <td data-label="Quantidade"><div className="pdv-item-controls">
+                    <button aria-label={`Diminuir quantidade de ${item.name}`} disabled={cartLocked} onClick={() => changeQty(item.product_id, -1)}>−</button>
                     <b>{item.quantity}</b>
-                    <button aria-label={`Aumentar quantidade de ${item.name}`} onClick={() => changeQty(item.product_id, 1)}>+</button>
+                    <button aria-label={`Aumentar quantidade de ${item.name}`} disabled={cartLocked} onClick={() => changeQty(item.product_id, 1)}>+</button>
                   </div></td>
-                  <td>{canEditPrice ? <SalePriceInput value={item.unit_price} name={item.name} disabled={isCheckingOut || hasPendingSale} onChange={value => setCart(previous => previous.map(row => row.product_id === item.product_id ? { ...row, unit_price: value } : row))} /> : money.format(item.unit_price)}</td>
-                  <td>{money.format(item.unit_price * item.quantity)}</td>
-                  <td><button className="pdv-remove" aria-label={`Remover ${item.name}`} onClick={() => removeFromCart(item.product_id)}><Trash2 size={16} /></button></td>
+                  <td data-label="Preço unitário">{canEditPrice ? <SalePriceInput value={item.unit_price} name={item.name} disabled={isCheckingOut || hasPendingSale} onChange={value => updateCart(previous => previous.map(row => row.product_id === item.product_id ? { ...row, unit_price: value } : row))} /> : money.format(item.unit_price)}</td>
+                  <td data-label="Subtotal">{money.format(item.unit_price * item.quantity)}</td>
+                  <td><button className="pdv-remove" disabled={cartLocked} aria-label={`Remover ${item.name}`} onClick={() => removeFromCart(item.product_id)}><Trash2 size={16} /></button></td>
                 </tr>
               ))
             )}
@@ -775,15 +937,12 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
           </table>
           </div>
           </section>
-        </div>
-        <div className="pdv-right" role="region" aria-label="Opções da venda">
-          <div className="pdv-cart-header"><h4>Dados da venda</h4></div>
           <div className="pdv-sale-scroll">
           {branchChangedWithCart && cart.length > 0 && (
             <div className="pdv-restricted-checkout" role="alert">
               <LockIcon size={16} />
               <span>A filial foi alterada e o carrinho foi mantido. Confira os produtos antes de finalizar.</span>
-              <button type="button" className="rma-advance-btn" onClick={() => setCart([])}>Esvaziar carrinho</button>
+              <button type="button" className="rma-advance-btn" onClick={() => updateCart([])}>Esvaziar carrinho</button>
             </div>
           )}
           {cartHasWrongBranch && (
@@ -792,52 +951,63 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
 
             <>
               <div className="pdv-form">
-                <label>
-                  Tabela de preços
-                  <select aria-label="Tabela de preços da venda" value={clientType} onChange={event => handleClientTypeChange(event.target.value as ClientType)}>
-                    <option value="varejo">Varejo</option>
-                    <option value="atacado">Atacado</option>
-                  </select>
-                </label>
-                <CustomerSearchPicker
-                  key={`sale-${clientType}`}
-                  id="pdv-customer-search"
-                  customers={customers}
-                  customerId={customerId}
-                  clientType={clientType}
-                  onSelect={handleCustomerChange}
-                />
-                <label>
-                  Tipo de atendimento
-                  <select aria-label="Tipo de atendimento da venda" value={deliveryType} onChange={event => setDeliveryType(event.target.value as DeliveryType)}>
-                    <option value="balcao">Balcão</option>
-                    <option value="entrega">Entrega</option>
-                    <option value="retirada">Retirada</option>
-                  </select>
-                </label>
-                <label title="Frete terceirizado recebido para repasse ao entregador; não compõe o faturamento.">Frete (R$)
-                  <input type="number" min="0" max="99999999.99" step="0.01" inputMode="decimal" aria-label="Frete terceirizado" aria-invalid={!validSalePrice(freightAmount)} value={freightFee} onChange={event => setFreightFee(event.target.value)} />
-                </label>
-                <div className="form-row">
+                <div className="pdv-form-section">
+                  <span className="pdv-form-section-label">Cliente</span>
                   <label>
-                    Forma de Pagamento
-                    <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} disabled={!canCheckout}>
-                      <option value="pix">PIX</option>
-                      <option value="cartao">Cartão</option>
-                      <option value="dinheiro">Dinheiro</option>
-                      <option value="faturado">Faturado B2B</option>
-                      <option value="misto">Dividido (dinheiro / PIX / cartão)</option>
+                    Tabela de preços
+                    <select aria-label="Tabela de preços da venda" value={clientType} onChange={event => handleClientTypeChange(event.target.value as ClientType)}>
+                      <option value="varejo">Varejo</option>
+                      <option value="atacado">Atacado</option>
                     </select>
                   </label>
-                  {!activeSalespersonId && (
-                    <SalespersonSearchPicker
-                      id="pdv-salesperson-search"
-                      salespeople={salespeople}
-                      salespersonId={salespersonId}
-                      onSelect={setSalespersonId}
-                    />
+                  <CustomerSearchPicker
+                    key={`sale-${clientType}`}
+                    id="pdv-customer-search"
+                    customers={customers}
+                    customerId={customerId}
+                    clientType={clientType}
+                    onSelect={handleCustomerChange}
+                  />
+                </div>
+                <div className="pdv-form-section">
+                  <span className="pdv-form-section-label">Pagamento</span>
+                  <div className="form-row">
+                    <label>
+                      Forma de Pagamento
+                      <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} disabled={!canCheckout}>
+                        <option value="pix">PIX</option>
+                        <option value="cartao">Cartão</option>
+                        <option value="dinheiro">Dinheiro</option>
+                        <option value="faturado">Faturado B2B</option>
+                        <option value="misto">Dividido (dinheiro / PIX / cartão)</option>
+                      </select>
+                    </label>
+                    {!activeSalespersonId && (
+                      <SalespersonSearchPicker
+                        id="pdv-salesperson-search"
+                        salespeople={salespeople}
+                        salespersonId={salespersonId}
+                        onSelect={setSalespersonId}
+                      />
+                    )}
+                </div>
+                <div className="pdv-form-section">
+                  <span className="pdv-form-section-label">Entrega</span>
+                  <label>
+                    Tipo de atendimento
+                    <select aria-label="Tipo de atendimento da venda" value={deliveryType} onChange={event => setDeliveryType(event.target.value as DeliveryType)}>
+                      <option value="balcao">Balcão</option>
+                      <option value="entrega">Entrega</option>
+                      <option value="retirada">Retirada</option>
+                    </select>
+                  </label>
+                  {deliveryType === 'entrega' && (
+                    <label title="Frete terceirizado recebido para repasse ao entregador; não compõe o faturamento.">Frete (R$)
+                      <input type="number" min="0" max="99999999.99" step="0.01" inputMode="decimal" aria-label="Frete terceirizado" aria-invalid={!validSalePrice(freightAmount)} value={freightFee} onChange={event => setFreightFee(event.target.value)} />
+                    </label>
                   )}
                 </div>
+              </div>
               </div>
               {paymentMethod === 'misto' && <SplitPaymentFields total={chargeTotal} value={paymentDraft} onChange={setPaymentDraft} disabled={isCheckingOut || !canCheckout} />}
               {paymentMethod === 'faturado' && selectedCustomer && !credit && (
@@ -863,9 +1033,14 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
               </div>
 
               {canCheckout ? (
-                <button className="module-submit-btn pdv-checkout-btn" onClick={handleCheckout} disabled={cart.length === 0 || isCheckingOut || billedSaleBlocked || hasPendingSale || cartHasWrongBranch}>
-                  <Check size={18} /> {isCheckingOut ? 'Finalizando...' : 'Finalizar Venda'}
+                <>
+                <button className="module-submit-btn pdv-checkout-btn" onClick={() => handleCheckout(true)} disabled={cart.length === 0 || isCheckingOut || billedSaleBlocked || hasPendingSale || cartHasWrongBranch}>
+                  <Printer size={18} /> {isCheckingOut ? 'Finalizando...' : 'Finalizar e imprimir'}
                 </button>
+                <button className="module-cancel-btn pdv-checkout-btn" onClick={() => handleCheckout(false)} disabled={cart.length === 0 || isCheckingOut || billedSaleBlocked || hasPendingSale || cartHasWrongBranch}>
+                  <Check size={18} /> Finalizar sem imprimir
+                </button>
+                </>
               ) : (
                 <div className="pdv-restricted-checkout">
                   <LockIcon size={16} />
@@ -883,6 +1058,7 @@ function PdvCheckout({ products, customers, credits, hasPendingSale, salespeople
         </div>
       </div>
 
+      </fieldset>
     </>
   );
 }
@@ -912,7 +1088,7 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
   const [clientType, setClientType] = useSessionDraftState<ClientType>('presale:client-type', 'varejo');
   const [priceTable, setPriceTable] = useSessionDraftState<PriceTable>('presale:price-table', 'varejo');
   const [deliveryType, setDeliveryType] = useSessionDraftState<DeliveryType>('presale:delivery-type', 'balcao');
-  const [freightFee, setFreightFee] = useSessionDraftState<number | string>('presale:freight-fee', 0);
+  const [freightFee, setFreightFee] = useSessionDraftState<number | string>('presale:freight-fee', 0, undefined, value => typeof value === 'string' || (typeof value === 'number' && Number.isFinite(value)));
   const freightAmount = freightFee === '' ? 0 : Number(freightFee);
   const [salespersonId, setSalespersonId] = useSessionDraftState('presale:salesperson-id', '');
   const [saved, setSaved] = useState(false);
@@ -1171,56 +1347,77 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
           {cart.length > 0 && (
             <>
               <div className="pdv-form">
-                <label>
-                  Tabela de preços
-                  <div className="pdv-client-type-toggle">
-                    <button
-                      type="button"
-                      className={`price-toggle-btn ${clientType === 'varejo' ? 'active' : ''}`}
-                      onClick={() => handleClientTypeChange('varejo')}
-                    >
-                      <Tag size={15} /> Varejo
-                    </button>
-                    <button
-                      type="button"
-                      className={`price-toggle-btn ${clientType === 'atacado' ? 'active' : ''}`}
-                      onClick={() => handleClientTypeChange('atacado')}
-                    >
-                      <Tag size={15} /> Atacado
-                    </button>
-                  </div>
-                </label>
-                <CustomerSearchPicker
-                  key={`pre-sale-${clientType}`}
-                  id="presale-customer-search"
-                  customers={customers}
-                  customerId={customerId}
-                  clientType={clientType}
-                  onSelect={handleCustomerChange}
-                />
-                {!activeSalespersonId && (
-                  <SalespersonSearchPicker
-                    id="presale-salesperson-search"
-                    salespeople={salespeople}
-                    salespersonId={salespersonId}
-                    onSelect={setSalespersonId}
-                  />
-                )}
-                <label>
-                  Tipo de atendimento
-                  <div className="pdv-client-type-toggle">
-                    {(['balcao', 'entrega', 'retirada'] as DeliveryType[]).map((type) => (
+                <div className="pdv-form-section">
+                  <span className="pdv-form-section-label">Cliente</span>
+                  <label>
+                    Tabela de preços
+                    <div className="pdv-client-type-toggle">
                       <button
-                        key={type}
                         type="button"
-                        className={`price-toggle-btn ${deliveryType === type ? 'active' : ''}`}
-                        onClick={() => setDeliveryType(type)}
+                        className={`price-toggle-btn ${clientType === 'varejo' ? 'active' : ''}`}
+                        onClick={() => handleClientTypeChange('varejo')}
                       >
-                        {type === 'balcao' ? 'Balcão' : type === 'entrega' ? 'Entrega' : 'Retirada'}
+                        <Tag size={15} /> Varejo
                       </button>
-                    ))}
-                  </div>
-                </label>
+                      <button
+                        type="button"
+                        className={`price-toggle-btn ${clientType === 'atacado' ? 'active' : ''}`}
+                        onClick={() => handleClientTypeChange('atacado')}
+                      >
+                        <Tag size={15} /> Atacado
+                      </button>
+                    </div>
+                  </label>
+                  <CustomerSearchPicker
+                    key={`pre-sale-${clientType}`}
+                    id="presale-customer-search"
+                    customers={customers}
+                    customerId={customerId}
+                    clientType={clientType}
+                    onSelect={handleCustomerChange}
+                  />
+                </div>
+                <div className="pdv-form-section">
+                  <span className="pdv-form-section-label">Pagamento</span>
+                  <label style={{ display: 'block', marginBottom: '12px' }}>Forma de pagamento prevista
+                    <select value={preSalePayment} onChange={event => setPreSalePayment(event.target.value)} disabled={isSaving}>
+                      <option value="">A definir</option><option value="pix">PIX</option>
+                      <option value="dinheiro">Dinheiro</option><option value="cartao">Cartão</option><option value="faturado">Faturado</option>
+                    </select>
+                  </label>
+                  {!activeSalespersonId && (
+                    <SalespersonSearchPicker
+                      id="presale-salesperson-search"
+                      salespeople={salespeople}
+                      salespersonId={salespersonId}
+                      onSelect={setSalespersonId}
+                    />
+                  )}
+                </div>
+                <div className="pdv-form-section">
+                  <span className="pdv-form-section-label">Entrega</span>
+                  <label>
+                    Tipo de atendimento
+                    <div className="pdv-client-type-toggle">
+                      {(['balcao', 'entrega', 'retirada'] as DeliveryType[]).map((type) => (
+                        <button
+                          key={type}
+                          type="button"
+                          className={`price-toggle-btn ${deliveryType === type ? 'active' : ''}`}
+                          onClick={() => setDeliveryType(type)}
+                        >
+                          {type === 'balcao' ? 'Balcão' : type === 'entrega' ? 'Entrega' : 'Retirada'}
+                        </button>
+                      ))}
+                    </div>
+                  </label>
+                  {deliveryType === 'entrega' && (
+                    <label>Frete terceirizado (R$)
+                        <input type="number" min="0" max="99999999.99" step="0.01" inputMode="decimal" aria-label="Frete terceirizado" aria-invalid={!validSalePrice(freightAmount)} value={freightFee} onChange={event => setFreightFee(event.target.value)} />
+                        <small>Recebido para repasse ao entregador. Não compõe o faturamento.</small>
+                      </label>
+                  )}
+                </div>
               </div>
 
               <div className="pdv-total-bar">
@@ -1228,16 +1425,6 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
                 <strong>{money.format(chargeTotal)}</strong>
               </div>
 
-              <label>Frete terceirizado (R$)
-                  <input type="number" min="0" max="99999999.99" step="0.01" inputMode="decimal" aria-label="Frete terceirizado" aria-invalid={!validSalePrice(freightAmount)} value={freightFee} onChange={event => setFreightFee(event.target.value)} />
-                  <small>Recebido para repasse ao entregador. Não compõe o faturamento.</small>
-                </label>
-              <label style={{ display: 'block', marginBottom: '12px' }}>Forma de pagamento prevista
-                <select value={preSalePayment} onChange={event => setPreSalePayment(event.target.value)} disabled={isSaving}>
-                  <option value="">A definir</option><option value="pix">PIX</option>
-                  <option value="dinheiro">Dinheiro</option><option value="cartao">Cartão</option><option value="faturado">Faturado</option>
-                </select>
-              </label>
               <p className="otp-description">O pagamento será confirmado ao finalizar a pré-venda no caixa.</p>
               <button className="module-submit-btn pdv-checkout-btn" onClick={handleSavePreSale} disabled={isSaving}>
                 {saved ? <><Check size={18} /> Pré-Venda Salva!</> : <><ClipboardList size={18} /> {isSaving ? 'Salvando...' : 'Salvar Pré-Venda'}</>}
@@ -1368,7 +1555,6 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
                     type="password"
                     value={pinInput}
                     onChange={(e) => { setPinInput(e.target.value); setPinError(null); }}
-                    placeholder="Digite o PIN"
                     maxLength={8}
                     style={{ width: '100%', marginTop: '6px' }}
                     autoFocus

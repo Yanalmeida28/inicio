@@ -1,3 +1,3 @@
 # DistriHub.com
 
-[![Open in Bolt](https://bolt.new/static/open-in-bolt.svg)](https://bolt.new/~/sb1-zoqrbwwb)
+Aplicativo web B2B para gestão comercial, estoque, vendas e operações da DistriHub.

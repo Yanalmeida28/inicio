@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { PartnerCustomer } from '../../types';
-import { accountBalance, accountPaid, isOverdue } from '../../lib/accounts';
+import { accountBalance, invoiceCashReceived, isOverdue } from '../../lib/accounts';
 import { AccountsModule } from './AccountsModule';
 import { money } from '../../utils';
 import type { ComponentProps } from 'react';
@@ -21,7 +21,7 @@ export function CustomerAccountsModule({ customers, ...props }: Props) {
   }
   const rows = [...groups.values()].map(group => ({ ...group,
     balance: group.invoices.reduce((sum, i) => sum + accountBalance(i), 0),
-    paid: group.invoices.reduce((sum, i) => sum + accountPaid(i), 0),
+    paid: group.invoices.reduce((sum, i) => sum + invoiceCashReceived(i), 0),
     overdue: group.invoices.filter(i => isOverdue(i)).reduce((sum, i) => sum + accountBalance(i), 0),
   })).filter(g => (!onlyDebtors || g.balance > 0) && (!query.trim() || `${g.name} ${g.customer?.phone ?? ''}`.toLowerCase().includes(query.trim().toLowerCase())))
     .sort((a, b) => b.overdue - a.overdue || b.balance - a.balance);

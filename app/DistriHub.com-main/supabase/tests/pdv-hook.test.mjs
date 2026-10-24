@@ -13,6 +13,8 @@ const source = await readFile(new URL('../../src/hooks/usePartnerData.ts',import
 const helperSource = await readFile(new URL('../../src/lib/pdv.ts',import.meta.url),'utf8');
 const syncSource = await readFile(new URL('../../src/lib/partnerSync.ts',import.meta.url),'utf8');
 const compile = source => ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText;
+const invoiceModule={exports:{}};
+vm.runInNewContext(compile(await readFile(new URL('../../src/lib/invoicePayments.ts',import.meta.url),'utf8')),{exports:invoiceModule.exports});
 let renderer;
 afterEach(async()=>{if(renderer) await act(async()=>renderer.unmount());renderer=null;});
 async function harness({initialSales=[],initialInvoices=[],initialCustomers=[],rpc,values=new Map(),readResult,branchId=null,identity: suppliedIdentity}={}) {
@@ -36,12 +38,13 @@ async function harness({initialSales=[],initialInvoices=[],initialCustomers=[],r
   const hookModule={exports:{}};
   vm.runInNewContext(compile(source),{
     exports:hookModule.exports,sessionStorage:storage,crypto:{randomUUID},console,
-    window:{addEventListener(){},removeEventListener(){},setInterval(callback){intervals.push(callback);return intervals.length;},clearInterval(){},setTimeout(callback){const id=++timerId;timeouts.set(id,callback);return id;},clearTimeout(id){timeouts.delete(id);}},
+    window:{localStorage:storage,addEventListener(){},removeEventListener(){},setInterval(callback){intervals.push(callback);return intervals.length;},clearInterval(){},setTimeout(callback){const id=++timerId;timeouts.set(id,callback);return id;},clearTimeout(id){timeouts.delete(id);}},
     navigator:{onLine:true},
     document:{visibilityState:'visible',addEventListener(){},removeEventListener(){}},
     require(name){
       if(name==='react')return React;
       if(name==='../lib/supabase')return {supabase:client,isSupabaseConfigured:true};
+      if(name==='../lib/invoicePayments')return invoiceModule.exports;
       if(name==='../lib/pdv')return helperModule.exports;
       if(name==='../lib/partnerSync')return syncModule.exports;
       throw new Error('Unexpected import '+name);
@@ -215,11 +218,25 @@ test('editing pre-sale retains its ID and metadata while replacing items and tot
 test('receipt frontend declares exact remaining cents for full payment',async()=>{
   let received;
   const h=await harness({initialInvoices:[{id:'invoice',user_id:'owner',amount:0.3,paid_amount:0.1,status:'parcial'}],rpc:async(name,args)=>{
-    assert.equal(name,'record_partner_invoice_payment');received=args.p_amount;
+    assert.equal(name,'record_partner_invoice_payment_once');received=args.p_amount;
     return {data:args.p_invoice_id,error:null};
   }});
   await act(async()=>{await h.current.payInvoice('invoice');});
   assert.equal(received,0.2);
+});
+
+test('recebimento com resposta perdida reutiliza identificador após remontar a tela',async()=>{
+  const values=new Map(),requests=[];
+  const initialInvoices=[{id:'invoice',user_id:'owner',amount:100,paid_amount:0,status:'aberta'}];
+  let fail=true;
+  const rpc=async(name,args)=>{assert.equal(name,'record_partner_invoice_payment_once');requests.push(args);return fail ? {data:null,error:{message:'Resposta perdida'}} : {data:args.p_invoice_id,error:null};};
+  let h=await harness({initialInvoices,values,rpc});
+  await act(async()=>{await assert.rejects(h.current.payInvoice('invoice',20),/Resposta perdida/);});
+  await act(async()=>renderer.unmount());renderer=null;fail=false;
+  h=await harness({initialInvoices,values,rpc});
+  await act(async()=>{await h.current.payInvoice('invoice',20);});
+  assert.equal(requests.length,2);assert.equal(requests[0].p_request_id,requests[1].p_request_id);
+  assert.equal([...values.keys()].filter(k=>k.startsWith('distrihub-invoice-payment:')).length,0);
 });
 
 test('pre-sale uncertain response survives remount and reuses UUID and payload without credentials',async()=>{

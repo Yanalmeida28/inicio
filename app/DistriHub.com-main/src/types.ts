@@ -266,6 +266,11 @@ export interface PartnerSale {
   branch_id: string | null;
   customer_type: CustomerType;
   delivery_type: DeliveryType;
+  cost_snapshot?: Record<string, number> | null;
+  delivery_address?: string | null;
+  delivery_contact?: string | null;
+  delivery_details?: DeliveryDetails;
+  delivery_history?: { status: DeliveryStatus; at: string; actor_id: string; details?: DeliveryDetails }[];
   delivery_status?: DeliveryStatus;
   delivery_driver_id?: string | null;
   status:
@@ -332,6 +337,10 @@ export interface StorePersonalization {
   receipt?: Partial<ReceiptPreferences>;
   panel?: Partial<PanelPreferences>;
   catalog?: Partial<CatalogPreferences>;
+  pdv?: {
+    barcode_scanner_enabled?: boolean;
+    camera_scanner_enabled?: boolean;
+  };
 }
 
 export interface StoreSettings {
@@ -381,7 +390,11 @@ export interface PartnerProfile {
   updated_at?: string;
 }
 
+export interface DeliveryDetails { scheduled_date?: string; failure_reason?: string; received_by?: string; notes?: string; delivered_at?: string; }
+export interface RmaAttachment { kind: 'before' | 'after' | 'defect'; name: string; path: string; }
+
 export interface RmaRequest {
+  attachments?: RmaAttachment[];
   id: string;
   user_id: string;
   branch_id: string | null;
@@ -392,6 +405,9 @@ export interface RmaRequest {
   customer_id?: string | null;
   quantity?: number;
   stock_restored_at?: string | null;
+  credit_amount?: number;
+  credit_used_amount?: number | null;
+  credited_at?: string | null;
   product_name: string;
   product_sku: string;
   batch_or_order: string;
@@ -411,9 +427,14 @@ export type RmaPayload =
     | 'updated_at'
     | 'status'
     | 'stock_restored_at'
+    | 'credit_amount'
+    | 'credit_used_amount'
+    | 'credited_at'
     | 'branch_id'
     | 'customer_name'
   > & {
+    request_id?: string;
+    files?: { kind: RmaAttachment['kind']; file: File }[];
     branch_id?: string | null;
     customer_name?: string;
   };
@@ -449,6 +470,7 @@ export interface PartnerInvoice {
   customer_name: string;
   amount: number;
   paid_amount?: number;
+  return_credit_amount?: number;
   status:
     | 'aberta'
     | 'paga'
@@ -533,6 +555,7 @@ export interface AuditLog {
 }
 
 export interface ServiceOrder {
+  warranty_terms_snapshot?: string | null;
   id: string;
   user_id: string;
   branch_id: string;

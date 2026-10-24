@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Wallet, Printer, RefreshCw } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { isDefinitiveSaleRejection, pdvErrorMessage } from '../../lib/pdv';
-import { CashRequestStore, cashAmount, cashPaymentLabels, cashTotals, printCashReport, type CashMovement, type CashRequest, type CashSession } from '../../lib/cashRegister';
+import { CashRequestStore, cashAmount, cashBusinessDay, cashDaySalesTotal, cashPaymentLabels, cashTotals, printCashReport, type CashMovement, type CashRequest, type CashSession } from '../../lib/cashRegister';
 import { money } from '../../utils';
 import type { PartnerSale, PartnerSalesperson } from '../../types';
 
@@ -75,6 +75,8 @@ export function CashRegisterModule({ branchId, branchName, scopeKey, sales, oper
   const selected = sessions.find(s => s.id === selectedId) ?? current ?? sessions[0];
   const selectedMovements = movements.filter(m => m.session_id === selected?.id);
   const totals = selected?.closing_totals ?? cashTotals(selectedMovements);
+  const today = cashBusinessDay(new Date());
+  const dayTotal = cashDaySalesTotal(movements, sessions, branchId, selected?.actor_key ?? actorKey, today);
   const expected = selected ? Math.round((Number(selected.opening_amount) + (totals.dinheiro ?? 0)) * 100) / 100 : 0;
   const managers = salespeople.filter(p => p.is_active && ['administrador', 'gerente'].includes(p.role));
   const originalSaleMovements = movements.filter(movement => movement.kind === 'venda');
@@ -233,10 +235,12 @@ export function CashRegisterModule({ branchId, branchName, scopeKey, sales, oper
         {selected.actor_key !== actorKey && <p>Consulta do caixa de {selected.operator_name}. Selecionar este relatório não troca o operador nem o caixa usado nas vendas.</p>}
         <div className="cash-summary"><div><small>Troco inicial</small><strong>{money.format(selected.opening_amount)}</strong></div>
           {Object.entries(totals).map(([key, value]) => <div key={key}><small>{cashPaymentLabels[key] ?? key} · líquido</small><strong>{money.format(value)}</strong></div>)}
+          <div className="cash-day-total"><small>Total do dia</small><strong>{money.format(dayTotal)}</strong><small>{today.split('-').reverse().join('/')} · {selected.operator_name}</small></div>
           <div><small>Dinheiro esperado</small><strong>{money.format(selected.expected_amount ?? expected)}</strong></div>
           {selected.closed_at && <><div><small>Dinheiro contado</small><strong>{money.format(selected.counted_amount ?? 0)}</strong></div><div><small>Diferença</small><strong>{money.format(selected.difference ?? 0)}</strong></div></>}
         </div>
         <p>O líquido em dinheiro inclui sangrias e suprimentos. Faturado é valor a receber e não compõe o dinheiro do caixa.</p>
+        <p>O total do dia soma as vendas de hoje do operador nesta filial, incluindo faturado e descontando estornos e devoluções do dia. Não inclui troco inicial, sangrias ou suprimentos.</p>
         <button className="rma-advance-btn" onClick={() => { try { printCashReport(selected, selectedMovements, branchName); } catch (e) { setError(pdvErrorMessage(e)); } }}><Printer size={14} /> Imprimir relatório</button>
         <div className="stock-table-wrap"><table className="rma-table"><thead><tr><th>Data</th><th>Tipo</th><th>Pagamento</th><th>Valor</th><th>Motivo / pedido</th></tr></thead><tbody>
           {selectedMovements.length ? selectedMovements.map(m => <tr key={m.id}><td>{new Date(m.created_at).toLocaleString('pt-BR')}</td><td>{m.kind}</td><td>{cashPaymentLabels[m.payment_method] ?? m.payment_method}</td><td>{money.format(m.amount)}</td><td>{m.reason}{m.sale_id && ` · #${m.sale_id.slice(0, 8).toUpperCase()}`}</td></tr>) : <tr><td colSpan={5}>Nenhuma movimentação.</td></tr>}

@@ -124,7 +124,7 @@ export function SalesHistoryModule({ sales, rmaRequests = [], customers, salespe
 
   return (<>
     <div className="orders-filter-row sales-history-filters">
-      <label>Buscar venda<input value={search} onChange={e => setSearch(e.target.value)} placeholder="Cliente, número, IMEI ou série" /></label>
+      <label>Buscar venda<input type="search" name="sales-history-search" autoComplete="off" data-lpignore="true" data-1p-ignore="true" disabled={!!cancelTarget} value={search} onChange={e => { if (!cancelTarget) setSearch(e.target.value); }} placeholder="Cliente, número, IMEI ou série" /></label>
       <label>De<input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} /></label>
       <label>Até<input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} /></label>
       <label>Status<select value={status} onChange={e => setStatus(e.target.value)}><option value="all">Todos</option><option value="concluida">Concluída</option><option value="cancelada">Cancelada</option><option value="aberta">Aberta</option><option value="devolucao">Devolução</option></select></label>
@@ -134,10 +134,10 @@ export function SalesHistoryModule({ sales, rmaRequests = [], customers, salespe
     <p>{filteredSales.length} vendas encontradas nos dados carregados da filial. Total concluído: <strong>{money.format(filteredSales.filter(s => s.status === 'concluida').reduce((sum, s) => sum + Number(s.total), 0))}</strong></p>
       {printError && <p className="otp-error-msg" role="alert">{printError}</p>}
       {shareNotice && <p role="status">{shareNotice}</p>}
-      <div className="pdv-recent-sales">
+      <div className="pdv-recent-sales sales-history-table">
         <h4>Vendas</h4>
-        <div className="stock-table-wrap">
-          <table className="rma-table">
+        <div className="stock-table-wrap sales-history-list-wrap">
+          <table className="rma-table sales-history-list-table">
             <thead><tr><th>Cliente</th><th>Itens</th><th>Total</th><th>Pagamento</th><th>{traceabilityLabel}</th><th>Status</th><th>Data</th><th></th></tr></thead>
             <tbody>
               {filteredSales.length === 0 ? (
@@ -145,8 +145,8 @@ export function SalesHistoryModule({ sales, rmaRequests = [], customers, salespe
               ) : (
                 filteredSales.map((s) => (
                   <tr key={s.id} className={s.status === 'cancelada' ? 'cancelled-row' : ''}>
-                    <td><strong>{s.customer_name ?? '—'}</strong><small className="sales-history-id" title={s.id}>#{s.id.slice(0, 8)}</small></td>
-                    <td>
+                    <td data-label="Cliente"><strong>{s.customer_name ?? '—'}</strong><small className="sales-history-id" title={s.id}>#{s.id.slice(0, 8)}</small></td>
+                    <td data-label="Itens">
                       {s.items.length} {s.items.length === 1 ? 'item' : 'itens'}
                       {s.items.length > 0 && <details style={{ marginTop: '6px' }}>
                         <summary style={{ cursor: 'pointer', color: '#5cb5f1' }}>Visualizar produtos</summary>
@@ -155,18 +155,18 @@ export function SalesHistoryModule({ sales, rmaRequests = [], customers, salespe
                         </small>
                       </details>}
                     </td>
-                    <td>{money.format(saleChargeTotal(s))}{s.freight_fee ? <small>Frete: {money.format(s.freight_fee)}</small> : null}</td>
-                    <td>{salePaymentDescription(s)}</td>
-                    <td>{s.imei ?? s.serial_number ?? '—'}</td>
-                    <td>
+                    <td data-label="Total">{money.format(saleChargeTotal(s))}{s.freight_fee ? <small>Frete: {money.format(s.freight_fee)}</small> : null}</td>
+                    <td data-label="Pagamento">{salePaymentDescription(s)}</td>
+                    <td data-label={traceabilityLabel}>{s.imei ?? s.serial_number ?? '—'}</td>
+                    <td data-label="Status">
                       {s.status === 'cancelada' ? (
-                        <span className="rma-status-badge" style={{ color: '#e3829b', borderColor: '#e3829b' }}>Cancelada</span>
+                        <span className="rma-status-badge history-status-cancelled">Cancelada</span>
                       ) : (
-                        <span className="rma-status-badge" style={{ color: '#5bbc87', borderColor: '#5bbc87' }}>{saleReturnLabel(s, rmaRequests) || (s.status === 'concluida' ? 'Concluída' : s.status === 'aberta' ? 'Aberta' : 'Devolução')}</span>
+                        <span className={`rma-status-badge ${saleReturnLabel(s, rmaRequests) || s.status === 'devolucao' ? 'history-status-returned' : s.status === 'concluida' ? 'history-status-completed' : 'history-status-open'}`}>{saleReturnLabel(s, rmaRequests) || (s.status === 'concluida' ? 'Concluída' : s.status === 'aberta' ? 'Aberta' : 'Devolução')}</span>
                       )}
                     </td>
-                    <td>{new Date(s.created_at).toLocaleString('pt-BR')}</td>
-                    <td>
+                    <td data-label="Data">{new Date(s.created_at).toLocaleString('pt-BR')}</td>
+                    <td className="sales-history-actions" data-label="Ações">
                       {s.status !== 'cancelada' && (
                         <SaleActionsMenu
                           onPrintReceipt={() => handlePrint(s, 'receipt')}
@@ -188,10 +188,10 @@ export function SalesHistoryModule({ sales, rmaRequests = [], customers, salespe
 
       {cancelTarget && (
         <div className="modal-backdrop" onClick={() => setCancelTarget(null)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '380px' }}>
+          <form id="sales-history-cancel-authorization" autoComplete="off" className="modal-content" onSubmit={e => e.preventDefault()} onClick={(e) => e.stopPropagation()} style={{ maxWidth: '380px' }}>
             <div className="modal-header">
               <h3><Lock size={18} style={{ display: 'inline', marginRight: '6px' }} /> Confirmação Necessária</h3>
-              <button onClick={() => setCancelTarget(null)}><X size={18} /></button>
+              <button type="button" onClick={() => setCancelTarget(null)}><X size={18} /></button>
             </div>
             <p className="otp-description">
               Cancelar ou apagar uma venda requer permissão de Administrador ou Gerente. Selecione o responsável e digite o PIN dele para continuar.
@@ -214,9 +214,13 @@ export function SalesHistoryModule({ sales, rmaRequests = [], customers, salespe
                   <strong>PIN do responsável</strong>
                   <input
                     type="password"
+                    name="sales-cancellation-supervisor-pin"
+                    autoComplete="new-password"
+                    data-lpignore="true"
+                    data-1p-ignore="true"
+                    inputMode="numeric"
                     value={pinInput}
                     onChange={(e) => { setPinInput(e.target.value); setPinError(null); }}
-                    placeholder="Digite o PIN"
                     maxLength={8}
                     style={{ width: '100%', marginTop: '6px' }}
                     autoFocus
@@ -226,14 +230,14 @@ export function SalesHistoryModule({ sales, rmaRequests = [], customers, salespe
             )}
             {pinError && <p className="otp-error-msg">{pinError}</p>}
             <div className="otp-actions">
-              <button className="rma-advance-btn danger" onClick={() => verifyPinAndCancel('delete')} disabled={isVerifyingPin || managers.length === 0}>
+              <button type="button" className="rma-advance-btn danger" onClick={() => verifyPinAndCancel('delete')} disabled={isVerifyingPin || managers.length === 0}>
                 <Trash2 size={16} /> {isVerifyingPin ? 'Verificando...' : 'Apagar Venda'}
               </button>
-              <button className="module-submit-btn" onClick={() => verifyPinAndCancel('cancel')} disabled={isVerifyingPin || managers.length === 0}>
+              <button type="button" className="module-submit-btn" onClick={() => verifyPinAndCancel('cancel')} disabled={isVerifyingPin || managers.length === 0}>
                 <Ban size={16} /> {isVerifyingPin ? 'Verificando...' : 'Cancelar Venda'}
               </button>
             </div>
-          </div>
+          </form>
         </div>
       )}
     </>

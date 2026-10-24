@@ -7,18 +7,21 @@ type DraftContextValue = {
 };
 
 const DraftContext = createContext<DraftContextValue | null>(null);
+const memoryDrafts = new Map<string, unknown>();
 
 export function SessionDraftProvider({ scope, children }: { scope: string; children: ReactNode }) {
-  const [error, setError] = useState<string | null>(null);
-  const reportError = useCallback((message: string) => setError(message), []);
+  const [error, setError] = useState<{ scope: string; message: string } | null>(null);
+  const reportError = useCallback((message: string) => setError({ scope, message }), [scope]);
   const context = useMemo<DraftContextValue>(() => ({scope, reportError}), [scope, reportError]);
 
   return (
     <DraftContext.Provider value={context}>
       {children}
-      {error && (
-        <div role="alert" style={{ position: 'fixed', right: 16, bottom: 16, zIndex: 2000, maxWidth: 420, padding: 12, borderRadius: 8, background: '#7f1d1d', color: '#fff' }}>
-          Não foi possível salvar o rascunho neste navegador: {error}
+      {error?.scope === scope && (
+        <div role="alert" style={{ position: 'fixed', right: 16, bottom: 16, zIndex: 2000, maxWidth: 420, padding: 12, borderRadius: 8, background: '#342b1b', color: '#fbbf24' }}>
+          O rascunho não pôde ser mantido no navegador. Seus dados continuam nesta tela; use Salvar para gravar o cadastro.
+          <small style={{ display: 'block', marginTop: 6 }}>{error.message}</small>
+          <button type="button" aria-label="Fechar aviso de rascunho" onClick={() => setError(null)} style={{ marginTop: 8, color: '#fff', background: 'transparent', border: '1px solid #b98723', borderRadius: 4, padding: '4px 8px' }}>Fechar aviso</button>
         </div>
       )}
     </DraftContext.Provider>
@@ -31,15 +34,15 @@ export function useSessionDraftScope(): string {
 }
 
 // eslint-disable-next-line react-refresh/only-export-components
-export function useSessionDraftState<T>(draftId: string, initialValue: T, scopeOverride?: string): [T, Dispatch<SetStateAction<T>>] {
+export function useSessionDraftState<T>(draftId: string, initialValue: T, scopeOverride?: string, validate?: (value: unknown) => boolean): [T, Dispatch<SetStateAction<T>>] {
   const context = useContext(DraftContext);
   const scope = scopeOverride ?? context?.scope ?? 'unscoped';
   const storageKey = `distrihub:draft:${scope}:${draftId}`;
   function readDraft() {
     try {
       const value = window.sessionStorage.getItem(storageKey);
-      const parsed: unknown = value === null ? initialValue : JSON.parse(value);
-      const valid = initialValue === null ? parsed === null || typeof parsed === 'object'
+      const parsed: unknown = value === null ? memoryDrafts.get(storageKey) ?? initialValue : JSON.parse(value);
+      const valid = validate ? validate(parsed) : initialValue === null ? parsed === null || typeof parsed === 'object'
         : Array.isArray(initialValue) ? Array.isArray(parsed)
         : typeof parsed === typeof initialValue && (typeof initialValue !== 'object' || (parsed !== null && !Array.isArray(parsed)));
       if (!valid) throw new Error('Rascunho incompatível; o formulário foi recuperado com os valores iniciais.');
@@ -47,7 +50,7 @@ export function useSessionDraftState<T>(draftId: string, initialValue: T, scopeO
     } catch (error) {
       return {
         storageKey,
-        value: initialValue,
+        value: (memoryDrafts.get(storageKey) ?? initialValue) as T,
         error: error instanceof Error ? error.message : 'Erro ao ler o armazenamento temporário.',
       };
     }
@@ -71,8 +74,9 @@ export function useSessionDraftState<T>(draftId: string, initialValue: T, scopeO
   }, [context, current.error]);
 
   useEffect(() => {
+    if (stored.storageKey !== storageKey) return;
+    memoryDrafts.set(storageKey, value);
     try {
-      if (stored.storageKey !== storageKey) return;
       window.sessionStorage.setItem(storageKey, JSON.stringify(value));
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Erro ao gravar o armazenamento temporário.';

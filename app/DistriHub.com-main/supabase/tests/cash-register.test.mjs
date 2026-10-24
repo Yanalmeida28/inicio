@@ -55,6 +55,7 @@ before(async () => {
     CREATE FUNCTION partner_subscription_private.require_actor(text) RETURNS void LANGUAGE sql AS $$ SELECT $$;`);
   await db.exec(JSON.parse(await read('./fixtures/split_payment_baseline.json')));
   await db.exec(await read('../migrations/20261009211459_add_split_sale_payments.sql'));
+  await db.exec(await read('../migrations/20261015170000_disable_salesperson_access.sql'));
 });
 after(() => db.close());
 
@@ -638,6 +639,45 @@ test('manager reads branch history across operators while cashier sees only own 
   const data=(await sql('SELECT read_partner_cash_register($1) AS data',[branch])).rows[0].data;
   assert.equal(data.sessions.length,2); assert.equal(data.actor_key,owner);
   assert.ok(data.sessions.some(s=>s.id===session));
+});
+
+test('administrator disables employee access without deleting cash history', async () => {
+  await sql(
+    `INSERT INTO partner_cash_sessions(
+      id,user_id,branch_id,actor_key,operator_id,operator_name,opening_amount,open_request_id
+    ) VALUES($1,$2,$3,$4,$4,'Caixa',20,$5)`,
+    [randomUUID(),owner,branch,employee,randomUUID()],
+  );
+
+  assert.equal(
+    (await sql('SELECT execute_partner_salesperson_delete(NULL,NULL,$1) AS ok',[employee])).rows[0].ok,
+    true,
+  );
+  assert.equal(
+    (await sql('SELECT active FROM partner_salespeople WHERE id=$1',[employee])).rows[0].active,
+    false,
+  );
+  assert.equal((await sql('SELECT count(*)::int AS n FROM partner_cash_sessions WHERE operator_id=$1',[employee])).rows[0].n,1);
+
+  await login(employeeAuth);
+  await assert.rejects(
+    sql('SELECT * FROM resolve_partner_operator(NULL,NULL,$1)',[branch]),
+    /Operador invalido/,
+  );
+});
+
+test('employee administrator cannot disable their own access', async () => {
+  await sql("UPDATE partner_salespeople SET role='administrador' WHERE id=$1",[employee]);
+  await login(employeeAuth);
+
+  await assert.rejects(
+    sql('SELECT execute_partner_salesperson_delete($1,$2,$1)',[employee,'1234']),
+    /proprio operador em uso/,
+  );
+  assert.equal(
+    (await sql('SELECT active FROM partner_salespeople WHERE id=$1',[employee])).rows[0].active,
+    true,
+  );
 });
 
 test('cash movements use exact cents and pending requests survive remount without credentials', async () => {

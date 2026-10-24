@@ -378,7 +378,7 @@ export function FiscalModule({ products, sales, customers, profile, currentRole,
           {dispatchMethods.has('email') && selectedSale && (
             <label className="fiscal-dispatch-input">
               <span className="social-label"><Mail size={14} /> E-mail do Destinatário</span>
-              <input type="email" value={dispatchEmail} onChange={(e) => setDispatchEmail(e.target.value)} placeholder="cliente@email.com" />
+              <input type="email" value={dispatchEmail} onChange={(e) => setDispatchEmail(e.target.value)}  />
             </label>
           )}
           {dispatchMethods.has('whatsapp') && selectedSale && (
@@ -621,7 +621,7 @@ export function FiscalModule({ products, sales, customers, profile, currentRole,
               {dispatchMethods.has('email') && (
                 <label>
                   <span className="social-label"><Mail size={14} /> E-mail do Cliente</span>
-                  <input type="email" value={dispatchEmail} onChange={(e) => setDispatchEmail(e.target.value)} placeholder="cliente@email.com" />
+                  <input type="email" value={dispatchEmail} onChange={(e) => setDispatchEmail(e.target.value)}  />
                 </label>
               )}
               {dispatchMethods.has('whatsapp') && (

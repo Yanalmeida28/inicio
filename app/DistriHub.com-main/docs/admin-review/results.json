@@ -1,0 +1,229 @@
+{
+  "results": [
+    {
+      "width": 320,
+      "tab": "Visão geral",
+      "overflow": false,
+      "content": false,
+      "cards": null
+    },
+    {
+      "width": 320,
+      "tab": "Gestão de Clientes",
+      "overflow": false,
+      "content": false,
+      "cards": "block"
+    },
+    {
+      "width": 320,
+      "tab": "Financeiro SaaS",
+      "overflow": false,
+      "content": false,
+      "cards": null
+    },
+    {
+      "width": 320,
+      "tab": "Faturas SaaS",
+      "overflow": false,
+      "content": false,
+      "cards": "block"
+    },
+    {
+      "width": 320,
+      "tab": "Acesso ao aplicativo",
+      "overflow": false,
+      "content": false,
+      "cards": "block"
+    },
+    {
+      "width": 320,
+      "tab": "Solicitações de Plano",
+      "overflow": false,
+      "content": false,
+      "cards": "block"
+    },
+    {
+      "width": 320,
+      "tab": "Suporte",
+      "overflow": false,
+      "content": false,
+      "cards": null
+    },
+    {
+      "width": 320,
+      "tab": "Histórico administrativo",
+      "overflow": false,
+      "content": false,
+      "cards": null
+    },
+    {
+      "width": 390,
+      "tab": "Visão geral",
+      "overflow": false,
+      "content": false,
+      "cards": null
+    },
+    {
+      "width": 390,
+      "tab": "Gestão de Clientes",
+      "overflow": false,
+      "content": false,
+      "cards": "block"
+    },
+    {
+      "width": 390,
+      "tab": "Financeiro SaaS",
+      "overflow": false,
+      "content": false,
+      "cards": null
+    },
+    {
+      "width": 390,
+      "tab": "Faturas SaaS",
+      "overflow": false,
+      "content": false,
+      "cards": "block"
+    },
+    {
+      "width": 390,
+      "tab": "Acesso ao aplicativo",
+      "overflow": false,
+      "content": false,
+      "cards": "block"
+    },
+    {
+      "width": 390,
+      "tab": "Solicitações de Plano",
+      "overflow": false,
+      "content": false,
+      "cards": "block"
+    },
+    {
+      "width": 390,
+      "tab": "Suporte",
+      "overflow": false,
+      "content": false,
+      "cards": null
+    },
+    {
+      "width": 390,
+      "tab": "Histórico administrativo",
+      "overflow": false,
+      "content": false,
+      "cards": null
+    },
+    {
+      "width": 768,
+      "tab": "Visão geral",
+      "overflow": false,
+      "content": false,
+      "cards": null
+    },
+    {
+      "width": 768,
+      "tab": "Gestão de Clientes",
+      "overflow": false,
+      "content": false,
+      "cards": "table-row"
+    },
+    {
+      "width": 768,
+      "tab": "Financeiro SaaS",
+      "overflow": false,
+      "content": false,
+      "cards": null
+    },
+    {
+      "width": 768,
+      "tab": "Faturas SaaS",
+      "overflow": false,
+      "content": false,
+      "cards": "table-row"
+    },
+    {
+      "width": 768,
+      "tab": "Acesso ao aplicativo",
+      "overflow": false,
+      "content": false,
+      "cards": "table-row"
+    },
+    {
+      "width": 768,
+      "tab": "Solicitações de Plano",
+      "overflow": false,
+      "content": false,
+      "cards": "table-row"
+    },
+    {
+      "width": 768,
+      "tab": "Suporte",
+      "overflow": false,
+      "content": false,
+      "cards": null
+    },
+    {
+      "width": 768,
+      "tab": "Histórico administrativo",
+      "overflow": false,
+      "content": false,
+      "cards": null
+    },
+    {
+      "width": 1366,
+      "tab": "Visão geral",
+      "overflow": false,
+      "content": false,
+      "cards": null
+    },
+    {
+      "width": 1366,
+      "tab": "Gestão de Clientes",
+      "overflow": false,
+      "content": false,
+      "cards": "table-row"
+    },
+    {
+      "width": 1366,
+      "tab": "Financeiro SaaS",
+      "overflow": false,
+      "content": false,
+      "cards": null
+    },
+    {
+      "width": 1366,
+      "tab": "Faturas SaaS",
+      "overflow": false,
+      "content": false,
+      "cards": "table-row"
+    },
+    {
+      "width": 1366,
+      "tab": "Acesso ao aplicativo",
+      "overflow": false,
+      "content": false,
+      "cards": "table-row"
+    },
+    {
+      "width": 1366,
+      "tab": "Solicitações de Plano",
+      "overflow": false,
+      "content": false,
+      "cards": "table-row"
+    },
+    {
+      "width": 1366,
+      "tab": "Suporte",
+      "overflow": false,
+      "content": false,
+      "cards": null
+    },
+    {
+      "width": 1366,
+      "tab": "Histórico administrativo",
+      "overflow": false,
+      "content": false,
+      "cards": null
+    }
+  ],
+  "errors": []
+}

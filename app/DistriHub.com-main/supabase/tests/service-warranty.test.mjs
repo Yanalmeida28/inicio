@@ -31,20 +31,20 @@ const saveButton = () => renderer.root.findAllByType('button').find(button => bu
 
 test('personalization saves multiline service terms independently and reloads the saved text', async () => {
   let submitted;
-  await act(async () => { renderer = TestRenderer.create(React.createElement(Component, { settings, onUpdate: async value => { submitted = value; } })); });
+  await act(async () => { renderer = TestRenderer.create(React.createElement(Component, { settings, planId: 'basico', canEdit: true, onUpdate: async value => { submitted = value; } })); });
   const text = 'Garantia do serviço\nCondições de atendimento';
   await act(async () => renderer.root.findByProps({ id: 'service-warranty-terms' }).props.onChange({ target: { value: text } }));
   await act(async () => saveButton().props.onClick());
   assert.equal(submitted.service_warranty_terms, text);
   assert.equal(submitted.receipt_footer_text, settings.receipt_footer_text);
   assert.equal(submitted.warranty_terms, undefined);
-  await act(async () => renderer.update(React.createElement(Component, { settings: { ...settings, service_warranty_terms: text }, onUpdate: async () => {} })));
+  await act(async () => renderer.update(React.createElement(Component, { settings: { ...settings, service_warranty_terms: text }, planId: 'basico', canEdit: true, onUpdate: async () => {} })));
   assert.equal(renderer.root.findByProps({ id: 'service-warranty-terms' }).props.value, text);
 });
 
 test('failed service-term save retains the draft and shows an error until a successful retry', async () => {
   let fail = true;
-  await act(async () => { renderer = TestRenderer.create(React.createElement(Component, { settings, onUpdate: async () => { if (fail) throw new Error('Falha ao salvar'); } })); });
+  await act(async () => { renderer = TestRenderer.create(React.createElement(Component, { settings, planId: 'basico', canEdit: true, onUpdate: async () => { if (fail) throw new Error('Falha ao salvar'); } })); });
   await act(async () => renderer.root.findByProps({ id: 'service-warranty-terms' }).props.onChange({ target: { value: 'Meu termo' } }));
   await act(async () => saveButton().props.onClick());
   assert.equal(renderer.root.findByProps({ role: 'alert' }).children.join(''), 'Falha ao salvar');
@@ -57,7 +57,7 @@ test('failed service-term save retains the draft and shows an error until a succ
 
 test('personalization preserves independent panel, receipt and catalog choices when saved',async()=>{
   let submitted;
-  await act(async()=>{renderer=TestRenderer.create(React.createElement(Component,{settings,onUpdate:async value=>{submitted=value;}}));});
+  await act(async()=>{renderer=TestRenderer.create(React.createElement(Component,{settings,planId:'enterprise',canEdit:true,onUpdate:async value=>{submitted=value;}}));});
   const change=async(label,value)=>act(async()=>renderer.root.findByProps({'aria-label':label}).props.onChange({target:{value}}));
   await act(async()=>renderer.root.findByProps({'aria-label':'Aplicar tema Verde'}).props.onClick());
   await change('Largura do papel do cupom','58');
@@ -77,7 +77,7 @@ test('personalization preserves independent panel, receipt and catalog choices w
 
 test('restoring panel defaults preserves the receipt draft and invalid WhatsApp blocks saving',async()=>{
   let submitted,calls=0;
-  await act(async()=>{renderer=TestRenderer.create(React.createElement(Component,{settings,onUpdate:async value=>{submitted=value;calls++;}}));});
+  await act(async()=>{renderer=TestRenderer.create(React.createElement(Component,{settings,planId:'enterprise',canEdit:true,onUpdate:async value=>{submitted=value;calls++;}}));});
   await act(async()=>renderer.root.findByProps({'aria-label':'Largura do papel do cupom'}).props.onChange({target:{value:'58'}}));
   await act(async()=>renderer.root.findAllByType('button').find(button=>button.children.includes('Painel')).props.onClick());
   await act(async()=>renderer.root.findByProps({'aria-label':'Tamanho dos textos do painel'}).props.onChange({target:{value:'extra-large'}}));
@@ -91,4 +91,38 @@ test('restoring panel defaults preserves the receipt draft and invalid WhatsApp 
   await act(async()=>saveButton().props.onClick());
   assert.equal(submitted.personalization.receipt.paper_width,'58');
   assert.equal(Object.keys(submitted.personalization.panel).length,0);
+});
+
+test('basic plan exposes essential personalization and hides professional and enterprise features', async () => {
+  await act(async () => { renderer = TestRenderer.create(React.createElement(Component, { settings, planId: 'basico', canEdit: true, onUpdate: async () => {} })); });
+  const tabNames = renderer.root.findByProps({ 'aria-label': 'Seções de personalização' })
+    .findAllByType('button').map(button => button.children.join(''));
+  assert.deepEqual(tabNames, ['Identidade visual', 'Cupom e termos']);
+  assert.ok(renderer.root.findByProps({ id: 'service-warranty-terms' }));
+  assert.ok(renderer.root.findByProps({ 'aria-label': 'Logo nos Cupons, Recibos e Ordens de Serviço' }));
+  assert.equal(renderer.root.findAllByProps({ 'aria-label': 'Cor primária' }).length, 0);
+  assert.equal(renderer.root.findAllByProps({ 'aria-label': 'Tamanho dos textos do painel' }).length, 0);
+  assert.equal(renderer.root.findAll(node => node.children.includes('Banner do Catálogo Público')).length, 0);
+});
+
+test('professional adds banner, colors and internal notice while enterprise keeps advanced tabs', async () => {
+  await act(async () => { renderer = TestRenderer.create(React.createElement(Component, { settings, planId: 'profissional', canEdit: true, onUpdate: async () => {} })); });
+  assert.ok(renderer.root.findAllByProps({ 'aria-label': 'Cor primária' }).length > 0);
+  assert.ok(renderer.root.findAll(node => node.children.includes('Aviso Interno')).length > 0);
+  const professionalTabs = renderer.root.findByProps({ 'aria-label': 'Seções de personalização' })
+    .findAllByType('button').map(button => button.children.join(''));
+  assert.deepEqual(professionalTabs, ['Identidade visual', 'Cupom e termos']);
+  assert.equal(renderer.root.findAllByProps({ 'aria-label': 'Tamanho dos textos do painel' }).length, 0);
+
+  await act(async () => { renderer.update(React.createElement(Component, { settings, planId: 'enterprise', canEdit: true, onUpdate: async () => {} })); });
+  const enterpriseTabs = renderer.root.findByProps({ 'aria-label': 'Seções de personalização' })
+    .findAllByType('button').map(button => button.children.join(''));
+  assert.deepEqual(enterpriseTabs, ['Identidade visual', 'Painel', 'Cupom e termos', 'Catálogo', 'PDV']);
+});
+
+test('non-owner personalization controls are disabled', async () => {
+  await act(async () => { renderer = TestRenderer.create(React.createElement(Component, { settings, planId: 'basico', canEdit: false, onUpdate: async () => {} })); });
+  assert.equal(renderer.root.findByType('fieldset').props.disabled, true);
+  assert.equal(saveButton().props.disabled, true);
+  assert.ok(renderer.root.findAllByProps({ role: 'status' }).some(node => node.children.join('') === 'Somente o proprietário pode alterar a personalização da loja.'));
 });

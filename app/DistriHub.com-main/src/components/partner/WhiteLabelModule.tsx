@@ -1,29 +1,54 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Check, ImagePlus, Palette, Printer, Upload, Wand2 } from 'lucide-react';
 import type { StoreSettings, StorePersonalization } from '../../types';
+import type { SaasPlanId } from '../../lib/saas';
 import { normalizeColor, storeTheme } from '../../lib/storeTheme';
 import { receiptPreferences, panelPreferences, panelStyle, catalogPreferences, catalogWhatsappUrl } from '../../lib/personalization';
 
 type WhiteLabelModuleProps = {
   settings: StoreSettings;
   onUpdate: (settings: Partial<StoreSettings>) => Promise<unknown>;
+  planId: SaasPlanId;
+  canEdit: boolean;
 };
 
 const presetColors = ['#3193e5', '#2563eb', '#199863', '#0f766e', '#7c3aed', '#a21caf', '#be185d', '#e3829b', '#c2410c', '#e6a06d', '#ca8a04', '#5fd0d1', '#475569', '#97aabc'];
 const navigationColors = ['#0f2747', '#0f172a', '#1e293b', '#14532d', '#134e4a', '#3b0764', '#4c0519', '#ffffff'];
+const personalizationTabs = [
+  { id: 'visual', label: 'Identidade visual' },
+  { id: 'painel', label: 'Painel' },
+  { id: 'cupom', label: 'Cupom e termos' },
+  { id: 'catalogo', label: 'Catálogo' },
+  { id: 'pdv', label: 'PDV' },
+] as const;
+type PersonalizationTab = typeof personalizationTabs[number]['id'];
 
-export function WhiteLabelModule({ settings: initialSettings, onUpdate: persist }: WhiteLabelModuleProps) {
+export function WhiteLabelModule({ settings: initialSettings, onUpdate: persist, planId, canEdit }: WhiteLabelModuleProps) {
   const [settings, setSettings] = useState(initialSettings);
-  const [activeTab, setActiveTab] = useState<'visual' | 'painel' | 'cupom' | 'catalogo'>('visual');
+  const [activeTab, setActiveTab] = useState<PersonalizationTab>('visual');
+  const isProfessional = planId === 'profissional' || planId === 'enterprise';
+  const isEnterprise = planId === 'enterprise';
+  const availableTabs = useMemo(
+    () => personalizationTabs.filter(tab => isEnterprise || (tab.id !== 'painel' && tab.id !== 'catalogo' && tab.id !== 'pdv')),
+    [isEnterprise],
+  );
+  useEffect(() => {
+    if (!availableTabs.some(tab => tab.id === activeTab)) setActiveTab('visual');
+  }, [activeTab, availableTabs]);
   const receipt = receiptPreferences(settings.personalization?.receipt);
   const panel = panelPreferences(settings.personalization?.panel);
   const catalog = catalogPreferences(settings.personalization?.catalog);
+  const barcodeScannerEnabled = settings.personalization?.pdv?.barcode_scanner_enabled !== false;
+  const cameraScannerEnabled = settings.personalization?.pdv?.camera_scanner_enabled === true;
   function updatePreference<K extends keyof StorePersonalization>(group: K, value: StorePersonalization[K]) {
     onUpdate({ personalization: { ...settings.personalization, [group]: value } });
   }
   function restoreSection() {
     if (activeTab === 'visual') onUpdate({ primary_color: '#3193e5', nav_color: '#0f2747' });
-    else updatePreference(activeTab === 'painel' ? 'panel' : activeTab === 'cupom' ? 'receipt' : 'catalog', {});
+    else {
+      const group = activeTab === 'painel' ? 'panel' : activeTab === 'cupom' ? 'receipt' : activeTab === 'catalogo' ? 'catalog' : 'pdv';
+      updatePreference(group, {});
+    }
   }
   const [dirty, setDirty] = useState(false);
   useEffect(() => {
@@ -63,7 +88,11 @@ export function WhiteLabelModule({ settings: initialSettings, onUpdate: persist 
   const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => readImage(e, 'logo_url');
   const handleBannerChange = (e: React.ChangeEvent<HTMLInputElement>) => readImage(e, 'banner_url');
   async function handleSave() {
-    if (catalog.whatsapp_phone.trim() && !catalogWhatsappUrl(catalog.whatsapp_phone)) {
+    if (!canEdit) {
+      setError('Somente o proprietário pode alterar a personalização da loja.');
+      return;
+    }
+    if (isEnterprise && catalog.whatsapp_phone.trim() && !catalogWhatsappUrl(catalog.whatsapp_phone)) {
       setError('Informe um WhatsApp válido com DDD ou código do país.'); setActiveTab('catalogo'); return;
     }
     setSaving(true); setError(null); setSaved(false);
@@ -79,22 +108,51 @@ export function WhiteLabelModule({ settings: initialSettings, onUpdate: persist 
 
   return (
     <div className="panel-module">
-      <fieldset disabled={saving || reading} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+      <fieldset disabled={saving || reading || !canEdit} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
       <div className="module-header">
         <span className="module-icon"><Wand2 size={20} /></span>
         <div>
           <h3>Personalização da Loja</h3>
-          <p>Configure a identidade visual e as opções de impressão</p>
+          <p>Configure a identidade visual, o PDV e as opções de impressão</p>
         </div>
       </div>
 
+      {!canEdit && <p role="status" className="otp-description">Somente o proprietário pode alterar a personalização da loja.</p>}
+
       <nav className="personalization-tabs" aria-label="Seções de personalização">
-        {([{ id: 'visual', label: 'Identidade visual' }, { id: 'painel', label: 'Painel' }, { id: 'cupom', label: 'Cupom e termos' }, { id: 'catalogo', label: 'Catálogo' }] as const).map(tab => (
+        {availableTabs.map(tab => (
           <button key={tab.id} type="button" className={activeTab === tab.id ? 'active' : ''} aria-pressed={activeTab === tab.id} onClick={() => setActiveTab(tab.id)}>{tab.label}</button>
         ))}
       </nav>
+      {isEnterprise && <section hidden={activeTab !== 'pdv'} aria-label="Personalização do PDV">
+        <div className="module-card">
+          <div className="module-card-title">Leitor de código de barras</div>
+          <div className="print-toggle-list">
+            <label className="print-toggle-item">
+              <input
+                type="checkbox"
+                aria-label="Ativar leitor de código de barras"
+                checked={barcodeScannerEnabled}
+                onChange={e => updatePreference('pdv', { ...settings.personalization?.pdv, barcode_scanner_enabled: e.target.checked })}
+              />
+              <span>Ativar leitor de código de barras no PDV</span>
+            </label>
+            <p className="otp-description">Para leitor físico USB ou Bluetooth em modo teclado. O código deve estar cadastrado no SKU e o leitor deve enviar Enter.</p>
+            <label className="print-toggle-item">
+              <input
+                type="checkbox"
+                aria-label="Ativar leitura de código de barras pela câmera"
+                checked={cameraScannerEnabled}
+                onChange={e => updatePreference('pdv', { ...settings.personalization?.pdv, camera_scanner_enabled: e.target.checked })}
+              />
+              <span>Ativar leitura de código de barras pela câmera do celular</span>
+            </label>
+          </div>
+          <p className="otp-description">As opções são independentes e podem ficar ativadas ao mesmo tempo. A câmera abre pelo botão no campo de busca do PDV, solicita permissão e usa a câmera traseira; requer acesso ao site por HTTPS. Cadastre o código no SKU do produto.</p>
+        </div>
+      </section>}
       <section hidden={activeTab !== 'visual'} aria-label="Identidade visual">
-      <div className="module-card">
+      {isProfessional && <div className="module-card">
         <div className="module-card-title"><Palette size={16} /> Temas prontos</div>
         <p className="otp-description">Escolha uma combinação e ajuste as cores abaixo.</p>
         <div className="personalization-presets">
@@ -105,9 +163,10 @@ export function WhiteLabelModule({ settings: initialSettings, onUpdate: persist 
           ))}
         </div>
       </div>
+      }
       {/* Section 1: Identidade Visual & Tema */}
       <div className="section-divider">
-        <span className="section-divider-label">Identidade Visual & Tema</span>
+        <span className="section-divider-label">{isProfessional ? 'Identidade Visual & Tema' : 'Identidade e Logotipo'}</span>
       </div>
 
       <div className="module-grid two-col">
@@ -130,7 +189,7 @@ export function WhiteLabelModule({ settings: initialSettings, onUpdate: persist 
           </div>
         </div>
 
-        <div className="module-card">
+        {isProfessional && <div className="module-card">
           <div className="module-card-title"><ImagePlus size={16} /> Banner do Catálogo Público</div>
           <div className="upload-area">
             {bannerPreview ? (
@@ -147,10 +206,10 @@ export function WhiteLabelModule({ settings: initialSettings, onUpdate: persist 
               </label>
             )}
           </div>
-        </div>
+        </div>}
       </div>
 
-      <div className="module-card">
+      {isProfessional && <div className="module-card">
         <div className="module-card-title"><Palette size={16} /> Cores do Tema</div>
         <div className="color-picker-row">
           <div className="color-field">
@@ -198,10 +257,20 @@ export function WhiteLabelModule({ settings: initialSettings, onUpdate: persist 
           </div>
         </div>
         <p className="store-theme-help">A cor primária personaliza botões, abas e destaques do painel. A cor de navegação altera o menu principal e o cabeçalho do catálogo. Confira a prévia e clique em Salvar para aplicar. As cores de sucesso, alerta e erro são preservadas.</p>
-      </div>
+      </div>}
 
+      {isProfessional && <div className="module-card">
+        <div className="module-card-title">Aviso Interno</div>
+        <textarea
+          className="notice-input"
+          value={settings.internal_notice ?? ''}
+          onChange={(e) => onUpdate({ internal_notice: e.target.value })}
+          placeholder="Ex: Promoção de baterias até sexta — peça com antecedência!"
+          rows={3}
+        />
+      </div>}
       </section>
-      <section hidden={activeTab !== 'painel'} aria-label="Aparência do painel">
+      {isEnterprise && <section hidden={activeTab !== 'painel'} aria-label="Aparência do painel">
         <div className="module-card">
           <div className="module-card-title"><Palette size={16} /> Aparência do painel</div>
           <div className="personalization-fields">
@@ -216,7 +285,7 @@ export function WhiteLabelModule({ settings: initialSettings, onUpdate: persist 
           </div>
           <p className="otp-description">As opções ajustam textos de formulários e tabelas, espaçamento dos cartões e cantos do painel.</p>
         </div>
-      </section>
+      </section>}
       <section hidden={activeTab !== 'cupom'} aria-label="Personalização do cupom">
         <div className="personalization-receipt-grid">
           <div className="module-card">
@@ -259,7 +328,7 @@ export function WhiteLabelModule({ settings: initialSettings, onUpdate: persist 
 
       <div className="module-card">
         <label className="module-card-title" htmlFor="service-warranty-terms">Termo de Garantia de Serviços</label>
-        <p className="otp-description">Informe os prazos, a cobertura e as condições de garantia dos serviços prestados. Este termo será exibido nas Ordens de Serviço.</p>
+        <p className="otp-description">Informe as condições de garantia dos serviços. Novas ordens de serviço guardarão uma cópia do termo no momento da criação.</p>
         <textarea
           id="service-warranty-terms"
           className="notice-input"
@@ -276,10 +345,11 @@ export function WhiteLabelModule({ settings: initialSettings, onUpdate: persist 
           <label className="print-toggle-item">
             <input
               type="checkbox"
+              aria-label="Logo nos Cupons, Recibos e Ordens de Serviço"
               checked={settings.show_logo_on_receipt}
               onChange={(e) => onUpdate({ show_logo_on_receipt: e.target.checked })}
             />
-            <span>Exibir Logo no Cupom</span>
+            <span>Exibir Logo nos Cupons, Recibos e Ordens de Serviço</span>
           </label>
           <label className="print-toggle-item">
             <input
@@ -293,7 +363,7 @@ export function WhiteLabelModule({ settings: initialSettings, onUpdate: persist 
       </div>
 
       </section>
-      <section hidden={activeTab !== 'catalogo'} aria-label="Personalização do catálogo">
+      {isEnterprise && <section hidden={activeTab !== 'catalogo'} aria-label="Personalização do catálogo">
         <div className="module-card">
           <div className="module-card-title">Apresentação do catálogo público</div>
           <label className="personalization-text-field">Mensagem de boas-vindas<textarea className="notice-input" aria-label="Mensagem de boas-vindas do catálogo" maxLength={400} rows={3} value={catalog.welcome_message} onChange={e => updatePreference('catalog', { ...catalog, welcome_message: e.target.value })} placeholder="Apresente sua loja e convide o cliente a conhecer os produtos." /></label>
@@ -314,22 +384,12 @@ export function WhiteLabelModule({ settings: initialSettings, onUpdate: persist 
           </div>
           <p className="otp-description">A prévia é reduzida. Salve para aplicar ao catálogo público da loja.</p>
         </div>
-      </section>
-      <div className="module-card" hidden={activeTab !== 'painel'}>
-        <div className="module-card-title">Aviso Interno</div>
-        <textarea
-          className="notice-input"
-          value={settings.internal_notice ?? ''}
-          onChange={(e) => onUpdate({ internal_notice: e.target.value })}
-          placeholder="Ex: Promoção de baterias até sexta — peça com antecedência!"
-          rows={3}
-        />
-      </div>
+      </section>}
 
       {error && <p role="alert" className="otp-error-msg">{error}</p>}
       {reading && <p role="status">Preparando imagem...</p>}
-      <div className="personalization-savebar"><span role="status">{dirty ? 'Alterações ainda não salvas' : saved ? 'Personalização salva' : 'As alterações serão aplicadas ao salvar'}</span><button type="button" className="rma-advance-btn" onClick={restoreSection}>Restaurar padrões desta seção</button>
-      <button className="module-save-btn" onClick={handleSave}>
+      <div className="personalization-savebar"><span role="status">{dirty ? 'Alterações ainda não salvas' : saved ? 'Personalização salva' : 'As alterações serão aplicadas ao salvar'}</span>{(activeTab !== 'visual' || isProfessional) && <button type="button" className="rma-advance-btn" onClick={restoreSection}>Restaurar padrões desta seção</button>}
+      <button className="module-save-btn" onClick={handleSave} disabled={!canEdit || saving || reading}>
         {saving ? 'Salvando...' : saved ? <><Check size={16} /> Salvo!</> : 'Salvar personalização'}
       </button>
       </div>

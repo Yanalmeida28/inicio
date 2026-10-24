@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PostgrestError } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { InvoicePaymentAttempts } from '../lib/invoicePayments';
 import { mergePartnerChange, PartnerDataVersions } from '../lib/partnerSync';
 import { splitPaymentError, billedSaleError, saleChargeTotal, validSalePrice, isDefinitiveSaleRejection, PdvSaleAttemptStore, pdvErrorMessage, type CustomerCredit } from '../lib/pdv';
 import type {
@@ -450,6 +451,7 @@ fetchAllPages((from, to) => client
         serviceOrdersResult,
         serviceOrderItemsResult,
         serviceOrderPhotosResult,
+        rmaCreditApplicationsResult,
       ] = await Promise.all([
         fetchAllPages((from, to) => client
           .from('partner_suppliers')
@@ -534,11 +536,17 @@ fetchAllPages((from, to) => client
           .eq('user_id', companyUserId)
           .order('created_at')
           .order('id').range(from, to)),
+        fetchAllPages((from, to) => client
+          .from('partner_rma_credit_applications')
+          .select('id,rma_id,amount')
+          .eq('user_id', companyUserId)
+          .order('id').range(from, to)),
       ]);
 
       // Diagnóstico técnico de falhas secundárias — sem PIN, tokens
       // ou dados de linhas; apenas nome da consulta e mensagem de erro.
       const secondaryResults = [
+        ['partner_rma_credit_applications', rmaCreditApplicationsResult],
         ['partner_suppliers', suppliersResult],
         ['partner_categories', categoriesResult],
         ['partner_stock_movements', movementsResult],
@@ -628,7 +636,13 @@ fetchAllPages((from, to) => client
         settings:
           (settingsResult.data as StoreSettings | null) ?? null,
         rmas: filterBranch(
-          rmasResult.data as RmaRequest[] | null,
+          ((rmasResult.data as RmaRequest[] | null) ?? []).map(rma => ({
+            ...rma,
+            credit_used_amount: rmaCreditApplicationsResult.error ? null :
+              ((rmaCreditApplicationsResult.data as { rma_id: string; amount: number }[] | null) ?? [])
+                .filter(application => application.rma_id === rma.id)
+                .reduce((sum, application) => sum + Math.round(Number(application.amount) * 100), 0) / 100,
+          })),
         ),
         combos:
           (combosResult.data as PartnerCombo[] | null) ?? [],
@@ -670,10 +684,14 @@ fetchAllPages((from, to) => client
           service_order_items: 'serviceOrderItems', service_order_photos: 'serviceOrderPhotos',
         } as const;
         for (const [table, result] of secondaryResults) {
+          if (table === 'partner_rma_credit_applications') continue;
           if (result.error) {
             const key = secondaryCollections[table];
             Object.assign(snapshot, { [key]: previous[key] });
           }
+        }
+        if (rmaCreditApplicationsResult.error) {
+          snapshot.rmas = snapshot.rmas.map(rma => ({ ...rma, credit_used_amount: null }));
         }
         return snapshot;
       });
@@ -1580,41 +1598,6 @@ fetchAllPages((from, to) => client
     [requireIdentity],
   );
 
-  const deleteBranch = useCallback(
-    async (id: string) => {
-      const currentIdentity = requireIdentity();
-
-      if (currentIdentity.salespersonId) {
-        throw new Error(
-          'Funcionários não podem excluir filiais.',
-        );
-      }
-
-      if (!isSupabaseConfigured || !supabase) {
-        throw new Error('Supabase não configurado.');
-      }
-
-      const { error } = await supabase
-        .from('partner_branches')
-        .delete()
-        .eq('id', id)
-        .eq('user_id', currentIdentity.companyUserId);
-
-      if (error) {
-        throw error;
-      }
-
-      dataRevisionRef.current.invalidate(["branches"]);
-      setData((prev) => ({
-        ...prev,
-        branches: prev.branches.filter(
-          (item) => item.id !== id,
-        ),
-      }));
-    },
-    [requireIdentity],
-  );
-
   // One authorized snapshot: current branch records plus company-wide credit totals.
   const refreshPdv = useCallback(async (branchId: string) => {
     const currentIdentity = requireIdentity();
@@ -1716,12 +1699,16 @@ fetchAllPages((from, to) => client
         }[table] as 'sales' | 'products' | 'invoices' | 'movements' | 'orders' | 'rmas';
         if (payload.eventType !== 'DELETE' && (payload.new.user_id !== companyId || (branchId && payload.new.branch_id !== branchId))) return;
         if (payload.eventType === 'DELETE' && !dataSnapshotRef.current[key].some(row => row.id === payload.old.id && row.user_id === companyId && (!branchId || row.branch_id === branchId))) return;
+        const returnCreditChanged = (table === 'partner_invoices' && payload.eventType !== 'DELETE' &&
+          Number(payload.new.return_credit_amount ?? 0) !== Number(dataSnapshotRef.current.invoices.find(invoice => invoice.id === payload.new.id)?.return_credit_amount ?? 0)) ||
+          (table === 'rma_requests_v2' && Number(payload.new.credit_amount ?? 0) > 0);
         dataRevisionRef.current.invalidate([key]);
         setData(previous => {
           const rows = previous[key] as Array<PartnerSale | PartnerProduct | PartnerInvoice | StockMovement | B2BOrder | RmaRequest>;
           return { ...previous, [key]: mergePartnerChange(rows, payload.eventType, payload.new, payload.old.id, companyId, branchId, key === 'sales') };
         });
         setLastSyncedAt(new Date());
+        if (returnCreditChanged) void loadData();
         // Credit is company-wide and cannot be derived from this branch's rows.
         // Reconcile after financial events so billed checkout is not left disabled.
         if (table === 'partner_invoices' || table === 'partner_sales') {
@@ -1752,7 +1739,7 @@ fetchAllPages((from, to) => client
       document.removeEventListener('visibilitychange', reconcile);
       void client.removeChannel(channel);
     };
-  }, [identity, syncBranchId, loading, hasLoaded, refreshOperationalData]);
+  }, [identity, syncBranchId, loading, hasLoaded, refreshOperationalData, loadData]);
 
   const syncConfirmedSale = useCallback(async (branchId: string) => {
     try { await refreshPdv(branchId); }
@@ -1916,6 +1903,7 @@ fetchAllPages((from, to) => client
       driverId: string | null,
       operatorId?: string | null,
       operatorPin?: string | null,
+      details?: import('../types').DeliveryDetails & { address: string; contact: string },
     ) => {
       const { identity: currentIdentity, client } = await requireAuthenticatedSession();
       const sale = data.sales.find((item) => item.id === saleId);
@@ -1926,18 +1914,20 @@ fetchAllPages((from, to) => client
         throw new Error('Esta venda não está disponível para gestão de entrega.');
       }
 
-      const { data: confirmed, error } = await client.rpc('execute_partner_delivery_mutation', {
+      const { data: confirmed, error } = await client.rpc(details ? 'save_partner_delivery_details' : 'execute_partner_delivery_mutation', {
         p_salesperson_id: operatorId ?? null,
         p_pin: operatorPin ?? null,
         p_sale_id: saleId,
         p_status: status,
         p_driver_id: driverId,
+        ...(details ? { p_details: details } : {}),
       });
       if (error) {
         throw new Error(pdvErrorMessage(error));
       }
       if (confirmed !== true) throw new Error('O servidor não confirmou o salvamento da entrega.');
 
+      if (details) { await loadData(); return; }
       const scope = currentIdentity.authUserId + ':' + currentIdentity.companyUserId;
       if (identityScopeRef.current === scope) {
         dataRevisionRef.current.invalidate(["sales"]);
@@ -1949,7 +1939,7 @@ fetchAllPages((from, to) => client
         }));
       }
     },
-    [data.sales, requireAuthenticatedSession],
+    [data.sales, requireAuthenticatedSession, loadData],
   );
 
   const finalizePreSale = useCallback(
@@ -2308,6 +2298,7 @@ fetchAllPages((from, to) => client
     async (
       id: string,
       amount?: number,
+      requestId?: string,
     ) => {
       const currentIdentity = requireIdentity();
 
@@ -2359,17 +2350,21 @@ fetchAllPages((from, to) => client
         );
       }
 
+      const attemptStore = new InvoicePaymentAttempts(window.localStorage);
+      const paymentScope = currentIdentity.authUserId + ':' + currentIdentity.companyUserId;
+      const attempt = attemptStore.get(paymentScope, id, paymentAmount, requestId ?? crypto.randomUUID());
       const { data: paidInvoiceId, error } =
         await supabase.rpc(
-          'record_partner_invoice_payment',
+          'record_partner_invoice_payment_once',
           {
             p_invoice_id: id,
             p_amount: paymentAmount,
+            p_request_id: attempt.token,
           },
         );
 
       if (error) {
-        throw error;
+        throw new Error(pdvErrorMessage(error));
       }
 
       if (paidInvoiceId !== id) {
@@ -2377,8 +2372,9 @@ fetchAllPages((from, to) => client
           'O recebimento não foi confirmado pelo servidor.',
         );
       }
-
-      await loadData();
+      attemptStore.confirm(paymentScope, id);
+      dataRevisionRef.current.invalidate(['invoices']);
+      try { await loadData(); } catch { console.warn('[usePartnerData] Recebimento confirmado; atualização dos dados pendente.'); }
     },
     [data.invoices, loadData, requireIdentity],
   );
@@ -2486,11 +2482,23 @@ fetchAllPages((from, to) => client
         throw new Error('Supabase não configurado.');
       }
 
+      const { files = [], request_id = crypto.randomUUID(), ...payload } = rma;
+      const { data: prior, error: priorError } = await supabase.from('rma_requests_v2').select('*').eq('id', request_id).eq('user_id', currentIdentity.companyUserId).maybeSingle();
+      if (priorError) throw priorError;
+      if (prior) { await loadData(); return prior as RmaRequest; }
+      const attachments = [];
+      for (const { kind, file } of files) {
+        if (file.size > 20 * 1024 * 1024 || !['image/jpeg','image/png','image/webp','image/heic','video/mp4','video/webm'].includes(file.type)) throw new Error('Use imagem JPEG, PNG, WebP, HEIC ou vídeo MP4/WebM de até 20 MB.');
+        const path = `${currentIdentity.authUserId}/${request_id}/${kind}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+        const { error: uploadError } = await supabase.storage.from('rma-attachments').upload(path, file, { upsert: true, contentType: file.type });
+        if (uploadError) throw uploadError;
+        attachments.push({ kind, name: file.name, path });
+      }
       const { data: created, error } =
         await supabase
           .from('rma_requests_v2')
           .insert({
-            ...rma,
+            ...payload, id: request_id, attachments,
             user_id:
               currentIdentity.companyUserId,
           })
@@ -2515,7 +2523,7 @@ fetchAllPages((from, to) => client
 
       return createdRma;
     },
-    [requireIdentity],
+    [requireIdentity, loadData],
   );
 
   const updateRmaStatus = useCallback(
@@ -2582,6 +2590,25 @@ fetchAllPages((from, to) => client
     },
     [data.rmas, requireIdentity, syncConfirmedSale],
   );
+
+  const grantRmaCredit = useCallback(async (id: string, amount: number) => {
+    requireIdentity();
+    if (!supabase) throw new Error('Supabase não configurado.');
+    const { error } = await supabase.rpc('grant_partner_rma_credit', { p_rma_id: id, p_amount: amount });
+    if (error) throw error;
+    await loadData();
+  }, [requireIdentity, loadData]);
+
+  const applyRmaCredit = useCallback(async (rmaId: string, invoiceId: string, amount: number, applicationId: string) => {
+    requireIdentity();
+    if (!supabase) throw new Error('Supabase não configurado.');
+    const { data: confirmed, error } = await supabase.rpc('apply_partner_rma_credit', {
+      p_rma_id: rmaId, p_invoice_id: invoiceId, p_amount: amount, p_application_id: applicationId,
+    });
+    if (error) throw error;
+    if (confirmed !== applicationId) throw new Error('O abatimento não foi confirmado pelo servidor.');
+    await loadData();
+  }, [requireIdentity, loadData]);
 
   const deleteRma = useCallback(
     async (id: string) => {
@@ -3088,8 +3115,10 @@ fetchAllPages((from, to) => client
       setData((prev) => ({
         ...prev,
         salespeople:
-          prev.salespeople.filter(
-            (item) => item.id !== id,
+          prev.salespeople.map((item) =>
+            item.id === id
+              ? { ...item, active: false, is_active: false }
+              : item,
           ),
       }));
     },
@@ -3902,7 +3931,6 @@ fetchAllPages((from, to) => client
 
     addBranch,
     updateBranch,
-    deleteBranch,
 
     pdvCredits,
     pdvSyncWarning,
@@ -3930,6 +3958,8 @@ fetchAllPages((from, to) => client
 
     createRma,
     updateRmaStatus,
+    grantRmaCredit,
+    applyRmaCredit,
     deleteRma,
 
     addCombo,

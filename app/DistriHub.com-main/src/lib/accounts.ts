@@ -19,6 +19,10 @@ export function accountPaid(account: { amount: number; paid_amount?: number; sta
   return account.status === 'cancelada' ? 0 : Number(account.paid_amount ?? (account.status === 'paga' ? account.amount : 0));
 }
 
+export function invoiceCashReceived(invoice: PartnerInvoice): number {
+  return Math.max(0, accountPaid(invoice) - Number(invoice.return_credit_amount ?? 0));
+}
+
 export function accountBalance(account: { amount: number; paid_amount?: number; status: string }): number {
   if (account.status === 'cancelada' || account.status === 'paga') return 0;
   return Math.max(0, Math.round(Number(account.amount) * 100) - Math.round(accountPaid(account) * 100)) / 100;
@@ -32,7 +36,7 @@ export function isOverdue(account: { amount: number; paid_amount?: number; statu
 export function financialAccounts(invoices: PartnerInvoice[], payables: PayableAccount[]) {
   return {
     receivable: invoices.reduce((sum, account) => sum + accountBalance(account), 0),
-    received: invoices.reduce((sum, account) => sum + accountPaid(account), 0),
+    received: invoices.reduce((sum, account) => sum + invoiceCashReceived(account), 0),
     payable: payables.reduce((sum, account) => sum + accountBalance(account), 0),
     paid: payables.reduce((sum, account) => sum + accountPaid(account), 0),
   };

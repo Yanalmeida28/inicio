@@ -104,3 +104,27 @@ test('sales history preserves receipt details and requires supervisor PIN before
     assert.deepEqual([...calls[0]], ['sale', 'manager', '1234']);
   } finally { act(() => view.unmount()); }
 });
+
+test('opening cancellation preserves the search and ignores credential autofill events until the dialog closes', () => {
+  const sale = { id: 'sale', customer_name: 'Cliente', status: 'concluida', created_at: new Date().toISOString(), total: 10, items: [] };
+  let view;
+  act(() => { view = TestRenderer.create(React.createElement(module.exports.SalesHistoryModule, {
+    sales: [sale], customers: [], salespeople: [{ id: 'manager', role: 'gerente', name: 'Gerente' }], segment: 'assistencia',
+  })); });
+  const search = () => view.root.findByProps({ name: 'sales-history-search' });
+  try {
+    act(() => search().props.onChange({ target: { value: 'Cliente' } }));
+    act(() => view.root.findByType(Actions).props.onCancel());
+    assert.equal(search().props.value, 'Cliente');
+    assert.equal(search().props.disabled, true);
+    const authorization = view.root.findByProps({ id: 'sales-history-cancel-authorization' });
+    assert.equal(authorization.findByProps({ name: 'sales-cancellation-supervisor-pin' }).props.autoComplete, 'new-password');
+    act(() => search().props.onChange({ target: { value: 'empresa@example.com' } }));
+    assert.equal(search().props.value, 'Cliente');
+    act(() => authorization.findByProps({ className: 'modal-header' }).findByType('button').props.onClick());
+    assert.equal(search().props.disabled, false);
+    assert.equal(search().props.value, 'Cliente');
+    act(() => search().props.onChange({ target: { value: '' } }));
+    assert.equal(search().props.value, '');
+  } finally { act(() => view.unmount()); }
+});

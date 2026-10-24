@@ -157,7 +157,7 @@ export function SettingsModule({ user, profile, onProfileUpdate, branchManagemen
           </label>
           <label>
             <span className="social-label"><Mail size={14} /> E-mail da Conta</span>
-            <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="seu@email.com" />
+            <input value={email} onChange={(e) => setEmail(e.target.value)}  />
           </label>
           <label>
             <span className="social-label"><Phone size={14} /> Telefone / WhatsApp</span>
@@ -335,7 +335,6 @@ function PasswordModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (
                     type={show ? 'text' : 'password'}
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="Mínimo 6 caracteres"
                   />
                   <button type="button" className="password-toggle" onClick={() => setShow(!show)}>
                     {show ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -348,7 +347,6 @@ function PasswordModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (
                   type={show ? 'text' : 'password'}
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Repita a nova senha"
                 />
               </label>
             </div>

@@ -4,7 +4,9 @@ import {
   ClipboardList,
   ImagePlus,
   Package,
+  Pencil,
   Plus,
+  Printer,
   Search,
   Trash2,
   X,
@@ -14,8 +16,11 @@ import type {
   BusinessSegment,
   PartnerBranch,
   PartnerCustomer,
+  PartnerProfile,
   PartnerProduct,
   ServiceOrder,
+  ServiceOrderStatus,
+  StoreSettings,
 } from '../../types';
 
 import { supabase } from '../../lib/supabase';
@@ -29,7 +34,9 @@ type Props = {
   products: PartnerProduct[];
   selectedBranchId: string | null;
   warrantyTerms?: string;
-  onUpdateWarrantyTerms?: (value: string) => void;
+  storeSettings: StoreSettings;
+  companyProfile: PartnerProfile | null;
+  operatorId: string | null;
 };
 
 type DraftItem = {
@@ -55,11 +62,32 @@ const money = (value: number) =>
     currency: 'BRL',
   });
 
+const serviceOrderStatusLabels: Record<ServiceOrderStatus, string> = {
+  aberta: 'Aberta',
+  em_analise: 'Em análise',
+  aguardando_aprovacao: 'Aguardando aprovação',
+  aprovada: 'Aprovada',
+  em_reparo: 'Em reparo',
+  aguardando_peca: 'Aguardando peça',
+  pronta: 'Pronta',
+  entregue: 'Entregue',
+  cancelada: 'Cancelada',
+};
+
+const escapeHtml = (value: string | null | undefined) =>
+  (value ?? '').replace(/[&<>"']/g, character => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  })[character] ?? character);
+
 const inputDarkStyle: React.CSSProperties = {
   width: '100%',
-  backgroundColor: '#FFFFFF',
-  color: '#172033',
-  border: '1px solid #E2E8F0',
+  backgroundColor: '#102638',
+  color: '#edf5fc',
+  border: '1px solid #29465f',
   borderRadius: 8,
   padding: '10px 12px',
   fontSize: 14,
@@ -71,7 +99,7 @@ const labelDarkStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   gap: 8,
-  color: '#172033',
+  color: '#edf5fc',
   fontWeight: 600,
   fontSize: 14,
 };
@@ -84,12 +112,23 @@ export function ServiceOrdersModule({
   products,
   selectedBranchId,
   warrantyTerms,
+  storeSettings,
+  companyProfile,
+  operatorId,
 }: Props) {
   const [orders, setOrders] = useState<ServiceOrder[]>([]);
   const [open, setOpen] = useSessionDraftState('service-order:open', false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const [editingOrder, setEditingOrder] = useState<ServiceOrder | null>(null);
+  const [editStatus, setEditStatus] = useState<ServiceOrderStatus>('aberta');
+  const [editTechnician, setEditTechnician] = useState('');
+  const [editReportedIssue, setEditReportedIssue] = useState('');
+  const [editObservations, setEditObservations] = useState('');
+  const [editError, setEditError] = useState<string | null>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [printError, setPrintError] = useState<string | null>(null);
 
   const [customerId, setCustomerId] = useSessionDraftState('service-order:customer-id', '');
   const [equipmentType, setEquipmentType] = useSessionDraftState('service-order:equipment-type', '');
@@ -102,6 +141,7 @@ export function ServiceOrdersModule({
   const [labor, setLabor] = useSessionDraftState('service-order:labor', '');
   const [preRepairChecklist, setPreRepairChecklist] = useSessionDraftState('service-order:checklist', { screen: false, touch: false, camera: false });
   const [customerAcknowledged, setCustomerAcknowledged] = useSessionDraftState('service-order:customer-acknowledged', false);
+
 
   const [productSearch, setProductSearch] = useSessionDraftState('service-order:product-search', '');
   const [items, setItems] = useSessionDraftState<DraftItem[]>('service-order:items', []);
@@ -121,6 +161,135 @@ export function ServiceOrdersModule({
   const customer = customers.find(
     (item) => item.id === customerId
   );
+
+  function startEditingOrder(order: ServiceOrder) {
+    setEditingOrder(order);
+    setEditStatus(order.status);
+    setEditTechnician(order.technician_name ?? '');
+    setEditReportedIssue(order.reported_issue ?? '');
+    setEditObservations(order.observations ?? '');
+    setEditError(null);
+  }
+
+  async function saveOrderEdits() {
+    if (!supabase || !userId || !editingOrder) {
+      setEditError('Não foi possível salvar: sessão ou serviço indisponível.');
+      return;
+    }
+    setSavingEdit(true);
+    setEditError(null);
+    try {
+      const { data, error } = await supabase.rpc('update_service_order', {
+        p_service_order_id: editingOrder.id,
+        p_operator_id: operatorId,
+        p_status: editStatus,
+        p_technician_name: editTechnician.trim() || null,
+        p_reported_issue: editReportedIssue.trim() || null,
+        p_observations: editObservations.trim() || null,
+      });
+      if (error) throw error;
+      if (data !== true) throw new Error('A ordem não foi atualizada. Verifique o acesso à filial.');
+      const updatedAt = new Date().toISOString();
+      setOrders(current => current.map(order => order.id === editingOrder.id ? {
+        ...order,
+        status: editStatus,
+        technician_name: editTechnician.trim() || null,
+        reported_issue: editReportedIssue.trim() || null,
+        observations: editObservations.trim() || null,
+        updated_at: updatedAt,
+      } : order));
+      setEditingOrder(null);
+    } catch (error) {
+      setEditError(error instanceof Error ? error.message : 'Não foi possível salvar as alterações da OS.');
+    } finally {
+      setSavingEdit(false);
+    }
+  }
+
+  async function printOrder(order: ServiceOrder) {
+    if (!supabase || !userId) {
+      setPrintError('Não foi possível imprimir: sessão ou serviço indisponível.');
+      return;
+    }
+    const popup = window.open('', '_blank', 'width=420,height=720');
+    if (!popup) {
+      setPrintError('O navegador bloqueou a janela de impressão. Permita pop-ups e tente novamente.');
+      return;
+    }
+    setPrintError(null);
+
+    try {
+      const { data: items, error } = await supabase
+        .from('service_order_items')
+        .select('product_name,quantity,unit_price')
+        .eq('user_id', userId)
+        .eq('branch_id', order.branch_id)
+        .eq('service_order_id', order.id);
+      if (error) throw error;
+
+      const orderCustomer = customers.find(item => item.id === order.customer_id);
+      const orderBranch = branches.find(item => item.id === order.branch_id);
+      const companyName = companyProfile?.account_name || companyProfile?.name || 'Empresa';
+      const logo = storeSettings.show_logo_on_receipt && storeSettings.logo_url
+        ? `<img class="store-logo" src="${escapeHtml(storeSettings.logo_url)}" alt="Logo da empresa">`
+        : '';
+      const itemRows = (items ?? []).map(item => `<tr><td>${escapeHtml(item.product_name)}</td><td>${escapeHtml(String(item.quantity))}</td><td>${escapeHtml(money(Number(item.unit_price)))}</td></tr>`).join('');
+      const warrantyTerms = order.warranty_terms_snapshot;
+      popup.document.write(`<!doctype html>
+        <html lang="pt-BR"><head><meta charset="utf-8"><title>OS ${escapeHtml(order.os_number || order.id.slice(0, 8))}</title>
+        <style>
+          @page{size:80mm auto;margin:3mm}
+          *{box-sizing:border-box}body{font:12px/1.4 Arial,sans-serif;color:#111;width:74mm;max-width:100%;margin:0 auto}
+          h1,h2,p{margin:5px 0}h1{font-size:17px}h2{font-size:14px}
+          .store-logo{display:block;width:auto;max-width:50mm;height:auto;max-height:25mm;object-fit:contain;margin:0 auto 8px}
+          .center{text-align:center}.divider{border-top:1px dashed #555;margin:8px 0}
+          table{border-collapse:collapse;width:100%;font-size:11px}td,th{text-align:left;padding:3px 1px;border-bottom:1px solid #ddd}
+          .print-button{margin-top:14px;padding:8px 14px}@media print{.print-button{display:none}}
+          .preserve{white-space:pre-wrap;overflow-wrap:anywhere}
+        </style></head><body>
+          ${logo}<header class="center"><h1>${escapeHtml(companyName)}</h1>
+          ${storeSettings.show_cnpj_on_receipt && companyProfile?.document ? `<p>${escapeHtml(companyProfile.document)}</p>` : ''}
+          ${companyProfile?.whatsapp ? `<p>${escapeHtml(companyProfile.whatsapp)}</p>` : ''}
+          ${companyProfile?.email ? `<p>${escapeHtml(companyProfile.email)}</p>` : ''}
+          ${orderBranch?.name ? `<p>${escapeHtml(orderBranch.name)}</p>` : ''}
+          ${storeSettings.show_cnpj_on_receipt && orderBranch?.address ? `<p>${escapeHtml(orderBranch.address)}</p>` : ''}</header>
+          <div class="divider"></div><h2>ORDEM DE SERVIÇO #${escapeHtml(order.os_number || order.id.slice(0, 8))}</h2>
+          <p>Data: ${escapeHtml(new Date(order.entry_date || order.created_at).toLocaleString('pt-BR'))}</p>
+          <p>Status: ${escapeHtml(serviceOrderStatusLabels[order.status])}</p>
+          <p>Cliente: ${escapeHtml(order.customer_name || 'Não informado')}</p>
+          ${orderCustomer?.document ? `<p>CPF/CNPJ: ${escapeHtml(orderCustomer.document)}</p>` : ''}
+          ${orderCustomer?.phone ? `<p>Telefone: ${escapeHtml(orderCustomer.phone)}</p>` : ''}
+          <p>Equipamento: ${escapeHtml([order.equipment_type, order.equipment_brand, order.equipment_model].filter(Boolean).join(' ') || 'Não informado')}</p>
+          ${order.equipment_identification ? `<p>Identificação: ${escapeHtml(order.equipment_identification)}</p>` : ''}
+          ${order.serial_number ? `<p>Série: ${escapeHtml(order.serial_number)}</p>` : ''}
+          ${order.technician_name ? `<p>Técnico: ${escapeHtml(order.technician_name)}</p>` : ''}
+          ${order.reported_issue ? `<p class="preserve">Relato: ${escapeHtml(order.reported_issue)}</p>` : ''}
+          ${order.accessories_left ? `<p class="preserve">Acessórios: ${escapeHtml(order.accessories_left)}</p>` : ''}
+          ${order.physical_condition ? `<p class="preserve">Condição física: ${escapeHtml(order.physical_condition)}</p>` : ''}
+          ${order.entry_damage ? `<p class="preserve">Avarias de entrada: ${escapeHtml(order.entry_damage)}</p>` : ''}
+          ${order.entry_notes ? `<p class="preserve">Observações de entrada: ${escapeHtml(order.entry_notes)}</p>` : ''}
+          ${order.observations ? `<p class="preserve">Observações: ${escapeHtml(order.observations)}</p>` : ''}
+          <div class="divider"></div><h2>PEÇAS E SERVIÇOS</h2>
+          <table><thead><tr><th>Item</th><th>Qtd.</th><th>Valor</th></tr></thead><tbody>${itemRows || '<tr><td colspan="3">Nenhum item lançado</td></tr>'}</tbody></table>
+          <p>Mão de obra: ${escapeHtml(money(Number(order.labor_total) || 0))}</p>
+          <p>Peças: ${escapeHtml(money(Number(order.parts_total) || 0))}</p>
+          <h2>Total: ${escapeHtml(money(Number(order.total) || 0))}</h2>
+          ${warrantyTerms?.trim() ? `<div class="divider"></div><h2>GARANTIA DO SERVIÇO</h2><p class="preserve">${escapeHtml(warrantyTerms)}</p>` : ''}
+          ${storeSettings.receipt_footer_text ? `<div class="divider"></div><p class="preserve center">${escapeHtml(storeSettings.receipt_footer_text)}</p>` : ''}
+          <div class="divider"></div><p class="center">Assinatura do cliente: ________________________</p>
+          <button class="print-button" type="button" onclick="window.print()">Imprimir</button>
+        </body></html>`);
+      popup.document.close();
+      await Promise.all(Array.from(popup.document.images, image => image.decode().catch(() => undefined)));
+      if (!popup.closed) {
+        popup.focus();
+        popup.print();
+      }
+    } catch (error) {
+      popup.close();
+      setPrintError(error instanceof Error ? error.message : 'Não foi possível preparar a impressão da OS.');
+    }
+  }
 
   const availableProducts = useMemo(() => {
     const term = productSearch.trim().toLowerCase();
@@ -492,6 +661,7 @@ export function ServiceOrdersModule({
         status: 'aberta',
         approval_status: 'aguardando_aprovacao',
         approval_notes: null,
+        warranty_terms_snapshot: warrantyTerms ?? '',
         labor_total: laborTotal,
         parts_total: partsTotal,
         discount_total: 0,
@@ -520,6 +690,7 @@ export function ServiceOrdersModule({
 
   return (
     <section
+      className="service-orders-module"
       style={{
         padding: 24,
         maxWidth: 1280,
@@ -568,7 +739,7 @@ export function ServiceOrdersModule({
       </div>
 
       {warrantyTerms?.trim() && (
-        <details className="module-card">
+        <details className="module-card" style={{ marginBottom: 18 }}>
           <summary style={{ cursor: 'pointer', fontWeight: 600 }}>Termo de Garantia de Serviços</summary>
           <p style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', marginTop: 12 }}>{warrantyTerms}</p>
         </details>
@@ -589,13 +760,14 @@ export function ServiceOrdersModule({
 
       {open && (
         <div
-          className="partner-card"
+          className="partner-card service-order-form"
           style={{
             padding: 22,
             marginBottom: 24,
           }}
         >
           <div
+            className="service-order-form-header"
             style={{
               display: 'flex',
               justifyContent: 'space-between',
@@ -610,7 +782,7 @@ export function ServiceOrdersModule({
               <small>
                 Filial: {branch?.name ?? 'Não selecionada'}
               </small>
-              <p role="note" style={{ margin: '8px 0 0', color: '#64748b', fontSize: 12 }}>
+              <p role="note" style={{ margin: '8px 0 0', color: '#adc2d6', fontSize: 12 }}>
                 O rascunho é salvo nesta sessão para este usuário e filial. Fotos precisam ser selecionadas novamente após atualizar a página.
               </p>
             </div>
@@ -624,6 +796,7 @@ export function ServiceOrdersModule({
           </div>
 
           <div
+            className="service-order-fields"
             style={{
               display: 'grid',
               gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))',
@@ -632,15 +805,15 @@ export function ServiceOrdersModule({
             }}
           >
             <label style={labelDarkStyle}>
-              <span style={{ color: '#172033' }}>Cliente</span>
+              <span style={{ color: '#edf5fc' }}>Cliente</span>
               <select
                 value={customerId}
                 onChange={(event) => setCustomerId(event.target.value)}
                 style={{ ...inputDarkStyle, WebkitAppearance: 'none', appearance: 'none' }}
               >
-                <option value="" style={{ backgroundColor: '#FFFFFF', color: '#172033' }}>Sem cliente</option>
+                <option value="" style={{ backgroundColor: '#102638', color: '#edf5fc' }}>Sem cliente</option>
                 {customers.map((item) => (
-                  <option key={item.id} value={item.id} style={{ backgroundColor: '#FFFFFF', color: '#172033' }}>
+                  <option key={item.id} value={item.id} style={{ backgroundColor: '#102638', color: '#edf5fc' }}>
                     {item.name}
                   </option>
                 ))}
@@ -648,7 +821,7 @@ export function ServiceOrdersModule({
             </label>
 
             <label style={labelDarkStyle}>
-              <span style={{ color: '#172033' }}>Tipo de equipamento</span>
+              <span style={{ color: '#edf5fc' }}>Tipo de equipamento</span>
               <input
                 value={equipmentType}
                 onChange={(event) => setEquipmentType(event.target.value)}
@@ -659,7 +832,7 @@ export function ServiceOrdersModule({
             </label>
 
             <label style={labelDarkStyle}>
-              <span style={{ color: '#172033' }}>Identificação do Equipamento</span>
+              <span style={{ color: '#edf5fc' }}>Identificação do Equipamento</span>
               <input
                 value={identification}
                 onChange={(event) => setIdentification(event.target.value)}
@@ -669,7 +842,7 @@ export function ServiceOrdersModule({
             </label>
 
             <label style={labelDarkStyle}>
-              <span style={{ color: '#172033' }}>Nº de Série</span>
+              <span style={{ color: '#edf5fc' }}>Nº de Série</span>
               <input
                 value={serial}
                 onChange={(event) => setSerial(event.target.value)}
@@ -679,13 +852,14 @@ export function ServiceOrdersModule({
             </label>
           </div>
 
-          <div style={{ marginTop: 24, padding: 18, borderRadius: 14, backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
-            <h3 style={{ margin: '0 0 16px', display: 'flex', alignItems: 'center', gap: 8, color: '#172033' }}>
+          <div className="service-order-section" style={{ marginTop: 24, padding: 18, borderRadius: 14, backgroundColor: '#102638', border: '1px solid #29465f' }}>
+            <h3 style={{ margin: '0 0 16px', display: 'flex', alignItems: 'center', gap: 8, color: '#edf5fc' }}>
               <ClipboardList size={18} />
               Laudo e Vistoria de Entrada
             </h3>
 
             <div
+              className="service-order-fields"
               style={{
                 display: 'grid',
                 gridTemplateColumns: 'repeat(auto-fit,minmax(280px,1fr))',
@@ -693,7 +867,7 @@ export function ServiceOrdersModule({
               }}
             >
               <label style={labelDarkStyle}>
-                <span style={{ color: '#172033' }}>Acessórios Deixados</span>
+                <span style={{ color: '#edf5fc' }}>Acessórios Deixados</span>
                 <textarea
                   value={accessories}
                   onChange={(event) => setAccessories(event.target.value)}
@@ -704,7 +878,7 @@ export function ServiceOrdersModule({
               </label>
 
               <label style={labelDarkStyle}>
-                <span style={{ color: '#172033' }}>Estado físico</span>
+                <span style={{ color: '#edf5fc' }}>Estado físico</span>
                 <textarea
                   value={condition}
                   onChange={(event) => setCondition(event.target.value)}
@@ -715,7 +889,7 @@ export function ServiceOrdersModule({
               </label>
 
               <label style={labelDarkStyle}>
-                <span style={{ color: '#172033' }}>Avarias identificadas</span>
+                <span style={{ color: '#edf5fc' }}>Avarias identificadas</span>
                 <textarea
                   value={damage}
                   onChange={(event) => setDamage(event.target.value)}
@@ -726,7 +900,7 @@ export function ServiceOrdersModule({
               </label>
 
               <label style={labelDarkStyle}>
-                <span style={{ color: '#172033' }}>Observações</span>
+                <span style={{ color: '#edf5fc' }}>Observações</span>
                 <textarea
                   value={notes}
                   onChange={(event) => setNotes(event.target.value)}
@@ -738,30 +912,30 @@ export function ServiceOrdersModule({
             </div>
           </div>
 
-          <div style={{ marginTop: 18, padding: 18, borderRadius: 14, backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+          <div className="service-order-section" style={{ marginTop: 18, padding: 18, borderRadius: 14, backgroundColor: '#102638', border: '1px solid #29465f' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
               <div>
-                <h3 style={{ margin: 0, color: '#172033' }}>Checklist pré-reparo</h3>
-                <small style={{ color: '#64748B' }}>Registre a condição funcional antes de iniciar o serviço.</small>
+                <h3 style={{ margin: 0, color: '#edf5fc' }}>Checklist pré-reparo</h3>
+                <small style={{ color: '#adc2d6' }}>Registre a condição funcional antes de iniciar o serviço.</small>
               </div>
-              <span style={{ padding: '5px 9px', borderRadius: 999, background: checklistComplete ? '#DCFCE7' : '#FEF3C7', color: checklistComplete ? '#15803D' : '#B45309', fontSize: 11, fontWeight: 700 }}>
+              <span style={{ padding: '5px 9px', borderRadius: 999, background: checklistComplete ? '#12382d' : '#102638', color: checklistComplete ? '#4ade80' : '#fbbf24', fontSize: 11, fontWeight: 700 }}>
                 {checklistComplete ? 'Completo' : 'Obrigatório'}
               </span>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))', gap: 10, marginTop: 14 }}>
+            <div className="service-order-fields" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))', gap: 10, marginTop: 14 }}>
               {([['screen', 'Tela acende'], ['touch', 'Touch responde'], ['camera', 'Câmera frontal']] as const).map(([key, label]) => (
-                <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 11, border: '1px solid #E2E8F0', borderRadius: 9, color: '#334155', fontSize: 13, cursor: 'pointer' }}>
+                <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 11, border: '1px solid #29465f', borderRadius: 9, color: '#edf5fc', fontSize: 13, cursor: 'pointer' }}>
                   <input type="checkbox" checked={preRepairChecklist[key]} onChange={(event) => setPreRepairChecklist((current) => ({ ...current, [key]: event.target.checked }))} />
                   {label}
                 </label>
               ))}
             </div>
             {possibleRecurrence && (
-              <div style={{ marginTop: 12, padding: 11, borderRadius: 9, background: '#FFFBEB', border: '1px solid #FCD34D', color: '#92400E', fontSize: 12 }}>
+              <div style={{ marginTop: 12, padding: 11, borderRadius: 9, background: '#102638', border: '1px solid #29465f', color: '#fbbf24', fontSize: 12 }}>
                 Possível reincidência: já existe uma OS com a mesma identificação ou número de série nesta filial. Verifique a garantia antes de prosseguir.
               </div>
             )}
-            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 14, color: '#334155', fontSize: 12, cursor: 'pointer' }}>
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 14, color: '#edf5fc', fontSize: 12, cursor: 'pointer' }}>
               <input type="checkbox" checked={customerAcknowledged} onChange={(event) => setCustomerAcknowledged(event.target.checked)} />
               Cliente informado e de acordo com as condições registradas, acessórios e avarias de entrada.
             </label>
@@ -769,11 +943,12 @@ export function ServiceOrdersModule({
 
           <div style={{ marginTop: 22 }}>
             {photoError && (
-              <div role="alert" style={{ marginBottom: 12, padding: 11, borderRadius: 9, background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C', fontSize: 12 }}>
+              <div role="alert" style={{ marginBottom: 12, padding: 11, borderRadius: 9, background: '#102638', border: '1px solid #29465f', color: '#fda4af', fontSize: 12 }}>
                 {photoError}
               </div>
             )}
             <div
+              className="service-order-fields"
               style={{
                 display: 'grid',
                 gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
@@ -782,11 +957,12 @@ export function ServiceOrdersModule({
             >
               {saveError && <div className="branch-action-error" role="alert" style={{ marginBottom: 14 }}>{saveError}</div>}
               <div
+                className="service-order-section"
                 style={{
                   padding: 18,
                   borderRadius: 14,
-                  backgroundColor: '#F8FAFC',
-                  border: '1px solid #E2E8F0',
+                  backgroundColor: '#102638',
+                  border: '1px solid #29465f',
                 }}
               >
                 <div
@@ -802,7 +978,7 @@ export function ServiceOrdersModule({
                     <Camera size={18} />
                     Fotos de entrada
                   </h3>
-                  <small style={{ color: '#64748B' }}>Compressão WebP automática, até 300 KB</small>
+                  <small style={{ color: '#adc2d6' }}>Compressão WebP automática, até 300 KB</small>
 
                   <button
                     className="partner-secondary-btn"
@@ -852,7 +1028,7 @@ export function ServiceOrdersModule({
                   <div
                     style={{
                       padding: 20,
-                      border: '1px dashed #999',
+                      border: '1px dashed #29465f',
                       borderRadius: 10,
                       opacity: 0.65,
                     }}
@@ -863,11 +1039,12 @@ export function ServiceOrdersModule({
               </div>
 
               <div
+                className="service-order-section"
                 style={{
                   padding: 18,
                   borderRadius: 14,
-                  backgroundColor: '#F8FAFC',
-                  border: '1px solid #E2E8F0',
+                  backgroundColor: '#102638',
+                  border: '1px solid #29465f',
                 }}
               >
                 <div
@@ -883,7 +1060,7 @@ export function ServiceOrdersModule({
                     <Package size={18} />
                     Fotos de saída
                   </h3>
-                  <small style={{ color: '#64748B' }}>Use na conclusão da OS</small>
+                  <small style={{ color: '#adc2d6' }}>Use na conclusão da OS</small>
 
                   <button
                     className="partner-secondary-btn"
@@ -933,7 +1110,7 @@ export function ServiceOrdersModule({
                   <div
                     style={{
                       padding: 20,
-                      border: '1px dashed #999',
+                      border: '1px dashed #29465f',
                       borderRadius: 10,
                       opacity: 0.65,
                     }}
@@ -952,6 +1129,7 @@ export function ServiceOrdersModule({
             </h3>
 
             <div
+              className="service-order-parts-layout"
               style={{
                 display: 'grid',
                 gridTemplateColumns:
@@ -961,7 +1139,7 @@ export function ServiceOrdersModule({
             >
               <div>
                 <label style={labelDarkStyle}>
-                  <span style={{ color: '#172033' }}>Buscar no estoque da filial</span>
+                  <span style={{ color: '#edf5fc' }}>Buscar no estoque da filial</span>
                   <input
                     value={productSearch}
                     onChange={(event) => setProductSearch(event.target.value)}
@@ -998,9 +1176,9 @@ export function ServiceOrdersModule({
                         padding: 10,
                         marginTop: 7,
                         borderRadius: 9,
-                        backgroundColor: '#FFFFFF',
-                        border: '1px solid #E2E8F0',
-                        color: '#172033',
+                        backgroundColor: '#102638',
+                        border: '1px solid #29465f',
+                        color: '#edf5fc',
                       }}
                     >
                       <b>{product.name}</b>
@@ -1024,6 +1202,7 @@ export function ServiceOrdersModule({
                   items.map((item) => (
                     <div
                       key={item.product_id}
+                      className="service-order-item-row"
                       style={{
                         display: 'grid',
                         gridTemplateColumns:
@@ -1048,7 +1227,8 @@ export function ServiceOrdersModule({
                         </small>
                       </span>
 
-                      <input
+                      <label className="service-order-item-field"><span>Quantidade</span><input
+                        aria-label={`Quantidade de ${item.name}`}
                         type="number"
                         min={1}
                         max={item.is_service ? undefined : item.stock}
@@ -1074,9 +1254,10 @@ export function ServiceOrdersModule({
                           );
                         }}
                         style={{ ...inputDarkStyle }}
-                      />
+                      /></label>
 
-                      <input
+                      <label className="service-order-item-field"><span>Preço unitário</span><input
+                        aria-label={`Preço unitário de ${item.name}`}
                         type="number"
                         min={0}
                         step="0.01"
@@ -1096,10 +1277,11 @@ export function ServiceOrdersModule({
                           );
                         }}
                         style={{ ...inputDarkStyle }}
-                      />
+                      /></label>
 
                       <button
                         className="partner-icon-btn"
+                        aria-label={`Remover ${item.name}`}
                         onClick={() =>
                           removeProduct(
                             item.product_id
@@ -1135,7 +1317,7 @@ export function ServiceOrdersModule({
             }}
           >
             <label style={labelDarkStyle}>
-              <span style={{ color: '#172033' }}>Mão de obra</span>
+              <span style={{ color: '#edf5fc' }}>Mão de obra</span>
               <input
                 type="number"
                 min={0}
@@ -1170,7 +1352,7 @@ export function ServiceOrdersModule({
       )}
 
       <div
-        className="partner-card"
+        className="partner-card service-order-list"
         style={{
           padding: 18,
         }}
@@ -1190,9 +1372,9 @@ export function ServiceOrdersModule({
             placeholder="Pesquisar OS"
             style={{
               flex: 1,
-              backgroundColor: '#FFFFFF',
-              color: '#172033',
-              border: '1px solid #E2E8F0',
+              backgroundColor: '#102638',
+              color: '#edf5fc',
+              border: '1px solid #29465f',
               borderRadius: 10,
               padding: '10px 12px',
             }}
@@ -1201,38 +1383,82 @@ export function ServiceOrdersModule({
 
         {filteredOrders.length > 0 ? (
           filteredOrders.map((order) => (
-            <div
-              key={order.id}
-              style={{
-                padding: 14,
-                borderTop:
-                  '1px solid rgba(127,127,127,.15)',
-                display: 'flex',
-                justifyContent:
-                  'space-between',
-              }}
-            >
-              <span>
-                <b>
-                  OS #{order.id.slice(0, 8)}
-                </b>{' '}
-                ·{' '}
-                {order.customer_name ||
-                  'Sem cliente'}
-
-                <br />
-
-                <small>
-                  {order.equipment_type ||
-                    'Equipamento'}{' '}
+            <div key={order.id}>
+              <div
+                className="service-order-list-row"
+                style={{
+                  padding: 14,
+                  borderTop:
+                    '1px solid rgba(127,127,127,.15)',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  gap: 12,
+                  flexWrap: 'wrap',
+                }}
+              >
+                <span>
+                  <b>
+                    OS #{order.os_number || order.id.slice(0, 8)}
+                  </b>{' '}
                   ·{' '}
-                  {order.equipment_identification ||
-                    order.serial_number ||
-                    'Sem identificação'}
-                </small>
-              </span>
+                  {order.customer_name ||
+                    'Sem cliente'}
 
-              <b>{money(order.total)}</b>
+                  <br />
+
+                  <small>
+                    {order.equipment_type ||
+                      'Equipamento'}{' '}
+                    ·{' '}
+                    {order.equipment_identification ||
+                      order.serial_number ||
+                      'Sem identificação'}{' '}
+                    · {serviceOrderStatusLabels[order.status]}
+                  </small>
+                </span>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <b>{money(order.total)}</b>
+                  <button type="button" className="partner-secondary-btn" onClick={() => startEditingOrder(order)}>
+                    <Pencil size={15} /> Editar
+                  </button>
+                  <button type="button" className="partner-secondary-btn" onClick={() => void printOrder(order)}>
+                    <Printer size={15} /> Imprimir
+                  </button>
+                </div>
+              </div>
+
+              {editingOrder?.id === order.id && (
+                <div className="module-card" style={{ margin: '0 14px 14px' }}>
+                  <h3>Editar OS #{order.os_number || order.id.slice(0, 8)}</h3>
+                  <div className="service-order-fields" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: 12 }}>
+                    <label style={labelDarkStyle}>
+                      <span>Status</span>
+                      <select value={editStatus} onChange={event => setEditStatus(event.target.value as ServiceOrderStatus)} style={inputDarkStyle}>
+                        {Object.entries(serviceOrderStatusLabels).map(([status, label]) => <option key={status} value={status}>{label}</option>)}
+                      </select>
+                    </label>
+                    <label style={labelDarkStyle}>
+                      <span>Técnico responsável</span>
+                      <input value={editTechnician} onChange={event => setEditTechnician(event.target.value)} style={inputDarkStyle} />
+                    </label>
+                    <label style={labelDarkStyle}>
+                      <span>Relato do problema</span>
+                      <textarea value={editReportedIssue} onChange={event => setEditReportedIssue(event.target.value)} rows={3} style={inputDarkStyle} />
+                    </label>
+                    <label style={labelDarkStyle}>
+                      <span>Observações</span>
+                      <textarea value={editObservations} onChange={event => setEditObservations(event.target.value)} rows={3} style={inputDarkStyle} />
+                    </label>
+                  </div>
+                  {editError && <p role="alert" className="branch-action-error">{editError}</p>}
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
+                    <button type="button" className="partner-secondary-btn" onClick={() => { setEditingOrder(null); setEditError(null); }} disabled={savingEdit}>Cancelar</button>
+                    <button type="button" className="partner-primary-btn" onClick={() => void saveOrderEdits()} disabled={savingEdit}>{savingEdit ? 'Salvando...' : 'Salvar alterações'}</button>
+                  </div>
+                </div>
+              )}
             </div>
           ))
         ) : (
@@ -1248,6 +1474,7 @@ export function ServiceOrdersModule({
             </p>
           </div>
         )}
+        {printError && <p role="alert" className="branch-action-error">{printError}</p>}
       </div>
     </section>
   );

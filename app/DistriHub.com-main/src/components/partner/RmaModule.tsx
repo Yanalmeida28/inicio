@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
   ArrowRightCircle, Camera, FileText, Package, Printer, QrCode, Upload,
   Wallet, X, Pencil, Trash2, AlertCircle,
@@ -6,6 +6,7 @@ import {
 import type { PartnerCustomer, PartnerProduct, PartnerSale, RmaPayload, RmaRequest, RmaStatus, SalespersonRole } from '../../types';
 import { rmaStatusLabels, rmaStatusColors, rmaStatusFlow } from '../../data';
 import { money } from '../../utils';
+import { supabase } from '../../lib/supabase';
 import { returnedQuantity } from '../../lib/saleReturns';
 
 type RmaModuleProps = {
@@ -13,11 +14,11 @@ type RmaModuleProps = {
   customers: PartnerCustomer[];
   products: PartnerProduct[];
   sales: PartnerSale[];
-  walletBalance: number;
   warrantyTerms: string;
   currentRole: SalespersonRole;
   onCreate: (rma: RmaPayload) => Promise<void>;
   onUpdateStatus: (id: string, status: RmaStatus) => Promise<unknown>;
+  onGrantCredit?: (id: string, amount: number) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
 };
 
@@ -29,7 +30,7 @@ function errorMessage(error: unknown, fallback: string) {
 }
 
 export function RmaModule({
-  rmaRequests, customers, products, sales, walletBalance, warrantyTerms, currentRole, onCreate, onUpdateStatus, onDelete,
+  rmaRequests, customers, products, sales, warrantyTerms, currentRole, onCreate, onUpdateStatus, onGrantCredit, onDelete,
 }: RmaModuleProps) {
   const [showForm, setShowForm] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -48,6 +49,10 @@ export function RmaModule({
   const [batchOrOrder, setBatchOrOrder] = useState('');
   const [defect, setDefect] = useState('');
   const [mediaName, setMediaName] = useState('');
+  const [mediaFile, setMediaFile] = useState<File | null>(null);
+  const photoFiles = useRef<{ before?: File; after?: File }>({});
+  const createAttempt = useRef<RmaPayload | null>(null);
+  const createLock = useRef(false);
   const [beforePhoto, setBeforePhoto] = useState<string | null>(null);
   const [afterPhoto, setAfterPhoto] = useState<string | null>(null);
   const [labelRmaId, setLabelRmaId] = useState<string | null>(null);
@@ -58,6 +63,33 @@ export function RmaModule({
   const [, setEditDefect] = useState('');
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | RmaStatus>('all');
+  const [creditRma, setCreditRma] = useState<RmaRequest | null>(null);
+  const [creditAmount, setCreditAmount] = useState('');
+  const [creditError, setCreditError] = useState<string | null>(null);
+  const creditBalanceKnown = rmaRequests.every(rma => !Number(rma.credit_amount) || rma.credit_used_amount != null);
+  const walletBalance = rmaRequests.reduce((sum, rma) => sum + Math.max(0, Math.round(Number(rma.credit_amount ?? 0) * 100) - Math.round(Number(rma.credit_used_amount ?? 0) * 100)), 0) / 100;
+
+  function openCredit(rma: RmaRequest) {
+    const sale = sales.find(item => item.id === rma.sale_id);
+    const item = sale?.items[rma.sale_item_index ?? -1];
+    setCreditRma(rma);
+    setCreditAmount(item ? (item.unit_price * (rma.quantity ?? 1)).toFixed(2) : '');
+    setCreditError(null);
+  }
+
+  async function confirmCredit(event: React.FormEvent) {
+    event.preventDefault();
+    if (busy || !creditRma || !onGrantCredit) return;
+    const normalized = creditAmount.trim().replace(',', '.');
+    const value = Number(normalized);
+    if (!/^\d+(\.\d{1,2})?$/.test(normalized) || !Number.isFinite(value) || value <= 0) {
+      setCreditError('Informe um valor maior que zero, com até duas casas decimais.'); return;
+    }
+    setBusy(true); setCreditError(null);
+    try { await onGrantCredit(creditRma.id, value); setCreditRma(null); }
+    catch (error) { setCreditError(errorMessage(error, 'Não foi possível gerar o crédito.')); }
+    finally { setBusy(false); }
+  }
 
   const canDelete = deleteAllowedRoles.includes(currentRole);
   const selectedCustomer = customers.find((customer) => customer.id === customerId) ?? null;
@@ -130,7 +162,7 @@ export function RmaModule({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (busy) return;
+    if (busy || createLock.current) return;
     if (!manualEntry && (!selectedCustomer || !selectedSale || !selectedSaleItem)) {
       setFormError('Selecione o cliente, uma venda concluída e o produto comprado.');
       return;
@@ -140,10 +172,22 @@ export function RmaModule({
       setFormError('Informe uma quantidade válida dentro do saldo da venda.');
       return;
     }
+    const selectedFiles = [photoFiles.current.before, photoFiles.current.after, mediaFile].filter(Boolean) as File[];
+    if (!createAttempt.current && selectedFiles.some(file => file.size > 20 * 1024 * 1024 || !['image/jpeg','image/png','image/webp','image/heic','video/mp4','video/webm'].includes(file.type))) {
+      setFormError('Use imagem JPEG, PNG, WebP, HEIC ou vídeo MP4/WebM de até 20 MB.');
+      return;
+    }
+    createLock.current = true;
     setBusy(true);
     setFormError(null);
     try {
-      await onCreate({
+      createAttempt.current ??= {
+        request_id: crypto.randomUUID(),
+        files: [
+          ...(photoFiles.current.before ? [{ kind: 'before' as const, file: photoFiles.current.before }] : []),
+          ...(photoFiles.current.after ? [{ kind: 'after' as const, file: photoFiles.current.after }] : []),
+          ...(mediaFile ? [{ kind: 'defect' as const, file: mediaFile }] : []),
+        ],
         sale_id: manualEntry ? null : selectedSale!.id,
         sale_item_index: manualEntry ? null : Number(saleItemIndex),
         product_id: manualEntry ? manualProductId || null : selectedSaleItem!.product_id,
@@ -154,8 +198,11 @@ export function RmaModule({
         product_sku: productSku,
         batch_or_order: batchOrOrder,
         defect_description: defect,
-        media_url: mediaName || null,
-      });
+        media_url: null,
+      };
+      await onCreate(createAttempt.current);
+      createAttempt.current = null;
+      photoFiles.current = {}; setMediaFile(null);
       setCustomerSearch(''); setCustomerId(''); setSaleId(''); setSaleItemIndex(''); setManualCustomerName('');
       setProductName(''); setProductSku(''); setBatchOrOrder(''); setDefect(''); setMediaName('');
       setBeforePhoto(null); setAfterPhoto(null);
@@ -164,17 +211,30 @@ export function RmaModule({
       setManualProductId('');
     } catch (error) {
       setFormError(errorMessage(error, 'Não foi possível registrar a devolução.'));
-    } finally { setBusy(false); }
+    } finally { createLock.current = false; setBusy(false); }
+  }
+
+  async function openAttachment(path: string) {
+    const pendingWindow = window.open('about:blank', '_blank');
+    if (pendingWindow) pendingWindow.opener = null;
+    try {
+      if (!supabase) throw new Error('Armazenamento indisponível.');
+      const { data, error } = await supabase.storage.from('rma-attachments').createSignedUrl(path, 120);
+      if (error || !data) throw error ?? new Error('Arquivo indisponível.');
+      if (pendingWindow) pendingWindow.location.href = data.signedUrl;
+      else setActionError('Permita abrir uma nova aba para visualizar o anexo.');
+    } catch (error) { pendingWindow?.close(); setActionError(errorMessage(error, 'Não foi possível abrir o anexo.')); }
   }
 
   function handleMediaChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    if (file) setMediaName(file.name);
+    if (file) { setMediaName(file.name); setMediaFile(file); }
   }
 
   function handlePhotoChange(e: React.ChangeEvent<HTMLInputElement>, setter: (v: string | null) => void) {
     const file = e.target.files?.[0];
     if (!file) return;
+    photoFiles.current[setter === setBeforePhoto ? 'before' : 'after'] = file;
     const reader = new FileReader();
     reader.onload = () => setter(reader.result as string);
     reader.readAsDataURL(file);
@@ -184,6 +244,7 @@ export function RmaModule({
     if (busy) return;
     const idx = rmaStatusFlow.indexOf(rma.status);
     if (idx < 0 || idx >= rmaStatusFlow.length - 1) return;
+    if (rmaStatusFlow[idx + 1] === 'credito_gerado') { openCredit(rma); return; }
     setBusy(true);
     setActionError(null);
     try { await onUpdateStatus(rma.id, rmaStatusFlow[idx + 1]); }
@@ -232,11 +293,25 @@ export function RmaModule({
       <div className="rma-wallet-card">
         <div className="wallet-icon"><Wallet size={24} /></div>
         <div>
-          <small>Saldo disponível em garantias aprovadas</small>
-          <strong>{money.format(walletBalance)}</strong>
+          <small>Créditos de devolução disponíveis aos clientes</small>
+          <strong>{creditBalanceKnown ? money.format(walletBalance) : 'Saldo indisponível'}</strong>
         </div>
-        <span className="wallet-hint">Valor abatido automaticamente em futuros pedidos</span>
+        <span className="wallet-hint">Abata em faturas do cliente pelo Financeiro, inclusive de novas compras faturadas.</span>
       </div>
+
+      {creditRma && <div className="modal-overlay">
+        <form className="modal-card rma-form" onSubmit={confirmCredit}>
+          <h4>Gerar crédito de devolução</h4>
+          <p>{creditRma.customer_name} — {creditRma.product_name} ({creditRma.quantity ?? 1} unidade(s))</p>
+          <p>O crédito poderá abater faturas do cliente. O valor máximo é o valor dos itens devolvidos na venda.</p>
+          <label>Valor do crédito (R$)<input aria-label="Valor do crédito" inputMode="decimal" value={creditAmount} onChange={event => setCreditAmount(event.target.value)} disabled={busy} required autoFocus /></label>
+          {creditError && <p className="otp-error-msg" role="alert">{creditError}</p>}
+          <div className="pix-actions">
+            <button type="submit" className="module-submit-btn" disabled={busy}>{busy ? 'Registrando...' : 'Confirmar crédito'}</button>
+            <button type="button" className="rma-advance-btn" disabled={busy} onClick={() => setCreditRma(null)}>Cancelar</button>
+          </div>
+        </form>
+      </div>}
 
       <div className="orders-summary" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px', margin: '18px 0' }}>
         <div className="orders-summary-card" style={{ padding: '14px 16px', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', background: '#0f1f2c' }}>
@@ -288,6 +363,7 @@ export function RmaModule({
 
       {showForm && (
         <form className="rma-form" onSubmit={handleSubmit}>
+          <fieldset disabled={busy || Boolean(createAttempt.current)} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
           <label className="checkbox-label">
             <input type="checkbox" checked={manualEntry} onChange={(event) => { setManualEntry(event.target.checked); setFormError(null); }} />
             Informar manualmente, sem histórico de venda
@@ -409,7 +485,7 @@ export function RmaModule({
                 {beforePhoto ? (
                   <div className="photo-preview">
                     <img src={beforePhoto} alt="Antes" />
-                    <button type="button" onClick={() => setBeforePhoto(null)}><X size={14} /></button>
+                    <button type="button" onClick={() => { setBeforePhoto(null); delete photoFiles.current.before; }}><X size={14} /></button>
                   </div>
                 ) : (
                   <label className="photo-placeholder">
@@ -427,7 +503,7 @@ export function RmaModule({
                 {afterPhoto ? (
                   <div className="photo-preview">
                     <img src={afterPhoto} alt="Depois" />
-                    <button type="button" onClick={() => setAfterPhoto(null)}><X size={14} /></button>
+                    <button type="button" onClick={() => { setAfterPhoto(null); delete photoFiles.current.after; }}><X size={14} /></button>
                   </div>
                 ) : (
                   <label className="photo-placeholder">
@@ -443,7 +519,8 @@ export function RmaModule({
 
           <label>Quantidade devolvida<input type="number" min="1" step="1" max={manualEntry ? undefined : remainingQuantity} value={quantity} onChange={event => setQuantity(Number(event.target.value))} required /></label>
           <p>A devolução fica no histórico da compra. A entrada no estoque ocorre ao reintegrar a peça; o reembolso financeiro é tratado separadamente.</p>
-          {formError && <p className="form-error-msg" role="alert">{formError}</p>}
+          </fieldset>
+          {formError && <p className="form-error-msg" role="alert">{formError} Ao tentar novamente, será recuperada a mesma solicitação enviada.</p>}
           <button type="submit" className="module-submit-btn" disabled={busy}>{busy ? 'Salvando...' : 'Enviar solicitação'}</button>
         </form>
       )}
@@ -491,6 +568,8 @@ export function RmaModule({
                       <td>
                         <strong>{rma.product_name}</strong>
                         <small>SKU {rma.product_sku}</small>
+                        <small>{rma.defect_description}</small>
+                        {(rma.attachments ?? []).map(file => <button type="button" key={file.path} className="rma-advance-btn" onClick={() => void openAttachment(file.path)}>{file.kind === 'before' ? 'Antes' : file.kind === 'after' ? 'Depois' : 'Defeito'}: {file.name}</button>)}
                         <small>Quantidade: {rma.quantity ?? 1}{rma.stock_restored_at ? ' · Entrada no estoque registrada' : ''}</small>
                       </td>
                       <td>{rma.batch_or_order}</td>
@@ -507,10 +586,15 @@ export function RmaModule({
                       <td>
                         <div className="row-action-group">
                           {rma.status !== 'credito_gerado' && (
-                            <button className="rma-advance-btn" disabled={busy} onClick={() => advanceStatus(rma)} title="Avançar Status">
+                            <button className="rma-advance-btn" disabled={busy || (rma.status === 'reintegrado_estoque' && (!canDelete || !rma.customer_id || !rma.sale_id))} onClick={() => advanceStatus(rma)} title="Avançar Status">
                               <ArrowRightCircle size={13} /> Avançar
                             </button>
                           )}
+                          {rma.status === 'credito_gerado' && !Number(rma.credit_amount) && canDelete && (
+                            <button className="rma-advance-btn" disabled={busy || !rma.customer_id || !rma.sale_id} onClick={() => openCredit(rma)}>Registrar crédito</button>
+                          )}
+                          {Number(rma.credit_amount) > 0 && <small>Crédito: {money.format(Number(rma.credit_amount))} · Saldo: {rma.credit_used_amount == null ? 'indisponível' : money.format(Number(rma.credit_amount) - Number(rma.credit_used_amount))}</small>}
+                          {!rma.customer_id && (rma.status === 'reintegrado_estoque' || rma.status === 'credito_gerado') && <small>Crédito exige uma devolução vinculada à venda do cliente.</small>}
                           <button className="rma-advance-btn" onClick={() => startEdit(rma)} title="Editar">
                             <Pencil size={14} />
                           </button>

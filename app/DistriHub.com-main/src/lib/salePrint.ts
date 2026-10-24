@@ -7,10 +7,14 @@ export type PrintableSale = Pick<PartnerSale, 'customer_name' | 'items' | 'total
 
 export type ReceiptDetails = { customer?: PartnerCustomer; salespersonName?: string; settings?: StoreSettings; companyName?: string; companyDocument?: string | null; companyAddress?: string | null };
 
-export function printSale(sale: PrintableSale, format: 'receipt' | 'label', details: ReceiptDetails = {}) {
-  const popup = window.open('', '_blank', 'width=440,height=700');
+export function printSale(sale: PrintableSale, format: 'receipt' | 'label', details: ReceiptDetails = {}, preparedWindow?: Window) {
+  const popup = preparedWindow ?? window.open('', '_blank', 'width=440,height=700');
   if (!popup) throw new Error('Permita pop-ups neste navegador para imprimir o cupom ou a etiqueta.');
 
+  if (preparedWindow) {
+    popup.document.head.replaceChildren();
+    popup.document.body.replaceChildren();
+  }
   const isQuote = sale.status === 'pre_venda' || sale.status === 'aberta';
   const receipt = receiptPreferences(details.settings?.personalization?.receipt);
   const fontSize = format === 'receipt' ? receipt.font_size : 12;

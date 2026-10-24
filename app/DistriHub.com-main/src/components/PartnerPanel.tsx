@@ -252,6 +252,24 @@ export function PartnerPanel({
   }, [activeTab, setVisitedTabs]);
   const [selectedBranchId, setSelectedBranchId] = useState<string>('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    const mobile = window.matchMedia('(max-width: 900px)');
+    if (!mobile.matches) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSidebarOpen(false);
+    };
+    const closeOnDesktop = () => { if (!mobile.matches) setSidebarOpen(false); };
+    document.addEventListener('keydown', closeOnEscape);
+    mobile.addEventListener('change', closeOnDesktop);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', closeOnEscape);
+      mobile.removeEventListener('change', closeOnDesktop);
+    };
+  }, [sidebarOpen]);
 
   const [currentSalespersonId, setCurrentSalespersonId] =
     useState<string | null>(null);
@@ -360,7 +378,7 @@ export function PartnerPanel({
     try { saved = new OperatorSelectionStore(sessionStorage, operatorScope).read(); }
     catch { return; }
     if (!saved) return;
-    if (partner.branches.some(branch => branch.id === saved.branchId)) setSelectedBranchId(saved.branchId);
+    if (partner.branches.some(branch => branch.id === saved.branchId && branch.is_active !== false)) setSelectedBranchId(saved.branchId);
     const operator = partner.salespeople.find(person => person.id === saved.operatorId && (person.active ?? person.is_active) !== false);
     if (operator && (!operator.branch_id || operator.branch_id === saved.branchId)) {
       setCurrentSalespersonId(operator.id);
@@ -396,6 +414,15 @@ export function PartnerPanel({
     lockedBranchId,
     selectedBranchId,
   ]);
+
+  useEffect(() => {
+    if (isEmployeeRestricted || !selectedBranchId) return;
+    if (partner.branches.some(branch => branch.id === selectedBranchId && branch.is_active === false)) {
+      setSelectedBranchId('');
+      setCurrentSalespersonId(null);
+      setActiveOperatorPin(null);
+    }
+  }, [isEmployeeRestricted, partner.branches, selectedBranchId]);
 
   useEffect(() => {
     if (initialTab) {
@@ -822,20 +849,14 @@ export function PartnerPanel({
         effectiveBranchId;
 
     if (!targetBranch) {
-      window.alert(
-        'Selecione uma filial antes de cadastrar clientes.',
-      );
-      return;
+      throw new Error('Selecione a filial do cliente antes de salvar.');
     }
 
     if (
       isEmployeeRestricted &&
       targetBranch !== effectiveBranchId
     ) {
-      window.alert(
-        'Acesso negado: você só pode cadastrar clientes na sua filial vinculada.',
-      );
-      return;
+      throw new Error('Acesso negado: você só pode cadastrar clientes na sua filial vinculada.');
     }
 
     const {
@@ -1069,20 +1090,14 @@ export function PartnerPanel({
         effectiveBranchId;
 
     if (!targetBranch) {
-      window.alert(
-        'Selecione uma filial para realizar a venda.',
-      );
-      return;
+      throw new Error('Selecione uma filial para realizar a venda.');
     }
 
     if (
       isEmployeeRestricted &&
       targetBranch !== effectiveBranchId
     ) {
-      window.alert(
-        'Acesso negado: você só pode realizar vendas na sua filial vinculada.',
-      );
-      return;
+      throw new Error('Acesso negado: você só pode realizar vendas na sua filial vinculada.');
     }
 
     const {
@@ -1091,7 +1106,7 @@ export function PartnerPanel({
     } = getOperatorContext();
 
     if (!partner.pendingSale) await checkoutCash.assertOpen();
-    await partner.createSale(
+    return await partner.createSale(
       {
         ...sale,
         branch_id: targetBranch,
@@ -1345,23 +1360,31 @@ export function PartnerPanel({
     );
   }
 
-  async function handleDeleteBranch(
+  async function handleArchiveBranch(
     id: string,
   ) {
     if (isEmployeeRestricted) {
       window.alert(
-        'Funcionários não têm permissão para excluir filiais.',
+        'Funcionários não têm permissão para arquivar filiais.',
       );
       return;
     }
 
-    await partner.deleteBranch(id);
+    await partner.updateBranch(id, { is_active: false });
 
     if (selectedBranchId === id) {
       setSelectedBranchId('');
       setCurrentSalespersonId(null);
       setActiveOperatorPin(null);
     }
+  }
+
+  async function handleRestoreBranch(id: string) {
+    if (isEmployeeRestricted) {
+      window.alert('Funcionários não têm permissão para reativar filiais.');
+      return;
+    }
+    await partner.updateBranch(id, { is_active: true });
   }
 
   function openOperatorModal() {
@@ -1702,6 +1725,8 @@ export function PartnerPanel({
             )
           }
           aria-label="Menu"
+          aria-expanded={sidebarOpen}
+          aria-controls="partner-navigation"
         >
           {sidebarOpen ? (
             <X size={22} />
@@ -1723,6 +1748,7 @@ export function PartnerPanel({
 
         <button
           className="partner-back-btn compact"
+          aria-label="Sair do app"
           onClick={onBack}
         >
           <ArrowLeft size={18} />
@@ -1739,11 +1765,13 @@ export function PartnerPanel({
       )}
 
       <aside
+        id="partner-navigation"
         className={`partner-sidebar ${
           sidebarOpen ? 'open' : ''
         }`}
       >
         <div className="sidebar-header">
+          <button type="button" className="sidebar-mobile-close" aria-label="Fechar menu" onClick={() => setSidebarOpen(false)}><X size={22} /></button>
           <div className="sidebar-brand">
             <span className="sidebar-brand-mark">
               {storeSettings.logo_url ? <img src={storeSettings.logo_url} alt="Logo da loja" style={{ width: 36, height: 36, objectFit: 'contain' }} /> : <Store size={22} />}
@@ -1761,7 +1789,7 @@ export function PartnerPanel({
             onClick={onBack}
           >
             <ArrowLeft size={16} />
-            Voltar ao início
+            Sair do app
           </button>
         </div>
 
@@ -1873,6 +1901,14 @@ export function PartnerPanel({
           </div>
         </div>
 
+          <BranchSelector
+            branches={partner.branches}
+            selectedBranchId={effectiveBranchId}
+            onSelectBranch={handleSelectBranch}
+            isEmployeeLocked={isEmployeeRestricted}
+            lockedBranchName={lockedBranch?.name}
+          />
+
         <nav className="sidebar-nav">
           {visibleTabs.map(
             ({
@@ -1929,13 +1965,6 @@ export function PartnerPanel({
 
       <div className="sidebar-main">
         <div className="sidebar-main-inner">
-          <BranchSelector
-            branches={partner.branches}
-            selectedBranchId={effectiveBranchId}
-            onSelectBranch={handleSelectBranch}
-            isEmployeeLocked={isEmployeeRestricted}
-            lockedBranchName={lockedBranch?.name}
-          />
           {partner.error && (
             <p className="partner-loading">
               {partner.error}
@@ -1977,6 +2006,7 @@ export function PartnerPanel({
             {visitedTabs.has('pdv') && !blockedTabs.includes('pdv') && canUseSaasFeature(saas.subscription, 'pdv') && (
               <div hidden={activeTab !== 'pdv'}>
               {renderTab('pdv', <PdvModule
+                isActive={activeTab === 'pdv'}
                 preSaleToCheckout={preSaleToCheckout}
                 onRequestPreSale={setPreSaleToCheckout}
                 onConsumePreSale={() => setPreSaleToCheckout(null)}
@@ -1991,6 +2021,8 @@ export function PartnerPanel({
                 canEditPrice={effectiveRole === 'gerente' || (!isEmployeeRestricted && effectiveRole === 'administrador')}
                 key={`${pdvRevision}:${effectiveBranchId}:${activeSalesperson?.id ?? 'owner'}`}
                 hasPendingSale={Boolean(partner.pendingSale)}
+                barcodeScannerEnabled={storeSettings.personalization?.pdv?.barcode_scanner_enabled !== false}
+                cameraScannerEnabled={storeSettings.personalization?.pdv?.camera_scanner_enabled === true}
                 products={
                   filteredProducts
                 }
@@ -2020,6 +2052,7 @@ export function PartnerPanel({
                 currentRole={
                   effectiveRole
                 }
+                receiptDetails={{ settings: storeSettings, companyName: partner.profile?.account_name || partner.profile?.name, companyDocument: partner.profile?.document, companyAddress: partner.branches.find((branch) => branch.id === effectiveBranchId)?.address }}
                 onCreateSale={
                   handleCreateSale
                 }
@@ -2125,16 +2158,9 @@ export function PartnerPanel({
                   storeSettings.service_warranty_terms ??
                   ''
                 }
-                onUpdateWarrantyTerms={(
-                  value,
-                ) =>
-                  partner.updateStoreSettings(
-                    {
-                      service_warranty_terms:
-                        value,
-                    },
-                  )
-                }
+                storeSettings={storeSettings}
+                companyProfile={partner.profile}
+                operatorId={identity?.salespersonId ?? null}
               />)}
               </div>
             )}
@@ -2254,6 +2280,7 @@ export function PartnerPanel({
               <div hidden={activeTab !== 'entregas'}>
               {renderTab('entregas',
               <DeliveryModule
+                customers={filteredCustomers}
                 sales={
                   filteredSales
                 }
@@ -2264,9 +2291,9 @@ export function PartnerPanel({
                   effectiveBranchId ||
                   null
                 }
-                onUpdateDelivery={(saleId, status, driverId) => {
+                onUpdateDelivery={(saleId, status, driverId, details) => {
                   const { operatorId, operatorPin } = getOperatorContext();
-                  return partner.updateDelivery(saleId, status, driverId, operatorId, operatorPin);
+                  return partner.updateDelivery(saleId, status, driverId, operatorId, operatorPin, details);
                 }}
               />)}
               </div>
@@ -2276,10 +2303,11 @@ export function PartnerPanel({
               <div hidden={activeTab !== 'financeiro'}>
               {renderTab('financeiro',
               <FinancialModule
+                rmaRequests={filteredRmaRequests}
+                onApplyCredit={partner.applyRmaCredit}
                 invoices={
                   filteredInvoices
                 }
-                walletBalance={0}
                 creditLimit={
                   filteredCustomers.reduce(
                     (
@@ -2328,6 +2356,7 @@ export function PartnerPanel({
               <div hidden={activeTab !== 'rma'}>
               {renderTab('rma',
               <RmaModule
+                onGrantCredit={partner.grantRmaCredit}
                 rmaRequests={
                   filteredRmaRequests
                 }
@@ -2340,7 +2369,6 @@ export function PartnerPanel({
                 sales={
                   filteredSales
                 }
-                walletBalance={0}
                 warrantyTerms={
                   storeSettings.warranty_terms ??
                   ''
@@ -2365,6 +2393,9 @@ export function PartnerPanel({
               <div hidden={activeTab !== 'relatorios'}>
               {renderTab('relatorios',
               <ReportsModule
+                invoices={filteredInvoices}
+                branchId={effectiveBranchId || null}
+                companyUserId={identity?.companyUserId ?? null}
                 movements={
                   filteredMovements
                 }
@@ -2394,6 +2425,8 @@ export function PartnerPanel({
                 onUpdate={
                   partner.updateStoreSettings
                 }
+                planId={saas.subscription?.effective_plan ?? 'basico'}
+                canEdit={!identity?.salespersonId}
               />)}
               </div>
             )}
@@ -2408,7 +2441,8 @@ export function PartnerPanel({
                   selectedBranchId={effectiveBranchId || null}
                   onAddBranch={handleAddBranch}
                   onUpdateBranch={handleUpdateBranch}
-                  onDeleteBranch={handleDeleteBranch}
+                  onArchiveBranch={handleArchiveBranch}
+                  onRestoreBranch={handleRestoreBranch}
                 /> : undefined}
                 user={user}
                 profile={
@@ -2569,7 +2603,6 @@ export function PartnerPanel({
                           '',
                         );
                       }}
-                      placeholder="Digite o PIN do funcionário"
                       maxLength={8}
                       autoFocus
                     />
