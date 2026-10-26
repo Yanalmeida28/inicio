@@ -15,6 +15,10 @@ const collaboratorForm = await readFile(
   new URL('../../src/components/partner/CadastrosModule.tsx', import.meta.url),
   'utf8',
 );
+const partnerPanel = await readFile(
+  new URL('../../src/components/PartnerPanel.tsx', import.meta.url),
+  'utf8',
+);
 
 test('new collaborators are inactive and all modules are blocked even when the insert requests access', async () => {
   const db = new PGlite();
@@ -58,4 +62,11 @@ test('inactive collaborator identity is denied by the application and creation f
   assert.match(collaboratorForm, /active: false/);
   assert.match(collaboratorForm, /is_active: false/);
   assert.match(collaboratorForm, /Novos colaboradores ficam inativos e sem acesso aos módulos/);
+});
+
+test('the company owner can manage collaborators from Basic plan registrations', () => {
+  assert.match(partnerPanel, /canManageSalespeople={Boolean\(identity && !identity\.salespersonId\)}/);
+  assert.match(collaboratorForm, /canManageSalespeople\s*\?\s*\[\.\.\.subTabs/);
+  assert.match(collaboratorForm, /label: 'Colaboradores'/);
+  assert.match(collaboratorForm, /adminTarget === 'vendedores' \|\| \(!adminTarget && canManageSalespeople\)/);
 });

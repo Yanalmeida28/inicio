@@ -31,6 +31,7 @@ type PartnerCustomerUpdate = Partial<
 
 type Props = {
   suppliersReady?: boolean;
+  canManageSalespeople?: boolean;
   adminTarget?: string;
   initialTab?: SubTab;
   isActive?: boolean;
@@ -100,6 +101,7 @@ function getActionPopoverPosition(event: React.MouseEvent<HTMLButtonElement>, wi
 
 export function CadastrosModule({
   adminTarget,
+  canManageSalespeople = false,
   initialTab = 'produtos', productType = 'todos',
   isActive = true, onDataScopeChange, suppliersReady = true,
   products, branches, selectedBranchId, categories, suppliers, salespeople, combos, modifiers, customers, sales,
@@ -112,6 +114,9 @@ export function CadastrosModule({
 }: Props) {
   const parentDraftScope = useSessionDraftScope();
   const [subTab, setSubTab] = useSessionDraftState<SubTab>(`cadastros:${adminTarget ?? 'principal'}:active-subtab`, initialTab);
+  const visibleSubTabs = canManageSalespeople
+    ? [...subTabs, { id: 'vendedores' as const, label: 'Colaboradores', icon: Users }]
+    : subTabs;
   useEffect(() => { if (isActive) onDataScopeChange?.(subTab); }, [isActive, subTab, onDataScopeChange]);
   const [visitedSubTabs, setVisitedSubTabs] = useState<Set<SubTab>>(() => new Set([initialTab]));
   useEffect(() => {
@@ -136,7 +141,7 @@ export function CadastrosModule({
       </div>
 
       {!adminTarget && <div className="subtab-bar cadastros-subtab-bar">
-        {subTabs.map(({ id, label, icon: Icon }) => (
+        {visibleSubTabs.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
             className={`subtab ${subTab === id ? 'active' : ''}`}
@@ -210,7 +215,7 @@ export function CadastrosModule({
           <SuppliersSubTab suppliers={suppliers} branches={branches} selectedBranchId={selectedBranchId} onAdd={onAddSupplier} onUpdate={onUpdateSupplier} onDelete={onDeleteSupplier} />
           </div>
         )}
-        {subTab === 'vendedores' && adminTarget === 'vendedores' && (
+        {subTab === 'vendedores' && (adminTarget === 'vendedores' || (!adminTarget && canManageSalespeople)) && (
           <SalespeopleSubTab
             salespeople={salespeople}
             branches={branches}

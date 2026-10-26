@@ -1723,6 +1723,7 @@ export function PartnerPanel({
               <CadastrosModule
                 key={target ?? 'principal'}
                 isActive={activeTab === (target ? 'administrativo' : 'cadastros')}
+                canManageSalespeople={Boolean(identity && !identity.salespersonId)}
                 onDataScopeChange={setCadastroDataScope}
                 suppliersReady={partner.suppliersReady}
                 adminTarget={target}
