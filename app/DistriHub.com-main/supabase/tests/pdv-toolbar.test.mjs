@@ -50,9 +50,20 @@ const controls = () => renderer.root.findByProps({ 'aria-label': 'Opções da ve
 
 test('checkout places customer type and customer picker in the same layout row', async () => {
   await act(async () => { renderer = TestRenderer.create(React.createElement(module.exports.Checkout, props)); });
+  const form = renderer.root.findByProps({ className: 'pdv-form' });
   const fields = renderer.root.findByProps({ className: 'pdv-customer-fields' });
+  const actions = renderer.root.findByProps({ className: 'pdv-checkout-actions' });
   assert.ok(fields.findByType('select'));
   assert.equal(fields.findAll(node => typeof node.type === 'function' && node.type.name === 'CustomerSearchPicker').length, 1);
+  assert.deepEqual(actions.findAllByType('button').map(button => button.props.children.filter(child => typeof child === 'string').join('').trim()), [
+    'Finalizar e imprimir',
+    'Finalizar sem imprimir',
+  ]);
+  assert.deepEqual(form.children.map(section => section.props.className), [
+    'pdv-form-section pdv-customer-section',
+    'pdv-form-section pdv-payment-section',
+    'pdv-form-section pdv-delivery-section',
+  ]);
 });
 
 test('new checkout applies customer return credit to a purchase and charges only the difference',async()=>{

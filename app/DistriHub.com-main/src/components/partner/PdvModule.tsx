@@ -1040,7 +1040,7 @@ function PdvCheckout({ products, customers, credits, rmaRequests = [], hasPendin
 
             <>
               <div className="pdv-form">
-                <div className="pdv-form-section">
+                <div className="pdv-form-section pdv-customer-section">
                   <span className="pdv-form-section-label">Cliente</span>
                   <div className="pdv-customer-fields">
                     <label>
@@ -1061,7 +1061,7 @@ function PdvCheckout({ products, customers, credits, rmaRequests = [], hasPendin
                   </div>
                   {customerId && <small>Tabela aplicada: {priceTable === 'premium' ? 'Premium' : priceTable === 'atacado' ? 'Atacado' : 'Varejo'}</small>}
                 </div>
-                <div className="pdv-form-section">
+                <div className="pdv-form-section pdv-payment-section">
                   <span className="pdv-form-section-label">Pagamento</span>
                   <div className="form-row">
                     <label>
@@ -1082,8 +1082,9 @@ function PdvCheckout({ products, customers, credits, rmaRequests = [], hasPendin
                         onSelect={setSalespersonId}
                       />
                     )}
+                  </div>
                 </div>
-                <div className="pdv-form-section">
+                <div className="pdv-form-section pdv-delivery-section">
                   <span className="pdv-form-section-label">Entrega</span>
                   <label>
                     Tipo de atendimento
@@ -1099,7 +1100,6 @@ function PdvCheckout({ products, customers, credits, rmaRequests = [], hasPendin
                     </label>
                   )}
                 </div>
-              </div>
               </div>
               {!rescuedSale && customerId && <section className="b2b-credit-summary" aria-label="Crédito de devolução na compra">
                 <strong>Crédito de devolução</strong>
@@ -1143,12 +1143,14 @@ function PdvCheckout({ products, customers, credits, rmaRequests = [], hasPendin
                 {rescuedSale && onSavePreSale && <button type="button" className="module-submit-btn pdv-save-presale-btn" onClick={() => void handleSavePreSale()} disabled={cart.length === 0 || isCheckingOut || hasPendingSale || cartHasWrongBranch}>
                   <ClipboardList size={18} /> {isSavingPreSale ? 'Salvando alterações...' : 'Salvar alterações da pré-venda'}
                 </button>}
-                <button className="module-submit-btn pdv-checkout-btn" onClick={() => handleCheckout(true)} disabled={cart.length === 0 || isCheckingOut || billedSaleBlocked || hasPendingSale || cartHasWrongBranch}>
-                  <Printer size={18} /> {isCheckingOut ? 'Finalizando...' : 'Finalizar e imprimir'}
-                </button>
-                <button className="module-cancel-btn pdv-checkout-btn" onClick={() => handleCheckout(false)} disabled={cart.length === 0 || isCheckingOut || billedSaleBlocked || hasPendingSale || cartHasWrongBranch}>
-                  <Check size={18} /> Finalizar sem imprimir
-                </button>
+                <div className="pdv-checkout-actions">
+                  <button className="module-submit-btn pdv-checkout-btn" onClick={() => handleCheckout(true)} disabled={cart.length === 0 || isCheckingOut || billedSaleBlocked || hasPendingSale || cartHasWrongBranch}>
+                    <Printer size={18} /> {isCheckingOut ? 'Finalizando...' : 'Finalizar e imprimir'}
+                  </button>
+                  <button className="module-cancel-btn pdv-checkout-btn" onClick={() => handleCheckout(false)} disabled={cart.length === 0 || isCheckingOut || billedSaleBlocked || hasPendingSale || cartHasWrongBranch}>
+                    <Check size={18} /> Finalizar sem imprimir
+                  </button>
+                </div>
                 </>
               ) : (
                 <div className="pdv-restricted-checkout">
@@ -1472,7 +1474,7 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
           {cart.length > 0 && (
             <>
               <div className="pdv-form">
-                <div className="pdv-form-section">
+                <div className="pdv-form-section pdv-customer-section">
                   <span className="pdv-form-section-label">Cliente</span>
                   <div className="pdv-customer-fields">
                     <label>
@@ -1505,7 +1507,7 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
                   </div>
                   {customerId && <small>Tabela aplicada: {priceTable === 'premium' ? 'Premium' : priceTable === 'atacado' ? 'Atacado' : 'Varejo'}</small>}
                 </div>
-                <div className="pdv-form-section">
+                <div className="pdv-form-section pdv-payment-section">
                   <span className="pdv-form-section-label">Pagamento</span>
                   <label style={{ display: 'block', marginBottom: '12px' }}>Forma de pagamento prevista
                     <select value={preSalePayment} onChange={event => setPreSalePayment(event.target.value)} disabled={isSaving || hasPendingSale || !isActive}>
@@ -1522,7 +1524,7 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
                     />
                   )}
                 </div>
-                <div className="pdv-form-section">
+                <div className="pdv-form-section pdv-delivery-section">
                   <span className="pdv-form-section-label">Entrega</span>
                   <label>
                     Tipo de atendimento
