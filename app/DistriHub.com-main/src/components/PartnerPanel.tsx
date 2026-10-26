@@ -1724,6 +1724,7 @@ export function PartnerPanel({
                 key={target ?? 'principal'}
                 isActive={activeTab === (target ? 'administrativo' : 'cadastros')}
                 canManageSalespeople={Boolean(identity && !identity.salespersonId)}
+                findProductDuplicates={partner.findProductDuplicates}
                 onDataScopeChange={setCadastroDataScope}
                 suppliersReady={partner.suppliersReady}
                 adminTarget={target}

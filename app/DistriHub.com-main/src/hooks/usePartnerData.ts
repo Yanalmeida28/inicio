@@ -6,6 +6,7 @@ import type { XmlStockImport } from '../lib/cadastroXml';
 import { OperationAttempts } from '../lib/operationAttempts';
 import type { RmaPhotoFile } from '../components/partner/RmaPhotoUpload';
 import { mergePartnerChange, PartnerDataVersions, PartnerLoadCache, partnerResources, partnerRequiredResources, withLoadTimeout, type PartnerCollection } from '../lib/partnerSync';
+import { findProductNameDuplicates } from '../lib/productNames';
 import { splitPaymentError, billedSaleError, saleChargeTotal, validSalePrice, isDefinitiveSaleRejection, PdvSaleAttemptStore, pdvErrorMessage, type CustomerCredit } from '../lib/pdv';
 import type {
   AdminCompany,
@@ -292,6 +293,7 @@ export function usePartnerData(identity: PartnerIdentity | null, syncBranchId: s
   const mountedRef = useRef(true);
   const requestIdRef = useRef(0);
   const dataRevisionRef = useRef(new PartnerDataVersions(Object.keys(initialData)));
+  const previousSyncBranchRef = useRef(syncBranchId);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -774,6 +776,14 @@ read('sales', (signal) => fetchAllPages((from, to) => client
   }, [loadData, resourceScope]);
 
   useEffect(() => {
+    if (previousSyncBranchRef.current === syncBranchId) return;
+    previousSyncBranchRef.current = syncBranchId;
+    if (identity && requestedResourcesRef.current.includes('products')) {
+      void loadData(true, ['products']);
+    }
+  }, [identity, loadData, syncBranchId]);
+
+  useEffect(() => {
     const requests = requestIdRef;
     const revisions = dataRevisionRef;
     return () => { ++requests.current; revisions.current.invalidate(); };
@@ -1048,11 +1058,13 @@ read('sales', (signal) => fetchAllPages((from, to) => client
       }
 
       // A RPC retorna o id (uuid) do produto, não a linha completa.
+      if (typeof created !== 'string' || !created) {
+        throw new Error('O servidor não confirmou o cadastro do produto. Mantenha os dados abertos e tente novamente.');
+      }
+
       const createdProduct: PartnerProduct = {
         ...product,
-        id:
-          (created as string | null) ??
-          crypto.randomUUID(),
+        id: created,
         user_id: currentIdentity.companyUserId,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -1070,6 +1082,34 @@ read('sales', (signal) => fetchAllPages((from, to) => client
       }));
 
       return createdProduct;
+    },
+    [requireAuthenticatedSession],
+  );
+
+  const findProductDuplicates = useCallback(
+    async (name: string, branchId: string): Promise<PartnerProduct[]> => {
+      const { identity: currentIdentity, client } = await requireAuthenticatedSession();
+      if (!branchId) throw new Error('Selecione uma filial para verificar produtos semelhantes.');
+      ensureEmployeeBranch(currentIdentity, branchId);
+      const { data: rows, error: readError } = await withLoadTimeout(
+        () => fetchAllPages((from, to) => client
+          .from('partner_products')
+          .select('*')
+          .eq('user_id', currentIdentity.companyUserId)
+          .eq('branch_id', branchId)
+          .order('name')
+          .order('id')
+          .range(from, to)),
+        'A verificação de produtos semelhantes demorou demais. Sincronize e tente novamente.',
+      );
+      if (readError) throw readError;
+      if (!rows) throw new Error('Não foi possível verificar produtos semelhantes. Tente novamente.');
+      return findProductNameDuplicates(
+        rows as PartnerProduct[],
+        name,
+        currentIdentity.companyUserId,
+        branchId,
+      );
     },
     [requireAuthenticatedSession],
   );
@@ -1606,8 +1646,9 @@ read('sales', (signal) => fetchAllPages((from, to) => client
           partner_sales: 'sales', partner_products: 'products', partner_invoices: 'invoices',
           stock_movements: 'movements', b2b_orders: 'orders', rma_requests_v2: 'rmas',
         }[table] as 'sales' | 'products' | 'invoices' | 'movements' | 'orders' | 'rmas';
-        if (payload.eventType !== 'DELETE' && (payload.new.user_id !== companyId || (branchId && payload.new.branch_id !== branchId))) return;
-        if (payload.eventType === 'DELETE' && !dataSnapshotRef.current[key].some(row => row.id === payload.old.id && row.user_id === companyId && (!branchId || row.branch_id === branchId))) return;
+        const eventBranchId = table === 'partner_products' && !identity.salespersonId ? null : branchId;
+        if (payload.eventType !== 'DELETE' && (payload.new.user_id !== companyId || (eventBranchId && payload.new.branch_id !== eventBranchId))) return;
+        if (payload.eventType === 'DELETE' && !dataSnapshotRef.current[key].some(row => row.id === payload.old.id && row.user_id === companyId && (!eventBranchId || row.branch_id === eventBranchId))) return;
         if (!loadCacheRef.current.has(key) && !requestedResourcesRef.current.includes(key)) return;
         const returnCreditChanged = (table === 'partner_invoices' && payload.eventType !== 'DELETE' &&
           Number(payload.new.return_credit_amount ?? 0) !== Number(dataSnapshotRef.current.invoices.find(invoice => invoice.id === payload.new.id)?.return_credit_amount ?? 0)) ||
@@ -1615,7 +1656,7 @@ read('sales', (signal) => fetchAllPages((from, to) => client
         dataRevisionRef.current.invalidate([key]);
         setData(previous => {
           const rows = previous[key] as Array<PartnerSale | PartnerProduct | PartnerInvoice | StockMovement | B2BOrder | RmaRequest>;
-          return { ...previous, [key]: mergePartnerChange(rows, payload.eventType, payload.new, payload.old.id, companyId, branchId, key === 'sales') };
+          return { ...previous, [key]: mergePartnerChange(rows, payload.eventType, payload.new, payload.old.id, companyId, eventBranchId, key === 'sales') };
         });
         setLastSyncedAt(new Date());
         if (returnCreditChanged) void loadData(true, ['invoices', ...(loadCacheRef.current.has('rmas') ? ['rmas' as const] : [])]);
@@ -4059,6 +4100,7 @@ read('sales', (signal) => fetchAllPages((from, to) => client
     deleteCustomer,
 
     addProduct,
+    findProductDuplicates,
     updateProduct,
     deleteProduct,
 

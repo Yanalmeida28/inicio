@@ -10,6 +10,8 @@ const require=createRequire(import.meta.url);
 const compile=source=>ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,target:ts.ScriptTarget.ES2020}}).outputText;
 const xmlModule={};
 vm.runInNewContext(compile(await readFile(new URL('../../src/lib/cadastroXml.ts',import.meta.url),'utf8')),{exports:xmlModule,Error});
+const productNamesModule={exports:{}};
+vm.runInNewContext(compile(await readFile(new URL('../../src/lib/productNames.ts',import.meta.url),'utf8')),{exports:productNamesModule.exports});
 const invoice={invoiceKey:'1'.repeat(44),supplier:{name:'Fornecedor',document:'12345678000199'},items:[{name:'Produto',sku:'P1',qty:2,cost:12.5}]};
 const exports={};
 vm.runInNewContext(compile(await readFile(new URL('../../src/components/partner/CadastrosModule.tsx',import.meta.url),'utf8')+'\nexports.Suppliers=SuppliersSubTab;exports.Xml=XmlSubTab;exports.Categories=CategoriesSubTab;exports.Combos=CombosSubTab;exports.Profile=CustomerProfileModal;exports.Products=ProductsSubTab;'),{
@@ -21,6 +23,7 @@ vm.runInNewContext(compile(await readFile(new URL('../../src/components/partner/
   if(name==='./ProductPhotoField')return {ProductPhotoField:()=>null};
   if(name==='./ProductProfitPreview')return {ProductProfitPreview:()=>null};
   if(name==='../../utils')return {money:new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}),normalizeDocument:value=>value.replace(/\D/g,''),isValidCpf:()=>true,isValidCnpj:()=>true};
+  if(name==='../../lib/productNames')return productNamesModule.exports;
   if(name==='../../hooks/useSessionDraft')return {useSessionDraftState:(_key,value)=>React.useState(value)};
   if(['./ProductProfitPreview','./ProductPhotoField','./ProductLabelModal','./ImportExportModule','../../lib/saleReturns'].includes(name))return {};
   return require(name);
@@ -32,7 +35,7 @@ const rendered=()=>JSON.stringify(renderer.toJSON());
 const submit=()=>renderer.root.findByType('form').props.onSubmit({preventDefault(){}});
 test('product list remains usable while suppliers load and prevents saving an incomplete supplier selection',async()=>{
  let writes=0;
- const props={products:[{id:'p',name:'Produto existente',stock:1,min_stock:0,sale_price:20,cost_price:10,branch_id:'branch'}],allProducts:[],branches:[],selectedBranchId:'branch',categories:[],suppliers:[],suppliersReady:false,segment:'assistencia',onAddSupplier:async()=>{},onAddProduct:async()=>{writes++;},onUpdateProduct:async()=>{},onDeleteProduct:async()=>{}};
+ const props={products:[{id:'p',user_id:'owner',name:'Produto existente',stock:1,min_stock:0,sale_price:20,cost_price:10,branch_id:'branch'}],allProducts:[],branches:[],selectedBranchId:'branch',categories:[],suppliers:[],suppliersReady:false,segment:'assistencia',onAddSupplier:async()=>{},onAddProduct:async()=>{writes++;},findProductDuplicates:async()=>[],onUpdateProduct:async()=>{},onDeleteProduct:async()=>{}};
  await act(async()=>{renderer=TestRenderer.create(React.createElement(exports.Products,props));});
  assert.match(rendered(),/Produto existente/);
  await act(async()=>renderer.root.findByProps({className:'module-action-btn'}).props.onClick());
@@ -44,7 +47,7 @@ test('product list remains usable while suppliers load and prevents saving an in
 });
 test('product registration keeps SKU and barcode independent and reader Enter does not submit',async()=>{
  let payload;
- await act(async()=>{renderer=TestRenderer.create(React.createElement(exports.Products,{products:[],allProducts:[],branches:[],selectedBranchId:'branch',categories:[],suppliers:[],segment:'assistencia',onAddSupplier:async()=>{},onAddProduct:async value=>{payload=value;},onUpdateProduct:async()=>{},onDeleteProduct:async()=>{}}));});
+ await act(async()=>{renderer=TestRenderer.create(React.createElement(exports.Products,{products:[],allProducts:[],branches:[],selectedBranchId:'branch',categories:[],suppliers:[],segment:'assistencia',onAddSupplier:async()=>{},onAddProduct:async value=>{payload=value;},findProductDuplicates:async()=>[],onUpdateProduct:async()=>{},onDeleteProduct:async()=>{}}));});
  await act(async()=>renderer.root.findByProps({className:'module-action-btn'}).props.onClick());
  const input=placeholder=>renderer.root.findByProps({placeholder});
  await act(async()=>{
@@ -59,9 +62,65 @@ test('product registration keeps SKU and barcode independent and reader Enter do
  await act(async()=>submit());
  assert.equal(payload.sku,'INTERNO-42');assert.equal(payload.barcode,'0012345678905');
 });
+test('product search normalizes repeated spaces, accents, case, SKU, and barcode',async()=>{
+ const products=[
+  {id:'battery',name:'BATERIA  IPHONE 15 PRO MAX',branch_id:'branch',stock:12,cost_price:1,sale_price:2},
+  {id:'accent',name:'Café AÇÃO',branch_id:'branch',stock:1,cost_price:1,sale_price:2,sku:'SKU-Modelo',barcode:'000123'},
+ ];
+ await act(async()=>{renderer=TestRenderer.create(React.createElement(exports.Products,{products,allProducts:products,branches:[],selectedBranchId:'branch',categories:[],suppliers:[],segment:'assistencia',onAddSupplier:async()=>{},onAddProduct:async()=>{},findProductDuplicates:async()=>[],onUpdateProduct:async()=>{},onDeleteProduct:async()=>{}}));});
+ const search=renderer.root.findByProps({'aria-label':'Pesquisar produto, modelo, SKU ou código de barras'});
+ const setSearch=async value=>act(async()=>search.props.onChange({target:{value}}));
+ await setSearch(' 15 PRO MAX ');
+ assert.match(rendered(),/BATERIA  IPHONE 15 PRO MAX/);
+ await setSearch('acao');
+ assert.match(rendered(),/Café AÇÃO/);
+ await setSearch('SKU-MODELO');
+ assert.match(rendered(),/Café AÇÃO/);
+ await setSearch('000123');
+ assert.match(rendered(),/Café AÇÃO/);
+ await setSearch('inexistente');
+ assert.doesNotMatch(rendered(),/Café AÇÃO/);
+});
+test('product duplicate comparison is scoped to the same company and branch',()=>{
+ const products=[
+  {id:'same-branch',user_id:'owner',branch_id:'branch-a',name:'Bateria  Íphone 15 Pro Max'},
+  {id:'other-branch',user_id:'owner',branch_id:'branch-b',name:'BATERIA IPHONE 15 PRO MAX'},
+  {id:'other-company',user_id:'other',branch_id:'branch-a',name:'BATERIA IPHONE 15 PRO MAX'},
+ ];
+ assert.deepEqual(productNamesModule.exports.findProductNameDuplicates(products,'  BATERIA IPHONE 15 PRO MAX ','owner','branch-a').map(product=>product.id),['same-branch']);
+ assert.deepEqual(productNamesModule.exports.findProductNameDuplicates(products,'BATERIA IPHONE 15 PRO MAX','owner','branch-b').map(product=>product.id),['other-branch']);
+});
+test('possible duplicate is shown with a way to open the existing product',async()=>{
+ const duplicate={id:'existing',user_id:'owner',branch_id:'branch',name:'BATERIA IPHONE 15 PRO MAX',stock:12,cost_price:1,sale_price:2};
+ let writes=0;
+ await act(async()=>{renderer=TestRenderer.create(React.createElement(exports.Products,{products:[duplicate],allProducts:[duplicate],branches:[],selectedBranchId:'branch',categories:[],suppliers:[],segment:'assistencia',onAddSupplier:async()=>{},onAddProduct:async()=>{writes++;},findProductDuplicates:async()=>[duplicate],onUpdateProduct:async()=>{},onDeleteProduct:async()=>{}}));});
+ await act(async()=>renderer.root.findByProps({className:'module-action-btn'}).props.onClick());
+ const input=placeholder=>renderer.root.findByProps({placeholder});
+ await act(async()=>{input('Ex: Display Moto G8').props.onChange({target:{value:' BATERIA  IPHONE 15 PRO MAX '}});renderer.root.findAllByType('input').find(field=>field.props.required&&field.props.type==='number').props.onChange({target:{value:'2'}});});
+ await act(async()=>submit());
+ assert.equal(writes,0);
+ assert.match(rendered(),/estoque não será somado/);
+ const view=renderer.root.findAllByType('button').find(button=>button.children.includes('Ver cadastro'));
+ await act(async()=>view.props.onClick());
+ assert.match(rendered(),/Editar produto/);
+});
+test('user can confirm a legitimate similar-name product without changing existing stock',async()=>{
+ const duplicate={id:'existing',user_id:'owner',branch_id:'branch',name:'Produto igual',stock:12,cost_price:1,sale_price:2};
+ let saved;
+ await act(async()=>{renderer=TestRenderer.create(React.createElement(exports.Products,{products:[duplicate],allProducts:[duplicate],branches:[],selectedBranchId:'branch',categories:[],suppliers:[],segment:'assistencia',onAddSupplier:async()=>{},onAddProduct:async value=>{saved=value;},findProductDuplicates:async()=>[duplicate],onUpdateProduct:async()=>{},onDeleteProduct:async()=>{}}));});
+ await act(async()=>renderer.root.findByProps({className:'module-action-btn'}).props.onClick());
+ const input=placeholder=>renderer.root.findByProps({placeholder});
+ const stockInput=renderer.root.findAllByType('label').find(label=>label.children.includes('Estoque')).findByType('input');
+ await act(async()=>{input('Ex: Display Moto G8').props.onChange({target:{value:'Produto igual'}});renderer.root.findAllByType('input').find(field=>field.props.required&&field.props.type==='number').props.onChange({target:{value:'2'}});stockInput.props.onChange({target:{value:'5'}});});
+ await act(async()=>submit());
+ const continueButton=renderer.root.findAllByType('button').find(button=>button.children.includes('Cadastrar mesmo assim'));
+ await act(async()=>continueButton.props.onClick({preventDefault(){}}));
+ assert.equal(saved.stock,5);
+ assert.equal(duplicate.stock,12);
+});
 async function productDeleteAction(onDeleteProduct) {
  const product={id:'p',name:'Produto teste',stock:5,min_stock:1,sale_price:10,cost_price:5,branch_id:'branch'};
- await act(async()=>{renderer=TestRenderer.create(React.createElement(exports.Products,{products:[product],allProducts:[product],branches:[],selectedBranchId:'branch',categories:[],suppliers:[],segment:'assistencia',onAddSupplier:async()=>{},onAddProduct:async()=>{},onUpdateProduct:async()=>{},onDeleteProduct}));});
+ await act(async()=>{renderer=TestRenderer.create(React.createElement(exports.Products,{products:[product],allProducts:[product],branches:[],selectedBranchId:'branch',categories:[],suppliers:[],segment:'assistencia',onAddSupplier:async()=>{},onAddProduct:async()=>{},findProductDuplicates:async()=>[],onUpdateProduct:async()=>{},onDeleteProduct}));});
  await act(async()=>renderer.root.findByProps({'aria-label':'Ações de Produto teste'}).props.onClick({currentTarget:{getBoundingClientRect:()=>({right:500,top:100,bottom:140})}}));
  return renderer.root.findAllByType('button').find(button=>button.children.includes(' Excluir')).props.onClick;
 }

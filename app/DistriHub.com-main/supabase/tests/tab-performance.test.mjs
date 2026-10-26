@@ -12,6 +12,7 @@ const require = createRequire(import.meta.url);
 const source = await readFile(new URL('../../src/hooks/usePartnerData.ts',import.meta.url),'utf8');
 const helperSource = await readFile(new URL('../../src/lib/pdv.ts',import.meta.url),'utf8');
 const syncSource = await readFile(new URL('../../src/lib/partnerSync.ts',import.meta.url),'utf8');
+const productNamesSource = await readFile(new URL('../../src/lib/productNames.ts',import.meta.url),'utf8');
 const compile = source => ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText;
 const invoiceModule={exports:{}};
 vm.runInNewContext(compile(await readFile(new URL('../../src/lib/invoicePayments.ts',import.meta.url),'utf8')),{exports:invoiceModule.exports});
@@ -43,6 +44,8 @@ async function harness({initialSales=[],initialInvoices=[],initialCustomers=[],r
   vm.runInNewContext(compile(helperSource),{exports:helperModule.exports,require});
   const syncModule={exports:{}};
   vm.runInNewContext(compile(syncSource),{exports:syncModule.exports,AbortController,Date,setTimeout(callback){const id=++timerId;timeouts.set(id,callback);return id;},clearTimeout(id){timeouts.delete(id);}});
+  const productNamesModule={exports:{}};
+  vm.runInNewContext(compile(productNamesSource),{exports:productNamesModule.exports});
   const hookModule={exports:{}};
   vm.runInNewContext(compile(source),{
     exports:hookModule.exports,sessionStorage:storage,crypto:{randomUUID},console,
@@ -56,6 +59,7 @@ async function harness({initialSales=[],initialInvoices=[],initialCustomers=[],r
       if(name==='../lib/operationAttempts')return operationModule.exports;
       if(name==='../lib/pdv')return helperModule.exports;
       if(name==='../lib/partnerSync')return syncModule.exports;
+      if(name==='../lib/productNames')return productNamesModule.exports;
       throw new Error('Unexpected import '+name);
     },
   });

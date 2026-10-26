@@ -16,6 +16,7 @@ vm.runInNewContext(ts.transpileModule(source+'\nexports.CustomerProfile=Customer
 }).outputText,{exports,Error,File,navigator:{clipboard},document:{body:{}},window:{alert(){},innerWidth:1024,innerHeight:768},require(name){
   if(name==='react-dom')return {createPortal:children=>children};
   if(name==='../../utils')return {money:new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}),formatCpf:v=>v??'',formatCnpj:v=>v??'',normalizeDocument:v=>v??''};
+  if(name==='../../lib/productNames')return {normalizeProductName:value=>String(value??'')};
   if(name==='../../hooks/useSessionDraft')return { useSessionDraftState: (key, initial) => React.useState(draftInitialValues.has(key)?draftInitialValues.get(key):initial) };
   if(name==='./ImportExportModule')return {ExportButtons:()=>null};
   if(name==='./ProductProfitPreview')return {ProductProfitPreview:()=>null};

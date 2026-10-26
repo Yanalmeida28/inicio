@@ -21,6 +21,7 @@ import { ProductPhotoField } from './ProductPhotoField';
 import { ProductLabelModal as ThermalLabelModal } from './ProductLabelModal';
 import { ImportExportModule, ExportButtons } from './ImportExportModule';
 import { saleReturnLabel, saleItemDescription } from '../../lib/saleReturns';
+import { normalizeProductName } from '../../lib/productNames';
 
 type PartnerCustomerUpdate = Partial<
   Omit<PartnerCustomer, 'id' | 'user_id' | 'created_at' | 'updated_at'>
@@ -31,6 +32,7 @@ type PartnerCustomerUpdate = Partial<
 
 type Props = {
   suppliersReady?: boolean;
+  findProductDuplicates: (name: string, branchId: string) => Promise<PartnerProduct[]>;
   canManageSalespeople?: boolean;
   adminTarget?: string;
   initialTab?: SubTab;
@@ -102,6 +104,7 @@ function getActionPopoverPosition(event: React.MouseEvent<HTMLButtonElement>, wi
 export function CadastrosModule({
   adminTarget,
   canManageSalespeople = false,
+  findProductDuplicates,
   initialTab = 'produtos', productType = 'todos',
   isActive = true, onDataScopeChange, suppliersReady = true,
   products, branches, selectedBranchId, categories, suppliers, salespeople, combos, modifiers, customers, sales,
@@ -172,6 +175,7 @@ export function CadastrosModule({
             onAddSupplier={onAddSupplier}
             segment={segment}
             onAddProduct={onAddProduct}
+            findProductDuplicates={findProductDuplicates}
             onUpdateProduct={onUpdateProduct}
             onDeleteProduct={onDeleteProduct}
           />
@@ -284,7 +288,7 @@ function StockAdjustmentSubTab({ products, branchId, onUpdate }: {
   </div>;
 }
 
-function ProductsSubTab({ suppliersReady = true, defaultIsService = false, isActive = true, products, allProducts, branches, selectedBranchId, categories, suppliers, onAddSupplier, segment, onAddProduct, onUpdateProduct, onDeleteProduct }: {
+function ProductsSubTab({ suppliersReady = true, defaultIsService = false, isActive = true, products, allProducts, branches, selectedBranchId, categories, suppliers, onAddSupplier, segment, onAddProduct, findProductDuplicates, onUpdateProduct, onDeleteProduct }: {
   suppliersReady?: boolean;
   defaultIsService?: boolean;
   isActive?: boolean;
@@ -297,6 +301,7 @@ function ProductsSubTab({ suppliersReady = true, defaultIsService = false, isAct
   onAddSupplier: Props['onAddSupplier'];
   segment: string;
   onAddProduct: (p: Omit<PartnerProduct, 'id' | 'user_id' | 'created_at' | 'updated_at'>) => Promise<void>;
+  findProductDuplicates: (name: string, branchId: string) => Promise<PartnerProduct[]>;
   onUpdateProduct: (id: string, updates: Partial<PartnerProduct>) => Promise<void>;
   onDeleteProduct: (id: string) => Promise<void>;
 }) {
@@ -304,10 +309,11 @@ function ProductsSubTab({ suppliersReady = true, defaultIsService = false, isAct
   const [showForm, setShowForm] = useSessionDraftState('products:show-form', false);
   const [productSearch, setProductSearch] = useState('');
   const matchingProducts = useMemo(() => {
-    const normalize = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-    const term = normalize(productSearch.trim());
+    const term = normalizeProductName(productSearch);
     return products.filter((product) =>
-      normalize(product.name).includes(term) || normalize(product.sku ?? '').includes(term) || normalize(product.barcode ?? '').includes(term),
+      normalizeProductName(product.name).includes(term) ||
+      normalizeProductName(product.sku).includes(term) ||
+      normalizeProductName(product.barcode).includes(term),
     );
   }, [products, productSearch]);
   const [name, setName] = useSessionDraftState('products:name', '');
@@ -344,6 +350,7 @@ function ProductsSubTab({ suppliersReady = true, defaultIsService = false, isAct
     setPhotoProduct(null);
   }, [isActive]);
   const [formError, setFormError] = useState<string | null>(null);
+  const [potentialDuplicates, setPotentialDuplicates] = useState<PartnerProduct[]>([]);
   const [saving, setSaving] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
@@ -368,7 +375,36 @@ function ProductsSubTab({ suppliersReady = true, defaultIsService = false, isAct
   }
 
 
-  async function handleSubmit(e: React.FormEvent) {
+  function productPayload(): Omit<PartnerProduct, 'id' | 'user_id' | 'created_at' | 'updated_at'> {
+    return {
+      name, sku: sku.trim() || null, barcode: barcode.trim() || null, cost_price: Number(cost) || 0, sale_price: Number(sale) || 0,
+      wholesale_price: Number(wholesale) || 0, premium_price: premium.trim() ? Number(premium) : null,
+      stock: Number(stock) || 0, min_stock: Number(minStock) || 0,
+      image_url: imageUrl, supplier_id: supplierId || null, category: category || null, is_service: isService, branch_id: selectedBranchId,
+      ncm: ncm || null, cfop: cfop || null, cst_csosn: cstCsosn || null,
+      icms_rate: Number(icmsRate) || 0, pis_rate: Number(pisRate) || 0, cofins_rate: Number(cofinsRate) || 0,
+      brand: undefined,
+      active: undefined,
+      price: undefined,
+      image: undefined,
+      description: undefined,
+    };
+  }
+
+  function clearNewProductForm() {
+    setName(''); setSku(''); setBarcode(''); setCost(''); setSale(''); setWholesale(''); setPremium(''); setStock(''); setMinStock('5'); setCategory(''); setSupplierId(''); setIsService(defaultIsService);
+    setNcm(''); setCfop(''); setCstCsosn(''); setIcmsRate(''); setPisRate(''); setCofinsRate('');
+    setShowForm(false);
+    setImageUrl(null);
+    setPotentialDuplicates([]);
+  }
+
+  async function persistNewProduct() {
+    await onAddProduct(productPayload());
+    clearNewProductForm();
+  }
+
+  async function handleSubmit(e: React.FormEvent | React.MouseEvent, allowPossibleDuplicate = false) {
     e.preventDefault();
     if (saving || photoBusy || !suppliersReady) return;
     if (!name.trim() || !sale) return;
@@ -378,24 +414,16 @@ function ProductsSubTab({ suppliersReady = true, defaultIsService = false, isAct
     }
     setSaving(true);
     setFormError(null);
+    setPotentialDuplicates([]);
     try {
-      await onAddProduct({
-        name, sku: sku.trim() || null, barcode: barcode.trim() || null, cost_price: Number(cost) || 0, sale_price: Number(sale) || 0,
-        wholesale_price: Number(wholesale) || 0, premium_price: premium.trim() ? Number(premium) : null,
-        stock: Number(stock) || 0, min_stock: Number(minStock) || 0,
-        image_url: imageUrl, supplier_id: supplierId || null, category: category || null, is_service: isService, branch_id: selectedBranchId,
-        ncm: ncm || null, cfop: cfop || null, cst_csosn: cstCsosn || null,
-        icms_rate: Number(icmsRate) || 0, pis_rate: Number(pisRate) || 0, cofins_rate: Number(cofinsRate) || 0,
-        brand: undefined,
-        active: undefined,
-        price: undefined,
-        image: undefined,
-        description: undefined
-      });
-      setName(''); setSku(''); setBarcode(''); setCost(''); setSale(''); setWholesale(''); setPremium(''); setStock(''); setMinStock('5'); setCategory(''); setSupplierId(''); setIsService(defaultIsService);
-      setNcm(''); setCfop(''); setCstCsosn(''); setIcmsRate(''); setPisRate(''); setCofinsRate('');
-      setShowForm(false);
-      setImageUrl(null);
+      if (!allowPossibleDuplicate) {
+        const duplicates = await findProductDuplicates(name, selectedBranchId);
+        if (duplicates.length) {
+          setPotentialDuplicates(duplicates);
+          return;
+        }
+      }
+      await persistNewProduct();
     } catch (error) {
       setFormError(error instanceof Error ? error.message : 'Não foi possível salvar o produto.');
     } finally {
@@ -461,7 +489,7 @@ function ProductsSubTab({ suppliersReady = true, defaultIsService = false, isAct
           <div className="form-row product-form-row product-identity-row">
             <label>
               Nome
-              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex: Display Moto G8" required />
+                <input value={name} onChange={(e) => { setName(e.target.value); setPotentialDuplicates([]); }} placeholder="Ex: Display Moto G8" required />
             </label>
             <label>
               SKU
@@ -552,6 +580,14 @@ function ProductsSubTab({ suppliersReady = true, defaultIsService = false, isAct
           </div>
           </section>
           {formError && <p className="form-error-msg" style={{ color: '#e3829b', fontSize: '13px' }}>{formError}</p>}
+          {potentialDuplicates.length > 0 && <div className="branch-action-error" role="alert">
+            <p>Encontramos produto(s) com o mesmo nome nesta filial, considerando espaços, acentos e maiúsculas/minúsculas. Confira antes de continuar. O estoque não será somado.</p>
+            <ul>{potentialDuplicates.map((product) => <li key={product.id}>
+              {product.name} · SKU: {product.sku ?? '—'} · Estoque: {product.stock}
+              <button type="button" className="rma-advance-btn" disabled={saving} onClick={() => beginEdit(product)}>Ver cadastro</button>
+            </li>)}</ul>
+            <button type="button" className="rma-advance-btn" disabled={saving} onClick={(event) => { void handleSubmit(event, true); }}>Cadastrar mesmo assim</button>
+          </div>}
           <button type="submit" className="module-submit-btn" disabled={saving || supplierSaving || photoBusy || !suppliersReady}>{saving ? 'Salvando...' : 'Cadastrar'}</button>
         </form>
       )}

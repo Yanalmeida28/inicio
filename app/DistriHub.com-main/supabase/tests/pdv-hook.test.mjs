@@ -12,6 +12,7 @@ const require = createRequire(import.meta.url);
 const source = await readFile(new URL('../../src/hooks/usePartnerData.ts',import.meta.url),'utf8');
 const helperSource = await readFile(new URL('../../src/lib/pdv.ts',import.meta.url),'utf8');
 const syncSource = await readFile(new URL('../../src/lib/partnerSync.ts',import.meta.url),'utf8');
+const productNamesSource = await readFile(new URL('../../src/lib/productNames.ts',import.meta.url),'utf8');
 const compile = source => ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText;
 const invoiceModule={exports:{}};
 vm.runInNewContext(compile(await readFile(new URL('../../src/lib/invoicePayments.ts',import.meta.url),'utf8')),{exports:invoiceModule.exports});
@@ -106,6 +107,98 @@ test('product photo updates preserve an omitted image and honor explicit removal
  assert.equal(calls.findLast(call=>call[0]==='execute_partner_product_barcode_mutation')[1].p_image_url,null);
  assert.equal(h.current.products.find(item=>item.id===product.id).image_url,null);
 });
+test('product creation and editing only publish data after server confirmation',async()=>{
+ const product={user_id:'owner',branch_id:'branch',name:'Produto novo',sku:null,barcode:null,cost_price:1,sale_price:2,wholesale_price:0,stock:3,min_stock:0};
+ let reply=null;
+ const h=await harness({resourceScope:'cadastros:produtos',rpc:async()=>({data:reply,error:null})});
+ await act(async()=>assert.rejects(h.current.addProduct(product),/servidor não confirmou/));
+ assert.equal(h.current.products.length,0);
+ reply='created-product';
+ await act(async()=>h.current.addProduct(product));
+ assert.equal(h.current.products[0].id,'created-product');
+ const before=h.current.products[0];
+ reply='wrong-product';
+ await act(async()=>assert.rejects(h.current.updateProduct('created-product',{name:'Alterado'}),/não confirmou o produto/));
+ assert.equal(h.current.products[0],before);
+});
+test('product duplicate check queries only the authenticated company and selected branch',async()=>{
+ const products=[
+  {id:'same',user_id:'owner',branch_id:'branch-a',name:'Produto  Á 1'},
+  {id:'other-branch',user_id:'owner',branch_id:'branch-b',name:'Produto A 1'},
+  {id:'other-company',user_id:'other',branch_id:'branch-a',name:'Produto A 1'},
+ ];
+ const h=await harness({initialProducts:products,resourceScope:'cadastros:produtos'});
+ const matches=await h.current.findProductDuplicates('produto a 1','branch-a');
+ assert.deepEqual([...matches].map(product=>product.id),['same']);
+ const query=h.queryFilters.find(item=>item.table==='partner_products'&&item.filters.some(([column])=>column==='branch_id'));
+ assert.deepEqual(query.filters.filter(([column])=>column==='user_id'||column==='branch_id'),[['user_id','owner'],['branch_id','branch-a']]);
+});
+test('product directory loads every page after login',async()=>{
+ const products=Array.from({length:501},(_,index)=>({id:`product-${index}`,user_id:'owner',branch_id:'branch',name:`Product ${index}`}));
+ const h=await harness({initialProducts:products,resourceScope:'cadastros:produtos'});
+ assert.equal(h.current.products.length,501);
+});
+test('changing branch refreshes product data and a failed read preserves known products with an error',async()=>{
+ const product={id:'product-a',user_id:'owner',branch_id:'branch-a',name:'Produto',stock:1};
+ let products=[product],fail=false,productReads=0;
+ const h=await harness({initialProducts:[product],branchId:'branch-a',resourceScope:'cadastros:produtos',readResult:(table,fallback)=>{
+  if(table==='partner_products'&&Array.isArray(fallback.data)){
+   productReads++;
+   return fail?{data:null,error:{message:'Falha de leitura dos produtos'}}:{data:products,error:null};
+  }
+  return fallback;
+ }});
+ const initialReads=productReads;
+ products=[{...product,branch_id:'branch-b',stock:4}];
+ await h.setBranchId('branch-b');
+ await act(async()=>new Promise(resolve=>setImmediate(resolve)));
+ assert.ok(productReads>initialReads);
+ assert.equal(h.current.products[0].stock,4);
+ fail=true;
+ await act(async()=>{assert.equal(await h.current.loadData(true,['products']),false);});
+ assert.equal(h.current.products[0].stock,4);
+ assert.match(h.current.syncError,/Falha de leitura dos produtos/);
+});
+test('product reconnect refreshes the directory and owner receives changes from other branches',async()=>{
+ const first={id:'product',user_id:'owner',branch_id:'branch-a',name:'Produto',stock:1};
+ let serverProducts=[first];
+ const h=await harness({initialProducts:[first],branchId:'branch-a',resourceScope:'cadastros:produtos',readResult:(table,fallback,_mutation,query)=>{
+  if(table==='partner_products'&&Array.isArray(fallback.data))return {data:serverProducts.slice(query.first,query.last+1),error:null};
+  return fallback;
+ }});
+ await act(async()=>h.status('SUBSCRIBED'));
+ const otherBranch={...first,branch_id:'branch-b',name:'Produto atualizado',stock:5};
+ act(()=>h.emit('partner_products','UPDATE',otherBranch));
+ assert.equal(h.current.products[0].name,'Produto atualizado');
+ serverProducts=[otherBranch];
+ await act(async()=>{
+  h.status('CHANNEL_ERROR');
+  h.status('SUBSCRIBED');
+  h.flushTimers();
+  await new Promise(resolve=>setImmediate(resolve));
+ });
+ assert.equal(h.current.products[0].stock,5);
+});
+test('older product reads cannot overwrite a newer Realtime product update',async()=>{
+ const oldProduct={id:'product',user_id:'owner',branch_id:'branch-a',name:'Nome antigo',stock:1};
+ let delay=false,release,reached;
+ const waiting=new Promise(resolve=>{reached=resolve;});
+ const h=await harness({initialProducts:[oldProduct],branchId:'branch-a',resourceScope:'cadastros:produtos',readResult:(table,fallback)=>{
+  if(delay&&table==='partner_products'&&Array.isArray(fallback.data))return new Promise(resolve=>{release=()=>resolve(fallback);reached();});
+  return fallback;
+ }});
+ await act(async()=>{
+  h.status('SUBSCRIBED');
+  delay=true;
+  const refresh=h.current.loadData(true,['products']);
+  await waiting;
+  h.emit('partner_products','UPDATE',{...oldProduct,name:'Nome confirmado',stock:4});
+  release();
+  await refresh;
+ });
+ assert.equal(h.current.products[0].name,'Nome confirmado');
+ assert.equal(h.current.products[0].stock,4);
+});
 test('product barcode is sent independently and partial updates preserve it until explicit clearing',async()=>{
  const calls=[];const product={id:'codes-product',user_id:'owner',branch_id:'branch',name:'Produto',sku:'INTERNO-42',barcode:'0012345678905',cost_price:10,sale_price:20,wholesale_price:15,stock:2,min_stock:1};
  const h=await harness({readResult:(table,fallback)=>table==='partner_products'?{data:[product],error:null}:fallback,rpc:async(name,args)=>{calls.push(args);return {data:product.id,error:null};}});
@@ -156,29 +249,33 @@ test('first settings save falls back to an owner-scoped insert and confirms the 
  assert.deepEqual(writes.map(value=>value.type),['update','upsert']);assert.equal(writes[1].value.user_id,'owner');assert.equal(h.current.settings.service_warranty_terms,'Primeiro termo');
 });
 afterEach(async()=>{if(renderer) await act(async()=>renderer.unmount());renderer=null;});
-async function harness({initialSales=[],initialInvoices=[],initialCustomers=[],rpc,values=new Map(),readResult,branchId=null,resourceScope=null,identity: suppliedIdentity,storageClient}={}) {
+async function harness({initialSales=[],initialInvoices=[],initialCustomers=[],initialProducts=[],rpc,values=new Map(),readResult,branchId=null,resourceScope=null,identity: suppliedIdentity,storageClient}={}) {
   const storage={getItem:k=>values.get(k)??null,setItem:(k,v)=>values.set(k,v),removeItem:k=>values.delete(k)};
   const identity=suppliedIdentity??{authUserId:'owner',companyUserId:'owner',salespersonId:null,branchId:null,role:'administrador'};
-  const initial={partner_sales:initialSales,partner_invoices:initialInvoices,partner_customers:initialCustomers};
+  const initial={partner_sales:initialSales,partner_invoices:initialInvoices,partner_customers:initialCustomers,partner_products:initialProducts};
   const queries=[];
+  const queryFilters=[];
   let activeScope=resourceScope;
+  let activeBranchId=branchId;
   const channels=[];
   const intervals=[];
   const timeouts=new Map();
   let timerId=0;
   const client={rpc,storage:storageClient,auth:{getSession:async()=>({data:{session:{user:{id:identity.authUserId}}},error:null})},from(table){
-    queries.push(table); let first=0,last=499; let mutation;
-    const q={select(){return q;},eq(){return q;},order(){return q;},limit(){return q;},range(from,to){first=from;last=to;return q;},
+    queries.push(table); let first=0,last=499; let mutation; const filters=[];queryFilters.push({table,filters});
+    const q={select(){return q;},eq(column,value){filters.push([column,value]);return q;},order(){return q;},limit(){return q;},range(from,to){first=from;last=to;return q;},
       update(value){mutation={type:'update',value};return q;},upsert(value){mutation={type:'upsert',value};return q;},
-      maybeSingle(){return Promise.resolve(readResult?.(table,{data:null,error:null},mutation)??{data:null,error:null});},
-      single(){return Promise.resolve(readResult?.(table,{data:null,error:null},mutation)??{data:null,error:null});},
-      then(resolve,reject){const fallback={data:[...(initial[table]??[])].slice(first,last+1),error:null};return Promise.resolve(readResult?.(table,fallback)??fallback).then(resolve,reject);}};
+      maybeSingle(){return Promise.resolve(readResult?.(table,{data:null,error:null},mutation,{filters,first,last})??{data:null,error:null});},
+      single(){return Promise.resolve(readResult?.(table,{data:null,error:null},mutation,{filters,first,last})??{data:null,error:null});},
+      then(resolve,reject){const fallback={data:[...(initial[table]??[])].slice(first,last+1),error:null};return Promise.resolve(readResult?.(table,fallback,mutation,{filters,first,last})??fallback).then(resolve,reject);}};
     return q;
   },channel(name){const channel={name,handlers:[],on(event,filter,handler){channel.handlers.push({filter,handler});return channel;},subscribe(callback){channel.status=callback;return channel;}};channels.push(channel);return channel;},removeChannel(channel){channel.removed=true;return Promise.resolve('ok');}};
   const helperModule={exports:{}};
   vm.runInNewContext(compile(helperSource),{exports:helperModule.exports,require});
   const syncModule={exports:{}};
   vm.runInNewContext(compile(syncSource),{exports:syncModule.exports,AbortController,Date,setTimeout(callback){const id=++timerId;timeouts.set(id,callback);return id;},clearTimeout(id){timeouts.delete(id);}});
+  const productNamesModule={exports:{}};
+  vm.runInNewContext(compile(productNamesSource),{exports:productNamesModule.exports});
   const hookModule={exports:{}};
   vm.runInNewContext(compile(source),{
     exports:hookModule.exports,sessionStorage:storage,crypto:{randomUUID},console,
@@ -192,14 +289,16 @@ async function harness({initialSales=[],initialInvoices=[],initialCustomers=[],r
       if(name==='../lib/operationAttempts')return operationModule.exports;
       if(name==='../lib/pdv')return helperModule.exports;
       if(name==='../lib/partnerSync')return syncModule.exports;
+      if(name==='../lib/productNames')return productNamesModule.exports;
       throw new Error('Unexpected import '+name);
     },
   });
   let current;
-  function Probe(){current=hookModule.exports.usePartnerData(identity,branchId,activeScope);return null;}
+  function Probe(){current=hookModule.exports.usePartnerData(identity,activeBranchId,activeScope);return null;}
   await act(async()=>{renderer=TestRenderer.create(React.createElement(Probe));});
-  return {get current(){return current;},values,queries,
+  return {get current(){return current;},values,queries,queryFilters,
     async setScope(scope){activeScope=scope;await act(async()=>renderer.update(React.createElement(Probe)));},
+    async setBranchId(id){activeBranchId=id;await act(async()=>renderer.update(React.createElement(Probe)));},
     emit(table,eventType,record,old={}){for(const channel of channels.filter(channel=>!channel.removed))for(const {filter,handler} of channel.handlers)if(filter.table===table&&filter.event===eventType)handler({eventType,new:record,old});},
     status(status){channels.findLast(channel=>channel.name.startsWith('partner-sync-')&&!channel.removed)?.status?.(status);},
     tick(){for(const callback of intervals)callback();},
