@@ -1062,7 +1062,6 @@ function PdvCheckout({ products, customers, credits, rmaRequests = [], hasPendin
                   {customerId && <small>Tabela aplicada: {priceTable === 'premium' ? 'Premium' : priceTable === 'atacado' ? 'Atacado' : 'Varejo'}</small>}
                 </div>
                 <div className="pdv-form-section pdv-payment-section">
-                  <span className="pdv-form-section-label">Pagamento</span>
                   <div className="form-row">
                     <label>
                       Forma de Pagamento
@@ -1085,7 +1084,6 @@ function PdvCheckout({ products, customers, credits, rmaRequests = [], hasPendin
                   </div>
                 </div>
                 <div className="pdv-form-section pdv-delivery-section">
-                  <span className="pdv-form-section-label">Entrega</span>
                   <label>
                     Tipo de atendimento
                     <select aria-label="Tipo de atendimento da venda" value={deliveryType} onChange={event => setDeliveryType(event.target.value as DeliveryType)}>
@@ -1508,7 +1506,6 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
                   {customerId && <small>Tabela aplicada: {priceTable === 'premium' ? 'Premium' : priceTable === 'atacado' ? 'Atacado' : 'Varejo'}</small>}
                 </div>
                 <div className="pdv-form-section pdv-payment-section">
-                  <span className="pdv-form-section-label">Pagamento</span>
                   <label style={{ display: 'block', marginBottom: '12px' }}>Forma de pagamento prevista
                     <select value={preSalePayment} onChange={event => setPreSalePayment(event.target.value)} disabled={isSaving || hasPendingSale || !isActive}>
                       <option value="">A definir</option><option value="pix">PIX</option>
@@ -1525,7 +1522,6 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
                   )}
                 </div>
                 <div className="pdv-form-section pdv-delivery-section">
-                  <span className="pdv-form-section-label">Entrega</span>
                   <label>
                     Tipo de atendimento
                     <div className="pdv-client-type-toggle">

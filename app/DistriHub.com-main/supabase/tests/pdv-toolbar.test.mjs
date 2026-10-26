@@ -64,6 +64,9 @@ test('checkout places customer type and customer picker in the same layout row',
     'pdv-form-section pdv-payment-section',
     'pdv-form-section pdv-delivery-section',
   ]);
+  assert.equal(form.findAll(node => node.props.className === 'pdv-form-section-label').some(label =>
+    label.children.some(text => text === 'Pagamento' || text === 'Entrega')
+  ), false);
 });
 
 test('new checkout applies customer return credit to a purchase and charges only the difference',async()=>{
