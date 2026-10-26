@@ -134,7 +134,7 @@ export function useAuth(): UseAuthReturn {
     const client = supabase;
     const { data, error } = await readWithJwtRecovery(() => client
       .from('partner_salespeople')
-      .select('id, user_id, role, branch_id')
+      .select('id, user_id, role, branch_id, active')
       .eq('auth_user_id', authUserId)
       .order('created_at', { ascending: false })
       .limit(1)
@@ -144,8 +144,11 @@ export function useAuth(): UseAuthReturn {
       throw new Error(`Não foi possível resolver a identidade do usuário: ${error.message}`);
     }
 
-    const salesperson = data as Pick<PartnerSalesperson, 'id' | 'user_id' | 'role' | 'branch_id'> | null;
+    const salesperson = data as Pick<PartnerSalesperson, 'id' | 'user_id' | 'role' | 'branch_id' | 'active'> | null;
     if (salesperson) {
+      if (salesperson.active !== true) {
+        throw new Error('Acesso pendente de liberação pelo administrador da empresa.');
+      }
       if (!salesperson.user_id) {
         throw new Error('O vínculo do funcionário não possui uma empresa válida.');
       }

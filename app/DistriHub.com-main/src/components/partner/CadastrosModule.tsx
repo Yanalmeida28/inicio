@@ -1990,13 +1990,13 @@ function SalespeopleSubTab({
       await onAdd({
         name: normalizedName,
         commission_rate: Number(rate) || 0,
-        active: true,
+        active: false,
         new_pin: pin || null,
         role,
         branch_id: branchId || null,
         phone: null,
         email: normalizedEmail,
-        is_active: true,
+        is_active: false,
       });
 
       setName('');
@@ -2234,6 +2234,10 @@ function SalespeopleSubTab({
             </select>
           </label>
         </div>
+
+        <p className="otp-description">
+          Novos colaboradores ficam inativos e sem acesso aos módulos até o administrador liberar as permissões.
+        </p>
 
         {formError && (
           <p
