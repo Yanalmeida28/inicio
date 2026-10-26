@@ -48,6 +48,13 @@ let renderer;
 afterEach(async () => { if (renderer) await act(async () => renderer.unmount()); renderer = null; });
 const controls = () => renderer.root.findByProps({ 'aria-label': 'Opções da venda' });
 
+test('checkout places customer type and customer picker in the same layout row', async () => {
+  await act(async () => { renderer = TestRenderer.create(React.createElement(module.exports.Checkout, props)); });
+  const fields = renderer.root.findByProps({ className: 'pdv-customer-fields' });
+  assert.ok(fields.findByType('select'));
+  assert.equal(fields.findAll(node => typeof node.type === 'function' && node.type.name === 'CustomerSearchPicker').length, 1);
+});
+
 test('new checkout applies customer return credit to a purchase and charges only the difference',async()=>{
  let submitted;
  const rma={id:'rma',customer_id:'customer',branch_id:'branch',status:'credito_gerado',product_name:'Returned product',credit_amount:50,credit_used_amount:0};

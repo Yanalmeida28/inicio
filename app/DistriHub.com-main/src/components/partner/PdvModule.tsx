@@ -1042,21 +1042,23 @@ function PdvCheckout({ products, customers, credits, rmaRequests = [], hasPendin
               <div className="pdv-form">
                 <div className="pdv-form-section">
                   <span className="pdv-form-section-label">Cliente</span>
-                  <label>
-                    Tipo de cliente
-                    <select aria-label="Tabela de preços da venda" value={clientType} onChange={event => handleClientTypeChange(event.target.value as ClientType)}>
-                      <option value="varejo">Varejo</option>
-                      <option value="atacado">Atacado</option>
-                    </select>
-                  </label>
-                  <CustomerSearchPicker
-                    key={`sale-${clientType}`}
-                    id="pdv-customer-search"
-                    customers={customers}
-                    customerId={customerId}
-                    clientType={clientType}
-                    onSelect={handleCustomerChange}
-                  />
+                  <div className="pdv-customer-fields">
+                    <label>
+                      Tipo de cliente
+                      <select aria-label="Tabela de preços da venda" value={clientType} onChange={event => handleClientTypeChange(event.target.value as ClientType)}>
+                        <option value="varejo">Varejo</option>
+                        <option value="atacado">Atacado</option>
+                      </select>
+                    </label>
+                    <CustomerSearchPicker
+                      key={`sale-${clientType}`}
+                      id="pdv-customer-search"
+                      customers={customers}
+                      customerId={customerId}
+                      clientType={clientType}
+                      onSelect={handleCustomerChange}
+                    />
+                  </div>
                   {customerId && <small>Tabela aplicada: {priceTable === 'premium' ? 'Premium' : priceTable === 'atacado' ? 'Atacado' : 'Varejo'}</small>}
                 </div>
                 <div className="pdv-form-section">
@@ -1472,33 +1474,35 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
               <div className="pdv-form">
                 <div className="pdv-form-section">
                   <span className="pdv-form-section-label">Cliente</span>
-                  <label>
-                    Tabela de preços
-                    <div className="pdv-client-type-toggle">
-                      <button
-                        type="button"
-                        className={`price-toggle-btn ${clientType === 'varejo' ? 'active' : ''}`}
-                        onClick={() => handleClientTypeChange('varejo')}
-                      >
-                        <Tag size={15} /> Varejo
-                      </button>
-                      <button
-                        type="button"
-                        className={`price-toggle-btn ${clientType === 'atacado' ? 'active' : ''}`}
-                        onClick={() => handleClientTypeChange('atacado')}
-                      >
-                        <Tag size={15} /> Atacado
-                      </button>
-                    </div>
-                  </label>
-                  <CustomerSearchPicker
-                    key={`pre-sale-${clientType}`}
-                    id="presale-customer-search"
-                    customers={customers}
-                    customerId={customerId}
-                    clientType={clientType}
-                    onSelect={handleCustomerChange}
-                  />
+                  <div className="pdv-customer-fields">
+                    <label>
+                      Tabela de preços
+                      <div className="pdv-client-type-toggle">
+                        <button
+                          type="button"
+                          className={`price-toggle-btn ${clientType === 'varejo' ? 'active' : ''}`}
+                          onClick={() => handleClientTypeChange('varejo')}
+                        >
+                          <Tag size={15} /> Varejo
+                        </button>
+                        <button
+                          type="button"
+                          className={`price-toggle-btn ${clientType === 'atacado' ? 'active' : ''}`}
+                          onClick={() => handleClientTypeChange('atacado')}
+                        >
+                          <Tag size={15} /> Atacado
+                        </button>
+                      </div>
+                    </label>
+                    <CustomerSearchPicker
+                      key={`pre-sale-${clientType}`}
+                      id="presale-customer-search"
+                      customers={customers}
+                      customerId={customerId}
+                      clientType={clientType}
+                      onSelect={handleCustomerChange}
+                    />
+                  </div>
                   {customerId && <small>Tabela aplicada: {priceTable === 'premium' ? 'Premium' : priceTable === 'atacado' ? 'Atacado' : 'Varejo'}</small>}
                 </div>
                 <div className="pdv-form-section">

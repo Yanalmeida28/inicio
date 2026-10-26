@@ -1839,6 +1839,10 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
   box-shadow: 0 0 0 3px var(--dh-blue-soft-strong) !important;
 }
 .partner-panel .pdv-search-picker { min-width: 0; }
+.partner-panel .pdv-customer-fields { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.35fr); align-items: end; gap: 8px; }
+.partner-panel .pdv-customer-fields > label { min-width: 0; }
+.partner-panel .pdv-customer-fields .pdv-client-type-toggle { gap: 4px; flex-wrap: wrap; }
+.partner-panel .pdv-customer-fields .pdv-client-type-toggle button { flex: 1 1 0; min-width: 0; justify-content: center; padding-right: 6px; padding-left: 6px; }
 .partner-panel .pdv-search-picker > label { display: block; margin-bottom: 4px; }
 .partner-panel .pdv-search-control { position: relative; min-width: 0; }
 .partner-panel .pdv-search-input-row { position: relative; display: flex; align-items: center; }
@@ -3171,6 +3175,7 @@ body, .app-shell { background: #091724; color: #edf5fc; }
   .partner-panel .pdv-product-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
   .partner-panel .pdv-right { padding: 10px !important; }
   .partner-panel .pdv-subtab { padding: 10px 12px; font-size: 13px; }
+  .partner-panel .pdv-customer-fields { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* Compact list cards on mobile; fields and touch targets remain available. */
