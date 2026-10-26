@@ -65,7 +65,7 @@ test('checkout places customer type and customer picker in the same layout row',
     'pdv-form-section pdv-delivery-section',
   ]);
   assert.equal(form.findAll(node => node.props.className === 'pdv-form-section-label').some(label =>
-    label.children.some(text => text === 'Pagamento' || text === 'Entrega')
+    label.children.some(text => text === 'Cliente' || text === 'Pagamento' || text === 'Entrega')
   ), false);
 });
 

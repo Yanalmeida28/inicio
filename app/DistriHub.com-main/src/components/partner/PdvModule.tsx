@@ -1041,7 +1041,6 @@ function PdvCheckout({ products, customers, credits, rmaRequests = [], hasPendin
             <>
               <div className="pdv-form">
                 <div className="pdv-form-section pdv-customer-section">
-                  <span className="pdv-form-section-label">Cliente</span>
                   <div className="pdv-customer-fields">
                     <label>
                       Tipo de cliente
@@ -1473,7 +1472,6 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
             <>
               <div className="pdv-form">
                 <div className="pdv-form-section pdv-customer-section">
-                  <span className="pdv-form-section-label">Cliente</span>
                   <div className="pdv-customer-fields">
                     <label>
                       Tabela de preços
