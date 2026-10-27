@@ -2137,6 +2137,7 @@ export function PartnerPanel({
                 onConsumePreSale={() => setPreSaleToCheckout(null)}
                 cashContext={checkoutCash}
                 onOpenCash={() => setActiveTab('caixa')}
+                onOpenOrders={() => setActiveTab('pedidos')}
                 onConfirmCashOperator={!isEmployeeRestricted ? (operatorId) => {
                   setSelectedOperatorId(operatorId === undefined ? currentSalespersonId ?? 'owner' : operatorId ?? 'owner');
                   setOperatorPinInput('');

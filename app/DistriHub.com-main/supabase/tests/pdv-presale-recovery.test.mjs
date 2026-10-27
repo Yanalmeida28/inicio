@@ -17,7 +17,7 @@ vm.runInNewContext(compile(await readFile(new URL('../../src/hooks/useSessionDra
 const helpers={};
 vm.runInNewContext(compile(await readFile(new URL('../../src/lib/pdv.ts',import.meta.url),'utf8')),{exports:helpers,Error});
 const components={};
-vm.runInNewContext(compile(await readFile(new URL('../../src/components/partner/PdvModule.tsx',import.meta.url),'utf8')+'\nexports.Checkout=PdvCheckout;exports.Presale=PreVendaTab;'),{exports:components,window,console,Error,setTimeout:()=>1,require(name){
+vm.runInNewContext(compile(await readFile(new URL('../../src/components/partner/PdvModule.tsx',import.meta.url),'utf8')+'\nexports.Checkout=PdvCheckout;'),{exports:components,window,console,Error,setTimeout:()=>1,require(name){
  if(name==='../../hooks/useSessionDraft')return drafts;
  if(name==='../../lib/pdv')return helpers;
  if(name==='../../lib/salePrint')return {printSale(){},directReceiptEnabled:()=>false};
@@ -37,16 +37,14 @@ test('operator switch preserves PDV tab and cart while updating price permission
  const scope='operator-switch:company:workspace:branch';
  const screen=(operator,role)=>wrapped(components.PdvModule,{...base,currentRole:role,activeSalespersonId:operator,canEditPrice:role==='gerente'},scope);
  await act(async()=>{view=TestRenderer.create(screen('manager','gerente'));});
- await act(async()=>view.root.findAllByType('button').find(node=>node.props.className==='pdv-subtab '&&node.children.some(child=>typeof child==='string'&&child.includes('Pré-vendas'))).props.onClick());
- const presale=()=>view.root.findAll(node=>typeof node.type==='function'&&node.type.name==='PreVendaTab')[0];
- await act(async()=>presale().findAllByType('button').find(node=>node.props.className==='pdv-product-card').props.onClick());
- assert.match(storage.get('distrihub:draft:'+scope+':pdv:branch:presale:cart'),/product/);
+ await act(async()=>view.root.findByProps({'aria-label':'Buscar produto por nome, SKU ou código de barras'}).props.onChange({target:{value:'Produto'}}));
+ await add();
+ assert.match(storage.get('distrihub:draft:'+scope+':pdv:branch:checkout:cart'),/product/);
  await act(async()=>view.update(screen('cashier','caixa')));
- assert.equal(view.root.findAllByType('button').find(node=>node.props.className==='pdv-subtab active').children.some(child=>child===' Pré-vendas'),true);
- assert.match(storage.get('distrihub:draft:'+scope+':pdv:branch:presale:cart'),/product/);
- assert.equal(view.root.findAll(node=>typeof node.type==='function'&&node.type.name==='PreVendaTab')[0].props.canEditPrice,false);
+ assert.match(storage.get('distrihub:draft:'+scope+':pdv:branch:checkout:cart'),/product/);
+ assert.equal(view.root.findAll(node=>typeof node.type==='function'&&node.type.name==='PdvCheckout')[0].props.canEditPrice,false);
  await act(async()=>view.update(screen('manager','gerente')));
- assert.match(storage.get('distrihub:draft:'+scope+':pdv:branch:presale:cart'),/product/);
+ assert.match(storage.get('distrihub:draft:'+scope+':pdv:branch:checkout:cart'),/product/);
 });
 
 test('rescue uses the full checkout, preserves the other cart and finalizes the original sale', async () => {
@@ -122,63 +120,43 @@ test('confirmed recovery clears only the original checkout draft and cannot resu
 
 });
 
-test('confirmed recovery clears the original presale draft',async()=>{
- let saved;
- const props={...base,onCreatePreSale:async value=>{saved=value;}};
- await act(async()=>{view=TestRenderer.create(wrapped(components.Presale,props,'audit-presale-recovery'));});await add();
- drafts.clearConfirmedPdvDraft('audit-presale-recovery','presale');
- await act(async()=>view.update(wrapped(components.Presale,props,'audit-presale-recovery','after-recovery')));
- assert.equal(view.root.findAllByProps({className:'module-submit-btn pdv-checkout-btn'}).length,0);
- assert.equal(saved,undefined);
-});
-
-test('presale blocks product changes while saving and displays success after emptying the cart',async()=>{
- let resolve,submitted;
- const pending=new Promise(done=>{resolve=done;});
- const props={...base,onCreatePreSale:async value=>{submitted=value;await pending;}};
- await act(async()=>{view=TestRenderer.create(wrapped(components.Presale,props,'audit-presale-edit'));});await add();
- let operation;await act(async()=>{operation=view.root.findByProps({className:'module-submit-btn pdv-checkout-btn'}).props.onClick();});
- assert.equal(submitted.items[0].quantity,1);await add();
- assert.doesNotMatch(JSON.stringify(view.toJSON()),/200,00/);
- assert.equal(view.root.findByType('fieldset').props.disabled,true);
- await act(async()=>{resolve();await operation;});
- assert.match(JSON.stringify(view.toJSON()),/Pré-venda salva com sucesso/);
- assert.equal(submitted.items[0].quantity,1);
- assert.match(JSON.stringify(view.toJSON()),/Selecione produtos para gerar uma pré-venda/);
-
-});
-
-for (const kind of ['Checkout','Presale']) test(`${kind} applies the registered Premium table to the whole cart and blocks inactive customers`,async()=>{
+test('Checkout applies the registered Premium table to the whole cart and blocks inactive customers',async()=>{
+ const kind='Checkout';
  let submitted;
  const customers=[{id:'premium',name:'Cliente Premium',customer_type:'varejo',price_table:'premium',is_active:true},{id:'inactive',name:'Cliente Inativo',customer_type:'varejo',is_active:false}];
- const props={...base,products:[{...product,premium_price:140}],customers,isActive:true,onCreateSale:async value=>{submitted=value;return {...value,id:'sale'};},onCreatePreSale:async value=>{submitted=value;return {...value,id:'pre'};}};
+ const props={...base,products:[{...product,premium_price:140}],customers,isActive:true,onCreateSale:async value=>{submitted=value;return {...value,id:'sale'};}};
  await act(async()=>{view=TestRenderer.create(wrapped(components[kind],props,'premium-'+kind));});
- if(kind==='Checkout')await act(async()=>view.root.findByProps({'aria-label':'Buscar produto por nome, SKU ou código de barras'}).props.onChange({target:{value:'Produto'}}));
+ await act(async()=>view.root.findByProps({'aria-label':'Buscar produto por nome, SKU ou código de barras'}).props.onChange({target:{value:'Produto'}}));
  await add();
  const picker=()=>view.root.findAll(node=>typeof node.type==='function'&&node.type.name==='CustomerSearchPicker')[0];
  await act(async()=>picker().props.onSelect('premium'));
  assert.match(JSON.stringify(view.toJSON()),/140,00/);
  assert.match(JSON.stringify(view.toJSON()),/Tabela aplicada/);
- const input=()=>view.root.findAllByType('input').find(node=>node.props.id===(kind==='Checkout'?'pdv-customer-search':'presale-customer-search'));
+ const input=()=>view.root.findAllByType('input').find(node=>node.props.id==='pdv-customer-search');
  await act(async()=>input().props.onChange({target:{value:'Inativo'}}));
  assert.equal(view.root.findAllByProps({role:'option'}).length,0);
  await act(async()=>picker().props.onSelect('premium'));
- await act(async()=>view.root.findByProps({className:kind==='Checkout'?'module-cancel-btn pdv-checkout-btn':'module-submit-btn pdv-checkout-btn'}).props.onClick());
+ await act(async()=>view.root.findByProps({className:'module-cancel-btn pdv-checkout-btn'}).props.onClick());
  assert.equal(submitted.items[0].unit_price,140);assert.equal(submitted.customer_type,'varejo');assert.equal(submitted.customer_id,'premium');assert.equal(submitted.draft_scope,'premium-'+kind);
 });
 
-test('pending presale cannot be changed or submitted until recovery',async()=>{
- let calls=0;const props={...base,onCreatePreSale:async()=>{calls++;}};
- await act(async()=>{view=TestRenderer.create(wrapped(components.Presale,props,'pending-presale'));});await add();
- await act(async()=>view.update(wrapped(components.Presale,{...props,hasPendingSale:true},'pending-presale')));
- assert.equal(view.root.findByType('fieldset').props.disabled,true);
- await add();await act(async()=>view.root.findByProps({className:'module-submit-btn pdv-checkout-btn'}).props.onClick());
- assert.equal(calls,0);assert.doesNotMatch(JSON.stringify(view.toJSON()),/200,00/);
+test('Salvar pedido saves an open order without finalizing, clears the cart and opens Pedidos em aberto',async()=>{
+ let saved,sold=false,opened=false;
+ const props={...base,isActive:true,onCreateSale:async()=>{sold=true;},onCreatePreSale:async value=>{saved=value;return {...value,id:'pre'};},onOpenOrders:()=>{opened=true;}};
+ await act(async()=>{view=TestRenderer.create(wrapped(components.Checkout,props,'save-order'));});
+ await act(async()=>view.root.findByProps({'aria-label':'Buscar produto por nome, SKU ou código de barras'}).props.onChange({target:{value:'Produto'}}));
+ await add();
+ const button=view.root.findAllByType('button').find(node=>node.props.className?.includes('pdv-save-order-btn'));
+ await act(async()=>button.props.onClick());
+ assert.equal(saved.items[0].product_id,'product');assert.equal(saved.branch_id,'branch');assert.equal(saved.draft_scope,'save-order');
+ assert.equal(sold,false);assert.equal(opened,true);
+ assert.equal(view.root.findAllByProps({'aria-label':'Aumentar quantidade de Produto A'}).length,0);
 });
 
 test('Premium without a configured product price is blocked with a visible explanation',async()=>{
  const customers=[{id:'premium',name:'Premium',customer_type:'varejo',price_table:'premium'}];
- await act(async()=>{view=TestRenderer.create(wrapped(components.Presale,{...base,customers},'missing-premium'));});
+ await act(async()=>{view=TestRenderer.create(wrapped(components.Checkout,{...base,customers},'missing-premium'));});
+ await act(async()=>view.root.findByProps({'aria-label':'Buscar produto por nome, SKU ou código de barras'}).props.onChange({target:{value:'Produto'}}));
  await add();
  await act(async()=>view.root.findAll(node=>typeof node.type==='function'&&node.type.name==='CustomerSearchPicker')[0].props.onSelect('premium'));
  assert.match(JSON.stringify(view.toJSON()),/Defina um preço Premium/);

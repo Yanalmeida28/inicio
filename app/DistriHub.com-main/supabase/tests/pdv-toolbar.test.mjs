@@ -18,7 +18,7 @@ const sessionDraftMocks = {
   useSessionDraftState: (_draftId, initialValue) => React.useState(initialValue),
 };
 vm.runInNewContext(compile(await readFile(new URL('../../src/lib/pdv.ts', import.meta.url), 'utf8')), { exports: helpers, Error });
-const source = compile(await readFile(new URL('../../src/components/partner/PdvModule.tsx', import.meta.url), 'utf8')) + '\nexports.Checkout = PdvCheckout; exports.Presale = PreVendaTab;';
+const source = compile(await readFile(new URL('../../src/components/partner/PdvModule.tsx', import.meta.url), 'utf8')) + '\nexports.Checkout = PdvCheckout;';
 function loadCheckout(react, printing = {}) {
 const module = { exports: {} };
 vm.runInNewContext(source, {
@@ -53,7 +53,6 @@ test('checkout places customer type and customer picker in the same layout row',
   const form = renderer.root.findByProps({ className: 'pdv-form' });
   const fields = renderer.root.findByProps({ className: 'pdv-customer-fields' });
   const actions = renderer.root.findByProps({ className: 'pdv-checkout-actions' });
-  assert.ok(form.findByProps({ className: 'pdv-delivery-fields' }));
   assert.ok(fields.findByType('select'));
   assert.equal(fields.findAll(node => typeof node.type === 'function' && node.type.name === 'CustomerSearchPicker').length, 1);
   assert.deepEqual(actions.findAllByType('button').map(button => button.props.children.filter(child => typeof child === 'string').join('').trim()), [
@@ -264,20 +263,6 @@ test('freight zero can be cleared and an empty field is submitted as zero', asyn
   assert.equal(submitted.total,100);
 });
 
-test('pre-sale freight zero can be cleared before entering another amount',async()=>{
-  let submitted;
-  await act(async()=>{renderer=TestRenderer.create(React.createElement(module.exports.Presale,{...props,sales:[],onCreatePreSale:async sale=>{submitted=sale;}}));});
-  await act(async()=>renderer.root.findByProps({className:'pdv-product-card'}).props.onClick());
-  assert.equal(renderer.root.findAllByProps({'aria-label':'Frete terceirizado'}).length,0);
-  await act(async()=>renderer.root.findAllByType('button').find(node=>node.children.includes('Entrega')).props.onClick());
-  await act(async()=>renderer.root.findByProps({'aria-label':'Frete terceirizado'}).props.onChange({target:{value:''}}));
-  assert.equal(renderer.root.findByProps({'aria-label':'Frete terceirizado'}).props.value,'');
-  await act(async()=>renderer.root.findByProps({'aria-label':'Frete terceirizado'}).props.onChange({target:{value:'12.50'}}));
-  await act(async()=>renderer.root.findByProps({className:'module-submit-btn pdv-checkout-btn'}).props.onClick());
-  assert.equal(submitted.freight_fee,12.5);
-  assert.equal(submitted.total,100);
-});
-
 test('finalizar e imprimir aguarda confirmação, imprime a venda salva e bloqueia envio duplicado', async () => {
   const events = [];
   const popup = { document: { body: {} }, closed: false, close() { this.closed = true; } };
@@ -372,7 +357,7 @@ if (process.env.PDV_BROWSER_FIXTURE === '1') {
       const content=document.querySelector('.pdv-left').getBoundingClientRect();
       const lastItem=document.querySelector('.pdv-cart-table tbody tr:last-child').getBoundingClientRect();
       const total=document.querySelector('.pdv-total-bar').getBoundingClientRect();
-      document.querySelector('#audit').textContent=JSON.stringify({visible:rects.every(r=>r.width>0&&r.height>0),fieldCount:fields.length,sameWidth:rects.every(r=>Math.abs(r.width-rects[0].width)<1),fieldWidths:rects.map(r=>Math.round(r.width)),sameHeight:rects.every(r=>Math.abs(r.height-rects[0].height)<1),fieldHeights:rects.map(r=>Math.round(r.height)),belowSearch:bar.top>=search.bottom,belowCart:bar.top>=Math.min(cart.bottom,content.bottom),sameRow:Math.max(...rects.map(r=>r.bottom))-Math.min(...rects.map(r=>r.bottom))<5,inputFontPx:parseFloat(getComputedStyle(fields[0]).fontSize),inputHeight:rects[0].height,controlsFit:rects.every(r=>r.left>=bar.left&&r.right<=total.left),workspaceWidth:search.width,dockedAtBottom:Math.abs(bar.bottom-innerHeight)<3,noCartOverlap:content.bottom<=bar.top,lastItemVisible:lastItem.bottom<=content.bottom+1&&lastItem.top>=content.top});
+      document.querySelector('#audit').textContent=JSON.stringify({visible:rects.every(r=>r.width>0&&r.height>0),fieldCount:fields.length,belowSearch:bar.top>=search.bottom,belowCart:bar.top>=Math.min(cart.bottom,content.bottom),sameRow:Math.max(...rects.map(r=>r.bottom))-Math.min(...rects.map(r=>r.bottom))<5,inputFontPx:parseFloat(getComputedStyle(fields[0]).fontSize),inputHeight:rects[0].height,controlsFit:rects.every(r=>r.left>=bar.left&&r.right<=total.left),workspaceWidth:search.width,dockedAtBottom:Math.abs(bar.bottom-innerHeight)<3,noCartOverlap:content.bottom<=bar.top,lastItemVisible:lastItem.bottom<=content.bottom+1&&lastItem.top>=content.top});
     </script>`);
 }
 

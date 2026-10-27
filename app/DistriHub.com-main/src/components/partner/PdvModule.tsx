@@ -3,7 +3,7 @@ import { SplitPaymentFields } from './SplitPaymentFields';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Search, Trash2, ShoppingCart, Check, Printer, Camera,
-  X, Tag, Ban, Lock, ClipboardList, Wallet, Lock as LockIcon,
+  X, ClipboardList, Lock as LockIcon,
 } from 'lucide-react';
 import type { IScannerControls } from '@zxing/browser';
 import type { DeliveryType, PartnerProduct, PartnerCustomer, PartnerSale, SalePayment, PartnerSalesperson, SaleItem, SalespersonRole, RmaRequest } from '../../types';
@@ -13,7 +13,6 @@ import { draftPayments, emptySplitPaymentDraft, splitPaymentDraft, splitPaymentE
 import { SessionDraftProvider, useSessionDraftScope, useSessionDraftState, clearConfirmedPdvDraft } from '../../hooks/useSessionDraft';
 
 type ClientType = 'varejo' | 'atacado';
-type PdvSubTab = 'pdv' | 'pre-venda';
 
 function BarcodeCameraDialog({ onDetected, onClose }: { onDetected: (code: string) => void; onClose: () => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -297,6 +296,7 @@ function SalespersonSearchPicker({ id, salespeople, salespersonId, onSelect }: {
 type Props = {
   cashContext?: { status: string; message: string; others: { id: string; operator_id: string | null; operator_name: string }[] };
   onOpenCash?: () => void;
+  onOpenOrders?: () => void;
   onConfirmCashOperator?: (operatorId?: string | null) => void;
   canEditPrice: boolean;
   products: PartnerProduct[];
@@ -356,29 +356,22 @@ const cashierRoles: SalespersonRole[] = ['administrador', 'gerente', 'caixa', 'v
 const PRODUCT_PAGE_SIZE = 30;
 
 export function PdvModule({
-  cashContext, onOpenCash, onConfirmCashOperator,
+  cashContext, onOpenCash, onOpenOrders, onConfirmCashOperator,
   products, customers, sales, credits, rmaRequests = [], hasPendingSale, isActive = true, salespeople, segment, selectedBranchId,
   barcodeScannerEnabled = true, cameraScannerEnabled = false,
-  preSaleToCheckout, onConsumePreSale, onRequestPreSale,
-  activeSalespersonId, activeBranchName, receiptDetails, currentRole, canEditPrice, onCreateSale, onCreatePreSale, onFinalizePreSale, onUpdatePreSale, onCancelSale, onDeleteSale,
+  preSaleToCheckout, onConsumePreSale,
+  activeSalespersonId, activeBranchName, receiptDetails, currentRole, canEditPrice, onCreateSale, onCreatePreSale, onFinalizePreSale, onUpdatePreSale,
 }: Props) {
   const parentDraftScope = useSessionDraftScope();
   const legacyParentDraftScope = useSessionDraftScope(true);
   const contextKey = `${selectedBranchId ?? 'all'}`;
-  const [subTab, setSubTab] = useSessionDraftState<PdvSubTab>(`pdv:active-subtab:${contextKey}`, 'pdv');
-  const [visitedSubTabs, setVisitedSubTabs] = useState<Set<PdvSubTab>>(() => new Set(['pdv', subTab]));
   const [checkoutPreSale, setCheckoutPreSale] = useState<PartnerSale | null>(null);
   const [savedRescueNotice, setSavedRescueNotice] = useState<string | null>(null);
   useEffect(() => {
     if (!preSaleToCheckout) return;
     setSavedRescueNotice(null);
     setCheckoutPreSale(preSaleToCheckout);
-    setVisitedSubTabs((current) => current.has('pdv') ? current : new Set(current).add('pdv'));
-    setSubTab('pdv');
-  }, [preSaleToCheckout, setSubTab]);
-  useEffect(() => {
-    setVisitedSubTabs((current) => current.has(subTab) ? current : new Set(current).add(subTab));
-  }, [subTab]);
+  }, [preSaleToCheckout]);
   const moduleRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -400,10 +393,9 @@ export function PdvModule({
       observer.disconnect();
       window.removeEventListener('resize', updateHeight);
     };
-  }, [subTab]);
+  }, []);
 
   const canCheckout = cashierRoles.includes(currentRole);
-  const preSales = sales.filter((s) => s.status === 'pre_venda');
 
   return (
     <SessionDraftProvider
@@ -411,7 +403,7 @@ export function PdvModule({
       scope={`${parentDraftScope}:pdv:${contextKey}`}
       legacyScope={`${legacyParentDraftScope}:pdv:${contextKey}:${activeSalespersonId ?? 'owner'}`}
     >
-    <div ref={moduleRef} className={`panel-module pdv-workspace${subTab === 'pdv' ? ' pdv-workspace-checkout' : ''}`}>
+    <div ref={moduleRef} className={`panel-module pdv-workspace pdv-workspace-checkout`}>
       <div className="module-header">
         <span className="module-icon"><ShoppingCart size={20} /></span>
         <div>
@@ -421,20 +413,6 @@ export function PdvModule({
       </div>
 
       <div className="pdv-subtabs">
-        <button
-          className={`pdv-subtab ${subTab === 'pdv' ? 'active' : ''}`}
-          onClick={() => setSubTab('pdv')}
-        >
-          <ShoppingCart size={16} /> PDV
-        </button>
-        <button
-          className={`pdv-subtab ${subTab === 'pre-venda' ? 'active' : ''}`}
-          onClick={() => setSubTab('pre-venda')}
-        >
-          <ClipboardList size={16} /> Pré-vendas
-          {preSales.length > 0 && <span className="pdv-subtab-badge">{preSales.length}</span>}
-        </button>
-
       {cashContext && <div className="pdv-cash-context" role="status">
         <span>{cashContext.message}</span>
         {cashContext.status === 'authorize' && onConfirmCashOperator && <button type="button" className="rma-advance-btn" onClick={() => onConfirmCashOperator()}>Confirmar operador</button>}
@@ -447,7 +425,7 @@ export function PdvModule({
       </div>
 
       {savedRescueNotice && <p className="sent-message" role="status">{savedRescueNotice}</p>}
-      {subTab === 'pdv' && checkoutPreSale && (
+      {checkoutPreSale && (
         <SessionDraftProvider key={checkoutPreSale.id} scope={`${parentDraftScope}:pdv:${contextKey}:rescued:${checkoutPreSale.id}`}>
         <PdvCheckout
           rescuedSale={checkoutPreSale}
@@ -462,7 +440,7 @@ export function PdvModule({
           canCheckout={canCheckout}
           canEditPrice={canEditPrice}
           hasPendingSale={hasPendingSale}
-          isActive={isActive && subTab === 'pdv'}
+          isActive={isActive}
           barcodeScannerEnabled={barcodeScannerEnabled}
           cameraScannerEnabled={cameraScannerEnabled}
           receiptDetails={receiptDetails}
@@ -485,15 +463,15 @@ export function PdvModule({
         />
         </SessionDraftProvider>
       )}
-      {visitedSubTabs.has('pdv') && (
-        <div className="pdv-checkout-slot" hidden={subTab !== 'pdv' || Boolean(checkoutPreSale)}>
+      {(
+        <div className="pdv-checkout-slot" hidden={Boolean(checkoutPreSale)}>
         <PdvCheckout
           products={products}
           customers={customers}
           credits={credits}
           hasPendingSale={hasPendingSale}
           rmaRequests={rmaRequests}
-          isActive={isActive && subTab === 'pdv' && !checkoutPreSale}
+          isActive={isActive && !checkoutPreSale}
           barcodeScannerEnabled={barcodeScannerEnabled}
           cameraScannerEnabled={cameraScannerEnabled}
           salespeople={salespeople}
@@ -504,27 +482,8 @@ export function PdvModule({
           canEditPrice={canEditPrice}
           receiptDetails={receiptDetails}
           onCreateSale={onCreateSale}
-        />
-        </div>
-      )}
-
-      {visitedSubTabs.has('pre-venda') && (
-        <div hidden={subTab !== 'pre-venda'}>
-        <PreVendaTab
-          onPullToPdv={(sale) => { setCheckoutPreSale(sale); setSubTab('pdv'); onRequestPreSale?.(sale); }}
-          products={products}
-          customers={customers}
-          sales={sales}
-          salespeople={salespeople}
-          activeSalespersonId={activeSalespersonId}
-          segment={segment}
-          selectedBranchId={selectedBranchId}
-          canCheckout={canCheckout}
-          canEditPrice={canEditPrice}
           onCreatePreSale={onCreatePreSale}
-          onFinalizePreSale={onFinalizePreSale}
-          onCancelSale={onCancelSale}
-          onDeleteSale={onDeleteSale}
+          onOpenOrders={onOpenOrders}
         />
         </div>
       )}
@@ -535,7 +494,9 @@ export function PdvModule({
 
 /* ============ PDV Checkout ============ */
 
-function PdvCheckout({ products, customers, credits, rmaRequests = [], hasPendingSale, isActive = true, barcodeScannerEnabled = true, cameraScannerEnabled = false, salespeople, activeSalespersonId, selectedBranchId, canCheckout, canEditPrice, receiptDetails, onCreateSale, rescuedSale, onExitRescue, onSavePreSale, onPreSaleSaved }: {
+function PdvCheckout({ products, customers, credits, rmaRequests = [], hasPendingSale, isActive = true, barcodeScannerEnabled = true, cameraScannerEnabled = false, salespeople, activeSalespersonId, selectedBranchId, canCheckout, canEditPrice, receiptDetails, onCreateSale, onCreatePreSale, onOpenOrders, rescuedSale, onExitRescue, onSavePreSale, onPreSaleSaved }: {
+  onCreatePreSale?: Props['onCreatePreSale'];
+  onOpenOrders?: () => void;
   rescuedSale?: PartnerSale;
   onExitRescue?: () => void;
   onSavePreSale?: (edits: Parameters<Props['onCreateSale']>[0]) => Promise<void>;
@@ -602,6 +563,7 @@ function PdvCheckout({ products, customers, credits, rmaRequests = [], hasPendin
   const freightAmount = freightFee === '' ? 0 : Number(freightFee);
   const [salespersonId, setSalespersonId] = useSessionDraftState('checkout:salesperson-id', rescuedSale?.salesperson_id ?? '');
   const [completed, setCompleted] = useState(false);
+  const [orderSaved, setOrderSaved] = useState(false);
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const [isSavingPreSale, setIsSavingPreSale] = useState(false);
   const checkoutInFlight = useRef(false);
@@ -793,6 +755,33 @@ function PdvCheckout({ products, customers, credits, rmaRequests = [], hasPendin
         salesperson_id: salespersonId || null, branch_id: selectedBranchId });
       clearConfirmedPdvDraft(draftScope, 'checkout');
       if (checkoutMounted.current) onPreSaleSaved?.();
+    } catch (error) { if (checkoutMounted.current) setCheckoutError(pdvErrorMessage(error)); }
+    finally { checkoutInFlight.current = false; if (checkoutMounted.current) { setIsCheckingOut(false); setIsSavingPreSale(false); } }
+  }
+
+  async function handleSaveOrder() {
+    if (rescuedSale || !onCreatePreSale || !canCheckout || !canChangeCart() || !cartRef.current.length || cartHasWrongBranch) return;
+    if (!selectedBranchId) { alert('Selecione uma filial antes de salvar o pedido.'); return; }
+    if (!validSalePrice(freightAmount) || cartRef.current.some(item => !validSalePrice(item.unit_price))) { setCheckoutError('Informe preços e frete válidos com até duas casas decimais.'); return; }
+    const customer = customers.find(candidate => candidate.id === customerId);
+    if (customer?.is_active === false) { setCheckoutError('Cliente inativo. Selecione outro cliente.'); return; }
+    checkoutInFlight.current = true; setIsCheckingOut(true); setIsSavingPreSale(true); setCheckoutError(null); setCameraOpen(false);
+    try {
+      await onCreatePreSale({
+        draft_scope: draftScope,
+        payment_method: paymentMethod === 'misto' ? null : paymentMethod,
+        customer_id: customerId || null,
+        customer_name: customerName || customer?.name || (clientType === 'atacado' ? 'Cliente Atacado' : 'Cliente Varejo'),
+        items: cartRef.current, total: pdvTotal(cartRef.current), freight_fee: freightAmount,
+        customer_type: clientType, delivery_type: deliveryType,
+        salesperson_id: salespersonId || null, branch_id: selectedBranchId,
+      });
+      updateCart([], true); setFreightFee(0); setCustomerId(''); setCustomerName(''); setSalespersonId('');
+      setClientType('varejo'); setPriceTable('varejo'); setPaymentMethod('pix');
+      setPaymentDraft({ ...emptySplitPaymentDraft }); setRmaCreditId(''); setRmaCreditAmount('');
+      setDeliveryType('balcao'); setSearch(''); setVisibleProductCount(PRODUCT_PAGE_SIZE);
+      setSelectionNotice(null); setLastAddedId(null);
+      if (checkoutMounted.current) { setOrderSaved(true); onOpenOrders?.(); }
     } catch (error) { if (checkoutMounted.current) setCheckoutError(pdvErrorMessage(error)); }
     finally { checkoutInFlight.current = false; if (checkoutMounted.current) { setIsCheckingOut(false); setIsSavingPreSale(false); } }
   }
@@ -1083,21 +1072,19 @@ function PdvCheckout({ products, customers, credits, rmaRequests = [], hasPendin
                   </div>
                 </div>
                 <div className="pdv-form-section pdv-delivery-section">
-                  <div className="pdv-delivery-fields">
-                    <label>
-                      Tipo de atendimento
-                      <select aria-label="Tipo de atendimento da venda" value={deliveryType} onChange={event => setDeliveryType(event.target.value as DeliveryType)}>
-                        <option value="balcao">Balcão</option>
-                        <option value="entrega">Entrega</option>
-                        <option value="retirada">Retirada</option>
-                      </select>
+                  <label>
+                    Tipo de atendimento
+                    <select aria-label="Tipo de atendimento da venda" value={deliveryType} onChange={event => setDeliveryType(event.target.value as DeliveryType)}>
+                      <option value="balcao">Balcão</option>
+                      <option value="entrega">Entrega</option>
+                      <option value="retirada">Retirada</option>
+                    </select>
+                  </label>
+                  {deliveryType === 'entrega' && (
+                    <label title="Frete terceirizado recebido para repasse ao entregador; não compõe o faturamento.">Frete (R$)
+                      <input type="number" min="0" max="99999999.99" step="0.01" inputMode="decimal" aria-label="Frete terceirizado" aria-invalid={!validSalePrice(freightAmount)} value={freightFee} onChange={event => setFreightFee(event.target.value)} />
                     </label>
-                    {deliveryType === 'entrega' && (
-                      <label title="Frete terceirizado recebido para repasse ao entregador; não compõe o faturamento.">Frete (R$)
-                        <input type="number" min="0" max="99999999.99" step="0.01" inputMode="decimal" aria-label="Frete terceirizado" aria-invalid={!validSalePrice(freightAmount)} value={freightFee} onChange={event => setFreightFee(event.target.value)} />
-                      </label>
-                    )}
-                  </div>
+                  )}
                 </div>
               </div>
               {!rescuedSale && customerId && <section className="b2b-credit-summary" aria-label="Crédito de devolução na compra">
@@ -1143,6 +1130,9 @@ function PdvCheckout({ products, customers, credits, rmaRequests = [], hasPendin
                   <ClipboardList size={18} /> {isSavingPreSale ? 'Salvando alterações...' : 'Salvar alterações da pré-venda'}
                 </button>}
                 <div className="pdv-checkout-actions">
+                  {!rescuedSale && onCreatePreSale && <button type="button" className="module-cancel-btn pdv-checkout-btn pdv-save-order-btn" onClick={() => void handleSaveOrder()} disabled={cart.length === 0 || isCheckingOut || hasPendingSale || cartHasWrongBranch}>
+                    <ClipboardList size={18} /> {isSavingPreSale ? 'Salvando...' : 'Salvar pedido'}
+                  </button>}
                   <button className="module-submit-btn pdv-checkout-btn" onClick={() => handleCheckout(true)} disabled={cart.length === 0 || isCheckingOut || billedSaleBlocked || hasPendingSale || cartHasWrongBranch}>
                     <Printer size={18} /> {isCheckingOut ? 'Finalizando...' : 'Finalizar e imprimir'}
                   </button>
@@ -1163,547 +1153,17 @@ function PdvCheckout({ products, customers, credits, rmaRequests = [], hasPendin
               <Check size={15} /> Venda finalizada! Pronto para uma nova venda. Cupom, etiqueta e envio no Histórico.
             </div>
           )}
+          {orderSaved && !completed && (
+            <div className="sent-message" role="status">
+              <Check size={15} /> Pedido salvo em Pedidos em aberto, sem baixa de estoque.
+            </div>
+          )}
           {checkoutError && <p className="otp-error-msg" role="alert">{checkoutError}</p>}
           </div>
         </div>
       </div>
 
       </fieldset>
-    </>
-  );
-}
-
-/* ============ Pré-Venda / Orçamentos ============ */
-
-function PreVendaTab({ products, customers, sales, salespeople, activeSalespersonId, segment, selectedBranchId, hasPendingSale = false, isActive = true, canCheckout, canEditPrice, onCreatePreSale, onFinalizePreSale, onCancelSale, onDeleteSale, onPullToPdv }: {
-  onPullToPdv: (sale: PartnerSale) => void;
-  products: PartnerProduct[];
-  customers: PartnerCustomer[];
-  sales: PartnerSale[];
-  salespeople: PartnerSalesperson[];
-  activeSalespersonId?: string | null;
-  segment: string;
-  selectedBranchId: string | null;
-  hasPendingSale?: boolean;
-  isActive?: boolean;
-  canCheckout: boolean;
-  onCreatePreSale: (sale: { customer_id: string | null; customer_name: string; items: SaleItem[]; total: number; freight_fee?: number; customer_type: ClientType; delivery_type: DeliveryType; payment_method?: string | null; imei?: string; serial_number?: string; salesperson_id?: string | null; draft_scope?: string; branch_id?: string | null }) => Promise<PartnerSale | void>;
-  canEditPrice: boolean;
-  onFinalizePreSale: (id: string, paymentMethod: string, paymentSplits?: SalePayment[]) => Promise<void>;
-  onCancelSale: (id: string, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
-  onDeleteSale: (id: string, operatorId?: string | null, operatorPin?: string | null) => Promise<void>;
-}) {
-  const draftScope = useSessionDraftScope();
-  const [search, setSearch] = useSessionDraftState('presale:product-search', '');
-  const [cart, setCart] = useSessionDraftState<{ product_id: string; name: string; quantity: number; unit_price: number }[]>('presale:cart', []);
-  const [customerId, setCustomerId] = useSessionDraftState('presale:customer-id', '');
-  const [customerName, setCustomerName] = useSessionDraftState('presale:customer-name', '');
-  const [clientType, setClientType] = useSessionDraftState<ClientType>('presale:client-type', 'varejo');
-  const [priceTable, setPriceTable] = useSessionDraftState<PriceTable>('presale:price-table', 'varejo');
-  const [deliveryType, setDeliveryType] = useSessionDraftState<DeliveryType>('presale:delivery-type', 'balcao');
-  const [freightFee, setFreightFee] = useSessionDraftState<number | string>('presale:freight-fee', 0, undefined, value => typeof value === 'string' || (typeof value === 'number' && Number.isFinite(value)));
-  const freightAmount = freightFee === '' ? 0 : Number(freightFee);
-  const [salespersonId, setSalespersonId] = useSessionDraftState('presale:salesperson-id', '');
-  const [saved, setSaved] = useState(false);
-  const [savedId, setSavedId] = useState<string | null>(null);
-  const saveInFlight = useRef(false);
-  const [preSalePayment, setPreSalePayment] = useSessionDraftState('presale:payment-method', '');
-  const [isSaving, setIsSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [finalizeTarget, setFinalizeTarget] = useState<PartnerSale | null>(null);
-  const [finalizePayment, setFinalizePayment] = useState('pix');
-  const [finalizeDraft, setFinalizeDraft] = useState({ ...emptySplitPaymentDraft });
-  const [isFinalizing, setIsFinalizing] = useState(false);
-  const [finalizeError, setFinalizeError] = useState<string | null>(null);
-  const finalizeInFlight = useRef(false);
-  const [cancelTarget, setCancelTarget] = useState<PartnerSale | null>(null);
-  const [supervisorId, setSupervisorId] = useState('');
-  const [pinInput, setPinInput] = useState('');
-  const [pinError, setPinError] = useState<string | null>(null);
-  const [isVerifyingPin, setIsVerifyingPin] = useState(false);
-  const managers = salespeople.filter((s) => s.role === 'administrador' || s.role === 'gerente');
-
-  const traceabilityLabel = segment === 'assistencia' ? 'IMEI / Selo' : 'Nº de Série';
-  const preSales = sales.filter((s) => s.status === 'pre_venda');
-
-  function getPriceForProduct(p: PartnerProduct, table: PriceTable): number { return productTablePrice(p, table); }
-
-  function handleClientTypeChange(type: ClientType) {
-    if (saveInFlight.current || hasPendingSale || !isActive) return;
-    setClientType(type);
-    setPriceTable(type);
-    setCustomerId('');
-    setCustomerName('');
-    setCart((prev) => prev.map((item) => {
-      const product = products.find((p) => p.id === item.product_id);
-      if (!product) return item;
-      return { ...item, unit_price: getPriceForProduct(product, type) };
-    }));
-  }
-
-  function handleCustomerChange(id: string) {
-    if (saveInFlight.current || hasPendingSale || !isActive) return;
-    const customer = customers.find(candidate => candidate.id === id);
-    if (customer?.is_active === false) return;
-    const type = customer ? customer.customer_type === 'atacado' ? 'atacado' : 'varejo' : clientType;
-    const table = customerPriceTable(customer, type);
-    try {
-      const next = cart.map(item => {
-        const product = products.find(product => product.id === item.product_id);
-        return product ? { ...item, unit_price: getPriceForProduct(product, table) } : item;
-      });
-      setCustomerId(id); setCustomerName(customer?.name ?? ''); setClientType(type); setPriceTable(table);
-      setCart(next);
-    } catch (error) { setSaveError(pdvErrorMessage(error)); }
-  }
-
-  const filtered = useMemo(() => {
-    const term = search.toLowerCase();
-    return products.filter((p) => {
-      if (!selectedBranchId || p.branch_id !== selectedBranchId) return false;
-      return !term || p.name.toLowerCase().includes(term) || (p.sku ?? '').toLowerCase().includes(term) || (p.barcode ?? '').toLowerCase().includes(term);
-    });
-  }, [products, search, selectedBranchId]);
-
-  const total = pdvTotal(cart);
-  const chargeTotal = saleChargeTotal({ total, freight_fee: freightAmount });
-
-  function addToCart(product: PartnerProduct) {
-    if (saveInFlight.current || hasPendingSale || !isActive) return;
-    let price: number;
-    try { price = getPriceForProduct(product, priceTable); } catch (error) { setSaveError(pdvErrorMessage(error)); return; }
-    setCart((prev) => {
-      const existing = prev.find((i) => i.product_id === product.id);
-      if (existing) return prev.map((i) => i.product_id === product.id ? { ...i, quantity: i.quantity + 1 } : i);
-      return [...prev, { product_id: product.id, name: product.name, quantity: 1, unit_price: price }];
-    });
-    setSaved(false);
-    setSaveError(null);
-  }
-
-  function changeQty(id: string, delta: number) {
-    if (saveInFlight.current || hasPendingSale || !isActive) return;
-    setCart((prev) => prev.flatMap((i) => {
-      if (i.product_id !== id) return [i];
-      const q = i.quantity + delta;
-      return q > 0 ? [{ ...i, quantity: q }] : [];
-    }));
-  }
-
-  function removeFromCart(id: string) {
-    if (saveInFlight.current || hasPendingSale || !isActive) return;
-    setCart((prev) => prev.filter((i) => i.product_id !== id));
-  }
-
-  async function handleSavePreSale() {
-    if (saveInFlight.current || hasPendingSale || !isActive || cart.length === 0) return;
-    if (!validSalePrice(freightAmount) || cart.some(item => !validSalePrice(item.unit_price))) {
-      setSaveError('Informe preços e frete válidos com até duas casas decimais.');
-      return;
-    }
-    if (!selectedBranchId) {
-      alert('Selecione uma filial antes de salvar a pré-venda.');
-      return;
-    }
-    const customer = customers.find((c) => c.id === customerId);
-    if (customer?.is_active === false) { setSaveError('Cliente inativo. Selecione outro cliente.'); return; }
-    const fallbackName = clientType === 'atacado' ? 'Cliente Atacado' : 'Cliente Varejo';
-    saveInFlight.current = true;
-    setIsSaving(true);
-    setSaveError(null);
-    try {
-      const confirmed = await onCreatePreSale({
-        draft_scope: draftScope,
-        payment_method: preSalePayment || null,
-        customer_id: customerId || null,
-        customer_name: customerName || customer?.name || fallbackName,
-        items: cart,
-        total,
-        freight_fee: freightAmount,
-        customer_type: clientType,
-        delivery_type: deliveryType,
-        salesperson_id: salespersonId || null,
-        branch_id: selectedBranchId,
-      });
-      setCart([]); setFreightFee(0); setCustomerId(''); setCustomerName(''); setSalespersonId('');
-      setPreSalePayment('');
-      setSavedId(confirmed?.id ?? null);
-      setSaved(true);
-    } catch (error) {
-      setSaveError(error instanceof Error ? error.message : 'Não foi possível salvar a pré-venda.');
-    } finally {
-      saveInFlight.current = false;
-      setIsSaving(false);
-    }
-  }
-
-  function requestFinalize(sale: PartnerSale) {
-    setFinalizeTarget(sale);
-    setFinalizePayment(sale.payment_method || 'pix');
-    setFinalizeDraft(splitPaymentDraft(sale.payment_splits));
-    setFinalizeError(null);
-  }
-
-  async function confirmFinalize() {
-    if (!finalizeTarget || !onFinalizePreSale || finalizeInFlight.current) return;
-    const parts = finalizePayment === 'misto' ? draftPayments(finalizeDraft) : [];
-    const validation = finalizePayment === 'misto' ? splitPaymentError(saleChargeTotal(finalizeTarget), parts) : null;
-    if (validation) { setFinalizeError(validation); return; }
-    finalizeInFlight.current = true;
-    setIsFinalizing(true);
-    setFinalizeError(null);
-    try {
-      // The shared hook checks a fresh authorized credit balance before calling the sale RPC.
-      await onFinalizePreSale(finalizeTarget.id, finalizePayment, parts);
-      setFinalizeTarget(null);
-    } catch (error) {
-      setFinalizeError(pdvErrorMessage(error));
-    } finally {
-      finalizeInFlight.current = false;
-      setIsFinalizing(false);
-    }
-  }
-
-  function requestCancel(sale: PartnerSale) {
-    setCancelTarget(sale);
-    setSupervisorId(managers[0]?.id ?? '');
-    setPinInput('');
-    setPinError(null);
-  }
-
-  async function verifyPinAndCancel(action: 'cancel' | 'delete') {
-    if (!cancelTarget) return;
-    if (!supervisorId) {
-      setPinError('Selecione o responsável (Administrador ou Gerente).');
-      return;
-    }
-    if (!pinInput) {
-      setPinError('Digite o PIN do responsável selecionado.');
-      return;
-    }
-    setIsVerifyingPin(true);
-    setPinError(null);
-    try {
-      if (action === 'cancel') {
-        await onCancelSale(cancelTarget.id, supervisorId, pinInput);
-      } else {
-        await onDeleteSale(cancelTarget.id, supervisorId, pinInput);
-      }
-      setCancelTarget(null);
-      setSupervisorId('');
-      setPinInput('');
-      setPinError(null);
-    } catch (error) {
-      setPinError(error instanceof Error ? error.message : 'Não foi possível autorizar. Verifique o PIN.');
-    } finally {
-      setIsVerifyingPin(false);
-    }
-  }
-
-  return (
-    <>
-      {saved && <div role="status" className="sent-message">Pré-venda salva com sucesso{savedId ? ' — #' + savedId.slice(0, 8).toUpperCase() : ''}. Aguardando finalização no caixa.</div>}
-      {hasPendingSale && <p role="alert">Há uma operação pendente. Recupere a venda antes de alterar ou salvar este orçamento.</p>}
-      {saveError && <p role="alert" className="otp-error-msg">{saveError}</p>}
-      <fieldset disabled={isSaving || hasPendingSale || !isActive} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
-      <div className="pdv-layout pdv-presale-layout">
-        <div className="pdv-left">
-          <div className="pdv-search-bar">
-            <Search size={18} />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar produto para orçamento..."
-              autoFocus
-            />
-          </div>
-
-          <div className="pdv-product-grid">
-            {filtered.length === 0 ? (
-              <p className="empty-row">Nenhum produto encontrado.</p>
-            ) : (
-              filtered.map((p) => (
-                <button
-                  key={p.id}
-                  className="pdv-product-card"
-                  onClick={() => addToCart(p)}
-                >
-                  <strong>{p.name}</strong>
-                  <small>{p.sku ?? '—'}</small>
-                  <span>{priceTable === 'premium' && p.premium_price == null ? 'Premium não configurado' : money.format(getPriceForProduct(p, priceTable))}</span>
-                  {!p.is_service && <small className="pdv-stock">{p.stock} un.</small>}
-                </button>
-              ))
-            )}
-          </div>
-        </div>
-
-        <div className="pdv-right">
-          <div className="pdv-cart-header">
-            <h4>Orçamento Atual</h4>
-            {cart.length > 0 && (
-              <button className="rma-advance-btn danger" onClick={() => { if (!saveInFlight.current && !hasPendingSale) setCart([]); }}>
-                <X size={14} /> Limpar
-              </button>
-            )}
-          </div>
-
-          <div className="pdv-cart-items">
-            {cart.length === 0 ? (
-              <p className="empty-row">Selecione produtos para gerar uma pré-venda.</p>
-            ) : (
-              cart.map((item) => (
-                <div key={item.product_id} className="pdv-cart-item">
-                  <div>
-                    <strong>{item.name}</strong>
-                    {canEditPrice ? <SalePriceInput value={item.unit_price} name={item.name} disabled={isSaving} onChange={value => setCart(previous => previous.map(row => row.product_id === item.product_id ? { ...row, unit_price: value } : row))} /> : <small>{money.format(item.unit_price)} / un.</small>}
-                  </div>
-                  <div className="pdv-item-controls">
-                    <button onClick={() => changeQty(item.product_id, -1)}>-</button>
-                    <b>{item.quantity}</b>
-                    <button onClick={() => changeQty(item.product_id, 1)}>+</button>
-                    <span>{money.format(item.unit_price * item.quantity)}</span>
-                    <button className="pdv-remove" onClick={() => removeFromCart(item.product_id)}><Trash2 size={13} /></button>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-
-          {cart.length > 0 && (
-            <>
-              <div className="pdv-form">
-                <div className="pdv-form-section pdv-customer-section">
-                  <div className="pdv-customer-fields">
-                    <label>
-                      Tabela de preços
-                      <div className="pdv-client-type-toggle">
-                        <button
-                          type="button"
-                          className={`price-toggle-btn ${clientType === 'varejo' ? 'active' : ''}`}
-                          onClick={() => handleClientTypeChange('varejo')}
-                        >
-                          <Tag size={15} /> Varejo
-                        </button>
-                        <button
-                          type="button"
-                          className={`price-toggle-btn ${clientType === 'atacado' ? 'active' : ''}`}
-                          onClick={() => handleClientTypeChange('atacado')}
-                        >
-                          <Tag size={15} /> Atacado
-                        </button>
-                      </div>
-                    </label>
-                    <CustomerSearchPicker
-                      key={`pre-sale-${clientType}`}
-                      id="presale-customer-search"
-                      customers={customers}
-                      customerId={customerId}
-                      clientType={clientType}
-                      onSelect={handleCustomerChange}
-                    />
-                  </div>
-                  {customerId && <small>Tabela aplicada: {priceTable === 'premium' ? 'Premium' : priceTable === 'atacado' ? 'Atacado' : 'Varejo'}</small>}
-                </div>
-                <div className="pdv-form-section pdv-payment-section">
-                  <label>Forma de pagamento prevista
-                    <select value={preSalePayment} onChange={event => setPreSalePayment(event.target.value)} disabled={isSaving || hasPendingSale || !isActive}>
-                      <option value="">A definir</option><option value="pix">PIX</option>
-                      <option value="dinheiro">Dinheiro</option><option value="cartao">Cartão</option><option value="faturado">Faturado</option>
-                    </select>
-                  </label>
-                  {!activeSalespersonId && (
-                    <SalespersonSearchPicker
-                      id="presale-salesperson-search"
-                      salespeople={salespeople}
-                      salespersonId={salespersonId}
-                      onSelect={setSalespersonId}
-                    />
-                  )}
-                </div>
-                <div className="pdv-form-section pdv-delivery-section">
-                  <div className="pdv-delivery-fields">
-                    <label>
-                      Tipo de atendimento
-                      <div className="pdv-client-type-toggle">
-                        {(['balcao', 'entrega', 'retirada'] as DeliveryType[]).map((type) => (
-                          <button
-                            key={type}
-                            type="button"
-                            className={`price-toggle-btn ${deliveryType === type ? 'active' : ''}`}
-                            onClick={() => setDeliveryType(type)}
-                          >
-                            {type === 'balcao' ? 'Balcão' : type === 'entrega' ? 'Entrega' : 'Retirada'}
-                          </button>
-                        ))}
-                      </div>
-                    </label>
-                    {deliveryType === 'entrega' && (
-                      <label>Frete terceirizado (R$)
-                        <input type="number" min="0" max="99999999.99" step="0.01" inputMode="decimal" aria-label="Frete terceirizado" aria-invalid={!validSalePrice(freightAmount)} value={freightFee} onChange={event => setFreightFee(event.target.value)} />
-                        <small>Recebido para repasse ao entregador. Não compõe o faturamento.</small>
-                      </label>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <div className="pdv-total-bar">
-                <span>Total {priceTable === 'atacado' ? '(Atacado)' : '(Varejo)'}</span>
-                <strong>{money.format(chargeTotal)}</strong>
-              </div>
-
-              <p className="otp-description">O pagamento será confirmado ao finalizar a pré-venda no caixa.</p>
-              <button className="module-submit-btn pdv-checkout-btn" onClick={handleSavePreSale} disabled={isSaving || hasPendingSale || !isActive}>
-                {saved ? <><Check size={18} /> Pré-Venda Salva!</> : <><ClipboardList size={18} /> {isSaving ? 'Salvando...' : 'Salvar Pré-Venda'}</>}
-              </button>
-
-              {saved && (
-                <div className="sent-message">
-                  <Check size={15} /> Pré-venda salva com status Pendente. Aguardando finalização no caixa.
-                </div>
-              )}
-              {saveError && <p className="otp-error-msg">{saveError}</p>}
-            </>
-          )}
-        </div>
-      </div>
-
-      </fieldset>
-      {/* Pending Pre-Sales List */}
-      <div className="pdv-recent-sales pdv-presale-pending">
-        <h4>Pré-Vendas Pendentes ({preSales.length})</h4>
-        <div className="stock-table-wrap directory-card-wrap">
-          <table className="rma-table directory-card-table" aria-label="Pré-vendas pendentes">
-            <thead><tr><th>Cliente</th><th>Itens</th><th>Total</th><th>{traceabilityLabel}</th><th>Pagamento</th><th>Data</th><th>Ações</th></tr></thead>
-            <tbody>
-              {preSales.length === 0 ? (
-                <tr><td colSpan={7} className="empty-row">Nenhuma pré-venda pendente.</td></tr>
-              ) : (
-                preSales.map((s) => (
-                  <tr key={s.id}>
-                    <td className="directory-card-title"><strong>{s.customer_name ?? '—'}</strong></td>
-                    <td data-label="Itens">{s.items.length} {s.items.length === 1 ? 'item' : 'itens'}</td>
-                    <td data-label="Total">{money.format(saleChargeTotal(s))}</td>
-                    <td data-label={traceabilityLabel}>{s.imei ?? s.serial_number ?? '—'}</td>
-                    <td data-label="Pagamento">
-                      <span>{s.payment_method || 'A definir'}</span>
-                      <small className="open-order-secondary">Pendente</small>
-                    </td>
-                    <td data-label="Data">{new Date(s.created_at).toLocaleDateString('pt-BR')}</td>
-                    <td className="directory-card-actions" data-label="Ações">
-                      <div className="row-action-group">
-                        {canCheckout && <button className="rma-advance-btn" onClick={() => onPullToPdv(s)}>Resgatar para PDV</button>}
-                        {canCheckout ? (
-                          <button className="module-submit-btn compact" onClick={() => requestFinalize(s)} title="Finalizar Venda">
-                            <Wallet size={14} /> Finalizar
-                          </button>
-                        ) : (
-                          <span className="pdv-restricted-inline" title="Apenas Caixa, Gerente ou Administrador">
-                            <LockIcon size={14} /> Caixa
-                          </span>
-                        )}
-                        <button className="rma-advance-btn" onClick={() => requestCancel(s)} title="Cancelar/Apagar">
-                          <Ban size={14} />
-                          <span className="presale-action-label">Cancelar</span>
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Finalize Pre-Sale Modal */}
-      {finalizeTarget && (
-        <div className="modal-backdrop" onClick={() => setFinalizeTarget(null)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '400px' }}>
-            <div className="modal-header">
-              <h3><Wallet size={18} style={{ display: 'inline', marginRight: '6px' }} /> Finalizar Pré-Venda</h3>
-              <button onClick={() => setFinalizeTarget(null)}><X size={18} /></button>
-            </div>
-            <p className="otp-description">
-              <strong>{finalizeTarget.customer_name ?? 'Cliente'}</strong> — {finalizeTarget.items.length} {finalizeTarget.items.length === 1 ? 'item' : 'itens'} — {money.format(saleChargeTotal(finalizeTarget))}
-            </p>
-            <label style={{ display: 'block', marginBottom: '12px' }}>
-              <strong>Forma de Pagamento</strong>
-              <select
-                value={finalizePayment}
-                onChange={(e) => setFinalizePayment(e.target.value)}
-                style={{ width: '100%', marginTop: '6px' }}
-              >
-                <option value="pix">PIX</option>
-                <option value="cartao">Cartão</option>
-                <option value="dinheiro">Dinheiro</option>
-                <option value="faturado">Faturado</option>
-                <option value="misto">Dividido (dinheiro / PIX / cartão)</option>
-              </select>
-            </label>
-            {finalizePayment === 'misto' && <SplitPaymentFields total={saleChargeTotal(finalizeTarget)} value={finalizeDraft} onChange={setFinalizeDraft} disabled={isFinalizing} />}
-            {finalizeError && <p className="otp-error-msg" role="alert">{finalizeError}</p>}
-            <div className="otp-actions">
-              <button className="rma-advance-btn" disabled={isFinalizing} onClick={() => setFinalizeTarget(null)}>Cancelar</button>
-              <button className="module-submit-btn" onClick={confirmFinalize} disabled={isFinalizing}>
-                <Check size={16} /> {isFinalizing ? 'Finalizando...' : 'Confirmar Venda'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Cancel/Delete Modal */}
-      {cancelTarget && (
-        <div className="modal-backdrop" onClick={() => setCancelTarget(null)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '380px' }}>
-            <div className="modal-header">
-              <h3><Lock size={18} style={{ display: 'inline', marginRight: '6px' }} /> Confirmação Necessária</h3>
-              <button onClick={() => setCancelTarget(null)}><X size={18} /></button>
-            </div>
-            <p className="otp-description">
-              Cancelar ou apagar uma pré-venda requer permissão de Administrador ou Gerente. Selecione o responsável e digite o PIN dele para continuar.
-            </p>
-            {managers.length === 0 ? (
-              <p className="otp-error-msg">Nenhum Administrador ou Gerente cadastrado com PIN. Cadastre um em Colaboradores antes de continuar.</p>
-            ) : (
-              <>
-                <label style={{ display: 'block', marginBottom: '12px' }}>
-                  <strong>Responsável</strong>
-                  <select
-                    value={supervisorId}
-                    onChange={(e) => { setSupervisorId(e.target.value); setPinError(null); }}
-                    style={{ width: '100%', marginTop: '6px' }}
-                  >
-                    {managers.map((m) => <option key={m.id} value={m.id}>{m.name} ({m.role === 'administrador' ? 'Administrador' : 'Gerente'})</option>)}
-                  </select>
-                </label>
-                <label style={{ display: 'block', marginBottom: '12px' }}>
-                  <strong>PIN do responsável</strong>
-                  <input
-                    type="password"
-                    value={pinInput}
-                    onChange={(e) => { setPinInput(e.target.value); setPinError(null); }}
-                    maxLength={8}
-                    style={{ width: '100%', marginTop: '6px' }}
-                    autoFocus
-                  />
-                </label>
-              </>
-            )}
-            {pinError && <p className="otp-error-msg">{pinError}</p>}
-            <div className="otp-actions">
-              <button className="rma-advance-btn danger" onClick={() => verifyPinAndCancel('delete')} disabled={isVerifyingPin || managers.length === 0}>
-                <Trash2 size={16} /> {isVerifyingPin ? 'Verificando...' : 'Apagar'}
-              </button>
-              <button className="module-submit-btn" onClick={() => verifyPinAndCancel('cancel')} disabled={isVerifyingPin || managers.length === 0}>
-                <Ban size={16} /> {isVerifyingPin ? 'Verificando...' : 'Cancelar Pré-Venda'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </>
   );
 }
