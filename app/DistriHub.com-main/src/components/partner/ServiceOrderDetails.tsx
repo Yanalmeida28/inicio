@@ -135,11 +135,21 @@ function ServiceOrderDetailsContent({ order, customers, onClose, onChanged, prin
       </form>
     </section>}
     {error && <button type="button" disabled={busy || loading} onClick={() => setReadVersion(value => value + 1)}>Recarregar detalhes da OS</button>}
-    <button type="button" className="rma-advance-btn" disabled={busy || loading || !printReady} onClick={() => {
-      setError('');
-      try { printServiceOrder(order, parts, printDetails, warrantyTerms, customers.find(customer => customer.id === order.customer_id)); }
-      catch (cause) { setError(cause instanceof Error ? cause.message : 'Não foi possível abrir a impressão da OS.'); }
-    }}>Imprimir OS / PDF</button>
+    <button
+      type="button"
+      className="rma-advance-btn"
+      disabled={busy || loading || !printReady}
+      onClick={async () => {
+        setError('');
+        try {
+          await printServiceOrder(order, parts, printDetails, warrantyTerms, customers.find(customer => customer.id === order.customer_id));
+        } catch (cause) {
+          setError(cause instanceof Error ? cause.message : 'Não foi possível abrir a impressão da OS.');
+        }
+      }}
+    >
+      Imprimir OS / PDF
+    </button>
     <p>A impressão usa os dados salvos da OS. Salve as alterações antes de imprimir.</p>
     <p>Cliente: {order.customer_name || 'Não informado'} · Total: {money.format(Number(order.total))}</p>
     <section aria-label="Dados do cliente" style={{ padding: 14, borderRadius: 10, border: '1px solid rgba(127,127,127,.25)' }}>

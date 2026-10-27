@@ -2,7 +2,7 @@ import type { PartnerCustomer, ServiceOrder, ServiceOrderItem } from '../types';
 import type { ReceiptDetails } from './salePrint';
 import { money } from '../utils';
 
-export function printServiceOrder(order: ServiceOrder, items: ServiceOrderItem[], details: ReceiptDetails = {}, warrantyTerms = '', customer?: PartnerCustomer) {
+export async function printServiceOrder(order: ServiceOrder, items: ServiceOrderItem[], details: ReceiptDetails = {}, warrantyTerms = '', customer?: PartnerCustomer) {
   const popup = window.open('', '_blank', 'width=900,height=800');
   if (!popup) throw new Error('Permita a abertura de janelas para imprimir a OS.');
   const doc = popup.document;
@@ -10,12 +10,14 @@ export function printServiceOrder(order: ServiceOrder, items: ServiceOrderItem[]
   doc.title = `OS ${order.os_number || order.id.slice(0, 8)}`;
   doc.head.replaceChildren(); doc.body.replaceChildren();
   const style = doc.createElement('style');
-  style.textContent = `@page { size: A4; margin: 14mm; }
+  style.textContent = `@page { size: A4 portrait; margin: 10mm; }
     * { box-sizing: border-box; } body { background: #fff; color: #000; font: 12px Arial, sans-serif; margin: 20px auto; max-width: 800px; padding: 16px; }
-    h1 { font-size: 23px; } h2 { font-size: 15px; border-bottom: 1px solid #aaa; padding-bottom: 6px; margin-top: 24px; }
-    p { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.5; margin: 6px 0; }
-    table { width: 100%; border-collapse: collapse; } th, td { text-align: left; padding: 8px; border-bottom: 1px solid #ccc; overflow-wrap: anywhere; }
-    .checklists { table-layout: fixed; } .checklists td { width: 50%; vertical-align: top; padding: 0 12px 8px; border-bottom: 0; } .checklists td + td { border-left: 1px solid #000; } .checklists h3 { font-size: 14px; margin: 8px 0; }
+    h1 { font-size: 23px; } h2 { font-size: 15px; border-bottom: 1px solid #aaa; padding-bottom: 4px; margin-top: 14px; break-after: avoid-page; page-break-after: avoid; }
+    p { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.35; margin: 4px 0; }
+    table { width: 100%; border-collapse: collapse; } th, td { text-align: left; padding: 5px; border-bottom: 1px solid #ccc; overflow-wrap: anywhere; }
+    .store-logo { display: block; width: auto; max-width: 50mm; max-height: 25mm; object-fit: contain; margin: 0 auto 8px; }
+    .checklists { table-layout: fixed; } .checklists td { width: 50%; vertical-align: top; padding: 0 8px 6px; border-bottom: 0; break-inside: auto; page-break-inside: auto; } .checklists td + td { border-left: 1px solid #000; } .checklists h3 { font-size: 14px; margin: 8px 0; } .checklists p { orphans: 2; widows: 2; }
+    .checklist-row { break-inside: auto; page-break-inside: auto; }
     thead { display: table-header-group; } tr, .signatures { break-inside: avoid; } .signatures { display: flex; gap: 30px; margin-top: 65px; } .signatures p { flex: 1; border-top: 1px solid; padding-top: 8px; text-align: center; }
     button { padding: 10px 16px; margin-bottom: 18px; cursor: pointer; } @media print { body { margin: 0; padding: 0; max-width: none; } button { display: none; } }`;
   doc.head.append(style);
@@ -33,6 +35,13 @@ export function printServiceOrder(order: ServiceOrder, items: ServiceOrderItem[]
   const button = node('button', 'Imprimir / Salvar como PDF');
   button.onclick = () => { popup.focus(); popup.print(); };
   const branch = details.branches?.find(value => value.id === order.branch_id);
+  if (details.settings?.logo_url) {
+    const logo = doc.createElement('img');
+    logo.className = 'store-logo';
+    logo.alt = details.companyName || branch?.name || 'Logo da loja';
+    logo.src = details.settings.logo_url;
+    doc.body.append(logo);
+  }
   node('h1', details.companyName || branch?.name || 'Ordem de Serviço');
   if (branch) fields(['Filial', branch.name]);
   if (details.companyDocument) fields(['CPF/CNPJ', details.companyDocument]);
@@ -72,6 +81,7 @@ export function printServiceOrder(order: ServiceOrder, items: ServiceOrderItem[]
   node('h2', 'Checklists de entrada e saída');
   const checklists = node('table', ''); checklists.className = 'checklists';
   const checklistRow = node('tr', '', node('tbody', '', checklists));
+  checklistRow.className = 'checklist-row';
   for (const [title, content] of [['Entrada', entry.checklist], ['Saída', exit.checklist]]) {
     const column = node('td', '', checklistRow);
     node('h3', title || '', column);
@@ -105,5 +115,14 @@ export function printServiceOrder(order: ServiceOrder, items: ServiceOrderItem[]
   const signatures = node('div', ''); signatures.className = 'signatures';
   node('strong', 'Assinatura do cliente', node('p', '', signatures)); node('strong', 'Responsável pelo atendimento', node('p', '', signatures));
   fields(['Data', '______ / ______ / __________']);
-  popup.requestAnimationFrame(() => { if (!popup.closed) { popup.focus(); popup.print(); } });
+  try {
+    await Promise.all(Array.from(doc.images, image => image.decode()));
+  } catch {
+    popup.close();
+    throw new Error('Não foi possível carregar a logo da loja para imprimir a OS.');
+  }
+  if (!popup.closed) {
+    popup.focus();
+    popup.print();
+  }
 }

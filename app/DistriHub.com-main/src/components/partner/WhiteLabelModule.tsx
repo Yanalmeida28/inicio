@@ -330,6 +330,7 @@ export function WhiteLabelModule({ settings: initialSettings, onUpdate: persist,
             <span>Exibir CNPJ/Endereço na Impressão</span>
           </label>
         </div>
+        <p className="otp-description">A logo da loja também aparece automaticamente nas ordens de serviço.</p>
       </div>
 
       </section>
