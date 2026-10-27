@@ -347,7 +347,11 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
 .pdv-checkout-layout .pdv-product-card strong { overflow-wrap: anywhere; }
 .pdv-checkout-layout .pdv-cart-main { display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 12px; border: 1px solid var(--dh-border, #29465f); border-radius: var(--dh-radius, 10px); }
 .pdv-checkout-layout .pdv-sale-scroll { padding-top: 14px; border-top: 2px solid var(--dh-border, #29465f); }
-.pdv-checkout-layout .pdv-cart-table-wrap { max-height: 240px; overflow: auto; }
+.pdv-checkout-layout .pdv-cart-table-wrap { max-height: 374px; overflow: auto; }
+@media (min-width: 601px) {
+  .pdv-checkout-layout .pdv-cart-table tbody tr { height: 62px; }
+  .pdv-checkout-layout .pdv-cart-table td:first-child strong { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+}
 .pdv-checkout-layout .pdv-cart-table { width: 100%; font-size: 12px; }
 .pdv-checkout-layout .pdv-cart-table th, .pdv-checkout-layout .pdv-cart-table td { padding: 8px 5px; }
 .pdv-checkout-layout .pdv-cart-table td:first-child { overflow-wrap: anywhere; }

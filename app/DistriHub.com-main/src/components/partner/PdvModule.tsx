@@ -988,7 +988,7 @@ function PdvCheckout({ products, customers, credits, rmaRequests = [], hasPendin
             )}
           </div>
 
-          <div className={`pdv-cart-table-wrap${cart.length >= 7 ? ' pdv-cart-table-scrollable' : ''}`}>
+          <div className={`pdv-cart-table-wrap${cart.length >= 6 ? ' pdv-cart-table-scrollable' : ''}`}>
           <table className="rma-table pdv-cart-table">
             <thead><tr><th>Produto</th><th>Quantidade</th><th>Preço</th><th>Subtotal</th><th>Remover</th></tr></thead>
             <tbody>
@@ -998,7 +998,7 @@ function PdvCheckout({ products, customers, credits, rmaRequests = [], hasPendin
               cart.map((item) => (
                 <tr key={item.product_id}>
                   <td data-label="Produto">
-                    <strong>{item.name}</strong>
+                    <strong title={item.name}>{item.name}</strong>
                   </td>
                   <td data-label="Quantidade"><div className="pdv-item-controls">
                     <button aria-label={`Diminuir quantidade de ${item.name}`} disabled={cartLocked} onClick={() => changeQty(item.product_id, -1)}>−</button>

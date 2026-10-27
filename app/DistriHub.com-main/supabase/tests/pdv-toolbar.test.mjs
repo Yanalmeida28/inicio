@@ -69,8 +69,8 @@ test('checkout places customer type and customer picker in the same layout row',
   ), false);
 });
 
-test('checkout enables cart scrolling starting with seven products', async () => {
-  const products = Array.from({ length: 7 }, (_, index) => ({
+test('checkout enables cart scrolling starting with six products', async () => {
+  const products = Array.from({ length: 6 }, (_, index) => ({
     id: `product-${index}`,
     name: `Produto ${index}`,
     sku: `SKU-${index}`,
@@ -82,12 +82,12 @@ test('checkout enables cart scrolling starting with seven products', async () =>
   const cartWrapper = () => renderer.root.findAll(node => typeof node.type === 'string' && node.props.className?.startsWith('pdv-cart-table-wrap'))[0];
   const addProduct = index => renderer.root.findAll(node => typeof node.type === 'string' && node.props.className?.startsWith('pdv-product-card'))[index].props.onClick();
 
-  for (let index = 0; index < 6; index += 1) {
+  for (let index = 0; index < 5; index += 1) {
     await act(async () => addProduct(index));
   }
   assert.equal(cartWrapper().props.className, 'pdv-cart-table-wrap');
 
-  await act(async () => addProduct(6));
+  await act(async () => addProduct(5));
   assert.equal(cartWrapper().props.className, 'pdv-cart-table-wrap pdv-cart-table-scrollable');
 });
 
