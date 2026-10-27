@@ -207,22 +207,35 @@ function normalizeError(error: unknown): Error {
 }
 
 const DATA_PAGE_SIZE = 500;
+const PAGE_BATCH = 4;
 
+// Pages are requested in small parallel batches and joined in order, so the
+// result is identical to a sequential read but needs far fewer round trips.
 async function fetchAllPages<T>(
   fetchPage: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: PostgrestError | null }>,
   signal?: AbortSignal,
 ): Promise<{ data: T[] | null; error: PostgrestError | null }> {
   const rows: T[] = [];
-  for (let from = 0; ; from += DATA_PAGE_SIZE) {
-    if (signal?.aborted) throw new Error('Consulta cancelada.');
+  const run = (from: number) => {
     const pageQuery = fetchPage(from, from + DATA_PAGE_SIZE - 1);
     const cancellable = pageQuery as typeof pageQuery & { abortSignal?: (signal: AbortSignal) => typeof pageQuery };
-    const { data, error } = await (signal && cancellable.abortSignal ? cancellable.abortSignal(signal) : pageQuery);
+    return Promise.resolve(signal && cancellable.abortSignal ? cancellable.abortSignal(signal) : pageQuery);
+  };
+  // Small tables finish in one request; only full first pages fan out.
+  let start = 0;
+  let size = 1;
+  for (;;) {
     if (signal?.aborted) throw new Error('Consulta cancelada.');
-    if (error) return { data: null, error };
-    const page = data ?? [];
-    rows.push(...page);
-    if (page.length < DATA_PAGE_SIZE) return { data: rows, error: null };
+    const results = await Promise.all(Array.from({ length: size }, (_, index) => run(start + index * DATA_PAGE_SIZE)));
+    if (signal?.aborted) throw new Error('Consulta cancelada.');
+    for (const { data, error } of results) {
+      if (error) return { data: null, error };
+      const page = data ?? [];
+      rows.push(...page);
+      if (page.length < DATA_PAGE_SIZE) return { data: rows, error: null };
+    }
+    start += size * DATA_PAGE_SIZE;
+    size = PAGE_BATCH;
   }
 }
 
@@ -512,6 +525,7 @@ read('sales', (signal) => fetchAllPages((from, to) => client
           .from('partner_audit_logs')
           .select('*')
           .eq('user_id', companyUserId)
+          .gte('created_at', new Date(Date.now() - 90 * 86_400_000).toISOString())
           .order('created_at', { ascending: false })
           .order('id', { ascending: false }).range(from, to), signal)),
 
