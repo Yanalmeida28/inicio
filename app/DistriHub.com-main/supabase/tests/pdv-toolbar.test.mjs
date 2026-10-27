@@ -53,6 +53,7 @@ test('checkout places customer type and customer picker in the same layout row',
   const form = renderer.root.findByProps({ className: 'pdv-form' });
   const fields = renderer.root.findByProps({ className: 'pdv-customer-fields' });
   const actions = renderer.root.findByProps({ className: 'pdv-checkout-actions' });
+  assert.ok(form.findByProps({ className: 'pdv-delivery-fields' }));
   assert.ok(fields.findByType('select'));
   assert.equal(fields.findAll(node => typeof node.type === 'function' && node.type.name === 'CustomerSearchPicker').length, 1);
   assert.deepEqual(actions.findAllByType('button').map(button => button.props.children.filter(child => typeof child === 'string').join('').trim()), [
@@ -67,6 +68,28 @@ test('checkout places customer type and customer picker in the same layout row',
   assert.equal(form.findAll(node => node.props.className === 'pdv-form-section-label').some(label =>
     label.children.some(text => text === 'Cliente' || text === 'Pagamento' || text === 'Entrega')
   ), false);
+});
+
+test('checkout enables cart scrolling starting with seven products', async () => {
+  const products = Array.from({ length: 7 }, (_, index) => ({
+    id: `product-${index}`,
+    name: `Produto ${index}`,
+    sku: `SKU-${index}`,
+    branch_id: 'branch',
+    stock: 5,
+    sale_price: 100,
+  }));
+  await act(async () => { renderer = TestRenderer.create(React.createElement(module.exports.Checkout, { ...props, products })); });
+  const cartWrapper = () => renderer.root.findAll(node => typeof node.type === 'string' && node.props.className?.startsWith('pdv-cart-table-wrap'))[0];
+  const addProduct = index => renderer.root.findAll(node => typeof node.type === 'string' && node.props.className?.startsWith('pdv-product-card'))[index].props.onClick();
+
+  for (let index = 0; index < 6; index += 1) {
+    await act(async () => addProduct(index));
+  }
+  assert.equal(cartWrapper().props.className, 'pdv-cart-table-wrap');
+
+  await act(async () => addProduct(6));
+  assert.equal(cartWrapper().props.className, 'pdv-cart-table-wrap pdv-cart-table-scrollable');
 });
 
 test('new checkout applies customer return credit to a purchase and charges only the difference',async()=>{
@@ -349,7 +372,7 @@ if (process.env.PDV_BROWSER_FIXTURE === '1') {
       const content=document.querySelector('.pdv-left').getBoundingClientRect();
       const lastItem=document.querySelector('.pdv-cart-table tbody tr:last-child').getBoundingClientRect();
       const total=document.querySelector('.pdv-total-bar').getBoundingClientRect();
-      document.querySelector('#audit').textContent=JSON.stringify({visible:rects.every(r=>r.width>0&&r.height>0),fieldCount:fields.length,belowSearch:bar.top>=search.bottom,belowCart:bar.top>=Math.min(cart.bottom,content.bottom),sameRow:Math.max(...rects.map(r=>r.bottom))-Math.min(...rects.map(r=>r.bottom))<5,inputFontPx:parseFloat(getComputedStyle(fields[0]).fontSize),inputHeight:rects[0].height,controlsFit:rects.every(r=>r.left>=bar.left&&r.right<=total.left),workspaceWidth:search.width,dockedAtBottom:Math.abs(bar.bottom-innerHeight)<3,noCartOverlap:content.bottom<=bar.top,lastItemVisible:lastItem.bottom<=content.bottom+1&&lastItem.top>=content.top});
+      document.querySelector('#audit').textContent=JSON.stringify({visible:rects.every(r=>r.width>0&&r.height>0),fieldCount:fields.length,sameWidth:rects.every(r=>Math.abs(r.width-rects[0].width)<1),fieldWidths:rects.map(r=>Math.round(r.width)),sameHeight:rects.every(r=>Math.abs(r.height-rects[0].height)<1),fieldHeights:rects.map(r=>Math.round(r.height)),belowSearch:bar.top>=search.bottom,belowCart:bar.top>=Math.min(cart.bottom,content.bottom),sameRow:Math.max(...rects.map(r=>r.bottom))-Math.min(...rects.map(r=>r.bottom))<5,inputFontPx:parseFloat(getComputedStyle(fields[0]).fontSize),inputHeight:rects[0].height,controlsFit:rects.every(r=>r.left>=bar.left&&r.right<=total.left),workspaceWidth:search.width,dockedAtBottom:Math.abs(bar.bottom-innerHeight)<3,noCartOverlap:content.bottom<=bar.top,lastItemVisible:lastItem.bottom<=content.bottom+1&&lastItem.top>=content.top});
     </script>`);
 }
 

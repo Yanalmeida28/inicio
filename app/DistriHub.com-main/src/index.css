@@ -366,6 +366,30 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
 .partner-panel .pdv-presale-layout .pdv-delivery-section { display: contents; }
 .partner-panel .pdv-checkout-layout .pdv-payment-section .form-row { display: contents; }
 .pdv-form-section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.partner-panel .pdv-checkout-layout .pdv-payment-section .form-row > label,
+.partner-panel .pdv-presale-layout .pdv-payment-section > label { grid-column: 1; }
+.partner-panel .pdv-checkout-layout .pdv-payment-section .pdv-search-picker,
+.partner-panel .pdv-presale-layout .pdv-payment-section .pdv-search-picker { grid-column: 2; }
+.partner-panel .pdv-checkout-layout .pdv-delivery-fields,
+.partner-panel .pdv-presale-layout .pdv-delivery-fields { grid-column: 3; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.partner-panel .pdv-checkout-layout .pdv-form label,
+.partner-panel .pdv-presale-layout .pdv-form label { display: grid; grid-template-rows: 36px 44px; align-content: start; gap: 4px; min-width: 0; }
+.partner-panel .pdv-checkout-layout .pdv-form input,
+.partner-panel .pdv-checkout-layout .pdv-form select,
+.partner-panel .pdv-presale-layout .pdv-form input,
+.partner-panel .pdv-presale-layout .pdv-form select { width: 100%; height: 44px !important; min-height: 44px !important; box-sizing: border-box; }
+.partner-panel .pdv-checkout-layout .pdv-form .pdv-client-type-toggle,
+.partner-panel .pdv-presale-layout .pdv-form .pdv-client-type-toggle { display: flex; flex-wrap: nowrap; align-items: stretch; gap: 4px; width: 100%; height: 44px; min-width: 0; margin: 0; }
+.partner-panel .pdv-checkout-layout .pdv-form .pdv-client-type-toggle button,
+.partner-panel .pdv-presale-layout .pdv-form .pdv-client-type-toggle button { flex: 1 1 0; min-width: 0; height: 44px !important; min-height: 44px !important; padding: 6px 4px !important; font-size: 12px !important; justify-content: center; white-space: nowrap; }
+.partner-panel .pdv-checkout-layout .pdv-form .pdv-search-picker > label,
+.partner-panel .pdv-presale-layout .pdv-form .pdv-search-picker > label { display: block; min-height: 36px; box-sizing: border-box; line-height: 18px; }
+.partner-panel .pdv-checkout-layout .pdv-search-input-row,
+.partner-panel .pdv-presale-layout .pdv-search-input-row { height: 44px; }
+.partner-panel .pdv-checkout-layout .pdv-search-input-row input,
+.partner-panel .pdv-presale-layout .pdv-search-input-row input { height: 44px !important; min-height: 44px !important; }
+.partner-panel .pdv-checkout-layout .pdv-delivery-fields > label,
+.partner-panel .pdv-presale-layout .pdv-delivery-fields > label { min-width: 0; }
 .partner-panel .pdv-customer-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; gap: 12px; }
 .partner-panel .pdv-customer-fields > label,
 .partner-panel .pdv-customer-fields > .pdv-search-picker { width: 100%; min-width: 0; }
@@ -3195,6 +3219,12 @@ body, .app-shell { background: #091724; color: #edf5fc; }
   .partner-panel .pdv-customer-fields { grid-template-columns: minmax(0, 1fr); }
   .partner-panel .pdv-checkout-layout .pdv-customer-section,
   .partner-panel .pdv-presale-layout .pdv-customer-section { grid-column: auto; }
+  .partner-panel .pdv-checkout-layout .pdv-payment-section > label,
+  .partner-panel .pdv-presale-layout .pdv-payment-section > label,
+  .partner-panel .pdv-checkout-layout .pdv-payment-section .pdv-search-picker,
+  .partner-panel .pdv-presale-layout .pdv-payment-section .pdv-search-picker,
+  .partner-panel .pdv-checkout-layout .pdv-delivery-fields,
+  .partner-panel .pdv-presale-layout .pdv-delivery-fields { grid-column: auto; }
 }
 
 /* Compact list cards on mobile; fields and touch targets remain available. */

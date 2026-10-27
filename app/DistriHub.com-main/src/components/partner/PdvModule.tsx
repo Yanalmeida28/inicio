@@ -999,7 +999,7 @@ function PdvCheckout({ products, customers, credits, rmaRequests = [], hasPendin
             )}
           </div>
 
-          <div className={`pdv-cart-table-wrap${cart.length >= 10 ? ' pdv-cart-table-scrollable' : ''}`}>
+          <div className={`pdv-cart-table-wrap${cart.length >= 7 ? ' pdv-cart-table-scrollable' : ''}`}>
           <table className="rma-table pdv-cart-table">
             <thead><tr><th>Produto</th><th>Quantidade</th><th>Preço</th><th>Subtotal</th><th>Remover</th></tr></thead>
             <tbody>
@@ -1083,19 +1083,21 @@ function PdvCheckout({ products, customers, credits, rmaRequests = [], hasPendin
                   </div>
                 </div>
                 <div className="pdv-form-section pdv-delivery-section">
-                  <label>
-                    Tipo de atendimento
-                    <select aria-label="Tipo de atendimento da venda" value={deliveryType} onChange={event => setDeliveryType(event.target.value as DeliveryType)}>
-                      <option value="balcao">Balcão</option>
-                      <option value="entrega">Entrega</option>
-                      <option value="retirada">Retirada</option>
-                    </select>
-                  </label>
-                  {deliveryType === 'entrega' && (
-                    <label title="Frete terceirizado recebido para repasse ao entregador; não compõe o faturamento.">Frete (R$)
-                      <input type="number" min="0" max="99999999.99" step="0.01" inputMode="decimal" aria-label="Frete terceirizado" aria-invalid={!validSalePrice(freightAmount)} value={freightFee} onChange={event => setFreightFee(event.target.value)} />
+                  <div className="pdv-delivery-fields">
+                    <label>
+                      Tipo de atendimento
+                      <select aria-label="Tipo de atendimento da venda" value={deliveryType} onChange={event => setDeliveryType(event.target.value as DeliveryType)}>
+                        <option value="balcao">Balcão</option>
+                        <option value="entrega">Entrega</option>
+                        <option value="retirada">Retirada</option>
+                      </select>
                     </label>
-                  )}
+                    {deliveryType === 'entrega' && (
+                      <label title="Frete terceirizado recebido para repasse ao entregador; não compõe o faturamento.">Frete (R$)
+                        <input type="number" min="0" max="99999999.99" step="0.01" inputMode="decimal" aria-label="Frete terceirizado" aria-invalid={!validSalePrice(freightAmount)} value={freightFee} onChange={event => setFreightFee(event.target.value)} />
+                      </label>
+                    )}
+                  </div>
                 </div>
               </div>
               {!rescuedSale && customerId && <section className="b2b-credit-summary" aria-label="Crédito de devolução na compra">
@@ -1504,7 +1506,7 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
                   {customerId && <small>Tabela aplicada: {priceTable === 'premium' ? 'Premium' : priceTable === 'atacado' ? 'Atacado' : 'Varejo'}</small>}
                 </div>
                 <div className="pdv-form-section pdv-payment-section">
-                  <label style={{ display: 'block', marginBottom: '12px' }}>Forma de pagamento prevista
+                  <label>Forma de pagamento prevista
                     <select value={preSalePayment} onChange={event => setPreSalePayment(event.target.value)} disabled={isSaving || hasPendingSale || !isActive}>
                       <option value="">A definir</option><option value="pix">PIX</option>
                       <option value="dinheiro">Dinheiro</option><option value="cartao">Cartão</option><option value="faturado">Faturado</option>
@@ -1520,27 +1522,29 @@ function PreVendaTab({ products, customers, sales, salespeople, activeSalesperso
                   )}
                 </div>
                 <div className="pdv-form-section pdv-delivery-section">
-                  <label>
-                    Tipo de atendimento
-                    <div className="pdv-client-type-toggle">
-                      {(['balcao', 'entrega', 'retirada'] as DeliveryType[]).map((type) => (
-                        <button
-                          key={type}
-                          type="button"
-                          className={`price-toggle-btn ${deliveryType === type ? 'active' : ''}`}
-                          onClick={() => setDeliveryType(type)}
-                        >
-                          {type === 'balcao' ? 'Balcão' : type === 'entrega' ? 'Entrega' : 'Retirada'}
-                        </button>
-                      ))}
-                    </div>
-                  </label>
-                  {deliveryType === 'entrega' && (
-                    <label>Frete terceirizado (R$)
+                  <div className="pdv-delivery-fields">
+                    <label>
+                      Tipo de atendimento
+                      <div className="pdv-client-type-toggle">
+                        {(['balcao', 'entrega', 'retirada'] as DeliveryType[]).map((type) => (
+                          <button
+                            key={type}
+                            type="button"
+                            className={`price-toggle-btn ${deliveryType === type ? 'active' : ''}`}
+                            onClick={() => setDeliveryType(type)}
+                          >
+                            {type === 'balcao' ? 'Balcão' : type === 'entrega' ? 'Entrega' : 'Retirada'}
+                          </button>
+                        ))}
+                      </div>
+                    </label>
+                    {deliveryType === 'entrega' && (
+                      <label>Frete terceirizado (R$)
                         <input type="number" min="0" max="99999999.99" step="0.01" inputMode="decimal" aria-label="Frete terceirizado" aria-invalid={!validSalePrice(freightAmount)} value={freightFee} onChange={event => setFreightFee(event.target.value)} />
                         <small>Recebido para repasse ao entregador. Não compõe o faturamento.</small>
                       </label>
-                  )}
+                    )}
+                  </div>
                 </div>
               </div>
 
