@@ -364,3 +364,123 @@ test('owner identity is resolved before collaborator identity and is not an assi
   assert.match(migration, /deny_direct_salespeople_(insert|update|delete)/);
   assert.match(migration, /Somente o proprietário pode alterar os acessos da equipe/);
 });
+
+test('collaborator administration, operator selection and company isolation are enforced server-side', async () => {
+  const db = new PGlite();
+  const u = n => `00000000-0000-0000-0000-00000000000${n}`;
+  const [owner, otherOwner, admin, manager, seller, seller2, otherStaff] = [1, 2, 3, 4, 5, 6, 7].map(u);
+  const main = '20000000-0000-0000-0000-000000000001';
+  const second = '20000000-0000-0000-0000-000000000002';
+  const foreign = '20000000-0000-0000-0000-000000000004';
+  const call = (...args) => db.query(
+    'SELECT * FROM public.execute_partner_salesperson_mutation($1,$2,$3,0,NULL,NULL,true,$4,$5,$6,NULL)',
+    args,
+  );
+  try {
+    await db.exec(`
+      CREATE ROLE anon; CREATE ROLE authenticated; CREATE SCHEMA auth;
+      CREATE TABLE auth.users(id uuid PRIMARY KEY);
+      CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$
+        SELECT NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
+      CREATE SCHEMA partner_subscription_private;
+      CREATE FUNCTION partner_subscription_private.require_operator_module(text, uuid)
+        RETURNS void LANGUAGE plpgsql AS $$ BEGIN RETURN; END $$;
+      CREATE TABLE public.partner_profiles(id uuid PRIMARY KEY REFERENCES auth.users(id));
+      CREATE TABLE public.partner_branches(id uuid PRIMARY KEY, user_id uuid NOT NULL REFERENCES public.partner_profiles(id),
+        name text NOT NULL, is_active boolean NOT NULL DEFAULT true, UNIQUE(id,user_id));
+      CREATE TABLE public.partner_salespeople(id uuid PRIMARY KEY, user_id uuid NOT NULL REFERENCES public.partner_profiles(id),
+        name text NOT NULL, role text NOT NULL, active boolean NOT NULL DEFAULT true, branch_id uuid, auth_user_id uuid,
+        pin_hash text, commission_rate numeric DEFAULT 0, email text, phone text, pin text,
+        created_at timestamptz DEFAULT now(), blocked_modules text[] NOT NULL DEFAULT '{}', UNIQUE(id,user_id));
+      CREATE TABLE public.partner_sales(id uuid PRIMARY KEY, user_id uuid, branch_id uuid, salesperson_id uuid);
+      CREATE TABLE public.partner_products(id uuid PRIMARY KEY, user_id uuid, branch_id uuid, name text);
+      CREATE TABLE public.partner_customers(id uuid PRIMARY KEY, user_id uuid, branch_id uuid, name text);
+      CREATE TABLE public.partner_stock_movements(id uuid PRIMARY KEY, user_id uuid, branch_id uuid, product_id uuid);
+      CREATE TABLE public.stock_movements(id uuid PRIMARY KEY, user_id uuid, branch_id uuid, product_id uuid);
+      CREATE TABLE public.partner_cash_sessions(id uuid PRIMARY KEY, user_id uuid, branch_id uuid);
+      CREATE TABLE public.catalog_orders(id uuid PRIMARY KEY, user_id uuid, branch_id uuid);
+      CREATE TABLE public.service_orders(id uuid PRIMARY KEY, user_id uuid, branch_id uuid);
+      CREATE TABLE public.partner_audit_logs(id text, user_id uuid, actor_name text, actor_role text, action text,
+        entity_type text, entity_id text, details text);
+      CREATE FUNCTION public.verify_partner_salesperson_pin(text, text) RETURNS boolean LANGUAGE sql AS $$ SELECT $1 = '1234' $$;
+      ALTER TABLE public.partner_salespeople ENABLE ROW LEVEL SECURITY;
+      ALTER TABLE public.partner_branches ENABLE ROW LEVEL SECURITY;
+      GRANT SELECT ON public.partner_salespeople, public.partner_branches TO authenticated;
+      CREATE POLICY t1 ON public.partner_salespeople FOR SELECT TO authenticated USING (true);
+      CREATE POLICY t2 ON public.partner_branches FOR SELECT TO authenticated USING (true);
+      INSERT INTO auth.users(id) VALUES ('${owner}'),('${otherOwner}'),('${admin}'),('${manager}'),('${seller}'),('${seller2}'),('${otherStaff}');
+      INSERT INTO public.partner_profiles(id) VALUES ('${owner}'),('${otherOwner}');
+      INSERT INTO public.partner_branches(id,user_id,name) VALUES
+        ('${main}','${owner}','Principal'),('${second}','${owner}','Segunda'),('${foreign}','${otherOwner}','Outra');
+      INSERT INTO public.partner_salespeople(id,user_id,name,role,active,branch_id,auth_user_id,pin_hash) VALUES
+        ('${admin}','${owner}','Admin','administrador',true,'${main}','${admin}','h'),
+        ('${manager}','${owner}','Gerente','gerente',true,'${main}','${manager}','h'),
+        ('${seller}','${owner}','Vendedor','vendedor',true,'${main}','${seller}','h'),
+        ('${seller2}','${owner}','Vendedor 2','vendedor',true,'${second}','${seller2}','h'),
+        ('${otherStaff}','${otherOwner}','Externo','vendedor',true,'${foreign}','${otherStaff}','h');
+    `);
+    await db.exec(migration);
+    // Re-applying the migration must be idempotent.
+    await db.exec(migration);
+    const setAuth = async id => {
+      await db.exec('RESET ROLE');
+      await db.query(`SELECT set_config('request.jwt.claim.sub', $1, false)`, [id]);
+      await db.exec('SET ROLE authenticated');
+    };
+
+    // Admin manages a collaborator of their own branch.
+    await setAuth(admin);
+    const ok = await call(seller, 'Vendedor X', 'vendedor', main, admin, '1234');
+    assert.equal(ok.rows[0].name, 'Vendedor X');
+    // ...but cannot pull a collaborator from another branch, edit self, or touch administrators.
+    await assert.rejects(call(seller2, 'Vendedor 2', 'vendedor', main, admin, '1234'), /Acesso negado/);
+    await assert.rejects(call(seller, 'Vendedor', 'vendedor', second, admin, '1234'), /Acesso negado/);
+    await assert.rejects(call(admin, 'Admin', 'administrador', main, admin, '1234'), /próprio acesso/);
+    await assert.rejects(call(seller, 'Vendedor', 'administrador', main, admin, '1234'), /Somente o proprietário/);
+    await assert.rejects(call(null, 'Novo Admin', 'administrador', main, admin, '1234'), /Somente o proprietário/);
+    // A PIN or operator id belonging to someone else never replaces the session.
+    await assert.rejects(call(seller, 'Vendedor', 'vendedor', main, manager, '1234'), /Acesso negado|Operador inválido/);
+    await assert.rejects(call(seller, 'Vendedor', 'vendedor', main, owner, '1234'), /Acesso negado|Operador inválido/);
+    // Cross-company rows are indistinguishable from missing rows.
+    await assert.rejects(call(otherStaff, 'Hack', 'vendedor', main, admin, '1234'), /não encontrado nesta empresa/);
+    await assert.rejects(call(null, 'Novo', 'vendedor', foreign, admin, '1234'), /Acesso negado|não pertence/);
+    // Admin cannot self-grant extra branches.
+    await assert.rejects(
+      db.query('SELECT public.set_partner_admin_branch_access($1,$2,false,true)', [admin, second]),
+      /Somente o proprietário autenticado/,
+    );
+
+    // Managers cannot touch administrators.
+    await setAuth(manager);
+    await assert.rejects(call(admin, 'Admin', 'gerente', main, manager, '1234'), /Somente o proprietário/);
+    const mgrOk = await call(seller, 'Vendedor Y', 'vendedor', main, manager, '1234');
+    assert.equal(mgrOk.rows[0].name, 'Vendedor Y');
+
+    // Owner manages administrators without a PIN, and an operator id does not change the session.
+    await setAuth(owner);
+    const promoted = await call(seller, 'Vendedor Y', 'administrador', main, seller, 'qualquer');
+    assert.equal(promoted.rows[0].role, 'administrador');
+    const sel = await db.query('SELECT * FROM public.resolve_partner_operator($1,$2,$3)', [manager, '1234', main]);
+    assert.equal(sel.rows[0].role, 'gerente');
+    await assert.rejects(call(otherStaff, 'Hack', 'vendedor', foreign, null, null), /não encontrado nesta empresa/);
+
+    // Another company's owner cannot modify or grant on this company.
+    await setAuth(otherOwner);
+    await assert.rejects(call(seller2, 'Hack', 'vendedor', foreign, null, null), /não encontrado nesta empresa/);
+    await assert.rejects(
+      db.query('SELECT public.set_partner_admin_branch_access($1,$2,false,true)', [admin, second]),
+      /Somente|não|Administrador/i,
+    );
+    await setAuth(owner);
+    const rows = await db.query("SELECT count(*)::int AS n FROM public.partner_salespeople WHERE user_id=$1", [otherOwner]);
+    assert.equal(rows.rows[0].n, 0);
+    // Branch requirement trigger is part of this migration.
+    await db.exec('RESET ROLE');
+    await assert.rejects(
+      db.query("INSERT INTO public.partner_salespeople(id,user_id,name,role,branch_id) VALUES ('10000000-0000-0000-0000-0000000000aa',$1,'X','vendedor',NULL)", [owner]),
+      /filial/,
+    );
+  } finally {
+    await db.close();
+  }
+});

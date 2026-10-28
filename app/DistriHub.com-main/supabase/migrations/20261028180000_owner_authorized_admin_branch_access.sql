@@ -8,7 +8,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS partner_salespeople_id_user_id_uidx
 CREATE UNIQUE INDEX IF NOT EXISTS partner_branches_id_user_id_uidx
   ON public.partner_branches(id, user_id);
 
-CREATE TABLE public.partner_admin_branch_access (
+CREATE TABLE IF NOT EXISTS public.partner_admin_branch_access (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   company_id uuid NOT NULL REFERENCES public.partner_profiles(id) ON DELETE RESTRICT,
   salesperson_id uuid NOT NULL,
@@ -27,18 +27,19 @@ CREATE TABLE public.partner_admin_branch_access (
     REFERENCES public.partner_branches(id, user_id) ON DELETE RESTRICT
 );
 
-CREATE UNIQUE INDEX partner_admin_branch_access_active_branch_uidx
+CREATE UNIQUE INDEX IF NOT EXISTS partner_admin_branch_access_active_branch_uidx
   ON public.partner_admin_branch_access(company_id, salesperson_id, branch_id)
   WHERE revoked_at IS NULL AND branch_id IS NOT NULL;
-CREATE UNIQUE INDEX partner_admin_branch_access_active_all_uidx
+CREATE UNIQUE INDEX IF NOT EXISTS partner_admin_branch_access_active_all_uidx
   ON public.partner_admin_branch_access(company_id, salesperson_id)
   WHERE revoked_at IS NULL AND all_branches;
-CREATE INDEX partner_admin_branch_access_history_idx
+CREATE INDEX IF NOT EXISTS partner_admin_branch_access_history_idx
   ON public.partner_admin_branch_access(company_id, salesperson_id, granted_at DESC);
 
 ALTER TABLE public.partner_admin_branch_access ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.partner_admin_branch_access FROM PUBLIC, anon, authenticated;
 GRANT SELECT ON TABLE public.partner_admin_branch_access TO authenticated;
+DROP POLICY IF EXISTS partner_admin_branch_access_owner_read ON public.partner_admin_branch_access;
 CREATE POLICY partner_admin_branch_access_owner_read
   ON public.partner_admin_branch_access
   FOR SELECT TO authenticated
@@ -103,6 +104,26 @@ DROP TRIGGER IF EXISTS revoke_admin_branch_access_on_demotion ON public.partner_
 CREATE TRIGGER revoke_admin_branch_access_on_demotion
   AFTER UPDATE OF role ON public.partner_salespeople
   FOR EACH ROW EXECUTE FUNCTION public.revoke_admin_branch_access_on_demotion();
+
+-- Self-contained copy of the branch requirement from 20261028130000; it only
+-- validates future inserts/branch changes and never rewrites existing rows.
+CREATE OR REPLACE FUNCTION public.require_partner_salesperson_branch()
+RETURNS trigger
+LANGUAGE plpgsql SET search_path = ''
+AS $$
+BEGIN
+  IF NEW.branch_id IS NULL THEN
+    RAISE EXCEPTION 'Cada colaborador precisa estar vinculado a uma filial.';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.require_partner_salesperson_branch()
+  FROM PUBLIC, anon, authenticated;
+DROP TRIGGER IF EXISTS require_partner_salesperson_branch ON public.partner_salespeople;
+CREATE TRIGGER require_partner_salesperson_branch
+  BEFORE INSERT OR UPDATE OF branch_id ON public.partner_salespeople
+  FOR EACH ROW EXECUTE FUNCTION public.require_partner_salesperson_branch();
 
 CREATE OR REPLACE FUNCTION public.partner_employee_can_access_branch(
   p_company_id uuid, p_branch_id uuid
@@ -486,14 +507,20 @@ CREATE OR REPLACE FUNCTION public.execute_partner_salesperson_mutation(
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
 AS $$
 DECLARE
+  v_auth uuid := (SELECT auth.uid());
+  v_is_owner boolean;
   v_operator record;
+  v_company_id uuid;
+  v_actor_id uuid;
+  v_actor_role text;
   v_target_id uuid := COALESCE(p_salesperson_id, pg_catalog.gen_random_uuid());
   v_existing_user_id uuid;
   v_existing_role text;
+  v_existing_branch uuid;
   v_pin_hash text;
   v_result public.partner_salespeople;
 BEGIN
-  IF (SELECT auth.uid()) IS NULL THEN RAISE EXCEPTION 'Não autenticado.'; END IF;
+  IF v_auth IS NULL THEN RAISE EXCEPTION 'Não autenticado.'; END IF;
   IF p_name IS NULL OR pg_catalog.btrim(p_name) = '' THEN
     RAISE EXCEPTION 'Nome do colaborador é obrigatório.';
   END IF;
@@ -502,28 +529,51 @@ BEGIN
   ) THEN RAISE EXCEPTION 'Função/permissão inválida.'; END IF;
   IF p_branch_id IS NULL THEN RAISE EXCEPTION 'Cada colaborador precisa de uma filial principal.'; END IF;
 
-  SELECT * INTO v_operator
-  FROM public.resolve_partner_operator(p_operator_id, p_operator_pin, p_branch_id);
-  IF v_operator.role NOT IN ('administrador','gerente') THEN
-    RAISE EXCEPTION 'Acesso negado: apenas administradores ou gerentes podem gerenciar colaboradores.';
+  -- The caller is always the authenticated session; the operator id/PIN never
+  -- replaces it, and the owner is recognised only by partner_profiles.id.
+  SELECT EXISTS (
+    SELECT 1 FROM public.partner_profiles p WHERE p.id = v_auth
+  ) INTO v_is_owner;
+  IF v_is_owner THEN
+    v_company_id := v_auth;
+    v_actor_role := 'administrador';
+  ELSE
+    SELECT * INTO v_operator
+    FROM public.resolve_partner_operator(p_operator_id, p_operator_pin, p_branch_id);
+    IF v_operator.role NOT IN ('administrador','gerente') THEN
+      RAISE EXCEPTION 'Acesso negado: apenas administradores ou gerentes podem gerenciar colaboradores.';
+    END IF;
+    v_company_id := v_operator.company_id;
+    v_actor_id := v_operator.salesperson_id;
+    v_actor_role := v_operator.role;
   END IF;
 
-  SELECT sp.user_id, sp.role INTO v_existing_user_id, v_existing_role
+  SELECT sp.user_id, sp.role, sp.branch_id
+  INTO v_existing_user_id, v_existing_role, v_existing_branch
   FROM public.partner_salespeople sp
-  WHERE sp.id = v_target_id
+  WHERE sp.id = v_target_id AND sp.user_id = v_company_id
   FOR UPDATE;
   IF p_salesperson_id IS NOT NULL AND NOT FOUND THEN
     RAISE EXCEPTION 'Colaborador não encontrado nesta empresa.';
   END IF;
-  IF v_existing_user_id IS NOT NULL AND v_existing_user_id <> v_operator.company_id THEN
-    RAISE EXCEPTION 'Acesso negado: colaborador pertence a outra empresa.';
+
+  IF NOT v_is_owner THEN
+    IF p_salesperson_id IS NOT NULL AND p_salesperson_id = v_actor_id THEN
+      RAISE EXCEPTION 'Você não pode alterar o próprio acesso.';
+    END IF;
+    IF p_role = 'administrador' OR v_existing_role = 'administrador' THEN
+      RAISE EXCEPTION 'Somente o proprietário pode criar, promover ou alterar administradores.';
+    END IF;
+    IF v_existing_user_id IS NOT NULL AND (
+      v_existing_branch IS NULL
+      OR NOT public.partner_salesperson_has_branch_access(
+        v_company_id, v_actor_id, v_existing_branch
+      )
+    ) THEN RAISE EXCEPTION 'Acesso negado à filial atual do colaborador.'; END IF;
   END IF;
-  IF v_operator.role = 'gerente' AND (
-    p_role = 'administrador' OR v_existing_role = 'administrador'
-  ) THEN RAISE EXCEPTION 'Gerentes não podem criar, promover ou alterar administradores.'; END IF;
   IF NOT EXISTS (
     SELECT 1 FROM public.partner_branches b
-    WHERE b.id = p_branch_id AND b.user_id = v_operator.company_id AND b.is_active = true
+    WHERE b.id = p_branch_id AND b.user_id = v_company_id AND b.is_active = true
   ) THEN RAISE EXCEPTION 'Filial informada não pertence à empresa ou está inativa.'; END IF;
 
   IF p_new_pin IS NOT NULL THEN
@@ -535,7 +585,7 @@ BEGIN
     INSERT INTO public.partner_salespeople (
       id,user_id,name,role,commission_rate,branch_id,active,email,phone,pin,pin_hash,created_at
     ) VALUES (
-      v_target_id,v_operator.company_id,pg_catalog.btrim(p_name),p_role,
+      v_target_id,v_company_id,pg_catalog.btrim(p_name),p_role,
       COALESCE(p_commission_rate,0),p_branch_id,COALESCE(p_is_active,true),
       NULLIF(pg_catalog.btrim(COALESCE(p_email,'')), ''),
       NULLIF(pg_catalog.btrim(COALESCE(p_phone,'')), ''),
@@ -552,13 +602,13 @@ BEGIN
         phone = CASE WHEN p_phone IS NULL THEN phone ELSE NULLIF(pg_catalog.btrim(p_phone), '') END,
         pin = CASE WHEN p_new_pin IS NOT NULL THEN NULL ELSE pin END,
         pin_hash = COALESCE(v_pin_hash, pin_hash)
-    WHERE id = v_target_id AND user_id = v_operator.company_id
+    WHERE id = v_target_id AND user_id = v_company_id
     RETURNING * INTO v_result;
   END IF;
 
   IF v_existing_user_id IS NULL THEN
     SELECT * INTO v_result FROM public.partner_salespeople
-    WHERE id = v_target_id AND user_id = v_operator.company_id;
+    WHERE id = v_target_id AND user_id = v_company_id;
   END IF;
   IF NOT FOUND THEN RAISE EXCEPTION 'Não foi possível salvar o colaborador.'; END IF;
 
@@ -566,9 +616,9 @@ BEGIN
     id,user_id,actor_name,actor_role,action,entity_type,entity_id,details
   ) VALUES (
     'audit-' || pg_catalog.gen_random_uuid()::text,
-    v_operator.company_id,
-    COALESCE((SELECT sp.name FROM public.partner_salespeople sp WHERE sp.id = v_operator.salesperson_id), 'Proprietário'),
-    v_operator.role,
+    v_company_id,
+    COALESCE((SELECT sp.name FROM public.partner_salespeople sp WHERE sp.id = v_actor_id), 'Proprietário'),
+    v_actor_role,
     CASE WHEN v_existing_user_id IS NULL THEN 'Colaborador Criado' ELSE 'Colaborador Atualizado' END,
     'colaborador',v_target_id::text,
     'Colaborador ' || pg_catalog.btrim(p_name) || ' (' || p_role || ')'
