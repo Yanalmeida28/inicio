@@ -34,7 +34,6 @@ type Props = {
   suppliersReady?: boolean;
   findProductDuplicates: (name: string, branchId: string) => Promise<PartnerProduct[]>;
   canManageSalespeople?: boolean;
-  canGrantAllBranches?: boolean;
   adminTarget?: string;
   initialTab?: SubTab;
   isActive?: boolean;
@@ -105,7 +104,6 @@ function getActionPopoverPosition(event: React.MouseEvent<HTMLButtonElement>, wi
 export function CadastrosModule({
   adminTarget,
   canManageSalespeople = false,
-  canGrantAllBranches = false,
   findProductDuplicates,
   initialTab = 'produtos', productType = 'todos',
   isActive = true, onDataScopeChange, suppliersReady = true,
@@ -226,7 +224,6 @@ export function CadastrosModule({
             salespeople={salespeople}
             branches={branches}
             selectedBranchId={selectedBranchId}
-            canGrantAllBranches={canGrantAllBranches}
             onAdd={onAddSalesperson}
             onUpdate={onUpdateSalesperson}
             onDelete={onDeleteSalesperson}
@@ -1959,7 +1956,6 @@ function SalespeopleSubTab({
   salespeople,
   branches,
   selectedBranchId,
-  canGrantAllBranches,
   onAdd,
   onUpdate,
   onDelete,
@@ -1967,7 +1963,6 @@ function SalespeopleSubTab({
   salespeople: PartnerSalesperson[];
   branches: PartnerBranch[];
   selectedBranchId: string | null;
-  canGrantAllBranches: boolean;
   onAdd: (
     sp: Omit<PartnerSalesperson, 'id' | 'user_id' | 'created_at'>
   ) => Promise<PartnerSalesperson>;
@@ -2031,8 +2026,8 @@ function SalespeopleSubTab({
       );
       return;
     }
-    if (!branchId && !canGrantAllBranches) {
-      setFormError('Somente o proprietário pode conceder acesso a todas as filiais.');
+    if (!branchId) {
+      setFormError('Selecione a filial em que o colaborador poderá acessar o sistema.');
       return;
     }
 
@@ -2118,9 +2113,8 @@ function SalespeopleSubTab({
       );
       return;
     }
-    const editedSalesperson = salespeople.find(salesperson => salesperson.id === id);
-    if (!editBranchId && editedSalesperson?.branch_id && !canGrantAllBranches) {
-      setEditError('Somente o proprietário pode conceder acesso a todas as filiais.');
+    if (!editBranchId) {
+      setEditError('Selecione uma filial para este colaborador.');
       return;
     }
 
@@ -2253,7 +2247,7 @@ function SalespeopleSubTab({
               }
             >
               <option value="administrador">
-                Administrador (Acesso Total)
+                Administrador (Permissões administrativas da filial)
               </option>
               <option value="gerente">
                 Gerente (Operacional & Vendas)
@@ -2279,17 +2273,13 @@ function SalespeopleSubTab({
           <label>
             Filial Vinculada
             <select
+              required
               value={branchId}
               onChange={(e) =>
                 setBranchId(e.target.value)
               }
             >
-              {canGrantAllBranches && (
-                <option value="">
-                  Todas as Filiais (Acesso Livre / Admin)
-                </option>
-              )}
-
+              <option value="" disabled>Selecione uma filial</option>
               {branches.map((branch) => (
                 <option
                   key={branch.id}
@@ -2415,10 +2405,11 @@ function SalespeopleSubTab({
                               Filial vinculada
                               <select
                                 className="rma-edit-input"
+                                required
                                 value={editBranchId}
                                 onChange={event => setEditBranchId(event.target.value)}
                               >
-                                {canGrantAllBranches && <option value="">Todas as filiais</option>}
+                                <option value="" disabled>Selecione uma filial</option>
                                 {branches.map(branch => (
                                   <option key={branch.id} value={branch.id}>
                                     {branch.name}

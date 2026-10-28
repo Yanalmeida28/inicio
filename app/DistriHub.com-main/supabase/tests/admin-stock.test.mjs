@@ -57,8 +57,8 @@ test('editar colaborador conserva bloqueios, permite escolher módulos e respeit
   const calls = [];
   let renderer;
   await act(async () => { renderer = TestRenderer.create(React.createElement(exports.CadastrosModule, {
-    adminTarget: 'vendedores', initialTab: 'vendedores', branches: [],
-    salespeople: [{id:'employee',name:'Funcionário',email:'employee@example.test',role:'vendedor',commission_rate:0,active:true,blocked_modules:['pdv']}],
+    adminTarget: 'vendedores', initialTab: 'vendedores', branches: [{id:'branch',name:'Filial'}],
+    salespeople: [{id:'employee',name:'Funcionário',email:'employee@example.test',role:'vendedor',commission_rate:0,active:true,branch_id:'branch',blocked_modules:['pdv']}],
     onUpdateSalesperson: async (...args) => calls.push(args),
   })); });
   await act(async () => renderer.root.findByProps({title:'Editar'}).props.onClick());

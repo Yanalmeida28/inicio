@@ -394,7 +394,7 @@ export function PartnerPanel({
     : null;
 
   const effectiveBranchId =
-    lockedBranchId ?? selectedBranchId;
+    isEmployeeRestricted ? lockedBranchId ?? '' : selectedBranchId;
   const operatorContextRef = useRef('');
   operatorContextRef.current = JSON.stringify([identity?.authUserId, identity?.companyUserId, effectiveBranchId, identity?.salespersonId]);
   useEffect(() => {
@@ -1674,6 +1674,18 @@ export function PartnerPanel({
     );
   }
 
+  if (isEmployeeRestricted && !identity?.branchId) {
+    return (
+      <div className="partner-panel">
+        <section className="module-card" role="alert">
+          <h3>Filial não vinculada</h3>
+          <p>Seu acesso precisa estar vinculado a uma filial. Peça ao proprietário para atualizar seu cadastro antes de continuar.</p>
+        </section>
+        <button type="button" className="rma-advance-btn" onClick={onBack}>Sair da conta</button>
+      </div>
+    );
+  }
+
   if (identity && !deviceSession.ready) {
     return <DeviceAccessGate companyId={identity.companyUserId} branchId={identity.salespersonId ? identity.branchId ?? '' : selectedBranchId}
       error={deviceSession.error} onBranchChange={setSelectedBranchId} onRetry={deviceSession.retry} onLogout={onBack} />;
@@ -1724,7 +1736,6 @@ export function PartnerPanel({
                 key={target ?? 'principal'}
                 isActive={activeTab === (target ? 'administrativo' : 'cadastros')}
                 canManageSalespeople={Boolean(identity && !identity.salespersonId)}
-                canGrantAllBranches={Boolean(identity && !identity.salespersonId)}
                 findProductDuplicates={partner.findProductDuplicates}
                 onDataScopeChange={setCadastroDataScope}
                 suppliersReady={partner.suppliersReady}
@@ -2709,9 +2720,7 @@ export function PartnerPanel({
                   }
                 >
                   <option value="owner">
-                    Proprietário /
-                    Administrador Geral
-                    (Acesso Livre)
+                    Proprietário (acesso a todas as filiais)
                   </option>
 
                   {partner.salespeople.map(
@@ -2726,7 +2735,7 @@ export function PartnerPanel({
                       const branchText =
                         spBranch
                           ? `Filial: ${spBranch.name}`
-                          : 'Acesso a Todas as Filiais';
+                          : 'Sem filial vinculada — acesso bloqueado';
 
                       return (
                         <option
@@ -2736,6 +2745,7 @@ export function PartnerPanel({
                           value={
                             salesperson.id
                           }
+                          disabled={!salesperson.branch_id}
                         >
                           {salesperson.name}{' '}
                           (

@@ -33,6 +33,7 @@ before(async () => {
   await db.exec('CREATE VIEW public.admin_financial_months AS SELECT 1 AS financial_total');
   await db.exec('GRANT SELECT ON public.admin_financial_months TO anon, authenticated');
   await db.exec(await read('../migrations/20260928044542_fix_pdv_sales_reconciliation.sql'));
+  await db.exec(await read('../migrations/20261028130000_enforce_owner_only_cross_branch_access.sql'));
   await db.exec(await read('../migrations/20260928195329_enforce_pdv_authoritative_pricing.sql'));
   await db.exec(await read('../migrations/20260826110000_add_fiscal_documents_foundation.sql'));
   await db.exec(await read('../migrations/20260826150000_add_fiscal_rules_and_inutilizations.sql'));
@@ -702,6 +703,56 @@ test('invalid precision, negative amounts and withdrawals exceeding available ca
   await assert.rejects(mutate('abrir',1.001),/Valor inválido/);
   const session=await mutate('abrir',10);
   await assert.rejects(mutate('movimentar',11,{session,kind:'sangria',reason:'Retirada'}),/disponível/);
+});
+
+test('only the owner can switch branches; administrator employees stay on their assigned branch', async () => {
+  const secondBranch = randomUUID();
+  const secondProduct = randomUUID();
+  await sql('INSERT INTO partner_branches(id,user_id,name) VALUES($1,$2,\'Second\')', [secondBranch, owner]);
+  await sql("INSERT INTO partner_products(id,user_id,branch_id,name,stock,is_service) VALUES($1,$2,$3,'Other branch product',4,false)", [secondProduct, owner, secondBranch]);
+  await sql("UPDATE partner_salespeople SET role='administrador' WHERE id=$1", [employee]);
+
+  await login(employeeAuth);
+  const employeeData = (await sql('SELECT read_partner_cash_register($1) AS data', [branch])).rows[0].data;
+  assert.equal(employeeData.actor_key, employee);
+  assert.equal((await sql('SELECT public.partner_employee_can_access_branch($1,$2) AS allowed', [owner, branch])).rows[0].allowed, true);
+  await assert.rejects(sql('SELECT read_partner_cash_register($1) AS data', [secondBranch]), /Acesso negado a filial/);
+
+  await db.exec('ALTER TABLE partner_branches ENABLE ROW LEVEL SECURITY; ALTER TABLE partner_products ENABLE ROW LEVEL SECURITY; GRANT SELECT ON partner_branches,partner_products TO authenticated; SET ROLE authenticated');
+  try {
+    const employeeBranches = (await sql('SELECT id FROM partner_branches ORDER BY id')).rows.map(row => row.id);
+    const employeeProducts = (await sql('SELECT id FROM partner_products ORDER BY id')).rows.map(row => row.id);
+    assert.deepEqual(employeeBranches, [branch]);
+    assert.deepEqual(employeeProducts, [product]);
+    await login(owner);
+    const ownerBranches = (await sql('SELECT id FROM partner_branches ORDER BY id')).rows.map(row => row.id);
+    assert.deepEqual(ownerBranches.sort(), [branch, secondBranch].sort());
+  } finally {
+    await db.exec('RESET ROLE; ALTER TABLE partner_branches DISABLE ROW LEVEL SECURITY; ALTER TABLE partner_products DISABLE ROW LEVEL SECURITY');
+  }
+});
+
+test('unassigned administrator employee cannot access any branch', async () => {
+  await db.exec('ALTER TABLE partner_salespeople DISABLE TRIGGER require_partner_salesperson_branch');
+  await sql("UPDATE partner_salespeople SET role='administrador', branch_id=NULL WHERE id=$1", [employee]);
+  await db.exec('ALTER TABLE partner_salespeople ENABLE TRIGGER require_partner_salesperson_branch');
+  await login(employeeAuth);
+  await assert.rejects(sql('SELECT read_partner_cash_register($1)', [branch]), /Acesso negado a filial/);
+  assert.equal(
+    (await sql('SELECT public.partner_employee_can_access_branch($1,$2) AS allowed', [owner, branch])).rows[0].allowed,
+    false,
+  );
+});
+
+test('collaborators cannot be created or reassigned without a branch', async () => {
+  await assert.rejects(
+    sql("INSERT INTO partner_salespeople(id,user_id,role,active) VALUES($1,$2,'administrador',true)", [randomUUID(), owner]),
+    /Cada colaborador precisa estar vinculado a uma filial/,
+  );
+  await assert.rejects(
+    sql('UPDATE partner_salespeople SET branch_id=NULL WHERE id=$1', [employee]),
+    /Cada colaborador precisa estar vinculado a uma filial/,
+  );
 });
 
 test('manager reads branch history across operators while cashier sees only own cash', async () => {
