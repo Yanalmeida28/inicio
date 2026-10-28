@@ -34,6 +34,7 @@ type Props = {
   suppliersReady?: boolean;
   findProductDuplicates: (name: string, branchId: string) => Promise<PartnerProduct[]>;
   canManageSalespeople?: boolean;
+  canGrantAllBranches?: boolean;
   adminTarget?: string;
   initialTab?: SubTab;
   isActive?: boolean;
@@ -104,6 +105,7 @@ function getActionPopoverPosition(event: React.MouseEvent<HTMLButtonElement>, wi
 export function CadastrosModule({
   adminTarget,
   canManageSalespeople = false,
+  canGrantAllBranches = false,
   findProductDuplicates,
   initialTab = 'produtos', productType = 'todos',
   isActive = true, onDataScopeChange, suppliersReady = true,
@@ -223,6 +225,8 @@ export function CadastrosModule({
           <SalespeopleSubTab
             salespeople={salespeople}
             branches={branches}
+            selectedBranchId={selectedBranchId}
+            canGrantAllBranches={canGrantAllBranches}
             onAdd={onAddSalesperson}
             onUpdate={onUpdateSalesperson}
             onDelete={onDeleteSalesperson}
@@ -1954,12 +1958,16 @@ const roleColors: Record<SalespersonRole, string> = {
 function SalespeopleSubTab({
   salespeople,
   branches,
+  selectedBranchId,
+  canGrantAllBranches,
   onAdd,
   onUpdate,
   onDelete,
 }: {
   salespeople: PartnerSalesperson[];
   branches: PartnerBranch[];
+  selectedBranchId: string | null;
+  canGrantAllBranches: boolean;
   onAdd: (
     sp: Omit<PartnerSalesperson, 'id' | 'user_id' | 'created_at'>
   ) => Promise<PartnerSalesperson>;
@@ -2000,6 +2008,13 @@ function SalespeopleSubTab({
   const [editError, setEditError] =
     useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const visibleSalespeople = selectedBranchId
+    ? salespeople.filter(salesperson => salesperson.branch_id === selectedBranchId)
+    : salespeople;
+
+  useEffect(() => {
+    setBranchId(selectedBranchId ?? '');
+  }, [selectedBranchId, setBranchId]);
 
   async function handleSubmit(
     e: React.FormEvent
@@ -2014,6 +2029,10 @@ function SalespeopleSubTab({
       setFormError(
         'Informe o nome do colaborador.'
       );
+      return;
+    }
+    if (!branchId && !canGrantAllBranches) {
+      setFormError('Somente o proprietário pode conceder acesso a todas as filiais.');
       return;
     }
 
@@ -2045,7 +2064,7 @@ function SalespeopleSubTab({
       setRate('');
       setPin('');
       setRole('vendedor');
-      setBranchId('');
+      setBranchId(selectedBranchId ?? '');
     } catch (error) {
       setFormError(
         error instanceof Error
@@ -2097,6 +2116,11 @@ function SalespeopleSubTab({
       setEditError(
         'Informe o nome do colaborador.'
       );
+      return;
+    }
+    const editedSalesperson = salespeople.find(salesperson => salesperson.id === id);
+    if (!editBranchId && editedSalesperson?.branch_id && !canGrantAllBranches) {
+      setEditError('Somente o proprietário pode conceder acesso a todas as filiais.');
       return;
     }
 
@@ -2260,9 +2284,11 @@ function SalespeopleSubTab({
                 setBranchId(e.target.value)
               }
             >
-              <option value="">
-                Todas as Filiais (Acesso Livre / Admin)
-              </option>
+              {canGrantAllBranches && (
+                <option value="">
+                  Todas as Filiais (Acesso Livre / Admin)
+                </option>
+              )}
 
               {branches.map((branch) => (
                 <option
@@ -2321,7 +2347,7 @@ function SalespeopleSubTab({
           </thead>
 
           <tbody>
-            {salespeople.length === 0 ? (
+            {visibleSalespeople.length === 0 ? (
               <tr>
                 <td
                   colSpan={8}
@@ -2331,7 +2357,7 @@ function SalespeopleSubTab({
                 </td>
               </tr>
             ) : (
-              salespeople.map((salesperson) => {
+              visibleSalespeople.map((salesperson) => {
                 const branch =
                   branches.find(
                     (item) =>
@@ -2392,7 +2418,7 @@ function SalespeopleSubTab({
                                 value={editBranchId}
                                 onChange={event => setEditBranchId(event.target.value)}
                               >
-                                <option value="">Todas as filiais</option>
+                                {canGrantAllBranches && <option value="">Todas as filiais</option>}
                                 {branches.map(branch => (
                                   <option key={branch.id} value={branch.id}>
                                     {branch.name}
