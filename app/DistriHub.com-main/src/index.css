@@ -1582,6 +1582,21 @@ select option:hover, select option:checked { background: #1d3445; color: #ffffff
 .accounts-entry-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin: 16px 0; padding: 16px; border: 1px solid #29465f; border-radius: 8px; }
 .accounts-entry-form label { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .accounts-entry-form input, .accounts-entry-form select { width: 100%; min-height: 40px; padding: 8px; box-sizing: border-box; }
+.accounts-view-toggle { display: inline-flex; gap: 6px; }
+.accounts-kanban { display: grid; grid-template-columns: repeat(4, minmax(220px, 1fr)); gap: 12px; overflow-x: auto; padding-bottom: 8px; }
+.accounts-kanban-column { min-height: 180px; padding: 12px; border: 1px solid #1d3445; border-radius: 8px; background: #0b1925; }
+.accounts-kanban-column h5 { display: flex; justify-content: space-between; align-items: center; margin: 0 0 12px; color: #eaf1f6; font: 600 13px Manrope; }
+.accounts-kanban-column h5 span { padding: 2px 8px; border-radius: 12px; background: #1d3445; color: #adc2d6; font-size: 11px; }
+.accounts-kanban-empty { color: #adc2d6; font-size: 12px; text-align: center; }
+.accounts-kanban-card { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; padding: 12px; border: 1px solid #29465f; border-radius: 7px; background: #0e1d2b; color: #e2eaf0; }
+.accounts-kanban-card > strong { font-size: 13px; overflow-wrap: anywhere; }
+.accounts-kanban-card > small { color: #adc2d6; overflow-wrap: anywhere; }
+.accounts-kanban-card dl { display: grid; gap: 5px; margin: 4px 0; }
+.accounts-kanban-card dl div { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; }
+.accounts-kanban-card dt { color: #adc2d6; }
+.accounts-kanban-card dd { margin: 0; text-align: right; }
+.accounts-kanban-card form label { display: block; margin-bottom: 6px; font-size: 12px; }
+.accounts-kanban-card form input { display: block; width: 100%; min-height: 38px; margin-top: 4px; padding: 8px; box-sizing: border-box; }
 .admin-dre-bold td { font-weight: 700; color: #eaf1f6; border-top: 1px solid #1d3445; }
 .admin-dre-bold td:first-child { color: #7bc8ff; }
 .admin-inline-placeholder { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 50px 20px; text-align: center; color: #adc2d6; }

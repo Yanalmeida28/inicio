@@ -33,6 +33,7 @@ function AccountsScreen({ kind, invoices, payables, branches, suppliers, branchI
   useEffect(() => { if (!isActive) { setCreating(false); setPayment(null); } }, [isActive]);
   const pending = Boolean(recoveryError || payables.recoveryError || recoveries.length || payables.recoveries?.length);
   const [filter, setFilter] = useState('abertas');
+  const [view, setView] = useState<'table' | 'kanban'>('table');
   const [query, setQuery] = useState('');
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState({ description: '', creditor: '', category: 'outros', supplierId: '', branchId, amount: '', dueDate: '' });
@@ -52,6 +53,27 @@ function AccountsScreen({ kind, invoices, payables, branches, suppliers, branchI
   const open = accounts.reduce((sum, a) => sum + accountBalance(a), 0);
   const overdue = accounts.filter(a => isOverdue(a)).reduce((sum, a) => sum + accountBalance(a), 0);
   const paid = accounts.reduce((sum, a) => sum + accountPaid(a), 0);
+  const kanbanColumns = [
+    { key: 'open', title: 'Em aberto', accounts: visible.filter(a => accountBalance(a) > 0 && !isOverdue(a)) },
+    { key: 'overdue', title: 'Vencidas', accounts: visible.filter(a => isOverdue(a)) },
+    { key: 'paid', title: 'Quitadas', accounts: visible.filter(a => a.status === 'paga') },
+    { key: 'cancelled', title: 'Canceladas', accounts: visible.filter(a => a.status === 'cancelada') },
+  ];
+
+  function renderPaymentAction(account: (typeof accounts)[number]) {
+    if (accountBalance(account) <= 0 || (kind === 'receber' && !onReceive)) return null;
+    if (payment?.id !== account.id) {
+      return <button type="button" className="rma-advance-btn" disabled={busy || pending || !isActive} onClick={() => {
+        setPayment({ id: account.id, token: crypto.randomUUID(), amount: accountBalance(account).toFixed(2) });
+        setError('');
+      }}>{kind === 'pagar' ? 'Registrar pagamento' : 'Registrar recebimento'}</button>;
+    }
+    return <form onSubmit={confirmPayment}>
+      <label>Valor (R$)<input aria-label="Valor do pagamento ou recebimento" inputMode="decimal" required value={payment.amount} disabled={busy || pending || !isActive} onChange={e => setPayment({ ...payment, amount: e.target.value })} /></label>
+      <button className="module-submit-btn" disabled={busy || pending || !isActive}>{busy ? 'Registrando…' : 'Confirmar'}</button>{' '}
+      <button type="button" className="rma-advance-btn" disabled={busy || pending || !isActive} onClick={() => setPayment(null)}>Cancelar</button>
+    </form>;
+  }
 
   async function saveAccount(event: React.FormEvent) {
     event.preventDefault();
@@ -106,6 +128,10 @@ function AccountsScreen({ kind, invoices, payables, branches, suppliers, branchI
     <div className="orders-filter-row" style={{ margin: '16px 0', flexWrap: 'wrap' }}>
       {['abertas', 'vencidas', 'pagas', 'todas'].map(value => <button key={value} type="button" className={`rma-advance-btn ${filter === value ? 'active' : ''}`} onClick={() => setFilter(value)}>{value[0].toUpperCase() + value.slice(1)}</button>)}
       <input type="search" aria-label="Buscar contas" placeholder="Buscar contas" value={query} onChange={e => setQuery(e.target.value)} />
+      <div className="accounts-view-toggle" role="group" aria-label="Visualização das contas">
+        <button type="button" className={`rma-advance-btn ${view === 'table' ? 'active' : ''}`} aria-pressed={view === 'table'} onClick={() => setView('table')}>Tabela</button>
+        <button type="button" className={`rma-advance-btn ${view === 'kanban' ? 'active' : ''}`} aria-pressed={view === 'kanban'} onClick={() => setView('kanban')}>Quadro</button>
+      </div>
       {kind === 'pagar' && <button type="button" className="module-submit-btn" disabled={busy || pending || !isActive || payables.loading || Boolean(payables.error)} onClick={() => { creationId.current = null; setForm({ description: '', creditor: '', category: 'outros', supplierId: '', branchId, amount: '', dueDate: '' }); setCreating(true); setError(''); }}>Nova conta a pagar</button>}
     </div>
     {success && <p role="status">{success}</p>}
@@ -121,18 +147,30 @@ function AccountsScreen({ kind, invoices, payables, branches, suppliers, branchI
       <p style={{ gridColumn: '1 / -1' }}>A categoria define como a conta entra no resultado. Escolha compra de mercadorias / estoque apenas para reposição de produtos; serviços, taxas e demais gastos usam a categoria de despesa correspondente. Selecionar um fornecedor não muda essa escolha.</p>
       <div><button className="module-submit-btn" disabled={busy || pending || !isActive}>{busy ? 'Salvando…' : 'Cadastrar'}</button> <button type="button" className="rma-advance-btn" disabled={busy || pending || !isActive} onClick={() => setCreating(false)}>Cancelar</button></div>
     </form>}
-    <div className="stock-table-wrap"><table className="rma-table">
+    {view === 'kanban' ? <div className="accounts-kanban" aria-label={`Quadro de contas a ${kind}`}>
+      {kanbanColumns.map(column => <section key={column.key} className="accounts-kanban-column">
+        <h5>{column.title}<span>{column.accounts.length}</span></h5>
+        {column.accounts.length === 0 ? <p className="accounts-kanban-empty">Nenhuma conta</p> : column.accounts.map(a => <article key={a.id} className="accounts-kanban-card">
+          <strong>{'description' in a ? a.description : a.customer_name}</strong>
+          <small>{'description' in a ? a.creditor_name : a.number}</small>
+          <dl>
+            <div><dt>Original</dt><dd>{money.format(a.amount)}</dd></div>
+            <div><dt>{kind === 'pagar' ? 'Pago' : 'Liquidado'}</dt><dd>{money.format(accountPaid(a))}</dd></div>
+            <div><dt>Saldo</dt><dd>{money.format(accountBalance(a))}</dd></div>
+            <div><dt>Vencimento</dt><dd>{a.due_date ? new Date(a.due_date.slice(0, 10) + 'T12:00:00').toLocaleDateString('pt-BR') : '—'}</dd></div>
+          </dl>
+          {renderPaymentAction(a)}
+        </article>)}
+      </section>)}
+    </div> : <div className="stock-table-wrap"><table className="rma-table">
       <thead><tr><th>{kind === 'pagar' ? 'Conta / Credor' : 'Cliente / Fatura'}</th><th>Original</th><th>{kind === 'pagar' ? 'Pago' : 'Liquidado'}</th><th>Saldo</th><th>Vencimento</th><th>Status</th><th>Ação</th></tr></thead>
       <tbody>{visible.length === 0 ? <tr><td colSpan={7} className="empty-row">Nenhuma conta nesta seleção.</td></tr> : visible.map(a => <tr key={a.id}>
         <td>{'description' in a ? <><strong>{a.description}</strong><br />{a.creditor_name}</> : <><strong>{a.customer_name}</strong><br />{a.number}</>}</td>
         <td>{money.format(a.amount)}</td><td>{money.format(accountPaid(a))}</td><td>{money.format(accountBalance(a))}</td>
         <td>{a.due_date ? new Date(a.due_date.slice(0, 10) + 'T12:00:00').toLocaleDateString('pt-BR') : '—'}</td>
         <td>{isOverdue(a) ? 'Vencida' : a.status === 'paga' ? 'Quitada' : a.status === 'parcial' ? 'Parcial' : a.status === 'cancelada' ? 'Cancelada' : 'Aberta'}</td>
-        <td>{accountBalance(a) > 0 && (kind === 'pagar' || onReceive) && (payment?.id === a.id ? <form onSubmit={confirmPayment}>
-          <label>Valor (R$)<input aria-label="Valor do pagamento ou recebimento" inputMode="decimal" required value={payment.amount} disabled={busy || pending || !isActive} onChange={e => setPayment({ ...payment, amount: e.target.value })} /></label>
-          <button className="module-submit-btn" disabled={busy || pending || !isActive}>{busy ? 'Registrando…' : 'Confirmar'}</button> <button type="button" className="rma-advance-btn" disabled={busy || pending || !isActive} onClick={() => setPayment(null)}>Cancelar</button>
-        </form> : <button type="button" className="rma-advance-btn" disabled={busy || pending || !isActive} onClick={() => { setPayment({ id: a.id, token: crypto.randomUUID(), amount: accountBalance(a).toFixed(2) }); setError(''); }}>{kind === 'pagar' ? 'Registrar pagamento' : 'Registrar recebimento'}</button>)}</td>
+        <td>{renderPaymentAction(a)}</td>
       </tr>)}</tbody>
-    </table></div>
+    </table></div>}
   </section>;
 }
