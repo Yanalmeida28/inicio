@@ -783,4 +783,37 @@ CREATE POLICY deny_direct_partner_stock_movement_delete ON public.partner_stock_
   AS RESTRICTIVE FOR DELETE TO authenticated
   USING (false);
 
+-- Enforce branch authorization for cash supervisors in both RPC implementations.
+-- Both existing SECURITY DEFINER functions previously accepted any administrator
+-- of the same company with a valid PIN, regardless of owner-granted branch access.
+-- Fail closed if a deployed function differs from the audited production definition.
+DO $cash_supervisor_branch_guard$
+DECLARE
+  v_schema text;
+  v_function regprocedure;
+  v_definition text;
+  v_old text := '(sp.role=''administrador'' OR sp.branch_id=p_branch_id)';
+  v_new text := '(sp.branch_id=p_branch_id OR (sp.role=''administrador'' AND public.partner_salesperson_has_branch_access(op.company_id,sp.id,p_branch_id)))';
+BEGIN
+  FOREACH v_schema IN ARRAY ARRAY['public', 'partner_cash_supervision_private']
+  LOOP
+    v_function := to_regprocedure(
+      format('%I.mutate_partner_cash_register(text,uuid,uuid,text,uuid,numeric,text,text,uuid,text,uuid)', v_schema)
+    );
+    IF v_function IS NULL THEN
+      RAISE EXCEPTION 'Cash supervisor RPC missing in schema %', v_schema;
+    END IF;
+    SELECT pg_get_functiondef(v_function) INTO v_definition;
+    IF strpos(v_definition, v_old) > 0 THEN
+      IF (length(v_definition) - length(replace(v_definition, v_old, ''))) <> length(v_old) THEN
+        RAISE EXCEPTION 'Unexpected number of cash supervisor guards in %', v_schema;
+      END IF;
+      EXECUTE replace(v_definition, v_old, v_new);
+    ELSIF strpos(v_definition, v_new) = 0 THEN
+      RAISE EXCEPTION 'Cash supervisor guard does not match audited definition in %', v_schema;
+    END IF;
+  END LOOP;
+END;
+$cash_supervisor_branch_guard$;
+
 COMMIT;
