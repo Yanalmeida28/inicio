@@ -506,3 +506,146 @@ test('collaborator administration, operator selection and company isolation are 
     await db.close();
   }
 });
+
+test('migrations 20261028130000 then 20261028180000 apply in order, keep legitimate RLS writes and never touch NULL-branch rows', async () => {
+  const earlier = await readFile(
+    new URL('../migrations/20261028130000_enforce_owner_only_cross_branch_access.sql', import.meta.url),
+    'utf8',
+  );
+  const db = new PGlite();
+  const u = n => `00000000-0000-0000-0000-00000000000${n}`;
+  const [owner, otherOwner, admin, manager, seller] = [1, 2, 3, 4, 5].map(u);
+  const A = '20000000-0000-0000-0000-000000000001';
+  const B = '20000000-0000-0000-0000-000000000002';
+  const X = '20000000-0000-0000-0000-000000000004';
+  const prod = n => `30000000-0000-0000-0000-${String(n).padStart(12, '0')}`;
+  const tables = ['partner_products', 'partner_customers', 'partner_sales', 'stock_movements', 'partner_stock_movements',
+    'partner_cash_sessions', 'catalog_orders', 'service_orders'];
+  try {
+    await db.exec(`
+      CREATE ROLE anon; CREATE ROLE authenticated; CREATE SCHEMA auth;
+      CREATE TABLE auth.users(id uuid PRIMARY KEY);
+      CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$
+        SELECT NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
+      CREATE SCHEMA partner_subscription_private;
+      CREATE FUNCTION partner_subscription_private.require_operator_module(text, uuid)
+        RETURNS void LANGUAGE plpgsql AS $$ BEGIN RETURN; END $$;
+      CREATE TABLE public.partner_profiles(id uuid PRIMARY KEY REFERENCES auth.users(id));
+      CREATE TABLE public.partner_branches(id uuid PRIMARY KEY, user_id uuid NOT NULL REFERENCES public.partner_profiles(id),
+        name text NOT NULL, is_active boolean NOT NULL DEFAULT true, UNIQUE(id,user_id));
+      CREATE TABLE public.partner_salespeople(id uuid PRIMARY KEY, user_id uuid NOT NULL REFERENCES public.partner_profiles(id),
+        name text NOT NULL, role text NOT NULL, active boolean NOT NULL DEFAULT true, branch_id uuid, auth_user_id uuid,
+        pin_hash text, commission_rate numeric DEFAULT 0, email text, phone text, pin text,
+        created_at timestamptz DEFAULT now(), blocked_modules text[] NOT NULL DEFAULT '{}', UNIQUE(id,user_id));
+      CREATE TABLE public.partner_products(id uuid PRIMARY KEY, user_id uuid, branch_id uuid, name text);
+      CREATE TABLE public.partner_customers(id uuid PRIMARY KEY, user_id uuid, branch_id uuid, name text);
+      CREATE TABLE public.partner_sales(id uuid PRIMARY KEY, user_id uuid, branch_id uuid, salesperson_id uuid);
+      CREATE TABLE public.stock_movements(id uuid PRIMARY KEY, user_id uuid, branch_id uuid, product_id uuid);
+      CREATE TABLE public.partner_stock_movements(id uuid PRIMARY KEY, user_id uuid, branch_id uuid, product_id uuid);
+      CREATE TABLE public.partner_cash_sessions(id uuid PRIMARY KEY, user_id uuid, branch_id uuid);
+      CREATE TABLE public.catalog_orders(id uuid PRIMARY KEY, user_id uuid, branch_id uuid);
+      CREATE TABLE public.service_orders(id uuid PRIMARY KEY, user_id uuid, branch_id uuid);
+      CREATE TABLE public.partner_audit_logs(id text, user_id uuid, actor_name text, actor_role text, action text,
+        entity_type text, entity_id text, details text);
+      CREATE FUNCTION public.verify_partner_salesperson_pin(text, text) RETURNS boolean LANGUAGE sql AS $$ SELECT $1 = '1234' $$;
+    `);
+    for (const t of [...tables, 'partner_salespeople', 'partner_branches']) {
+      await db.exec(`ALTER TABLE public.${t} ENABLE ROW LEVEL SECURITY;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON public.${t} TO authenticated;`);
+    }
+    // Permissive write/read policies emulate broad legacy policies; the restrictive ones must still narrow them.
+    for (const t of tables) {
+      await db.exec(`CREATE POLICY legacy_all ON public.${t} FOR ALL TO authenticated USING (true) WITH CHECK (true);`);
+    }
+    await db.exec(`
+      CREATE POLICY legacy_sp ON public.partner_salespeople FOR ALL TO authenticated USING (true) WITH CHECK (true);
+      CREATE POLICY legacy_br ON public.partner_branches FOR ALL TO authenticated USING (true) WITH CHECK (true);
+      INSERT INTO auth.users(id) VALUES ('${owner}'),('${otherOwner}'),('${admin}'),('${manager}'),('${seller}');
+      INSERT INTO public.partner_profiles(id) VALUES ('${owner}'),('${otherOwner}');
+      INSERT INTO public.partner_branches(id,user_id,name) VALUES
+        ('${A}','${owner}','A'),('${B}','${owner}','B'),('${X}','${otherOwner}','X');
+      INSERT INTO public.partner_salespeople(id,user_id,name,role,active,branch_id,auth_user_id,pin_hash) VALUES
+        ('${admin}','${owner}','Admin','administrador',true,'${A}','${admin}','h'),
+        ('${manager}','${owner}','Gerente','gerente',true,'${A}','${manager}','h'),
+        ('${seller}','${owner}','Vendedor','vendedor',true,'${A}','${seller}','h');
+      INSERT INTO public.partner_products(id,user_id,branch_id,name) VALUES
+        ('${prod(1)}','${owner}','${A}','A1'),('${prod(2)}','${owner}','${B}','B1'),
+        ('${prod(3)}','${owner}',NULL,'Legado sem filial'),('${prod(4)}','${otherOwner}','${X}','Externo');
+    `);
+    const snapshot = async () => (await db.query(
+      'SELECT id,user_id,branch_id,name FROM public.partner_products ORDER BY id')).rows;
+    const before = await snapshot();
+
+    await db.exec(earlier);
+    await db.exec(migration);
+    await db.exec(migration);
+    assert.deepEqual(await snapshot(), before, 'migrations must not modify or delete legacy rows');
+    assert.equal(
+      (await db.query("SELECT count(*)::int n FROM pg_trigger WHERE tgname='require_partner_salesperson_branch' AND NOT tgisinternal")).rows[0].n,
+      1,
+    );
+    assert.equal(
+      (await db.query("SELECT count(*)::int n FROM pg_policies WHERE tablename='partner_products' AND policyname='restrict_employee_products_to_branch'")).rows[0].n,
+      1,
+    );
+    assert.equal(
+      (await db.query("SELECT count(*)::int n FROM public.partner_admin_branch_access")).rows[0].n,
+      0,
+      'no grants are created automatically',
+    );
+
+    const setAuth = async id => {
+      await db.exec('RESET ROLE');
+      await db.query(`SELECT set_config('request.jwt.claim.sub', $1, false)`, [id]);
+      await db.exec('SET ROLE authenticated');
+    };
+    const ids = async () => (await db.query('SELECT id FROM public.partner_products ORDER BY id')).rows.map(r => r.id);
+
+    // Legacy NULL-branch row: only the owner sees it; it is never deleted or rewritten.
+    await setAuth(owner);
+    assert.deepEqual(await ids(), [prod(1), prod(2), prod(3)]);
+    for (const [id, expected] of [[admin, [prod(1)]], [manager, [prod(1)]], [seller, [prod(1)]]]) {
+      await setAuth(id);
+      assert.deepEqual(await ids(), expected);
+    }
+
+    // Legitimate in-branch writes by admin, manager and seller.
+    let n = 10;
+    for (const id of [admin, manager, seller]) {
+      await setAuth(id);
+      const pid = prod(n++);
+      await db.query('INSERT INTO public.partner_products(id,user_id,branch_id,name) VALUES ($1,$2,$3,$4)', [pid, owner, A, 'novo']);
+      const upd = await db.query("UPDATE public.partner_products SET name='editado' WHERE id=$1 RETURNING id", [pid]);
+      assert.equal(upd.rows.length, 1);
+      // Other branch, NULL branch, other company and ownership change are all denied.
+      await assert.rejects(db.query('INSERT INTO public.partner_products(id,user_id,branch_id,name) VALUES ($1,$2,$3,$4)', [prod(n++), owner, B, 'x']));
+      await assert.rejects(db.query('INSERT INTO public.partner_products(id,user_id,branch_id,name) VALUES ($1,$2,NULL,$3)', [prod(n++), owner, 'x']));
+      await assert.rejects(db.query('INSERT INTO public.partner_products(id,user_id,branch_id,name) VALUES ($1,$2,$3,$4)', [prod(n++), otherOwner, X, 'x']));
+      await assert.rejects(db.query('UPDATE public.partner_products SET branch_id=$1 WHERE id=$2', [B, pid]));
+      assert.equal((await db.query("UPDATE public.partner_products SET name='h' WHERE id=$1 RETURNING id", [prod(2)])).rows.length, 0);
+      assert.equal((await db.query("UPDATE public.partner_products SET name='h' WHERE id=$1 RETURNING id", [prod(3)])).rows.length, 0);
+      assert.equal((await db.query('DELETE FROM public.partner_products WHERE id=$1 RETURNING id', [prod(3)])).rows.length, 0);
+    }
+    // Direct writes to the staff table and to the ledger stay denied for everyone.
+    await assert.rejects(db.query("INSERT INTO public.partner_salespeople(id,user_id,name,role,branch_id) VALUES ($1,$2,'x','vendedor',$3)", ['10000000-0000-0000-0000-0000000000bb', owner, A]));
+    assert.equal((await db.query("UPDATE public.partner_salespeople SET role='administrador' WHERE id=$1 RETURNING id", [seller])).rows.length, 0);
+    await assert.rejects(db.query("INSERT INTO public.partner_stock_movements(id,user_id,branch_id,product_id) VALUES ($1,$2,$3,$4)", [prod(9), owner, A, prod(1)]));
+
+    // Only the owner may grant; an admin cannot self-grant, and the owner can.
+    await setAuth(admin);
+    await assert.rejects(db.query('SELECT public.set_partner_admin_branch_access($1,$2,false,true)', [admin, B]), /Somente o proprietário autenticado/);
+    await assert.rejects(db.query('SELECT public.set_partner_admin_branch_access($1,NULL,true,true)', [admin]), /Somente o proprietário autenticado/);
+    await setAuth(otherOwner);
+    await assert.rejects(db.query('SELECT public.set_partner_admin_branch_access($1,$2,false,true)', [admin, B]));
+    await setAuth(owner);
+    await db.query('SELECT public.set_partner_admin_branch_access($1,$2,false,true)', [admin, B]);
+    await setAuth(admin);
+    await db.query('INSERT INTO public.partner_products(id,user_id,branch_id,name) VALUES ($1,$2,$3,$4)', [prod(99), owner, B, 'B ok']);
+    assert.deepEqual((await ids()).includes(prod(3)), false);
+    // Legacy rows are still untouched at the end.
+    await db.exec('RESET ROLE');
+    assert.deepEqual((await snapshot()).filter(r => before.some(b => b.id === r.id)), before);
+  } finally {
+    await db.close();
+  }
+});

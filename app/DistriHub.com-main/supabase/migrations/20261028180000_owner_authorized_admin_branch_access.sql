@@ -125,8 +125,9 @@ CREATE TRIGGER require_partner_salesperson_branch
   BEFORE INSERT OR UPDATE OF branch_id ON public.partner_salespeople
   FOR EACH ROW EXECUTE FUNCTION public.require_partner_salesperson_branch();
 
+-- Parameter names must match 20261028130000 (CREATE OR REPLACE cannot rename them).
 CREATE OR REPLACE FUNCTION public.partner_employee_can_access_branch(
-  p_company_id uuid, p_branch_id uuid
+  p_user_id uuid, p_branch_id uuid
 ) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = ''
 AS $$
@@ -135,24 +136,24 @@ AS $$
       SELECT 1
       FROM public.partner_branches b
       WHERE b.id = p_branch_id
-        AND b.user_id = p_company_id
+        AND b.user_id = p_user_id
         AND b.is_active = true
     )
     AND (
       EXISTS (
         SELECT 1
         FROM public.partner_profiles owner_profile
-        WHERE owner_profile.id = p_company_id
+        WHERE owner_profile.id = p_user_id
           AND owner_profile.id = (SELECT auth.uid())
       )
       OR EXISTS (
         SELECT 1
         FROM public.partner_salespeople sp
-        WHERE sp.user_id = p_company_id
+        WHERE sp.user_id = p_user_id
           AND sp.auth_user_id = (SELECT auth.uid())
           AND sp.active = true
           AND public.partner_salesperson_has_branch_access(
-            p_company_id, sp.id, p_branch_id
+            p_user_id, sp.id, p_branch_id
           )
       )
     )
