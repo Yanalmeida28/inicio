@@ -11,7 +11,7 @@ import type {
   PartnerProduct, PartnerCategory, PartnerSupplier,
   PartnerSalesperson, PartnerCombo, PartnerModifier, PartnerCustomer,
   PartnerSale, SalespersonRole, PartnerBranch,
-  PersonType, RmaRequest,
+  PersonType, RmaRequest, PartnerAdminBranchAccess,
 } from '../../types';
 import { formatCivilDate, formatCnpj, formatCpf, isValidCnpj, isValidCpf, money, normalizeDocument } from '../../utils';
 import { parseStockXml, type XmlStockImport } from '../../lib/cadastroXml';
@@ -34,6 +34,15 @@ type Props = {
   suppliersReady?: boolean;
   findProductDuplicates: (name: string, branchId: string) => Promise<PartnerProduct[]>;
   canManageSalespeople?: boolean;
+  isCompanyOwner?: boolean;
+  companyOwnerName?: string | null;
+  onLoadAdminBranchAccess: () => Promise<PartnerAdminBranchAccess[]>;
+  onSetAdminBranchAccess: (
+    salespersonId: string,
+    branchId: string | null,
+    allBranches: boolean,
+    granted: boolean,
+  ) => Promise<void>;
   adminTarget?: string;
   initialTab?: SubTab;
   isActive?: boolean;
@@ -104,6 +113,10 @@ function getActionPopoverPosition(event: React.MouseEvent<HTMLButtonElement>, wi
 export function CadastrosModule({
   adminTarget,
   canManageSalespeople = false,
+  isCompanyOwner = false,
+  companyOwnerName = null,
+  onLoadAdminBranchAccess,
+  onSetAdminBranchAccess,
   findProductDuplicates,
   initialTab = 'produtos', productType = 'todos',
   isActive = true, onDataScopeChange, suppliersReady = true,
@@ -224,6 +237,10 @@ export function CadastrosModule({
             salespeople={salespeople}
             branches={branches}
             selectedBranchId={selectedBranchId}
+            isCompanyOwner={isCompanyOwner}
+            companyOwnerName={companyOwnerName}
+            onLoadAdminBranchAccess={onLoadAdminBranchAccess}
+            onSetAdminBranchAccess={onSetAdminBranchAccess}
             onAdd={onAddSalesperson}
             onUpdate={onUpdateSalesperson}
             onDelete={onDeleteSalesperson}
@@ -1952,10 +1969,170 @@ const roleColors: Record<SalespersonRole, string> = {
   logistica: '#6D28D9',
 };
 
+function OwnerBranchAccessManager({
+  isCompanyOwner,
+  ownerName,
+  salespeople,
+  branches,
+  onLoad,
+  onSet,
+}: {
+  isCompanyOwner: boolean;
+  ownerName: string | null;
+  salespeople: PartnerSalesperson[];
+  branches: PartnerBranch[];
+  onLoad: () => Promise<PartnerAdminBranchAccess[]>;
+  onSet: (salespersonId: string, branchId: string | null, allBranches: boolean, granted: boolean) => Promise<void>;
+}) {
+  const [history, setHistory] = useState<PartnerAdminBranchAccess[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [savingKey, setSavingKey] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      setHistory(await onLoad());
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'Não foi possível carregar o histórico de acessos.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!isCompanyOwner) return;
+    let active = true;
+    setLoading(true);
+    setError(null);
+    void onLoad().then(entries => {
+      if (active) setHistory(entries);
+    }).catch(loadError => {
+      if (active) setError(loadError instanceof Error ? loadError.message : 'Não foi possível carregar o histórico de acessos.');
+    }).finally(() => {
+      if (active) setLoading(false);
+    });
+    return () => { active = false; };
+  }, [isCompanyOwner, onLoad]);
+
+  async function changeAccess(salespersonId: string, branchId: string | null, allBranches: boolean, granted: boolean) {
+    const key = `${salespersonId}:${allBranches ? 'all' : branchId}`;
+    setSavingKey(key);
+    setError(null);
+    try {
+      await onSet(salespersonId, branchId, allBranches, granted);
+      await refresh();
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Não foi possível atualizar a autorização da filial.');
+    } finally {
+      setSavingKey(null);
+    }
+  }
+
+  if (!isCompanyOwner) return null;
+
+  const administrators = salespeople.filter(person => person.role === 'administrador');
+  return (
+    <>
+      <section className="module-card" aria-labelledby="company-owner-heading">
+        <div className="module-header">
+          <UserCircle size={20} />
+          <div>
+            <h4 id="company-owner-heading">Proprietário da empresa</h4>
+            <p>{ownerName?.trim() || 'Conta titular autenticada'} — titularidade validada pela sessão da empresa. A conta proprietária não é uma função de colaborador.</p>
+          </div>
+        </div>
+        <p>O proprietário pode acessar todas as filiais da própria empresa. Para operar vendas em nome de um colaborador, selecione-o como operador sem transferir a titularidade da conta.</p>
+      </section>
+
+      <section className="module-card" aria-labelledby="admin-branch-access-heading">
+        <div className="module-header">
+          <MapPin size={20} />
+          <div>
+            <h4 id="admin-branch-access-heading">Acessos adicionais de administradores</h4>
+            <p>Administradores começam limitados à filial principal. Somente o proprietário pode conceder ou revogar acessos extras.</p>
+          </div>
+        </div>
+        {error && (
+          <div>
+            <p role="alert" className="form-error-msg">{error}</p>
+            <button type="button" className="rma-advance-btn" disabled={loading || savingKey !== null} onClick={() => void refresh()}>
+              Tentar carregar novamente
+            </button>
+          </div>
+        )}
+        {loading && <p role="status">Carregando autorizações e histórico...</p>}
+        {!loading && administrators.length === 0 && <p>Nenhum administrador cadastrado.</p>}
+        {administrators.map(admin => {
+          const adminHistory = history.filter(entry => entry.salesperson_id === admin.id);
+          const activeGrants = adminHistory.filter(entry => entry.revoked_at === null);
+          const hasAllBranches = activeGrants.some(entry => entry.all_branches);
+          const primaryBranch = branches.find(branch => branch.id === admin.branch_id);
+          const additionalBranches = branches.filter(branch => branch.is_active && branch.id !== admin.branch_id);
+
+          return (
+            <article key={admin.id} className="module-card" aria-label={`Acessos de ${admin.name}`}>
+              <h5>{admin.name} — Administrador</h5>
+              <p>Filial principal: {primaryBranch?.name ?? 'Sem filial principal válida'}</p>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={hasAllBranches}
+                  disabled={!admin.active || loading || savingKey !== null || error !== null}
+                  onChange={event => void changeAccess(admin.id, null, true, event.target.checked)}
+                />{' '}
+                Autorizar acesso a todas as filiais
+              </label>
+              {additionalBranches.map(branch => {
+                const hasBranch = activeGrants.some(entry => !entry.all_branches && entry.branch_id === branch.id);
+                return (
+                  <label key={branch.id} style={{ display: 'block', marginTop: 8 }}>
+                    <input
+                      type="checkbox"
+                      checked={hasAllBranches || hasBranch}
+                      disabled={!admin.active || hasAllBranches || loading || savingKey !== null || error !== null}
+                      onChange={event => void changeAccess(admin.id, branch.id, false, event.target.checked)}
+                    />{' '}
+                    Autorizar filial {branch.name}
+                  </label>
+                );
+              })}
+              {savingKey?.startsWith(`${admin.id}:`) && <p role="status">Salvando autorização...</p>}
+              <details>
+                <summary><History size={14} /> Histórico de concessões e revogações</summary>
+                {adminHistory.length === 0
+                  ? <p>Nenhuma concessão adicional registrada.</p>
+                  : <ul>{adminHistory.map(entry => {
+                    const scope = entry.all_branches
+                      ? 'Todas as filiais'
+                      : branches.find(branch => branch.id === entry.branch_id)?.name ?? 'Filial removida';
+                    return (
+                      <li key={entry.id}>
+                        {scope} — concedida em {new Date(entry.granted_at).toLocaleString('pt-BR')}
+                        {entry.revoked_at
+                          ? `; revogada em ${new Date(entry.revoked_at).toLocaleString('pt-BR')}`
+                          : '; ativa'}
+                      </li>
+                    );
+                  })}</ul>}
+              </details>
+            </article>
+          );
+        })}
+      </section>
+    </>
+  );
+}
+
 function SalespeopleSubTab({
   salespeople,
   branches,
   selectedBranchId,
+  isCompanyOwner,
+  companyOwnerName,
+  onLoadAdminBranchAccess,
+  onSetAdminBranchAccess,
   onAdd,
   onUpdate,
   onDelete,
@@ -1963,6 +2140,15 @@ function SalespeopleSubTab({
   salespeople: PartnerSalesperson[];
   branches: PartnerBranch[];
   selectedBranchId: string | null;
+  isCompanyOwner: boolean;
+  companyOwnerName: string | null;
+  onLoadAdminBranchAccess: () => Promise<PartnerAdminBranchAccess[]>;
+  onSetAdminBranchAccess: (
+    salespersonId: string,
+    branchId: string | null,
+    allBranches: boolean,
+    granted: boolean,
+  ) => Promise<void>;
   onAdd: (
     sp: Omit<PartnerSalesperson, 'id' | 'user_id' | 'created_at'>
   ) => Promise<PartnerSalesperson>;
@@ -2003,7 +2189,7 @@ function SalespeopleSubTab({
   const [editError, setEditError] =
     useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const visibleSalespeople = selectedBranchId
+  const visibleSalespeople = selectedBranchId && !isCompanyOwner
     ? salespeople.filter(salesperson => salesperson.branch_id === selectedBranchId)
     : salespeople;
 
@@ -2175,6 +2361,14 @@ function SalespeopleSubTab({
 
   return (
     <div>
+      <OwnerBranchAccessManager
+        isCompanyOwner={isCompanyOwner}
+        ownerName={companyOwnerName}
+        salespeople={salespeople}
+        branches={branches}
+        onLoad={onLoadAdminBranchAccess}
+        onSet={onSetAdminBranchAccess}
+      />
       <form
         className="rma-form"
         onSubmit={handleSubmit}

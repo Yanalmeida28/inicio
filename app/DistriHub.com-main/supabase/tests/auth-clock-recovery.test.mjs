@@ -23,7 +23,8 @@ async function harness({failures=2,error=future,target='employee'}={}){
    const kind=table==='partner_salespeople'?'employee':select==='id'?'owner':'profile';reads.push({kind,user});
    if(gate)await gate;
    if(kind===target&&remaining-->0)return {data:null,error};
-   return {data:table==='partner_profiles'?{id:user,business_name:'Store'}:null,error:null};
+   if(table==='partner_salespeople'&&target==='employee')return {data:{id:`${user}-employee`,user_id:user,role:'gerente',branch_id:'branch',active:true},error:null};
+   return {data:table==='partner_profiles'&&(kind==='profile'||target==='owner'||target==='profile')?{id:user,business_name:'Store'}:null,error:null};
   },async upsert(value){writes.push(value);return {error:null};},
  };}};
  const exports={};
@@ -55,7 +56,7 @@ test('persistent future JWT stops after four reads, keeps session and permits ex
  const h=await harness({failures:99});
  try{
   for(const delay of [1000,2000,4000])assert.equal(await h.tick(),delay);
-  assert.equal(h.reads.length,4);assert.equal(h.timers.length,0);assert.equal(h.state.identity,null);assert.equal(h.state.profile,null);assert.equal(h.state.user.id,'owner');
+  assert.equal(h.reads.filter(read=>read.kind==='employee').length,4);assert.equal(h.timers.length,0);assert.equal(h.state.identity,null);assert.equal(h.state.profile,null);assert.equal(h.state.user.id,'owner');
   assert.match(h.state.error,/diferença de horário/);assert.match(h.state.error,/Tentar novamente/);assert.doesNotMatch(h.state.error,/JWT issued|opaque-token/);
   h.recover();await h.retry();assert.equal(h.state.identity.companyUserId,'owner');assert.equal(h.state.error,null);assert.equal(h.signouts,0);assert.equal(h.refreshes,0);
  }finally{await h.close();}
@@ -63,23 +64,24 @@ test('persistent future JWT stops after four reads, keeps session and permits ex
 
 for(const error of [{code:'PGRST303',message:'JWT expired'},{code:'PGRST301',message:'Invalid signature'},{code:'42501',message:'permission denied'},{code:'42501',message:'JWT issued at future'}])test(`other auth/access failures are never retried or converted into owner access: ${error.message} / ${error.code}`,async()=>{
  const h=await harness({failures:99,error});
- try{assert.equal(h.reads.length,1);assert.equal(h.timers.length,0);assert.equal(h.state.identity,null);assert.match(h.state.error,new RegExp(error.message));}finally{await h.close();}
+ try{assert.equal(h.reads.filter(read=>read.kind==='employee').length,1);assert.equal(h.timers.length,0);assert.equal(h.state.identity,null);assert.match(h.state.error,new RegExp(error.message));}finally{await h.close();}
 });
 
 test('logout during the wait cancels old reads and cannot restore protected identity',async()=>{
  const h=await harness();
- try{await h.logout();await h.tick();assert.equal(h.reads.length,1);assert.equal(h.state.user,null);assert.equal(h.state.identity,null);assert.equal(h.state.error,null);}finally{await h.close();}
+ try{await h.logout();await h.tick();assert.equal(h.reads.filter(read=>read.kind==='employee').length,1);assert.equal(h.state.user,null);assert.equal(h.state.identity,null);assert.equal(h.state.error,null);}finally{await h.close();}
 });
 
 test('a new account invalidates the pending old-user retry before another read',async()=>{
  const h=await harness();
  try{
+  const readsBeforeSwitch=h.reads.length;
   h.recover();await h.switchUser('new');assert.equal(h.state.identity,null);
-  assert.equal(await h.tick(),1000);assert.equal(h.reads.length,1);
-  assert.equal(await h.tick(),0);assert.equal(h.state.identity.authUserId,'new');assert.ok(h.reads.slice(1).every(r=>r.user==='new'));
+  assert.equal(await h.tick(),1000);assert.equal(h.reads.filter(read=>read.user==='owner'&&read.kind==='employee').length,1);
+  assert.equal(await h.tick(),0);assert.equal(h.state.identity.authUserId,'new');assert.ok(h.reads.slice(readsBeforeSwitch).every(r=>r.user==='new'));
  }finally{await h.close();}
 });
 
 test('unmounting invalidates delayed recovery without extra requests',async()=>{
- const h=await harness();await h.close();await h.tick();assert.equal(h.reads.length,1);
+ const h=await harness();await h.close();await h.tick();assert.equal(h.reads.filter(read=>read.kind==='employee').length,1);
 });
