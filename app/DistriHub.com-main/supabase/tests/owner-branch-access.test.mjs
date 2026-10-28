@@ -514,7 +514,7 @@ test('migrations 20261028130000 then 20261028180000 apply in order, keep legitim
   );
   const db = new PGlite();
   const u = n => `00000000-0000-0000-0000-00000000000${n}`;
-  const [owner, otherOwner, admin, manager, seller] = [1, 2, 3, 4, 5].map(u);
+  const [owner, otherOwner, admin, manager, seller, nbActive, nbInactive] = [1, 2, 3, 4, 5, 6, 7].map(u);
   const A = '20000000-0000-0000-0000-000000000001';
   const B = '20000000-0000-0000-0000-000000000002';
   const X = '20000000-0000-0000-0000-000000000004';
@@ -549,6 +549,18 @@ test('migrations 20261028130000 then 20261028180000 apply in order, keep legitim
         entity_type text, entity_id text, details text);
       CREATE FUNCTION public.verify_partner_salesperson_pin(text, text) RETURNS boolean LANGUAGE sql AS $$ SELECT $1 = '1234' $$;
     `);
+    // Pre-existing production shape: function created outside the migrations with p_company_id and broad
+    // admin access. Migrations may replace it but must not rename its parameters or drop it.
+    await db.exec(`
+      CREATE FUNCTION public.partner_employee_can_access_branch(p_company_id uuid, p_branch_id uuid)
+      RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path='' AS $$
+        SELECT EXISTS (SELECT 1 FROM public.partner_salespeople sp
+          WHERE sp.user_id = p_company_id AND sp.auth_user_id = (SELECT auth.uid()) AND sp.active
+            AND (sp.role = 'administrador' OR sp.branch_id = p_branch_id))
+      $$;
+      CREATE POLICY legacy_dep ON public.partner_customers AS RESTRICTIVE FOR SELECT TO authenticated
+        USING (public.partner_employee_can_access_branch(user_id, branch_id) OR auth.uid() = user_id);
+    `);
     for (const t of [...tables, 'partner_salespeople', 'partner_branches']) {
       await db.exec(`ALTER TABLE public.${t} ENABLE ROW LEVEL SECURITY;
         GRANT SELECT, INSERT, UPDATE, DELETE ON public.${t} TO authenticated;`);
@@ -560,14 +572,16 @@ test('migrations 20261028130000 then 20261028180000 apply in order, keep legitim
     await db.exec(`
       CREATE POLICY legacy_sp ON public.partner_salespeople FOR ALL TO authenticated USING (true) WITH CHECK (true);
       CREATE POLICY legacy_br ON public.partner_branches FOR ALL TO authenticated USING (true) WITH CHECK (true);
-      INSERT INTO auth.users(id) VALUES ('${owner}'),('${otherOwner}'),('${admin}'),('${manager}'),('${seller}');
+      INSERT INTO auth.users(id) VALUES ('${owner}'),('${otherOwner}'),('${admin}'),('${manager}'),('${seller}'),('${nbActive}'),('${nbInactive}');
       INSERT INTO public.partner_profiles(id) VALUES ('${owner}'),('${otherOwner}');
       INSERT INTO public.partner_branches(id,user_id,name) VALUES
         ('${A}','${owner}','A'),('${B}','${owner}','B'),('${X}','${otherOwner}','X');
       INSERT INTO public.partner_salespeople(id,user_id,name,role,active,branch_id,auth_user_id,pin_hash) VALUES
         ('${admin}','${owner}','Admin','administrador',true,'${A}','${admin}','h'),
         ('${manager}','${owner}','Gerente','gerente',true,'${A}','${manager}','h'),
-        ('${seller}','${owner}','Vendedor','vendedor',true,'${A}','${seller}','h');
+        ('${seller}','${owner}','Vendedor','vendedor',true,'${A}','${seller}','h'),
+        ('${nbActive}','${owner}','Admin sem filial','administrador',true,NULL,'${nbActive}','h'),
+        ('${nbInactive}','${owner}','Admin inativo sem filial','administrador',false,NULL,NULL,'h');
       INSERT INTO public.partner_products(id,user_id,branch_id,name) VALUES
         ('${prod(1)}','${owner}','${A}','A1'),('${prod(2)}','${owner}','${B}','B1'),
         ('${prod(3)}','${owner}',NULL,'Legado sem filial'),('${prod(4)}','${otherOwner}','${X}','Externo');
@@ -575,10 +589,26 @@ test('migrations 20261028130000 then 20261028180000 apply in order, keep legitim
     const snapshot = async () => (await db.query(
       'SELECT id,user_id,branch_id,name FROM public.partner_products ORDER BY id')).rows;
     const before = await snapshot();
+    const staffBefore = (await db.query('SELECT * FROM public.partner_salespeople ORDER BY id')).rows;
+    const argNames = async () => (await db.query(
+      "SELECT proargnames::text n FROM pg_proc WHERE proname='partner_employee_can_access_branch'")).rows[0].n;
+    assert.equal(await argNames(), '{p_company_id,p_branch_id}');
 
     await db.exec(earlier);
+    assert.equal(await argNames(), '{p_company_id,p_branch_id}', '130000 must keep production parameter names');
     await db.exec(migration);
     await db.exec(migration);
+    assert.equal(await argNames(), '{p_company_id,p_branch_id}', '180000 must keep production parameter names');
+    assert.equal(
+      (await db.query("SELECT count(*)::int n FROM pg_policies WHERE policyname='legacy_dep'")).rows[0].n,
+      1,
+      'pre-existing dependent policy must survive',
+    );
+    assert.deepEqual(
+      (await db.query('SELECT * FROM public.partner_salespeople ORDER BY id')).rows,
+      staffBefore,
+      'existing collaborators (including NULL-branch admins) are not modified',
+    );
     assert.deepEqual(await snapshot(), before, 'migrations must not modify or delete legacy rows');
     assert.equal(
       (await db.query("SELECT count(*)::int n FROM pg_trigger WHERE tgname='require_partner_salesperson_branch' AND NOT tgisinternal")).rows[0].n,
@@ -630,6 +660,43 @@ test('migrations 20261028130000 then 20261028180000 apply in order, keep legitim
     await assert.rejects(db.query("INSERT INTO public.partner_salespeople(id,user_id,name,role,branch_id) VALUES ($1,$2,'x','vendedor',$3)", ['10000000-0000-0000-0000-0000000000bb', owner, A]));
     assert.equal((await db.query("UPDATE public.partner_salespeople SET role='administrador' WHERE id=$1 RETURNING id", [seller])).rows.length, 0);
     await assert.rejects(db.query("INSERT INTO public.partner_stock_movements(id,user_id,branch_id,product_id) VALUES ($1,$2,$3,$4)", [prod(9), owner, A, prod(1)]));
+
+    // Admins without branch (1 active, 1 inactive) are denied, cannot be granted, and are left untouched.
+    await setAuth(nbActive);
+    assert.deepEqual(await ids(), []);
+    await assert.rejects(db.query('INSERT INTO public.partner_products(id,user_id,branch_id,name) VALUES ($1,$2,$3,$4)', [prod(60), owner, A, 'x']));
+    await assert.rejects(db.query('SELECT * FROM public.resolve_partner_operator($1,$2,$3)', [nbActive, '1234', A]));
+    await setAuth(owner);
+    await assert.rejects(db.query('SELECT public.set_partner_admin_branch_access($1,$2,false,true)', [nbActive, B]));
+    await assert.rejects(db.query('SELECT public.set_partner_admin_branch_access($1,$2,false,true)', [nbInactive, B]));
+
+    // Cross-module operations (sales/PDV, stock ledger, cash, service orders, customers) per role.
+    const mod = async (id, branch, ok, k) => {
+      const run = (sql, p) => db.query(sql, p);
+      const rows = [
+        ['partner_customers', 'INSERT INTO public.partner_customers(id,user_id,branch_id,name) VALUES ($1,$2,$3,$4)', [prod(k), owner, branch, 'c']],
+        ['partner_sales', 'INSERT INTO public.partner_sales(id,user_id,branch_id,salesperson_id) VALUES ($1,$2,$3,$4)', [prod(k + 1), owner, branch, id === owner ? null : id]],
+        ['partner_cash_sessions', 'INSERT INTO public.partner_cash_sessions(id,user_id,branch_id) VALUES ($1,$2,$3)', [prod(k + 2), owner, branch]],
+        ['service_orders', 'INSERT INTO public.service_orders(id,user_id,branch_id) VALUES ($1,$2,$3)', [prod(k + 3), owner, branch]],
+        ['stock_movements', 'INSERT INTO public.stock_movements(id,user_id,branch_id,product_id) VALUES ($1,$2,$3,$4)', [prod(k + 4), owner, branch, branch === A ? prod(1) : prod(2)]],
+      ];
+      for (const [table, sql, p] of rows) {
+        if (ok) {
+          await run(sql, p);
+          if (table === 'partner_cash_sessions' || table === 'service_orders' || table === 'partner_customers') {
+            assert.equal((await run(`UPDATE public.${table} SET branch_id=branch_id WHERE id=$1 RETURNING id`, [p[0]])).rows.length, 1, table);
+          }
+        } else {
+          await assert.rejects(run(sql, p), undefined, table);
+        }
+      }
+    };
+    await setAuth(admin); await mod(admin, A, true, 100); await mod(admin, B, false, 110);
+    await setAuth(manager); await mod(manager, A, true, 120); await mod(manager, B, false, 130);
+    await setAuth(seller); await mod(seller, A, true, 140); await mod(seller, B, false, 150);
+    await setAuth(owner); await mod(owner, B, true, 160);
+    await setAuth(otherOwner);
+    assert.equal((await db.query('SELECT count(*)::int n FROM public.partner_customers')).rows[0].n, 0);
 
     // Only the owner may grant; an admin cannot self-grant, and the owner can.
     await setAuth(admin);
