@@ -626,6 +626,8 @@ function StagnantStockReport({ isActive = true, products, sales, movements }: { 
 function StockReport({ products, sales }: { products: PartnerProduct[]; sales: PartnerSale[] }) {
   const physicalProducts = useMemo(() => products.filter((product) => !product.is_service), [products]);
   const totalInvested = physicalProducts.reduce((s, p) => s + p.cost_price * p.stock, 0);
+  const totalRetailValue = physicalProducts.reduce((s, p) => s + p.sale_price * p.stock, 0);
+  const potentialGrossProfit = totalRetailValue - totalInvested;
   const physicalProductIds = useMemo(() => new Set(physicalProducts.map((product) => product.id)), [physicalProducts]);
   const soldQuantity = useMemo(() => {
     const quantities = new Map<string, number>();
@@ -686,8 +688,17 @@ function StockReport({ products, sales }: { products: PartnerProduct[]; sales: P
       </div>
       <div className="report-cards">
         <div className="report-card">
-          <small>Valor Total Investido</small>
+          <small>Valor total de custo</small>
           <strong>{money.format(totalInvested)}</strong>
+        </div>
+        <div className="report-card">
+          <small>Valor total a varejo</small>
+          <strong>{money.format(totalRetailValue)}</strong>
+        </div>
+        <div className="report-card">
+          <small>Lucro bruto potencial</small>
+          <strong>{money.format(potentialGrossProfit)}</strong>
+          <small>Estimativa pelo preço de venda atual, antes de despesas, impostos e descontos.</small>
         </div>
         <div className="report-card">
           <small>Sem venda no período</small>
