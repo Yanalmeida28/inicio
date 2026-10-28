@@ -450,6 +450,28 @@ test('collaborator administration, operator selection and company isolation are 
       /Somente o proprietário autenticado/,
     );
 
+    // Destination branch B (second) is not authorized: create and transfer are denied.
+    await assert.rejects(call(null, 'Novo B', 'vendedor', second, admin, '1234'), /Acesso negado à filial/);
+    await assert.rejects(call(seller, 'Vendedor', 'vendedor', second, admin, '1234'), /Acesso negado à filial/);
+
+    await setAuth(owner);
+    await db.query('SELECT public.set_partner_admin_branch_access($1,$2,false,true)', [admin, second]);
+    await setAuth(admin);
+    const created = await call(null, 'Novo B', 'vendedor', second, admin, '1234');
+    assert.equal(created.rows[0].branch_id, second);
+    const moved = await call(seller, 'Vendedor X', 'vendedor', second, admin, '1234');
+    assert.equal(moved.rows[0].branch_id, second);
+    const back = await call(seller, 'Vendedor X', 'vendedor', main, admin, '1234');
+    assert.equal(back.rows[0].branch_id, main);
+    // Still no self-edit, no admin management, no other company with the grant in place.
+    await assert.rejects(call(admin, 'Admin', 'administrador', second, admin, '1234'), /próprio acesso/);
+    await assert.rejects(call(otherStaff, 'Hack', 'vendedor', second, admin, '1234'), /não encontrado nesta empresa/);
+    await assert.rejects(call(null, 'Novo', 'vendedor', foreign, admin, '1234'), /Acesso negado|não pertence/);
+    await setAuth(owner);
+    await db.query('SELECT public.set_partner_admin_branch_access($1,$2,false,false)', [admin, second]);
+    await setAuth(admin);
+    await assert.rejects(call(null, 'Novo C', 'vendedor', second, admin, '1234'), /Acesso negado à filial/);
+
     // Managers cannot touch administrators.
     await setAuth(manager);
     await assert.rejects(call(admin, 'Admin', 'gerente', main, manager, '1234'), /Somente o proprietário/);

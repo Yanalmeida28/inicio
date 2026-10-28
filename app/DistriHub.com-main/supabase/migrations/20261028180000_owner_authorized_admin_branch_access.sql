@@ -575,6 +575,12 @@ BEGIN
     SELECT 1 FROM public.partner_branches b
     WHERE b.id = p_branch_id AND b.user_id = v_company_id AND b.is_active = true
   ) THEN RAISE EXCEPTION 'Filial informada não pertence à empresa ou está inativa.'; END IF;
+  -- Destination branch must be authorized for the acting admin/manager on every create or edit.
+  IF NOT v_is_owner AND NOT public.partner_salesperson_has_branch_access(
+    v_company_id, v_actor_id, p_branch_id
+  ) THEN
+    RAISE EXCEPTION 'Acesso negado à filial de destino.';
+  END IF;
 
   IF p_new_pin IS NOT NULL THEN
     IF p_new_pin !~ '^[0-9]{4,8}$' THEN RAISE EXCEPTION 'PIN deve conter entre 4 e 8 dígitos.'; END IF;
