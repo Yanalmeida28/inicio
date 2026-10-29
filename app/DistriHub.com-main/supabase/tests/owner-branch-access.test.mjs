@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
-import { PGlite } from '@electric-sql/pglite';
+import { openDatabase } from './fixtures/test-database.mjs';
 
 const migration = await readFile(
   new URL('../migrations/20261028180000_owner_authorized_admin_branch_access.sql', import.meta.url),
@@ -16,7 +16,7 @@ const panelSource = await readFile(new URL('../../src/components/PartnerPanel.ts
 const cadastrosSource = await readFile(new URL('../../src/components/partner/CadastrosModule.tsx', import.meta.url), 'utf8');
 
 test('owner grants explicit branch scopes; every other role stays in its authorized branch', async () => {
-  const db = new PGlite();
+  const db = await openDatabase();
   const owner = '00000000-0000-0000-0000-000000000001';
   const otherOwner = '00000000-0000-0000-0000-000000000002';
   const admin = '10000000-0000-0000-0000-000000000001';
@@ -371,7 +371,7 @@ test('owner identity is resolved before collaborator identity and is not an assi
 });
 
 test('collaborator administration, operator selection and company isolation are enforced server-side', async () => {
-  const db = new PGlite();
+  const db = await openDatabase();
   const u = n => `00000000-0000-0000-0000-00000000000${n}`;
   const [owner, otherOwner, admin, manager, seller, seller2, otherStaff] = [1, 2, 3, 4, 5, 6, 7].map(u);
   const main = '20000000-0000-0000-0000-000000000001';
@@ -518,7 +518,7 @@ test('migrations 20261028130000 then 20261028180000 apply in order, keep legitim
     new URL('../migrations/20261028130000_enforce_owner_only_cross_branch_access.sql', import.meta.url),
     'utf8',
   );
-  const db = new PGlite();
+  const db = await openDatabase();
   const u = n => `00000000-0000-0000-0000-00000000000${n}`;
   const [owner, otherOwner, admin, manager, seller, nbActive, nbInactive] = [1, 2, 3, 4, 5, 6, 7].map(u);
   const A = '20000000-0000-0000-0000-000000000001';

@@ -858,4 +858,105 @@ BEGIN
 END;
 $cash_supervisor_branch_guard$;
 
+-- Operator/branch authorization used by the legacy SECURITY DEFINER mutation RPCs.
+-- Without an operator the caller must be the authenticated company owner (unrestricted);
+-- otherwise the operator needs the owner-granted branch access. A NULL branch is never
+-- granted to an operator, so legacy NULL-branch administrators gain nothing.
+CREATE OR REPLACE FUNCTION public.partner_operator_can_use_branch(
+  p_company_id uuid, p_salesperson_id uuid, p_branch_id uuid
+) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
+  SELECT CASE
+    WHEN p_salesperson_id IS NULL THEN
+      p_company_id IS NOT NULL
+      AND p_company_id = (SELECT auth.uid())
+      AND EXISTS (SELECT 1 FROM public.partner_profiles pp WHERE pp.id = p_company_id)
+    ELSE
+      p_branch_id IS NOT NULL
+      AND public.partner_salesperson_has_branch_access(p_company_id, p_salesperson_id, p_branch_id)
+  END;
+$$;
+REVOKE ALL ON FUNCTION public.partner_operator_can_use_branch(uuid, uuid, uuid) FROM PUBLIC, anon, authenticated;
+
+-- Several legacy RPCs resolve the operator for a NULL/own branch and then skip the object's
+-- branch check for every administrator (role <> 'administrador' AND ...). Replace each guard with
+-- the owner-granted branch check. Fail closed if a matching function cannot be patched.
+DO $legacy_admin_guards$
+DECLARE
+  v_fn record;
+  v_definition text;
+  v_patched text;
+  v_helper text := 'public.partner_operator_can_use_branch';
+  v_rules text[][] := ARRAY[
+    -- operator record (v_operator) with the object's branch in a variable
+    ARRAY[
+      $re$v_operator\.role\s*<>\s*'administrador'\s+AND\s+(?:v_operator\.branch_id\s+IS\s+NOT\s+NULL\s+AND\s+)?(v_\w+)\s+IS\s+NOT\s+NULL\s+AND\s+(?:v_operator\.branch_id\s+IS\s+NOT\s+NULL\s+AND\s+)?\1\s*<>\s*v_operator\.branch_id$re$,
+      $re$\1 IS NOT NULL AND NOT public.partner_operator_can_use_branch(v_operator.company_id,v_operator.salesperson_id,\1)$re$],
+    ARRAY[
+      $re$v_operator\.role\s*<>\s*'administrador'\s+AND\s+\(\s*v_operator\.branch_id\s+IS\s+NULL\s+OR\s+v_operator\.branch_id\s+IS\s+DISTINCT\s+FROM\s+(v_\w+)\s*\)$re$,
+      $re$NOT public.partner_operator_can_use_branch(v_operator.company_id,v_operator.salesperson_id,\1)$re$],
+    -- execute_partner_sale_delete
+    ARRAY[
+      $re$v_role\s*<>\s*'administrador'\s+AND\s+\(\s*v_branch\s+IS\s+NULL\s+OR\s+v_sale_branch\s+IS\s+DISTINCT\s+FROM\s+v_branch\s*\)$re$,
+      $re$NOT public.partner_operator_can_use_branch(v_company_id,p_salesperson_id,v_sale_branch)$re$],
+    -- execute_partner_product_mutation
+    ARRAY[
+      $re$v_role\s*<>\s*'administrador'\s+AND\s+\(\s*v_branch\s+IS\s+NULL\s+OR\s+v_branch\s*<>\s*p_branch_id\s*\)$re$,
+      $re$p_salesperson_id IS NOT NULL AND NOT public.partner_operator_can_use_branch(v_company_id,p_salesperson_id,p_branch_id)$re$],
+    -- partner_cadastros_private.update_customer_profile
+    ARRAY[
+      $re$operator\.role<>'administrador'\s+AND\s+operator\.branch_id\s+IS\s+NOT\s+NULL\s+AND\s+operator\.branch_id\s+IS\s+DISTINCT\s+FROM\s+coalesce\(p_branch_id,existing\.branch_id\)$re$,
+      $re$coalesce(p_branch_id,existing.branch_id) IS NOT NULL AND NOT public.partner_operator_can_use_branch(operator.company_id,operator.salesperson_id,coalesce(p_branch_id,existing.branch_id))$re$],
+    ARRAY[
+      $re$operator\.role<>'administrador'\s+AND\s+existing\.branch_id\s+IS\s+NOT\s+NULL\s+AND\s+existing\.branch_id\s+IS\s+DISTINCT\s+FROM\s+operator\.branch_id$re$,
+      $re$existing.branch_id IS NOT NULL AND NOT public.partner_operator_can_use_branch(operator.company_id,operator.salesperson_id,existing.branch_id)$re$],
+    ARRAY[
+      $re$desired\.branch_id\s+IS\s+NULL\s+OR\s+operator\.role<>'administrador'$re$,
+      $re$desired.branch_id IS NULL OR NOT public.partner_operator_can_use_branch(operator.company_id,operator.salesperson_id,desired.branch_id)$re$]
+  ];
+  v_existing_old text := 'IF v_existing_user IS NOT NULL AND v_existing_branch IS DISTINCT FROM p_branch_id AND';
+  v_existing_new text := 'IF v_existing_user IS NOT NULL AND p_salesperson_id IS NOT NULL AND v_existing_branch IS NOT NULL AND NOT public.partner_operator_can_use_branch(v_company_id,p_salesperson_id,v_existing_branch) THEN RAISE EXCEPTION ''Acesso negado à filial atual do produto''; END IF;'
+    || E'\n  IF v_existing_user IS NOT NULL AND v_existing_branch IS DISTINCT FROM p_branch_id AND';
+  i int;
+BEGIN
+  FOR v_fn IN
+    SELECT p.oid::regprocedure AS fn, p.prosrc
+    FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE p.prokind = 'f'
+      AND (n.nspname = 'public' OR n.nspname LIKE 'partner\_%')
+      AND p.proname <> 'partner_operator_can_use_branch'
+      AND (
+        EXISTS (SELECT 1 FROM unnest(ARRAY(SELECT v_rules[g][1] FROM generate_subscripts(v_rules, 1) g)) r WHERE p.prosrc ~ r)
+        OR (p.proname = 'execute_partner_product_mutation' AND p.prosrc LIKE '%' || v_existing_old || '%'
+            AND p.prosrc NOT LIKE '%partner_operator_can_use_branch(v_company_id,p_salesperson_id,v_existing_branch)%')
+      )
+  LOOP
+    v_definition := pg_get_functiondef(v_fn.fn);
+    v_patched := v_definition;
+    FOR i IN 1..array_length(v_rules, 1) LOOP
+      v_patched := regexp_replace(v_patched, v_rules[i][1], v_rules[i][2], 'g');
+    END LOOP;
+    IF v_fn.fn::text LIKE '%execute_partner_product_mutation%'
+       AND v_patched NOT LIKE '%partner_operator_can_use_branch(v_company_id,p_salesperson_id,v_existing_branch)%' THEN
+      v_patched := replace(v_patched, v_existing_old, v_existing_new);
+    END IF;
+    IF v_patched = v_definition THEN
+      RAISE EXCEPTION 'Could not patch legacy administrator branch guard in %', v_fn.fn;
+    END IF;
+    EXECUTE v_patched;
+  END LOOP;
+
+  -- Post-condition: no legacy "any administrator" object-branch guard remains.
+  FOR i IN 1..array_length(v_rules, 1) LOOP
+    IF EXISTS (
+      SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE p.prokind = 'f' AND (n.nspname = 'public' OR n.nspname LIKE 'partner\_%')
+        AND p.prosrc ~ v_rules[i][1]
+    ) THEN
+      RAISE EXCEPTION 'Legacy administrator object-branch guard (rule %) still present after patch', i;
+    END IF;
+  END LOOP;
+END;
+$legacy_admin_guards$;
+
 COMMIT;

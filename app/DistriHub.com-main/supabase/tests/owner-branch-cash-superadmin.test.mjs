@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
-import { PGlite } from '@electric-sql/pglite';
+import { openDatabase } from './fixtures/test-database.mjs';
 
-// NOTE: these tests run on PGlite (WASM PostgreSQL) with stand-in schemas. They are simulated tests and
-// are NOT a substitute for validation on a real PostgreSQL/Supabase-equivalent environment.
+// NOTE: by default these tests run on PGlite (WASM PostgreSQL); with DISTRIHUB_REAL_PG_URL they run on a real
+// PostgreSQL server (see supabase/tests/real-postgres/run.mjs). Both use stand-in schemas, so neither is a
+// substitute for validation on a Supabase-equivalent environment.
 const migration = await readFile(
   new URL('../migrations/20261028180000_owner_authorized_admin_branch_access.sql', import.meta.url),
   'utf8',
@@ -107,7 +108,7 @@ const seed = `
 `;
 
 async function buildDb({ dropPublicCash = false } = {}) {
-  const db = new PGlite();
+  const db = await openDatabase();
   await db.exec(baseSchema);
   await db.exec(seed);
   await db.exec(legacyFunctions);
