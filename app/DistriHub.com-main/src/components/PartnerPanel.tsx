@@ -2146,7 +2146,7 @@ export function PartnerPanel({
                 isActive={activeTab === 'administrativo'}
                 recoveries={partner.financialRecoveries}
                 recoveryError={partner.financialRecoveryError}
-                renderSettings={() => <SettingsModule user={user} profile={partner.profile} onProfileUpdate={partner.updateProfile} />}
+                renderSettings={() => <SettingsModule canManageAccount={!isEmployeeRestricted && !pinOperator} canManageOwnerPassword={!isEmployeeRestricted && !pinOperator} user={user} profile={partner.profile} onProfileUpdate={partner.updateProfile} />}
                 renderCadastros={renderCadastros}
                 invoices={filteredInvoices}
                 rmas={partner.rmas}
@@ -2374,6 +2374,7 @@ export function PartnerPanel({
               <div hidden={activeTab !== 'configuracoes'}>
               {renderTab('configuracoes',
               <SettingsModule
+                canManageAccount={!isEmployeeRestricted && !pinOperator}
                 canManageOwnerPassword={Boolean(identity && !isEmployeeRestricted && !pinOperator)}
                 onSubscriptionChanged={() => { void saas.refresh(); }}
                 branchManagement={!isEmployeeRestricted ? <MultiStoreModule

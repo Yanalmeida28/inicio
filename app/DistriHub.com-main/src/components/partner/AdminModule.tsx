@@ -234,12 +234,15 @@ function AdminModuleInner({
   const allowed = (module: string) => module === 'inteligencia'
     ? intelligenceAllowed && ownerView && Boolean(userId) && ['relatorios', 'financeiro'].every(feature => allowedModules.includes(feature))
     : module === 'dashboard' || allowedModules.includes(module);
-  const visibleSections = sidebarSections.filter(section => allowed(section.id) && (section.id !== 'configuracoes' || ownerView));
+  const ownerPages = ['permissoes', 'dispositivos', 'gestao-dados'];
+  const visibleSections = sidebarSections.filter(section => allowed(section.id)).map(section => ({
+    ...section, items: section.items.filter(item => ownerView || !('page' in item && ownerPages.includes(item.page ?? ''))),
+  }));
   const [expandedSection, setExpandedSection] = useState<AdminSection>('dashboard');
   const [activeAdminTab, setActiveAdminTab] = useState<AdminTab>('dashboard');
   const [activeItemId, setActiveItemId] = useState('visao-geral');
   const currentModule = ['dashboard', 'cadastros', 'relatorios', 'inteligencia', 'fiscal', 'financeiro'].includes(activeAdminTab) ? activeAdminTab : 'configuracoes';
-  const canViewCurrent = allowed(currentModule) && (currentModule !== 'configuracoes' || ownerView);
+  const canViewCurrent = allowed(currentModule) && (ownerView || !ownerPages.includes(activeAdminTab));
   const [branchFilter, setBranchFilter] = useState(selectedBranchId);
   const [reportsInitialTab, setReportsInitialTab] = useState<'vendas' | 'sem-giro'>('vendas');
   useEffect(() => { if (isActive) onDataScopeChange?.(activeAdminTab); }, [activeAdminTab, isActive, onDataScopeChange]);
@@ -258,7 +261,7 @@ function AdminModuleInner({
 
   function handleItemClick(item: { id: string; label: string; tab?: string; page?: AdminPage }) {
     const module = item.tab ?? (item.page === 'dashboard' ? 'dashboard' : 'configuracoes');
-    if (!allowed(module) || (module === 'configuracoes' && !ownerView)) return;
+    if (!allowed(module) || (!ownerView && ownerPages.includes(item.page ?? ''))) return;
     onDataScopeChange?.(item.tab ?? item.page ?? 'dashboard');
     setActiveItemId(item.id);
     if (item.tab === 'relatorios') setReportsInitialTab('vendas');
@@ -437,7 +440,7 @@ function AdminModuleInner({
           {activeAdminTab === 'dispositivos' && (ownerView ? <AdminDeviceRegistry isActive={isActive} userId={userId} branchId={branchFilter} branches={branches} /> : <p role="alert">Somente o proprietário pode consultar os terminais da loja.</p>)}
           {activeAdminTab === 'gestao-dados' && (ownerView ? <AdminDataExports products={products} sales={sales} customers={customers} branchId={branchFilter} extra={{ branches, suppliers, categories, invoices: scopedInvoices, stock_movements: movements, payables: scopedPayables }} /> : <p role="alert">Somente o proprietário pode exportar os dados administrativos.</p>)}
           {activeAdminTab === 'configuracoes' && (
-            ownerView ? renderSettings?.() : <p role="alert">Somente o proprietário pode alterar os dados do negócio.</p>
+            renderSettings?.()
           )}
           </>}
         </div>

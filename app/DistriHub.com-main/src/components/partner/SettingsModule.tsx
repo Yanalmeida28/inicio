@@ -15,6 +15,7 @@ import { useSaasSubscription } from '../../hooks/useSaasSubscription';
 import { planCatalog } from '../../lib/planCatalog';
 
 type Props = {
+  canManageAccount?: boolean;
   canManageOwnerPassword?: boolean;
   user: SupabaseUser | null;
   profile: PartnerProfile | null;
@@ -64,7 +65,7 @@ const planLabels: Record<string, string> = {
 };
 
 
-export function SettingsModule({ user, profile, onProfileUpdate, branchManagement, onSubscriptionChanged, canManageOwnerPassword = false }: Props) {
+export function SettingsModule({ user, profile, onProfileUpdate, branchManagement, onSubscriptionChanged, canManageOwnerPassword = false, canManageAccount = true }: Props) {
   const saas = useSaasSubscription(profile?.id);
   const [accountName, setAccountName] = useState(profile?.account_name ?? '');
   const [whatsapp, setWhatsapp] = useState(profile?.whatsapp ?? '');
@@ -125,6 +126,14 @@ export function SettingsModule({ user, profile, onProfileUpdate, branchManagemen
       setPlanRequesting(false);
     }
   }
+
+  if (!canManageAccount) return <div className="panel-module">
+    <div className="module-header"><span className="module-icon"><Settings size={20} /></span><div>
+      <h3>Configurações do Sistema</h3><p>Configurações de impressão do seu dispositivo</p>
+    </div></div>
+    <PrinterSettings />
+    <p>Senha da conta, assinatura, permissões da equipe e gerenciamento de filiais ficam na Área do proprietário.</p>
+  </div>;
 
   return (
     <div className="panel-module">

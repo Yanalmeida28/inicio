@@ -63,6 +63,49 @@ test('Admin filters internal navigation and immediately revokes a section when p
  await act(async()=>sections[1].props.onClick());await act(async()=>r.update(React.createElement(AdminModule,{...props,allowedModules:[]})));assert.equal(r.root.findAllByProps({role:'alert'}).length,1);assert.equal(r.root.findAllByProps({className:'admin-financial-summary'}).length,0);await act(async()=>r.unmount());
 });
 
+test('authorized staff can open settings while owner-only administration stays hidden and permissions revoke immediately',async()=>{
+ const {AdminModule}=harness().load('components/partner/AdminModule.tsx');
+ const props={...base,userId:'owner',ownerView:false,allowedModules:['configuracoes'],renderSettings:()=>React.createElement('div',{'data-settings':true},'Device settings')};
+ let r;await act(async()=>{r=Renderer.create(React.createElement(AdminModule,props));});
+ try {
+  const sections=r.root.findAll(node=>node.props.className?.startsWith?.('admin-sidebar-section-header'));
+  assert.equal(sections.length,2);
+  await act(async()=>sections[1].props.onClick());
+  const buttons=r.root.findAllByType('button');
+  const item=buttons.find(b=>JSON.stringify(b.children.filter(c=>typeof c==='string')).includes('Dados do'));
+  assert.ok(item);
+  assert.doesNotMatch(JSON.stringify(r.toJSON()),/Usuários e permissões|Exportar Dados|Dispositivos\/Terminais/);
+  await act(async()=>item.props.onClick());
+  assert.equal(r.root.findAllByProps({'data-settings':true}).length,1);
+  await act(async()=>r.update(React.createElement(AdminModule,{...props,allowedModules:[]})));
+  assert.equal(r.root.findAllByProps({'data-settings':true}).length,0);
+ } finally {await act(async()=>r.unmount());}
+});
+
+test('staff settings expose printer controls without account, password, billing or branch management controls',async()=>{
+ const exports={};
+ vm.runInNewContext(compile(readFileSync(new URL('../../src/components/partner/SettingsModule.tsx',import.meta.url),'utf8')),{
+  exports,require:dep=>{
+   if(['react','react/jsx-runtime','lucide-react'].includes(dep))return require(dep);
+   if(dep.endsWith('/PrinterSettings'))return {PrinterSettings:()=>React.createElement('div',{'data-printer':true})};
+   if(dep.endsWith('/useSaasSubscription'))return {useSaasSubscription:()=>({subscription:null})};
+   if(dep.endsWith('/planCatalog'))return {planCatalog:{basico:{price:0},profissional:{price:0},enterprise:{price:0}}};
+   return {};
+  },
+ });
+ let r;await act(async()=>{r=Renderer.create(React.createElement(exports.SettingsModule,{
+  canManageAccount:false,canManageOwnerPassword:true,user:{email:'owner@example.test'},profile:{id:'company'},
+  onProfileUpdate:()=>{throw Error('Unexpected profile change');},branchManagement:React.createElement('div',{'data-branches':true}),
+ }));});
+ try {
+  assert.equal(r.root.findAllByProps({'data-printer':true}).length,1);
+  assert.equal(r.root.findAllByProps({'data-branches':true}).length,0);
+  assert.equal(r.root.findAllByType('input').length,0);
+  assert.equal(r.root.findAllByType('button').length,0);
+  assert.doesNotMatch(JSON.stringify(r.toJSON()),/owner@example.test|Upgrade Plano|Alterar senha de login/);
+ } finally {await act(async()=>r.unmount());}
+});
+
 test('executive movements include freight and refund, exclude foreign branches, and fail closed on ledger errors',async()=>{
  let fail=false;
  const client={auth:{getUser:async()=>({data:{user:{id:'owner'}},error:null})},from:table=>{const q={select:()=>q,eq:()=>q,order:()=>q,range:async()=>table==='rma_requests_v2'?(fail?{data:null,error:{message:'Ledger unavailable'}}:{data:[{id:'rma',user_id:'owner',branch_id:'A',refund_amount:40,refund_request_id:'refund',refunded_at:'2026-10-15'},{id:'foreign',user_id:'owner',branch_id:'B',refund_amount:90}],error:null}):{data:[],error:null}};return q;}};
