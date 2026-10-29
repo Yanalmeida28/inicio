@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { User } from '@supabase/supabase-js';
-import { Lock, Shield, UserCheck, X } from 'lucide-react';
+import { Lock, Menu, Shield, Store, UserCheck, X } from 'lucide-react';
 import type { PartnerIdentity } from '../../types';
 import { supabase } from '../../lib/supabase';
 import { authorizeOwner, authorizePin, type PartnerAccess, type PinOperator } from '../../lib/partnerAccess';
 import { OperatorSelectionStore } from '../../lib/checkoutCash';
+import { useDeviceHeartbeat } from '../../hooks/useDeviceHeartbeat';
 
 type Mode = 'employee' | 'owner';
 type Props = {
@@ -22,7 +23,8 @@ type Props = {
 export function PartnerAccessGate({ user, identity, identityError, onRetryIdentity, onSwitchAccount, children }: Props) {
   const scope = identity ? `${identity.authUserId}:${identity.companyUserId}` : '';
   const [authorized, setAuthorized] = useState<{ scope: string; access: PartnerAccess } | null>(null);
-  const [mode, setMode] = useState<Mode | null>('employee');
+  const [mode, setMode] = useState<Mode | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const current = authorized?.scope === scope ? authorized.access : null;
   function allow(access: PartnerAccess) {
     if (!identity) return;
@@ -38,20 +40,40 @@ export function PartnerAccessGate({ user, identity, identityError, onRetryIdenti
     {identityError && onRetryIdentity && <button type="button" className="module-submit-btn" onClick={onRetryIdentity}>Tentar novamente</button>}
   </div>;
   return <>
+    {!current && <div className="partner-panel sidebar-layout" data-locked-workspace="true">
+      <div className="sidebar-mobile-bar"><button type="button" className="sidebar-toggle" aria-label="Menu" aria-expanded={sidebarOpen} onClick={() => setSidebarOpen(value => !value)}><Menu size={22} /></button><span className="sidebar-mobile-title">Painel do Lojista</span></div>
+      {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
+      <aside className={`partner-sidebar ${sidebarOpen ? 'open' : ''}`}>
+        <div className="sidebar-header"><div className="sidebar-brand"><Store size={22} /><strong>Painel do Lojista</strong></div></div>
+        <div className="sidebar-operator" style={{ padding: 16 }}><small>Operador</small><p>Nenhum colaborador selecionado</p>
+          <button type="button" className="rma-advance-btn" onClick={() => setMode('employee')}><UserCheck size={14} /> Selecionar colaborador</button>
+        </div>
+        <button type="button" className="rma-advance-btn" style={{ margin: 12 }} onClick={() => setMode('owner')}><Shield size={14} /> Área do proprietário</button>
+        <button type="button" className="rma-advance-btn" style={{ margin: 12 }} onClick={() => void onSwitchAccount()}>Sair da conta</button>
+        <nav className="sidebar-nav" aria-label="Módulos bloqueados">{['PDV', 'Cadastros', 'Pedidos', 'Caixa'].map(label => <button type="button" className="sidebar-nav-item" key={label} onClick={() => setMode('employee')}><Lock size={14} /> {label}</button>)}</nav>
+      </aside>
+      <main className="sidebar-main"><div className="sidebar-main-inner"><div className="panel-module"><div className="module-header"><Lock size={20} /><h3>Aguardando PIN de acesso</h3></div>
+        <p>Selecione o colaborador e informe o PIN para carregar os dados da sua filial.</p>
+        <button type="button" className="module-submit-btn" onClick={() => setMode('employee')}>Entrar com PIN</button>
+        <button type="button" className="rma-advance-btn" onClick={() => setMode('owner')}>Área do proprietário</button>
+      </div></div></main>
+    </div>}
     {current && children(current.kind === 'employee' ? current.operator : null, setMode)}
-    {(mode || !current) && <PinAccessDialog key={scope} mode={mode ?? 'employee'} onMode={setMode}
+    {mode && <PinAccessDialog key={`${scope}:${mode}`} mode={mode} prepareDevice={!current}
       identity={identity} user={user} onAuthorize={allow} onSwitchAccount={onSwitchAccount}
-      onClose={current ? () => setMode(null) : undefined} />}
+      onClose={() => setMode(null)} />}
   </>;
 }
 
 type DirectoryEntry = { id: string; name: string };
 type DialogProps = {
-  mode: Mode; onMode: (mode: Mode) => void; identity: PartnerIdentity; user: User;
+  mode: Mode; prepareDevice?: boolean; identity: PartnerIdentity; user: User;
   onAuthorize: (access: PartnerAccess) => void; onSwitchAccount: () => Promise<void>; onClose?: () => void;
 };
 
-export function PinAccessDialog({ mode, onMode, identity, user, onAuthorize, onSwitchAccount, onClose }: DialogProps) {
+export function PinAccessDialog({ mode, prepareDevice = false, identity, user, onAuthorize, onSwitchAccount, onClose }: DialogProps) {
+  const device = useDeviceHeartbeat(prepareDevice && mode === 'employee' ? identity.companyUserId : undefined, identity.salespersonId ? identity.branchId : null);
+  const directoryReady = !prepareDevice || device.ready;
   const [directory, setDirectory] = useState<DirectoryEntry[]>([]);
   const [selected, setSelected] = useState(identity.salespersonId ?? '');
   const [pin, setPin] = useState('');
@@ -64,6 +86,7 @@ export function PinAccessDialog({ mode, onMode, identity, user, onAuthorize, onS
   const pending = useRef(false);
   const generation = useRef({ value: 0 });
   useEffect(() => {
+    if (mode !== 'employee' || !directoryReady) return;
     const lifetime = generation.current;
     let live = true;
     setLoading(true); setDirectoryError('');
@@ -86,7 +109,7 @@ export function PinAccessDialog({ mode, onMode, identity, user, onAuthorize, onS
     }
     void load();
     return () => { live = false; lifetime.value++; };
-  }, [identity.authUserId, identity.companyUserId, identity.salespersonId, retry]);
+  }, [identity.authUserId, identity.companyUserId, identity.salespersonId, retry, mode, directoryReady]);
   useEffect(() => {
     generation.current.value++; pending.current = false; setBusy(false);
     setPin(''); setPassword(''); setError('');
@@ -101,7 +124,7 @@ export function PinAccessDialog({ mode, onMode, identity, user, onAuthorize, onS
   }
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    if (pending.current) return;
+    if (pending.current || (mode === 'employee' && !directoryReady)) return;
     pending.current = true; setBusy(true); setError('');
     const attempt = ++generation.current.value;
     try {
@@ -126,27 +149,25 @@ export function PinAccessDialog({ mode, onMode, identity, user, onAuthorize, onS
         {onClose && <button type="button" aria-label="Fechar" disabled={busy} onClick={close}><X size={18} /></button>}
       </div>
       <div className="rma-form">
-        <div role="group" aria-label="Tipo de acesso">
-          <button type="button" className="rma-advance-btn" aria-pressed={!owner} disabled={busy} onClick={() => onMode('employee')}>Colaborador</button>{' '}
-          <button type="button" className="rma-advance-btn" aria-pressed={owner} disabled={busy} onClick={() => onMode('owner')}>Proprietário</button>
-        </div>
         <form onSubmit={submit} className="rma-form">
           {!owner ? <>
+            {device.error && <p role="alert">{device.error} <button type="button" onClick={device.retry}>Tentar novamente</button></p>}
             <p>Selecione seu nome e digite o PIN para entrar diretamente na sua filial.</p>
-            <label>Colaborador<select aria-label="Colaborador" value={selected} disabled={busy || loading} onChange={event => setSelected(event.target.value)} required>
+            <label>Colaborador<select aria-label="Colaborador" value={selected} disabled={busy || loading || !directoryReady} onChange={event => setSelected(event.target.value)} required>
               <option value="">{loading ? 'Carregando…' : 'Selecione seu nome'}</option>
               {directory.map(row => <option key={row.id} value={row.id}>{row.name}</option>)}
             </select></label>
             <label><Lock size={14} /> PIN de acesso<input aria-label="PIN de acesso" type="password" inputMode="numeric" autoComplete="off"
               value={pin} onChange={event => setPin(event.target.value.replace(/\D/g, ''))} minLength={4} maxLength={8} required disabled={busy} /></label>
             {directoryError && <p role="alert">{directoryError} <button type="button" onClick={() => setRetry(value => value + 1)}>Tentar novamente</button></p>}
+            {!loading && !directoryError && directory.length === 0 && <p role="status">Nenhum colaborador ativo disponível nesta conta. Verifique o cadastro na Área do proprietário.</p>}
           </> : identity.salespersonId ? <p>Para liberar o acesso geral, entre com a conta do proprietário.</p> : <>
             <p>Confirme a senha do proprietário para liberar todas as filiais.</p>
             <label>Senha do proprietário<input aria-label="Senha do proprietário" type="password" autoComplete="current-password" value={password}
               onChange={event => setPassword(event.target.value)} required disabled={busy} /></label>
           </>}
           {error && <p role="alert" className="otp-error-msg">{error}</p>}
-          <button className="module-submit-btn" disabled={busy || (!owner && (loading || Boolean(directoryError)))}>
+          <button className="module-submit-btn" disabled={busy || (!owner && (!directoryReady || loading || Boolean(directoryError) || directory.length === 0))}>
             {busy ? 'Conferindo…' : owner ? identity.salespersonId ? 'Entrar com a conta do proprietário' : 'Confirmar proprietário' : 'Entrar na minha filial'}
           </button>
           {onClose && <button type="button" className="rma-advance-btn" disabled={busy} onClick={close}>Cancelar</button>}

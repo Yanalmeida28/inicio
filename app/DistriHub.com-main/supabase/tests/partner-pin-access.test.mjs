@@ -20,7 +20,7 @@ const identity = { authUserId: 'company', companyUserId: 'company', salespersonI
 const user = { id: 'company', email: 'owner@example.test' };
 const employee = { company_id: 'company', salesperson_id: 'employee', branch_id: 'north', role: 'caixa' };
 
-function harness({ reply = { data: [employee], error: null }, passwordUser = 'company', saved = null } = {}) {
+function harness({ reply = { data: [employee], error: null }, passwordUser = 'company', saved = null, device = { ready: true, error: null, retry() {} } } = {}) {
   const calls = [], storage = new Map();
   if (saved) storage.set('distrihub:operator-selection:company:company', JSON.stringify(saved));
   const sessionStorage = { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value) };
@@ -47,7 +47,8 @@ function harness({ reply = { data: [employee], error: null }, passwordUser = 'co
   const components = {};
   vm.runInNewContext(gateSource, { exports: components, Error, sessionStorage,
     require: name => name === '../../lib/supabase' ? deps : name === '../../lib/partnerAccess' ? api
-      : name === '../../lib/checkoutCash' ? cashExports : require(name),
+      : name === '../../lib/checkoutCash' ? cashExports
+      : name === '../../hooks/useDeviceHeartbeat' ? { useDeviceHeartbeat: () => device } : require(name),
   });
   return { ...api, ...components, calls, storage };
 }
@@ -84,15 +85,50 @@ test('owner access requires the correct account password on an isolated temporar
   await assert.rejects(h.authorizeOwner({ ...identity, salespersonId: 'employee' }, user, 'owner-secret'));
 });
 
-async function render(h) {
+async function render(h, open = true) {
   let renderer, logouts = 0;
   const props = { user, identity, onSwitchAccount: async () => { logouts++; }, children: (operator, requestAccess) =>
     React.createElement('main', { 'data-workspace': true, 'data-operator': operator?.id ?? 'owner', 'data-branch': operator?.branchId ?? 'all' },
       React.createElement('button', { 'data-owner': true, onClick: () => requestAccess('owner') }, 'Proprietário')) };
   await act(async () => { renderer = TestRenderer.create(React.createElement(h.PartnerAccessGate, props)); });
+  if (open) await act(async () => renderer.root.findAllByType('button').find(button => button.children.includes('Entrar com PIN')).props.onClick());
   return { renderer, props, get logouts() { return logouts; }, async close() { await act(async () => renderer.unmount()); } };
 }
 const submit = view => view.renderer.root.findByType('form').props.onSubmit({ preventDefault() {} });
+test('login opens an empty app shell with separate operator and owner entry points and no automatic password prompt', async () => {
+  const h = harness(), view = await render(h, false);
+  try {
+    assert.equal(view.renderer.root.findAllByProps({ 'data-locked-workspace': 'true' }).length, 1);
+    assert.equal(view.renderer.root.findAllByProps({ 'data-workspace': true }).length, 0);
+    assert.equal(view.renderer.root.findAllByProps({ role: 'dialog' }).length, 0);
+    assert.equal(h.calls.length, 0);
+    const ownerButton = view.renderer.root.findAllByType('button').find(button => button.children.includes('Área do proprietário'));
+    await act(async () => ownerButton.props.onClick());
+    assert.equal(view.renderer.root.findAllByProps({ 'aria-label': 'Senha do proprietário' }).length, 1);
+    assert.equal(h.calls.filter(call => call.table).length, 0);
+    await act(async () => view.renderer.root.findByProps({ 'aria-label': 'Fechar' }).props.onClick());
+    assert.equal(view.renderer.root.findAllByProps({ role: 'dialog' }).length, 0);
+  } finally { await view.close(); }
+});
+
+test('operator entry only offers collaborators and waits for the device heartbeat before loading names', async () => {
+  const device = { ready: false, error: 'Dispositivo não validado', retry() {} };
+  const h = harness({ device }), view = await render(h);
+  try {
+    assert.equal(h.calls.filter(call => call.table).length, 0);
+    const dialog = view.renderer.root.findByProps({ role: 'dialog' });
+    assert.equal(dialog.findAllByProps({ 'aria-label': 'Senha do proprietário' }).length, 0);
+    assert.equal(dialog.findAllByType('button').some(button => button.children.includes('Proprietário')), false);
+    assert.equal(dialog.findByProps({ className: 'module-submit-btn' }).props.disabled, true);
+    device.ready = true; device.error = null;
+    await act(async () => view.renderer.update(React.createElement(h.PartnerAccessGate, { ...view.props })));
+    assert.equal(h.calls.filter(call => call.table).length, 1);
+    assert.equal(view.renderer.root.findByProps({ 'aria-label': 'Colaborador' }).props.disabled, false);
+    await enterPin(view);
+    assert.equal(view.renderer.root.findByProps({ 'data-workspace': true }).props['data-branch'], 'north');
+  } finally { await view.close(); }
+});
+
 async function enterPin(view, pin = '1234') {
   await act(async () => view.renderer.root.findByProps({ 'aria-label': 'Colaborador' }).props.onChange({ target: { value: 'employee' } }));
   await act(async () => view.renderer.root.findByProps({ 'aria-label': 'PIN de acesso' }).props.onChange({ target: { value: pin } }));
