@@ -85,33 +85,47 @@ test('owner access requires the correct account password on an isolated temporar
   await assert.rejects(h.authorizeOwner({ ...identity, salespersonId: 'employee' }, user, 'owner-secret'));
 });
 
-async function render(h) {
+async function render(h, openOperator = true) {
   let renderer, logouts = 0;
   const props = { user, identity, onSwitchAccount: async () => { logouts++; }, children: (operator, requestAccess) =>
     React.createElement('main', { 'data-workspace': true, 'data-operator': operator?.id ?? 'owner', 'data-branch': operator?.branchId ?? 'all' },
       React.createElement('button', { 'data-switch': true, onClick: () => requestAccess('employee') }, 'Trocar operador'),
       React.createElement('button', { 'data-owner': true, onClick: () => requestAccess('owner') }, 'Proprietário')) };
   await act(async () => { renderer = TestRenderer.create(React.createElement(h.PartnerAccessGate, props)); });
+  if (openOperator) await act(async () => renderer.root.findByProps({ 'aria-label': 'Trocar operador por PIN' }).props.onClick());
   return { renderer, props, get logouts() { return logouts; }, async close() { await act(async () => renderer.unmount()); } };
 }
 const submit = view => view.renderer.root.findByType('form').props.onSubmit({ preventDefault() {} });
-test('login shows name and PIN directly on the initial screen without a preliminary button or password dialog', async () => {
-  const h = harness(), view = await render(h);
+test('login opens the app menus without a PIN screen or any operational data query', async () => {
+  const h = harness(), view = await render(h, false);
   try {
     assert.equal(view.renderer.root.findAllByProps({ 'data-locked-workspace': 'true' }).length, 1);
     assert.equal(view.renderer.root.findAllByProps({ 'data-workspace': true }).length, 0);
     assert.equal(view.renderer.root.findAllByProps({ role: 'dialog' }).length, 0);
-    assert.equal(view.renderer.root.findAllByProps({ 'aria-label': 'Colaborador' }).length, 1);
-    assert.equal(view.renderer.root.findAllByProps({ 'aria-label': 'PIN de acesso' }).length, 1);
+    assert.equal(view.renderer.root.findAllByProps({ 'aria-label': 'Colaborador' }).length, 0);
+    assert.equal(view.renderer.root.findAllByProps({ 'aria-label': 'PIN de acesso' }).length, 0);
+    const nav = view.renderer.root.findByProps({ 'aria-label': 'Menu do aplicativo' });
+    for (const label of ['Financeiro', 'Cadastros', 'PDV & Vendas']) {
+      await act(async () => nav.findAllByType('button').find(button => button.children.includes(label)).props.onClick());
+      assert.equal(view.renderer.root.findByType('h3').children.join(''), label);
+      assert.equal(view.renderer.root.findAllByType('form').length, 0);
+      assert.equal(view.renderer.root.findAllByProps({ 'data-workspace': true }).length, 0);
+      assert.equal(h.calls.length, 0);
+    }
     assert.equal(view.renderer.root.findAllByType('button').some(button => button.children.includes('Entrar com PIN')), false);
     assert.equal(view.renderer.root.findAllByProps({ 'aria-label': 'Senha do proprietário' }).length, 0);
-    const ownerButton = view.renderer.root.findAllByType('button').find(button => button.children.includes('Área do proprietário'));
+    const ownerButton = view.renderer.root.findAllByType('button').find(button => button.children.some(child => typeof child === 'string' && child.trim() === 'Área do proprietário'));
     await act(async () => ownerButton.props.onClick());
     assert.equal(view.renderer.root.findAllByProps({ 'aria-label': 'Senha do proprietário' }).length, 1);
-    assert.equal(h.calls.filter(call => call.table).length, 1);
+    assert.equal(h.calls.filter(call => call.table).length, 0);
     await act(async () => view.renderer.root.findByProps({ 'aria-label': 'Fechar' }).props.onClick());
     assert.equal(view.renderer.root.findAllByProps({ role: 'dialog' }).length, 0);
+    assert.equal(view.renderer.root.findAllByProps({ 'aria-label': 'PIN de acesso' }).length, 0);
+    await act(async () => view.renderer.root.findByProps({ 'aria-label': 'Trocar operador por PIN' }).props.onClick());
     assert.equal(view.renderer.root.findAllByProps({ 'aria-label': 'PIN de acesso' }).length, 1);
+    assert.equal(h.calls.filter(call => call.table).length, 1);
+    await act(async () => view.renderer.root.findByProps({ 'aria-label': 'Fechar' }).props.onClick());
+    assert.equal(view.renderer.root.findAllByProps({ 'data-workspace': true }).length, 0);
   } finally { await view.close(); }
 });
 
