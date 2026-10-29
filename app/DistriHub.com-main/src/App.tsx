@@ -5,7 +5,7 @@ import { readWithJwtRecovery, useAuth } from './hooks/useAuth';
 import { useSuperAdminAuth } from './hooks/useSuperAdminAuth';
 import { HubHome } from './components/HubHome';
 import { supabase } from './lib/supabase';
-import { OperatorSelectionStore } from './lib/checkoutCash';
+import { PartnerAccessGate } from './components/partner/PartnerAccessGate';
 
 const PartnerPanel = lazy(() => import('./components/PartnerPanel').then((module) => ({ default: module.PartnerPanel })));
 const AuthScreen = lazy(() => import('./components/AuthScreen').then((module) => ({ default: module.AuthScreen })));
@@ -79,20 +79,6 @@ function App() {
     async function restorePanel() {
       try {
         if (!supabase) throw new Error('Não foi possível conectar para recuperar o painel.');
-        // A saved PIN operator used the owner's token. Require a real login
-        // before restoring such sessions after the account-switching upgrade.
-        {
-          const scope = `${sessionUserId}:${sessionUserId}`;
-          let legacyOperator = false;
-          try { legacyOperator = Boolean(new OperatorSelectionStore(sessionStorage, scope).read()?.operatorId); }
-          catch { /* Storage may be unavailable. No PIN selection is restored. */ }
-          if (legacyOperator) {
-            await handleSwitchAccount();
-            try { sessionStorage.removeItem(`distrihub:operator-selection:${scope}`); }
-            catch { /* The old session is already terminated. */ }
-            return;
-          }
-        }
         const client = supabase;
         const { data, error } = await readWithJwtRecovery(() => client.rpc('is_super_admin'), () => !cancelled);
         if (error || typeof data !== 'boolean') throw new Error('Não foi possível confirmar o acesso ao painel. Tente novamente.');
@@ -215,9 +201,12 @@ function App() {
 
       {view === 'partner' && (
         <Suspense fallback={<LoadingScreen label="Área do parceiro" />}>
-          <PartnerPanel
-            key={auth.user?.id}
-            onSwitchAccount={handleSwitchAccount}
+          <PartnerAccessGate key={auth.user?.id} user={auth.user} identity={auth.identity}
+            identityError={auth.error} onRetryIdentity={auth.retrySession} onSwitchAccount={handleSwitchAccount}>
+          {(pinOperator, onRequestAccess) => <PartnerPanel
+            key={`${auth.user?.id}:${pinOperator?.id ?? 'owner'}:${pinOperator?.branchId ?? 'all'}`}
+            pinOperator={pinOperator}
+            onRequestAccess={onRequestAccess}
             onBack={handleLogout}
             user={auth.user}
             identity={auth.identity}
@@ -226,7 +215,8 @@ function App() {
             segment={segment}
             initialTab={partnerInitialTab}
             onConsumeInitialTab={() => setPartnerInitialTab(undefined)}
-          />
+          />}
+          </PartnerAccessGate>
         </Suspense>
       )}
 

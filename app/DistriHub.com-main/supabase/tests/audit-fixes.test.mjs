@@ -194,6 +194,7 @@ test('master recovery announces only a requested link, never a changed password'
     './hooks/useAuth': {}, './hooks/useSuperAdminAuth': {}, './hooks/useCart': {}, './components/CartDrawer': {},
     './components/HubHome': {}, './lib/supabase': {}, './lib/b2bOrder': b2b,
     './lib/checkoutCash': await load('lib/checkoutCash.ts'),
+    './components/partner/PartnerAccessGate': {},
   }, {}, '\nexports.RecoveryFlow=RecoveryFlow;');
   let requests = 0, renderer;
   await act(async () => { renderer = TestRenderer.create(React.createElement(RecoveryFlow, {

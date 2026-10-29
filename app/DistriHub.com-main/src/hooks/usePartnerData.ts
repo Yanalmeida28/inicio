@@ -663,7 +663,8 @@ read('sales', (signal) => fetchAllPages((from, to) => client
         profile:
           (profileResult.data as PartnerProfile | null) ?? null,
         branches:
-  (branchesResult.data as PartnerBranch[] | null) ?? [],
+          ((branchesResult.data as PartnerBranch[] | null) ?? []).filter(branch =>
+            !currentIdentity.salespersonId || branch.id === currentIdentity.branchId),
         customers: filterBranch(
           customersResult.data as PartnerCustomer[] | null,
           true,

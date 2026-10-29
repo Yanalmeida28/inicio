@@ -22,7 +22,7 @@ async function harness({ user = { id: 'owner' }, master = false, permissionError
   let auth, renderer, signouts = 0, checks = 0;
   const stored = new Map(legacy ? [['distrihub:operator-selection:owner:owner', JSON.stringify({ branchId: 'a', operatorId: 'employee' })]] : []);
   const storage = { getItem: key => stored.get(key) ?? null, removeItem: key => stored.delete(key) };
-  function partner({ onBack, onSwitchAccount }) { return React.createElement('button', { onClick: onBack, onDoubleClick: onSwitchAccount, 'data-panel': 'partner' }, 'Sair do app'); }
+  function partner({ onBack, onRequestAccess }) { return React.createElement('button', { onClick: onBack, onDoubleClick: () => onRequestAccess('owner'), 'data-panel': 'partner' }, 'Sair do app'); }
   function admin({ onBack }) { return React.createElement('button', { onClick: onBack, 'data-panel': 'master' }, 'Sair do app'); }
   function login(props) { return React.createElement('div', { 'data-panel': 'login', 'data-recovery': props.recoveryMode }); }
   const dependencies = {
@@ -34,6 +34,7 @@ async function harness({ user = { id: 'owner' }, master = false, permissionError
     './components/PartnerPanel': { PartnerPanel: partner },
     './components/AdminPanel': { AdminPanel: admin },
     './components/AuthScreen': { AuthScreen: login },
+    './components/partner/PartnerAccessGate': { PartnerAccessGate: props => props.children(null, props.onSwitchAccount) },
     './lib/supabase': { supabase: { async rpc() { checks++; return clockFailures-- > 0 ? { data: null, error: { code: 'PGRST303', message: 'JWT issued at future' } } : { data: master, error: permissionError }; } } },
     './lib/b2bOrder': {},
     './lib/checkoutCash': cashExports,
@@ -68,20 +69,11 @@ test('failed account switch keeps the session and does not navigate to login', a
   await h.close();
 });
 
-test('legacy PIN sessions cannot reload as owner and require account authentication', async () => {
+test('legacy PIN selections remain available to the PIN gate without terminating the company session', async () => {
   const h = await harness({ legacy: true });
-  assert.equal(h.signouts, 1);
-  assert.equal(h.checks, 0);
-  assert.equal(h.stored.size, 0);
-  assert.ok(h.renderer.root.findByProps({ 'data-panel': 'login' }));
-  await h.close();
-});
-
-test('failed legacy session logout blocks protected panels and retains the legacy marker', async () => {
-  const h = await harness({ legacy: true, signoutError: true });
-  assert.equal(h.signouts, 1);
+  assert.equal(h.signouts, 0);
+  assert.equal(h.checks, 1);
   assert.equal(h.stored.size, 1);
-  assert.equal(h.renderer.root.findAllByProps({ 'data-panel': 'partner' }).length, 0);
   await h.close();
 });
 

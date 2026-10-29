@@ -42,7 +42,7 @@ import { pdvErrorMessage } from '../lib/pdv';
 import { panelStyle } from '../lib/personalization';
 import { storeTheme } from '../lib/storeTheme';
 import { cadastroDestination, type AdminCadastrosTarget } from '../lib/cadastrosNavigation';
-import { AccountAccessDialog } from './partner/AccountAccessDialog';
+import type { PinOperator } from '../lib/partnerAccess';
 import { BranchSelector } from './partner/BranchSelector';
 import { useCheckoutCash } from '../hooks/useCheckoutCash';
 import { SessionDraftProvider, useSessionDraftState, clearConfirmedPdvDraft } from '../hooks/useSessionDraft';
@@ -102,7 +102,8 @@ import type {
 
 type PartnerPanelProps = {
   onBack: () => void;
-  onSwitchAccount: () => Promise<void>;
+  pinOperator: PinOperator | null;
+  onRequestAccess: (mode: 'employee' | 'owner') => void;
   user: User | null;
   identity: PartnerIdentity | null;
   identityError: string | null;
@@ -279,15 +280,19 @@ const logisticaBlockedTabs: Tab[] = [
 
 export function PartnerPanel({
   onBack,
-  onSwitchAccount,
+  pinOperator,
+  onRequestAccess,
   user,
-  identity,
+  identity: authenticatedIdentity,
   identityError,
   onRetryIdentity,
   segment,
   initialTab,
   onConsumeInitialTab,
 }: PartnerPanelProps) {
+  const identity = useMemo(() => authenticatedIdentity && pinOperator ? {
+    ...authenticatedIdentity, salespersonId: pinOperator.id, branchId: pinOperator.branchId, role: pinOperator.role,
+  } : authenticatedIdentity, [authenticatedIdentity, pinOperator]);
   const [activeTab, setActiveTab] = useSessionDraftState<Tab>(
     'partner:active-tab',
     'cadastros',
@@ -323,8 +328,6 @@ export function PartnerPanel({
     };
   }, [sidebarOpen]);
 
-  const [accountAccess, setAccountAccess] = useState<'employee' | 'owner' | null>(null);
-
   useEffect(() => {
     setVisitedTabs((current) => current.has(activeTab) ? current : new Set(current).add(activeTab));
   }, [activeTab]);
@@ -352,7 +355,7 @@ export function PartnerPanel({
       ) ?? {
         id: identity.salespersonId,
         user_id: identity.companyUserId,
-        name: 'Funcionário',
+        name: pinOperator?.name ?? 'Funcionário',
         role: identity.role,
         commission_rate: 0,
         phone: null,
@@ -416,7 +419,7 @@ export function PartnerPanel({
     catch { /* Storage does not change account authorization. */ }
   }, [identity, isEmployeeRestricted, operatorScope, selectedBranchId]);
 
-  const checkoutCash = useCheckoutCash(effectiveBranchId, null, null, managedCashSession?.operator_name ?? activeSalesperson?.name ?? 'Proprietário / Administrador', operatorScope, ['pdv', 'pedidos', 'caixa'].includes(activeTab), managedCashSession?.id ?? null);
+  const checkoutCash = useCheckoutCash(effectiveBranchId, pinOperator?.id ?? null, pinOperator?.pin ?? null, managedCashSession?.operator_name ?? activeSalesperson?.name ?? 'Proprietário / Administrador', operatorScope, ['pdv', 'pedidos', 'caixa'].includes(activeTab), managedCashSession?.id ?? null);
   const refreshCash = checkoutCash.refresh;
   useEffect(() => {
     if (activeTab === 'pdv' || activeTab === 'pedidos' || activeTab === 'caixa') void refreshCash().catch(() => {});
@@ -608,8 +611,7 @@ export function PartnerPanel({
   }, [partner.salespeople, effectiveBranchId]);
 
   function getOperatorContext() {
-    // Use the authenticated account for every operation, never an impersonated name.
-    return { operatorId: null, operatorPin: null };
+    return { operatorId: pinOperator?.id ?? null, operatorPin: pinOperator?.pin ?? null };
   }
 
   function handleSelectBranch(id: string) {
@@ -1728,15 +1730,15 @@ export function PartnerPanel({
 
             <button
               onClick={
-                () => setAccountAccess('employee')
+                () => onRequestAccess('employee')
               }
               className="rma-advance-btn"
               style={{
                 fontSize: '11px',
                 padding: '4px 8px',
               }}
-              title="Trocar conta de funcionário"
-              aria-label="Trocar conta de funcionário"
+              title="Trocar operador por PIN"
+              aria-label="Trocar operador por PIN"
             >
               <UserCheck size={14} />
             </button>
@@ -1744,7 +1746,7 @@ export function PartnerPanel({
         </div>
 
         <button type="button" className="rma-advance-btn" style={{ margin: '0 12px 12px' }}
-          onClick={() => setAccountAccess('owner')}>
+          onClick={() => onRequestAccess('owner')}>
           <Shield size={14} /> Área do proprietário
         </button>
 
@@ -1865,8 +1867,8 @@ export function PartnerPanel({
                 cashContext={checkoutCash}
                 onOpenCash={() => setActiveTab('caixa')}
                 onOpenOrders={() => setActiveTab('pedidos')}
-                onConfirmCashOperator={() => setAccountAccess('employee')}
-                canEditPrice={effectiveRole === 'gerente' || (!isEmployeeRestricted && effectiveRole === 'administrador')}
+                onConfirmCashOperator={() => onRequestAccess('employee')}
+                canEditPrice={effectiveRole === 'gerente' || ((!isEmployeeRestricted || Boolean(pinOperator)) && effectiveRole === 'administrador')}
                 key={`${pdvRevision}:${effectiveBranchId}`}
                 hasPendingSale={Boolean(partner.pendingSale)}
                 barcodeScannerEnabled={storeSettings.personalization?.pdv?.barcode_scanner_enabled !== false}
@@ -1962,7 +1964,7 @@ export function PartnerPanel({
                   const { operatorId, operatorPin } = getOperatorContext();
                   await partner.updateOpenOrderCustomer(id, customerId, operatorId, operatorPin);
                 }}
-                canEditPrice={effectiveRole === 'gerente' || (!isEmployeeRestricted && effectiveRole === 'administrador')}
+                canEditPrice={effectiveRole === 'gerente' || ((!isEmployeeRestricted || Boolean(pinOperator)) && effectiveRole === 'administrador')}
                 products={filteredProducts}
                 onUpdateItems={async (id, items) => {
                   const { operatorId, operatorPin } = getOperatorContext();
@@ -2370,8 +2372,6 @@ export function PartnerPanel({
         </div>
       </div>
 
-      {accountAccess && <AccountAccessDialog mode={accountAccess}
-        onClose={() => setAccountAccess(null)} onContinue={onSwitchAccount} />}
     </div>
   );
 }

@@ -8,12 +8,12 @@ const compile=s=>ts.transpileModule(s,{compilerOptions:{module:ts.ModuleKind.Com
 const source=await read('components/PartnerPanel.tsx');
 const fragment=source.slice(source.indexOf('  function getOperatorContext()'),source.indexOf('  function handleSelectBranch'));
 
-test('stale owner or PIN selections cannot impersonate an operator in authenticated account operations',()=>{
- for(const salespersonId of [null,'employee']){
-  const c=vm.createContext({exports:{},identity:{salespersonId},currentSalespersonId:'other-employee',activeOperatorPin:'1234',selectedOperatorId:'owner'});
+test('PIN operations retain the confirmed operator and PIN instead of falling back to owner',()=>{
+ for(const operator of [null,{id:'employee',pin:'1234'}]){
+  const c=vm.createContext({exports:{},pinOperator:operator});
   vm.runInContext(compile(fragment+'\nexports.getContext=getOperatorContext;'),c);
   const result=c.exports.getContext();
-  assert.equal(result.operatorId,null);assert.equal(result.operatorPin,null);
+  assert.equal(result.operatorId,operator?.id??null);assert.equal(result.operatorPin,operator?.pin??null);
  }
 });
 
