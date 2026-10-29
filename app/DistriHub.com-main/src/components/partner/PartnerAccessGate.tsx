@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { User } from '@supabase/supabase-js';
-import { Lock, Menu, Shield, Store, UserCheck, X } from 'lucide-react';
+import { Lock, Shield, UserCheck, X } from 'lucide-react';
 import type { PartnerIdentity } from '../../types';
 import { supabase } from '../../lib/supabase';
 import { authorizeOwner, authorizePin, type PartnerAccess, type PinOperator } from '../../lib/partnerAccess';
@@ -15,17 +15,15 @@ type Props = {
   identityError?: string | null;
   onRetryIdentity?: () => void;
   onSwitchAccount: () => Promise<void>;
-  children: (operator: PinOperator | null, requestAccess: (mode: Mode) => void) => ReactNode;
+  children: (operator: PinOperator | null, requestAccess: (mode: Mode) => void, accessLocked: boolean) => ReactNode;
 };
 
-// Mount the workspace only after access is confirmed. Reloads require a PIN
-// or the owner's password; a saved selection is never an authorization.
+// Render the actual panel immediately, with operational access locked until
+// confirmed. A saved operator selection is never an authorization.
 export function PartnerAccessGate({ user, identity, identityError, onRetryIdentity, onSwitchAccount, children }: Props) {
   const scope = identity ? `${identity.authUserId}:${identity.companyUserId}` : '';
   const [authorized, setAuthorized] = useState<{ scope: string; access: PartnerAccess } | null>(null);
   const [mode, setMode] = useState<Mode | null>(null);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [lockedTab, setLockedTab] = useState('PDV & Vendas');
   const current = authorized?.scope === scope ? authorized.access : null;
   function allow(access: PartnerAccess) {
     if (!identity) return;
@@ -41,27 +39,7 @@ export function PartnerAccessGate({ user, identity, identityError, onRetryIdenti
     {identityError && onRetryIdentity && <button type="button" className="module-submit-btn" onClick={onRetryIdentity}>Tentar novamente</button>}
   </div>;
   return <>
-    {!current && <div className="partner-panel sidebar-layout" data-locked-workspace="true">
-      <div className="sidebar-mobile-bar"><button type="button" className="sidebar-toggle" aria-label="Menu" aria-expanded={sidebarOpen} onClick={() => setSidebarOpen(value => !value)}><Menu size={22} /></button><span className="sidebar-mobile-title">{lockedTab}</span><button type="button" className="rma-advance-btn" aria-label="Selecionar operador por PIN" onClick={() => setMode('employee')}><UserCheck size={18} /></button></div>
-      {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
-      <aside className={`partner-sidebar ${sidebarOpen ? 'open' : ''}`}>
-        <div className="sidebar-header"><div className="sidebar-brand"><Store size={22} /><strong>Painel do Lojista</strong></div></div>
-        <div className="sidebar-operator" style={{ padding: 16 }}><small>Operador</small><p>Nenhum colaborador selecionado</p>
-          <button type="button" className="rma-advance-btn" aria-label="Trocar operador por PIN" onClick={() => setMode('employee')}><UserCheck size={14} /> Selecionar operador</button>
-        </div>
-        <button type="button" className="rma-advance-btn" style={{ margin: 12 }} onClick={() => setMode('owner')}><Shield size={14} /> Área do proprietário</button>
-        <button type="button" className="rma-advance-btn" style={{ margin: 12 }} onClick={() => void onSwitchAccount()}>Sair da conta</button>
-        <nav className="sidebar-nav" aria-label="Menu do aplicativo">
-          {['Cadastros', 'PDV & Vendas', 'Caixa', 'Pedidos em Aberto', 'Ordens de Serviço', 'Histórico', 'Suporte', 'Nota Fiscal', 'Administrativo', 'Gestão de Entregas', 'Financeiro', 'RMA & Devoluções', 'Relatórios & CRM', 'Personalização', 'Configurações'].map(label => <button key={label} type="button" className={`sidebar-nav-item ${lockedTab === label ? 'active' : ''}`} aria-current={lockedTab === label ? 'page' : undefined} onClick={() => { setLockedTab(label); setSidebarOpen(false); }}><Lock size={14} /> {label}</button>)}
-        </nav>
-      </aside>
-      <main className="sidebar-main"><div className="sidebar-main-inner">
-        <div className="partner-content"><div className="panel-module"><div className="module-header"><Lock size={20} /><h3>{lockedTab}</h3></div>
-          <p role="status">Selecione seu operador no menu e confirme o PIN para visualizar os dados da sua filial.</p>
-        </div></div>
-      </div></main>
-    </div>}
-    {current && children(current.kind === 'employee' ? current.operator : null, setMode)}
+    {children(current?.kind === 'employee' ? current.operator : null, setMode, !current)}
     {mode && <PinAccessDialog key={`${scope}:${mode}`} mode={mode} prepareDevice={!current}
       identity={identity} user={user} onAuthorize={allow} onSwitchAccount={onSwitchAccount}
       onClose={() => setMode(null)} />}

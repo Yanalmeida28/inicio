@@ -203,8 +203,9 @@ function App() {
         <Suspense fallback={<LoadingScreen label="Área do parceiro" />}>
           <PartnerAccessGate key={auth.user?.id} user={auth.user} identity={auth.identity}
             identityError={auth.error} onRetryIdentity={auth.retrySession} onSwitchAccount={handleSwitchAccount}>
-          {(pinOperator, onRequestAccess) => <PartnerPanel
-            key={`${auth.user?.id}:${pinOperator?.id ?? 'owner'}:${pinOperator?.branchId ?? 'all'}`}
+          {(pinOperator, onRequestAccess, accessLocked) => <PartnerPanel
+            key={`${auth.user?.id}:${accessLocked ? 'locked' : pinOperator?.id ?? 'owner'}:${pinOperator?.branchId ?? 'all'}`}
+            accessLocked={accessLocked}
             pinOperator={pinOperator}
             onRequestAccess={onRequestAccess}
             onBack={handleLogout}

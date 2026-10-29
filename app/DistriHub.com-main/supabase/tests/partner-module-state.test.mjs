@@ -13,7 +13,7 @@ test('trocar módulos preserva rascunhos; revogar acesso desmonta a tela', async
   const context = vm.createContext({
     require: createRequire(import.meta.url), exports: {}, Suspense: React.Suspense,
     ModuleBoundary: ({children}) => children,
-    visitedTabs: new Set(['cadastros','pdv']), blockedTabs: [], activeTab: 'cadastros',
+    visitedTabs: new Set(['cadastros','pdv']), blockedTabs: [], activeTab: 'cadastros', accessLocked: false,
     saas: {subscription: {}}, canUseSaasFeature: () => true,
     partner: {resourcesReady:true,loading:false},
   });
@@ -41,5 +41,8 @@ test('trocar módulos preserva rascunhos; revogar acesso desmonta a tela', async
   context.blockedTabs=['pdv'];
   await act(async () => renderer.update(screen()));
   assert.equal(renderer.root.findAllByProps({'aria-label':'venda'}).length,0);
+  context.accessLocked=true;
+  await act(async () => renderer.update(screen()));
+  assert.equal(renderer.root.findAllByType('input').length,0);
   await act(async () => renderer.unmount());
 });

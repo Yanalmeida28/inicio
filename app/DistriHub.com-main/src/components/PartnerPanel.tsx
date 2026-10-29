@@ -101,6 +101,7 @@ import type {
 } from '../types';
 
 type PartnerPanelProps = {
+  accessLocked?: boolean;
   onBack: () => void;
   pinOperator: PinOperator | null;
   onRequestAccess: (mode: 'employee' | 'owner') => void;
@@ -279,6 +280,7 @@ const logisticaBlockedTabs: Tab[] = [
 ];
 
 export function PartnerPanel({
+  accessLocked = false,
   onBack,
   pinOperator,
   onRequestAccess,
@@ -290,15 +292,15 @@ export function PartnerPanel({
   initialTab,
   onConsumeInitialTab,
 }: PartnerPanelProps) {
-  const identity = useMemo(() => authenticatedIdentity && pinOperator ? {
+  const identity = useMemo(() => accessLocked ? null : authenticatedIdentity && pinOperator ? {
     ...authenticatedIdentity, salespersonId: pinOperator.id, branchId: pinOperator.branchId, role: pinOperator.role,
-  } : authenticatedIdentity, [authenticatedIdentity, pinOperator]);
+  } : authenticatedIdentity, [authenticatedIdentity, pinOperator, accessLocked]);
   const [activeTab, setActiveTab] = useSessionDraftState<Tab>(
     'partner:active-tab',
     'cadastros',
     `user:${user?.id ?? identity?.authUserId ?? 'pending'}`,
   );
-  const supportUnread = useSupportUnread(user?.id);
+  const supportUnread = useSupportUnread(accessLocked ? undefined : user?.id);
   const [visitedTabs, setVisitedTabs] = useState<Set<Tab>>(() => new Set(['cadastros']));
   useEffect(() => {
     setVisitedTabs((current) => current.has(activeTab) ? current : new Set(current).add(activeTab));
@@ -373,7 +375,7 @@ export function PartnerPanel({
     ? identity?.branchId ?? null
     : null;
 
-  const effectiveBranchId =
+  const effectiveBranchId = accessLocked ? '' :
     isEmployeeRestricted ? lockedBranchId ?? '' : selectedBranchId;
   useEffect(() => {
     if (!effectiveBranchId || partner.loading || (activeTab !== 'pdv' && activeTab !== 'pedidos')) return;
@@ -419,11 +421,11 @@ export function PartnerPanel({
     catch { /* Storage does not change account authorization. */ }
   }, [identity, isEmployeeRestricted, operatorScope, selectedBranchId]);
 
-  const checkoutCash = useCheckoutCash(effectiveBranchId, pinOperator?.id ?? null, pinOperator?.pin ?? null, managedCashSession?.operator_name ?? activeSalesperson?.name ?? 'Proprietário / Administrador', operatorScope, ['pdv', 'pedidos', 'caixa'].includes(activeTab), managedCashSession?.id ?? null);
+  const checkoutCash = useCheckoutCash(effectiveBranchId, pinOperator?.id ?? null, pinOperator?.pin ?? null, managedCashSession?.operator_name ?? activeSalesperson?.name ?? 'Proprietário / Administrador', operatorScope, !accessLocked && ['pdv', 'pedidos', 'caixa'].includes(activeTab), managedCashSession?.id ?? null);
   const refreshCash = checkoutCash.refresh;
   useEffect(() => {
-    if (activeTab === 'pdv' || activeTab === 'pedidos' || activeTab === 'caixa') void refreshCash().catch(() => {});
-  }, [activeTab, refreshCash, partner.sales]);
+    if (!accessLocked && (activeTab === 'pdv' || activeTab === 'pedidos' || activeTab === 'caixa')) void refreshCash().catch(() => {});
+  }, [activeTab, refreshCash, partner.sales, accessLocked]);
 
   useEffect(() => {
     if (
@@ -484,10 +486,11 @@ export function PartnerPanel({
   ])], [roleBlockedTabs, activeSalesperson?.blocked_modules]);
 
   const visibleTabs = useMemo(() => {
+    if (accessLocked) return allTabs;
     return allTabs.filter((tab) =>
       !blockedTabs.includes(tab.id) && canUseSaasFeature(saas.subscription, tab.id),
     );
-  }, [blockedTabs, saas.subscription]);
+  }, [blockedTabs, saas.subscription, accessLocked]);
 
   useEffect(() => {
     if (!identity?.companyUserId || partner.loading || saas.loading || (!saas.subscription && !saas.error)) return;
@@ -1403,6 +1406,7 @@ export function PartnerPanel({
   }
 
   function preloadTab(tab: Tab) {
+    if (accessLocked) return;
     if (blockedTabs.includes(tab) || !canUseSaasFeature(saas.subscription, tab)) return;
     void tabCodeLoaders[tab]().catch(() => {});
     void partner.prefetchModule(tab === 'cadastros' ? 'cadastros:' + cadastroDataScope : tab === 'administrativo' ? 'administrativo:' + adminDataScope : tab === 'relatorios' ? 'relatorios:' + reportDataScope : tab);
@@ -1418,6 +1422,7 @@ export function PartnerPanel({
   }
 
   function renderTab(tab: Tab, content: ReactNode, instance = '') {
+    if (accessLocked) return null;
     if (!visitedTabs.has(tab) || blockedTabs.includes(tab) || !canUseSaasFeature(saas.subscription, tab)) return null;
     return (
       <div key={tab + instance} hidden={activeTab !== tab}>
@@ -1689,7 +1694,7 @@ export function PartnerPanel({
               >
                 {activeSalesperson
                   ? activeSalesperson.name
-                  : 'Proprietário (Admin)'}
+                  : accessLocked ? 'Selecione seu operador' : 'Proprietário (Admin)'}
               </strong>
 
               {lockedBranch ? (
@@ -1717,7 +1722,7 @@ export function PartnerPanel({
                     marginTop: '2px',
                   }}
                 >
-                  {effectiveBranchId
+                  {accessLocked ? 'Confirme o PIN para carregar sua filial' : effectiveBranchId
                     ? partner.branches.find(
                         (branch) =>
                           branch.id ===
@@ -1751,13 +1756,13 @@ export function PartnerPanel({
           <Shield size={14} /> Área do proprietário
         </button>
 
-          <BranchSelector
+          {!accessLocked && <BranchSelector
             branches={partner.branches}
             selectedBranchId={effectiveBranchId}
             onSelectBranch={handleSelectBranch}
             isEmployeeLocked={isEmployeeRestricted}
             lockedBranchName={lockedBranch?.name}
-          />
+          />}
 
         <nav className="sidebar-nav">
           {visibleTabs.map(
@@ -1791,7 +1796,7 @@ export function PartnerPanel({
             type="button"
             className="sidebar-nav-item"
             onClick={() => void partner.synchronize()}
-            disabled={partner.loading || partner.syncing}
+            disabled={accessLocked || partner.loading || partner.syncing}
             aria-label={partner.syncing ? 'Sincronizando' : 'Sincronizar'}
             aria-busy={partner.syncing}
           >
@@ -1824,7 +1829,7 @@ export function PartnerPanel({
             </p>
           )}
 
-          <SessionDraftProvider
+          {accessLocked ? <div className="partner-content"><p role="status">Selecione seu operador no menu e confirme o PIN para visualizar os dados da sua filial.</p></div> : <SessionDraftProvider
             key={`${identity?.authUserId ?? user?.id ?? 'pending'}:${identity?.companyUserId ?? 'pending'}:workspace:${effectiveBranchId || 'all'}`}
             scope={`${identity?.authUserId ?? user?.id ?? 'pending'}:${identity?.companyUserId ?? 'pending'}:workspace:${effectiveBranchId || 'all'}`}
             legacyScope={`${identity?.authUserId ?? user?.id ?? 'pending'}:${identity?.companyUserId ?? 'pending'}:${identity?.salespersonId ?? 'owner'}:${effectiveBranchId || 'all'}`}
@@ -2369,7 +2374,7 @@ export function PartnerPanel({
               </div>
             )}
           </div>
-          </SessionDraftProvider>
+          </SessionDraftProvider>}
         </div>
       </div>
 

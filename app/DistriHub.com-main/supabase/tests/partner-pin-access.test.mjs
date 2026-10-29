@@ -64,6 +64,48 @@ test('PIN authorizes the server-assigned branch directly without choosing a bran
   assert.equal(h.calls.some(call => call.verifier), false);
 });
 
+test('the real PartnerPanel renders its own menus while all operational hooks and module prefetch remain disabled', async () => {
+  const calls = [], exports = {};
+  const partner = { loading: false, syncing: false, settings: null, profile: null,
+    branches: [], salespeople: [], suppliers: [], categories: [], products: [], movements: [], sales: [], customers: [], rmas: [], invoices: [], orders: [] };
+  const dependencies = {
+    '../hooks/usePartnerData': { usePartnerData: value => { calls.push(['data', value]); return partner; } },
+    '../hooks/useDeviceHeartbeat': { useDeviceHeartbeat: value => { calls.push(['device', value]); return { ready: false }; } },
+    '../hooks/useSaasSubscription': { useSaasSubscription: value => { calls.push(['subscription', value]); return { loading: false, subscription: null }; } },
+    '../hooks/useSupportUnread': { useSupportUnread: value => { calls.push(['unread', value]); return { total: 0 }; } },
+    '../hooks/useCheckoutCash': { useCheckoutCash: (...args) => { calls.push(['cash', args[5]]); return { refresh() { throw new Error('Unexpected cash read'); } }; } },
+    '../hooks/useSessionDraft': { useSessionDraftState: (_key, initial) => React.useState(initial) },
+    '../lib/partnerSync': { branchDirectoryRows: rows => rows },
+    '../lib/storeTheme': { storeTheme: () => ({}) },
+    '../lib/checkoutCash': cashExports,
+    '../lib/moduleLoading': { moduleLoader: () => () => { throw new Error('Unexpected module prefetch'); } },
+  };
+  vm.runInNewContext(compile(await read('components/PartnerPanel.tsx')), { exports, Error,
+    require: name => dependencies[name] ?? (name.startsWith('.') ? new Proxy({}, { get: () => () => null }) : require(name)),
+  });
+  let renderer;
+  const requests = [];
+  await act(async () => { renderer = TestRenderer.create(React.createElement(exports.PartnerPanel, {
+    accessLocked: true, pinOperator: null, user, identity, identityError: null,
+    segment: 'assistencia', onBack() {}, onRequestAccess: mode => requests.push(mode),
+  })); });
+  try {
+    assert.equal(renderer.root.findAllByProps({ className: 'partner-panel sidebar-layout' }).length, 1);
+    assert.equal(renderer.root.findAllByType('form').length, 0);
+    for (const label of ['Financeiro', 'Cadastros', 'PDV & Vendas']) {
+      const button = renderer.root.findByProps({ 'aria-label': label });
+      await act(async () => { button.props.onPointerEnter(); button.props.onClick(); });
+      assert.equal(renderer.root.findAllByType('form').length, 0);
+    }
+    assert.ok(calls.filter(([kind]) => kind === 'data').every(([, value]) => value === null));
+    assert.ok(calls.filter(([kind]) => ['device', 'subscription', 'unread'].includes(kind)).every(([, value]) => value === undefined));
+    assert.ok(calls.filter(([kind]) => kind === 'cash').every(([, value]) => value === false));
+    assert.equal(renderer.root.findByProps({ 'aria-label': 'Sincronizar' }).props.disabled, true);
+    await act(async () => renderer.root.findByProps({ 'aria-label': 'Trocar operador por PIN' }).props.onClick());
+    assert.deepEqual(requests, ['employee']);
+  } finally { await act(async () => renderer.unmount()); }
+});
+
 test('wrong PIN, missing branch, foreign company and ambiguous RPC replies never grant owner or employee access', async () => {
   for (const reply of [{ data: null, error: new Error('Bad PIN') },
     { data: [{ ...employee, branch_id: null }], error: null },
@@ -87,10 +129,10 @@ test('owner access requires the correct account password on an isolated temporar
 
 async function render(h, openOperator = true) {
   let renderer, logouts = 0;
-  const props = { user, identity, onSwitchAccount: async () => { logouts++; }, children: (operator, requestAccess) =>
-    React.createElement('main', { 'data-workspace': true, 'data-operator': operator?.id ?? 'owner', 'data-branch': operator?.branchId ?? 'all' },
-      React.createElement('button', { 'data-switch': true, onClick: () => requestAccess('employee') }, 'Trocar operador'),
-      React.createElement('button', { 'data-owner': true, onClick: () => requestAccess('owner') }, 'Proprietário')) };
+  const props = { user, identity, onSwitchAccount: async () => { logouts++; }, children: (operator, requestAccess, accessLocked) =>
+    React.createElement('main', { 'data-partner-panel': true, 'data-locked': accessLocked, 'data-workspace': accessLocked ? undefined : true, 'data-operator': operator?.id ?? 'owner', 'data-branch': operator?.branchId ?? 'all' },
+      React.createElement('button', { 'data-switch': true, 'aria-label': 'Trocar operador por PIN', onClick: () => requestAccess('employee') }, 'Trocar operador'),
+      React.createElement('button', { 'data-owner': true, onClick: () => requestAccess('owner') }, 'Área do proprietário')) };
   await act(async () => { renderer = TestRenderer.create(React.createElement(h.PartnerAccessGate, props)); });
   if (openOperator) await act(async () => renderer.root.findByProps({ 'aria-label': 'Trocar operador por PIN' }).props.onClick());
   return { renderer, props, get logouts() { return logouts; }, async close() { await act(async () => renderer.unmount()); } };
@@ -99,19 +141,12 @@ const submit = view => view.renderer.root.findByType('form').props.onSubmit({ pr
 test('login opens the app menus without a PIN screen or any operational data query', async () => {
   const h = harness(), view = await render(h, false);
   try {
-    assert.equal(view.renderer.root.findAllByProps({ 'data-locked-workspace': 'true' }).length, 1);
+    assert.equal(view.renderer.root.findByProps({ 'data-partner-panel': true }).props['data-locked'], true);
     assert.equal(view.renderer.root.findAllByProps({ 'data-workspace': true }).length, 0);
     assert.equal(view.renderer.root.findAllByProps({ role: 'dialog' }).length, 0);
     assert.equal(view.renderer.root.findAllByProps({ 'aria-label': 'Colaborador' }).length, 0);
     assert.equal(view.renderer.root.findAllByProps({ 'aria-label': 'PIN de acesso' }).length, 0);
-    const nav = view.renderer.root.findByProps({ 'aria-label': 'Menu do aplicativo' });
-    for (const label of ['Financeiro', 'Cadastros', 'PDV & Vendas']) {
-      await act(async () => nav.findAllByType('button').find(button => button.children.includes(label)).props.onClick());
-      assert.equal(view.renderer.root.findByType('h3').children.join(''), label);
-      assert.equal(view.renderer.root.findAllByType('form').length, 0);
-      assert.equal(view.renderer.root.findAllByProps({ 'data-workspace': true }).length, 0);
-      assert.equal(h.calls.length, 0);
-    }
+    assert.equal(h.calls.length, 0);
     assert.equal(view.renderer.root.findAllByType('button').some(button => button.children.includes('Entrar com PIN')), false);
     assert.equal(view.renderer.root.findAllByProps({ 'aria-label': 'Senha do proprietário' }).length, 0);
     const ownerButton = view.renderer.root.findAllByType('button').find(button => button.children.some(child => typeof child === 'string' && child.trim() === 'Área do proprietário'));
@@ -153,7 +188,7 @@ async function enterPin(view, pin = '1234') {
   await act(async () => submit(view));
 }
 
-test('workspace stays unmounted until PIN confirmation; PIN staff open their branch without email or password fields', async () => {
+test('operational content stays locked until PIN confirmation; PIN staff open their branch without email or password fields', async () => {
   const h = harness(), view = await render(h);
   try {
     assert.equal(view.renderer.root.findAllByProps({ 'data-workspace': true }).length, 0);
