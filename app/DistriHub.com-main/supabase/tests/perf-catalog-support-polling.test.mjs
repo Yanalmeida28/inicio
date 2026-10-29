@@ -36,6 +36,26 @@ test('support unread: realtime INSERT refreshes, hidden tab never polls, returni
  assert.equal(intervals.size,0);assert.equal(docListeners.size,0);assert.equal(listeners.size,0);
 });
 
+test('support unread: first SUBSCRIBED does not duplicate the mount refresh, reconnects refresh, focus+visibilitychange coalesce',async()=>{
+ let rpcCount=0,statusCb=null;const listeners=new Map(),docListeners=new Map();
+ const client={rpc:async()=>{rpcCount++;return {data:{total:0,conversations:[]},error:null};},
+  channel(){const q={on(){return q;},subscribe(cb){statusCb=cb;return q;}};return q;},removeChannel(){}};
+ const window={setInterval:()=>1,clearInterval(){},addEventListener:(n,f)=>listeners.set(n,f),removeEventListener(){}};
+ const document={visibilityState:'visible',addEventListener:(n,f)=>docListeners.set(n,f),removeEventListener(){}};
+ const exports={};vm.runInNewContext(hookSource,{exports,window,document,require:n=>n==='../lib/supabase'?{supabase:client}:require(n)});
+ function Harness(){exports.useSupportUnread('owner');return null;}
+ let view;await act(async()=>{view=create(React.createElement(Harness));});
+ try{
+  assert.equal(rpcCount,1,'mount refresh only');
+  await act(async()=>statusCb('SUBSCRIBED'));assert.equal(rpcCount,1,'first subscription adds no duplicate request');
+  await act(async()=>statusCb('SUBSCRIBED'));assert.equal(rpcCount,2,'reconnection refreshes to recover missed events');
+  const base=rpcCount;
+  await act(async()=>docListeners.get('visibilitychange')());
+  await act(async()=>listeners.get('focus')());
+  assert.equal(rpcCount-base,1,'focus right after visibilitychange is coalesced');
+ }finally{await act(async()=>view.unmount());}
+});
+
 test('public catalog: single 300 ms debounce, timer cleanup, pagination reset with the applied term, no stale term on catalog change',()=>{
  assert.match(catalog,/window\.setTimeout\([\s\S]*?\},\s*300\)/);
  assert.match(catalog,/return \(\) => window\.clearTimeout\(timer\)/);
