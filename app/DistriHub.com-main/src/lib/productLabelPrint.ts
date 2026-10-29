@@ -1,7 +1,7 @@
 import type { PartnerProduct } from '../types';
 import { money } from '../utils';
 
-export type ProductLabelSize = { width: number; height: number };
+export type ProductLabelSize = { width: number; height: number; showPrice?: boolean };
 type LabelProduct = Pick<PartnerProduct, 'id' | 'name' | 'sku' | 'sale_price'>;
 
 export function validateProductLabelSize(size: ProductLabelSize) {
@@ -47,7 +47,10 @@ export function productLabelDocument(product: LabelProduct, size: ProductLabelSi
     ['strong','label-name',product.name],
     ['span','label-sku',`SKU: ${product.sku?.trim() || '—'}`],
     ['span','label-price',money.format(product.sale_price)],
-  ]) { const node = doc.createElement(tag); node.className = className; node.textContent = text; info.append(node); }
+  ]) {
+    if (className === 'label-price' && size.showPrice === false) continue;
+    const node = doc.createElement(tag); node.className = className; node.textContent = text; info.append(node);
+  }
   label.append(qr,info); doc.body.append(label);
   return doc;
 }

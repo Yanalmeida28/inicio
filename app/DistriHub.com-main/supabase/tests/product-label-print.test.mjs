@@ -51,6 +51,18 @@ test('vertical labels use portrait paper and stack the QR above centered product
   }
 });
 
+test('hiding price removes it from both generated labels and the printed document',async()=>{
+  const api=harness();
+  for (const size of [{width:40,height:58},{width:58,height:40}]) {
+    const doc=api.productLabelDocument(product,{...size,showPrice:false},'qr');
+    const info=doc.body.children[0].children[1].children;
+    assert.deepEqual(info.map(node=>node.className),['label-name','label-sku']);
+  }
+  await api.printProductLabel(product,{width:40,height:58,showPrice:false},'qr');
+  assert.equal(api.doc.body.children[0].children[1].children.some(node=>node.className==='label-price'),false);
+  assert.ok(api.calls.includes('popup-print'));
+});
+
 test('printing waits for QR image decoding and prints the separate document only',async()=>{
   let release;
   const api=harness({decode:()=>new Promise(resolve=>{release=resolve;})});

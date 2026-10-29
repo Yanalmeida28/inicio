@@ -7,6 +7,7 @@ export function ProductLabelModal({ product, onClose }: { product: PartnerProduc
   const [preset,setPreset] = useState('58');
   const [width,setWidth] = useState('40');
   const [height,setHeight] = useState('58');
+  const [showPrice,setShowPrice] = useState(true);
   const [qrUrl,setQrUrl] = useState('');
   const [error,setError] = useState('');
   const [printing,setPrinting] = useState(false);
@@ -19,11 +20,11 @@ export function ProductLabelModal({ product, onClose }: { product: PartnerProduc
   },[product]);
   const preview = useMemo(()=>{
     try {
-      const size={width:Number(width),height:Number(height)};
+      const size={width:Number(width),height:Number(height),showPrice};
       validateProductLabelSize(size);
       return {html:product && qrUrl ? '<!doctype html>'+productLabelDocument(product,size,qrUrl).documentElement.outerHTML : '',error:''};
     } catch(cause) {return {html:'',error:cause instanceof Error ? cause.message : 'Medidas inválidas.'};}
-  },[product,width,height,qrUrl]);
+  },[product,width,height,qrUrl,showPrice]);
   if (!product) return null;
   const vertical = Number(height) >= Number(width);
   function choose(value: string, w: string, h: string) {setPreset(value);setWidth(vertical ? h : w);setHeight(vertical ? w : h);}
@@ -33,7 +34,7 @@ export function ProductLabelModal({ product, onClose }: { product: PartnerProduc
   async function print() {
     if(lock.current || !product || !qrUrl || preview.error) return;
     lock.current=true;setPrinting(true);setError('');
-    try {await printProductLabel(product,{width:Number(width),height:Number(height)},qrUrl);}
+    try {await printProductLabel(product,{width:Number(width),height:Number(height),showPrice},qrUrl);}
     catch(cause){setError(cause instanceof Error ? cause.message : 'Não foi possível imprimir a etiqueta.');}
     finally{lock.current=false;setPrinting(false);}
   }
@@ -53,6 +54,9 @@ export function ProductLabelModal({ product, onClose }: { product: PartnerProduc
         <label>Largura (mm)<input type="number" min="30" max="150" step="0.1" value={width} onChange={event=>setWidth(event.target.value)}/></label>
         <label>Altura (mm)<input type="number" min="20" max="150" step="0.1" value={height} onChange={event=>setHeight(event.target.value)}/></label>
       </div>}
+      <label style={{display:'flex',alignItems:'center',gap:8,marginBottom:12}}>
+        <input type="checkbox" checked={showPrice} onChange={event=>setShowPrice(event.target.checked)} disabled={printing} /> Mostrar preço na etiqueta
+      </label>
       <p>Use as medidas da etiqueta colocada na impressora. Na impressão, escolha o mesmo papel, escala de 100% e desative cabeçalhos e rodapés.</p>
       {preview.html && <iframe title="Prévia da etiqueta do produto" srcDoc={preview.html} style={{display:'block',width:'100%',height:'auto',aspectRatio:`${width} / ${height}`,border:'1px solid #ccc',background:'#fff',marginBottom:16}}/>}
       {!qrUrl && !error && <p role="status">Gerando QR do produto…</p>}
