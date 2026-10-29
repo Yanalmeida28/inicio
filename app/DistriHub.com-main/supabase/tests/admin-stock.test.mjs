@@ -129,6 +129,29 @@ test('editar colaborador conserva bloqueios, permite escolher módulos e respeit
   await act(async () => renderer.unmount());
 });
 
+test('all-branch authorization saves independently of activation and module permissions', async () => {
+  for (const role of ['administrador', 'gerente', 'vendedor']) {
+    const calls = [];
+    let renderer;
+    await act(async () => { renderer = TestRenderer.create(React.createElement(exports.CadastrosModule,
+      registrationProps('profissional', { adminTarget: 'vendedores',
+        salespeople: [{ id: 'employee', name: 'Amanda', role, active: false, branch_id: 'branch', blocked_modules: ['caixa'], commission_rate: 0 }],
+        onUpdateSalesperson: async (...args) => calls.push(args) }))); });
+    try {
+      await act(async () => renderer.root.findByProps({ title: 'Editar' }).props.onClick());
+      const fields = renderer.root.findAllByProps({ 'aria-label': 'Autorizar todas as filiais para Amanda' });
+      assert.equal(fields.length, role === 'vendedor' ? 0 : 1);
+      if (fields.length) {
+        assert.equal(fields[0].props.checked, false);
+        await act(async () => fields[0].props.onChange({ target: { checked: true } }));
+        assert.equal(calls[0][0], 'employee');
+        assert.deepEqual(Object.keys(calls[0][1]), ['can_access_all_branches']);
+        assert.equal(calls[0][1].can_access_all_branches, true);
+      }
+    } finally { await act(async () => renderer.unmount()); }
+  }
+});
+
 test('filial mostra colaboradores locais e globais, sem incluir outra filial', async () => {
   let renderer;
   const employee = (id, branch_id) => ({ id, branch_id, name: id, role: 'vendedor', commission_rate: 0, active: true, blocked_modules: [] });

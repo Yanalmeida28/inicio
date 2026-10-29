@@ -401,7 +401,7 @@ export function usePartnerData(identity: PartnerIdentity | null, syncBranchId: s
         client
           .from('partner_salespeople')
           .select(
-            'id, user_id, auth_user_id, name, role, commission_rate, phone, email, active, branch_id, created_at, blocked_modules',
+            'id, user_id, auth_user_id, name, role, commission_rate, phone, email, active, branch_id, created_at, blocked_modules, can_access_all_branches',
           )
           .eq('user_id', companyUserId)
           .order('name');
@@ -637,7 +637,7 @@ read('sales', (signal) => fetchAllPages((from, to) => client
       // includeCompanyWide: clientes e vendedores com branch_id null são
       // registros company-wide válidos e devem ser preservados; produtos,
       // vendas e estoque seguem com filtro estrito de filial.
-      const filterBranch = <T extends { branch_id?: string | null }>(
+      const filterBranch = <T extends { branch_id?: string | null; can_access_all_branches?: boolean }>(
         rows: T[] | null,
         includeCompanyWide = false,
       ): T[] => {
@@ -649,7 +649,7 @@ read('sales', (signal) => fetchAllPages((from, to) => client
 
         return values.filter(
           (row) =>
-            (includeCompanyWide && row.branch_id == null) ||
+            (includeCompanyWide && (row.branch_id == null || row.can_access_all_branches === true)) ||
             row.branch_id === branchId,
         );
       };
@@ -3131,6 +3131,7 @@ read('sales', (signal) => fetchAllPages((from, to) => client
         ],
       }));
 
+      if (typeof window !== 'undefined' && typeof Event !== 'undefined') window.dispatchEvent(new Event('distrihub:operators-changed'));
       return createdSalesperson;
     },
     [requireIdentity],
@@ -3166,9 +3167,23 @@ read('sales', (signal) => fetchAllPages((from, to) => client
         );
       }
 
+      if (salesperson.can_access_all_branches !== undefined) {
+        if (Object.keys(salesperson).some(key => key !== 'can_access_all_branches')) throw new Error('Salve a autorização de filiais separadamente dos demais dados.');
+        const { data: allowed, error } = await supabase.rpc('set_partner_salesperson_branch_access', {
+          p_salesperson_id: id, p_allowed: salesperson.can_access_all_branches,
+        });
+        if (error) throw formatSalespersonSaveError(error);
+        if (allowed !== salesperson.can_access_all_branches) throw new Error('Não foi possível confirmar a autorização de filiais.');
+        const updated = { ...existing, can_access_all_branches: allowed };
+        dataRevisionRef.current.invalidate(['salespeople']);
+        setData(previous => ({ ...previous, salespeople: previous.salespeople.map(person => person.id === id ? updated : person) }));
+        if (typeof window !== 'undefined' && typeof Event !== 'undefined') window.dispatchEvent(new Event('distrihub:operators-changed'));
+        return updated;
+      }
+
       // Mesma assinatura de produção da criação (11 parâmetros);
       // p_salesperson_id identifica o colaborador que está sendo editado.
-      const {  error } =
+      const { data: confirmedSalesperson, error } =
         await supabase.rpc(
           'update_partner_salesperson_access',
           {
@@ -3216,6 +3231,7 @@ read('sales', (signal) => fetchAllPages((from, to) => client
       const updatedSalesperson: PartnerSalesperson = {
         ...existing,
         ...salesperson,
+        ...(confirmedSalesperson && typeof confirmedSalesperson === 'object' && !Array.isArray(confirmedSalesperson) ? confirmedSalesperson as Partial<PartnerSalesperson> : {}),
         id,
         new_pin: null,
         pin_configured: salesperson.new_pin
@@ -3235,6 +3251,7 @@ read('sales', (signal) => fetchAllPages((from, to) => client
           ),
       }));
 
+      if (typeof window !== 'undefined' && typeof Event !== 'undefined') window.dispatchEvent(new Event('distrihub:operators-changed'));
       return updatedSalesperson;
     },
     [data.salespeople, requireIdentity],
@@ -3296,6 +3313,7 @@ read('sales', (signal) => fetchAllPages((from, to) => client
               : item,
           ),
       }));
+      if (typeof window !== 'undefined' && typeof Event !== 'undefined') window.dispatchEvent(new Event('distrihub:operators-changed'));
     },
     [data.salespeople, requireIdentity],
   );

@@ -2,14 +2,16 @@ import { Building2, Check, ChevronDown, Lock } from 'lucide-react';
 import type { PartnerBranch } from '../../types';
 
 type Props = {
-  branches: PartnerBranch[];
+  branches: Pick<PartnerBranch, 'id' | 'name'>[];
   selectedBranchId: string;
   onSelectBranch: (id: string) => void;
   isEmployeeLocked: boolean;
   lockedBranchName?: string;
+  allowConsolidated?: boolean;
+  disabled?: boolean;
 };
 
-export function BranchSelector({ branches, selectedBranchId, onSelectBranch, isEmployeeLocked, lockedBranchName }: Props) {
+export function BranchSelector({ branches, selectedBranchId, onSelectBranch, isEmployeeLocked, lockedBranchName, allowConsolidated = true, disabled = false }: Props) {
   const options = isEmployeeLocked ? branches.filter(branch => branch.id === selectedBranchId) : branches;
   const selectedName = options.find(branch => branch.id === selectedBranchId)?.name
     ?? (isEmployeeLocked ? lockedBranchName ?? 'Filial vinculada' : selectedBranchId ? 'Filial selecionada' : 'Todas as filiais');
@@ -23,8 +25,8 @@ export function BranchSelector({ branches, selectedBranchId, onSelectBranch, isE
           <Building2 size={16} aria-hidden="true" /><span>{selectedName}</span><ChevronDown size={16} aria-hidden="true" />
         </summary>
         <div className="sidebar-branch-options" role="group" aria-label="Filiais disponíveis">
-          {[{ id: '', name: 'Todas as filiais' }, ...options].map(branch => (
-            <button type="button" key={branch.id} aria-pressed={selectedBranchId === branch.id} onClick={event => {
+          {[...(allowConsolidated ? [{ id: '', name: 'Todas as filiais' }] : []), ...options].map(branch => (
+            <button type="button" disabled={disabled} key={branch.id} aria-pressed={selectedBranchId === branch.id} onClick={event => {
               onSelectBranch(branch.id);
               event.currentTarget.closest('details')?.removeAttribute('open');
             }}>

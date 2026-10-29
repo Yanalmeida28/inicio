@@ -6,7 +6,6 @@ import type { PartnerIdentity } from '../../types';
 import { supabase } from '../../lib/supabase';
 import { authorizeOwner, authorizePin, type PartnerAccess, type PinOperator } from '../../lib/partnerAccess';
 import { OperatorSelectionStore } from '../../lib/checkoutCash';
-import { useDeviceHeartbeat } from '../../hooks/useDeviceHeartbeat';
 
 type Mode = 'employee' | 'owner';
 type Props = {
@@ -15,7 +14,7 @@ type Props = {
   identityError?: string | null;
   onRetryIdentity?: () => void;
   onSwitchAccount: () => Promise<void>;
-  children: (operator: PinOperator | null, requestAccess: (mode: Mode) => void, accessLocked: boolean) => ReactNode;
+  children: (operator: PinOperator | null, requestAccess: (mode: Mode) => void, accessLocked: boolean, selectBranch: (id: string) => Promise<void>) => ReactNode;
 };
 
 // Render the actual panel immediately, with operational access locked until
@@ -25,6 +24,15 @@ export function PartnerAccessGate({ user, identity, identityError, onRetryIdenti
   const [authorized, setAuthorized] = useState<{ scope: string; access: PartnerAccess } | null>(null);
   const [mode, setMode] = useState<Mode | null>(null);
   const current = authorized?.scope === scope ? authorized.access : null;
+  const currentRef = useRef(current);
+  currentRef.current = current;
+  async function selectBranch(id: string) {
+    const previous = currentRef.current;
+    if (!identity || previous?.kind !== 'employee' || !previous.operator.canAccessAllBranches || !id) throw new Error('Filial não autorizada.');
+    const access = await authorizePin(identity, previous.operator.id, previous.operator.name, previous.operator.pin, id);
+    if (currentRef.current !== previous) throw new Error('O operador mudou. Selecione a filial novamente.');
+    allow(access);
+  }
   function allow(access: PartnerAccess) {
     if (!identity) return;
     try { new OperatorSelectionStore(sessionStorage, scope).save({
@@ -39,22 +47,20 @@ export function PartnerAccessGate({ user, identity, identityError, onRetryIdenti
     {identityError && onRetryIdentity && <button type="button" className="module-submit-btn" onClick={onRetryIdentity}>Tentar novamente</button>}
   </div>;
   return <>
-    {children(current?.kind === 'employee' ? current.operator : null, setMode, !current)}
-    {mode && <PinAccessDialog key={`${scope}:${mode}`} mode={mode} prepareDevice={!current}
+    {children(current?.kind === 'employee' ? current.operator : null, setMode, !current, selectBranch)}
+    {mode && <PinAccessDialog key={`${scope}:${mode}`} mode={mode}
       identity={identity} user={user} onAuthorize={allow} onSwitchAccount={onSwitchAccount}
       onClose={() => setMode(null)} />}
   </>;
 }
 
-type DirectoryEntry = { id: string; name: string };
+type DirectoryEntry = { id: string; name: string; active: boolean; branch_name: string | null; can_access_all_branches?: boolean };
 type DialogProps = {
-  mode: Mode; prepareDevice?: boolean; identity: PartnerIdentity; user: User;
+  mode: Mode; identity: PartnerIdentity; user: User;
   onAuthorize: (access: PartnerAccess) => void; onSwitchAccount: () => Promise<void>; onClose?: () => void;
 };
 
-export function PinAccessDialog({ mode, prepareDevice = false, identity, user, onAuthorize, onSwitchAccount, onClose }: DialogProps) {
-  const device = useDeviceHeartbeat(prepareDevice && mode === 'employee' ? identity.companyUserId : undefined, identity.salespersonId ? identity.branchId : null);
-  const directoryReady = !prepareDevice || device.ready;
+export function PinAccessDialog({ mode, identity, user, onAuthorize, onSwitchAccount, onClose }: DialogProps) {
   const [directory, setDirectory] = useState<DirectoryEntry[]>([]);
   const [selected, setSelected] = useState(identity.salespersonId ?? '');
   const [pin, setPin] = useState('');
@@ -67,30 +73,36 @@ export function PinAccessDialog({ mode, prepareDevice = false, identity, user, o
   const pending = useRef(false);
   const generation = useRef({ value: 0 });
   useEffect(() => {
-    if (mode !== 'employee' || !directoryReady) return;
+    if (mode !== 'employee') return;
     const lifetime = generation.current;
     let live = true;
     setLoading(true); setDirectoryError('');
     async function load() {
       try {
         if (!supabase) throw new Error('Serviço indisponível.');
-        let query = supabase.from('partner_salespeople').select('id,name').eq('user_id', identity.companyUserId).eq('active', true).order('name');
-        if (identity.salespersonId) query = query.eq('id', identity.salespersonId);
-        const { data, error: cause } = await query;
+        const { data, error: cause } = await supabase.rpc('list_partner_operator_directory');
         if (cause) throw cause;
+        if (!Array.isArray(data)) throw new Error('Lista inválida.');
         if (!live) return;
         const rows = (data ?? []) as DirectoryEntry[];
         setDirectory(rows);
         let saved = identity.salespersonId ?? '';
         try { saved ||= new OperatorSelectionStore(sessionStorage, `${identity.authUserId}:${identity.companyUserId}`).read()?.operatorId ?? ''; }
         catch { /* PIN must still be entered. */ }
-        setSelected(rows.some(row => row.id === saved) ? saved : '');
+        setSelected(current => rows.some(row => row.id === current && row.active) ? current : rows.some(row => row.id === saved && row.active) ? saved : '');
       } catch { if (live) setDirectoryError('Não foi possível carregar os colaboradores. Tente novamente.'); }
       finally { if (live) setLoading(false); }
     }
     void load();
     return () => { live = false; lifetime.value++; };
-  }, [identity.authUserId, identity.companyUserId, identity.salespersonId, retry, mode, directoryReady]);
+  }, [identity.authUserId, identity.companyUserId, identity.salespersonId, retry, mode]);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const refresh = () => { if (!pending.current) setRetry(value => value + 1); };
+    window.addEventListener('focus', refresh);
+    window.addEventListener('distrihub:operators-changed', refresh);
+    return () => { window.removeEventListener('focus', refresh); window.removeEventListener('distrihub:operators-changed', refresh); };
+  }, []);
   useEffect(() => {
     generation.current.value++; pending.current = false; setBusy(false);
     setPin(''); setPassword(''); setError('');
@@ -105,7 +117,7 @@ export function PinAccessDialog({ mode, prepareDevice = false, identity, user, o
   }
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    if (pending.current || (mode === 'employee' && !directoryReady)) return;
+    if (pending.current || (mode === 'employee' && (loading || Boolean(directoryError) || !directory.some(row => row.id === selected && row.active)))) return;
     pending.current = true; setBusy(true); setError('');
     const attempt = ++generation.current.value;
     try {
@@ -132,12 +144,12 @@ export function PinAccessDialog({ mode, prepareDevice = false, identity, user, o
       <div className="rma-form">
         <form onSubmit={submit} className="rma-form">
           {!owner ? <>
-            {device.error && <p role="alert">{device.error} <button type="button" onClick={device.retry}>Tentar novamente</button></p>}
             <p>Selecione seu nome e digite o PIN para entrar diretamente na sua filial.</p>
-            <label>Colaborador<select aria-label="Colaborador" value={selected} disabled={busy || loading || !directoryReady} onChange={event => setSelected(event.target.value)} required>
+            <label>Colaborador<select aria-label="Colaborador" value={selected} disabled={busy || loading} onChange={event => setSelected(event.target.value)} required>
               <option value="">{loading ? 'Carregando…' : 'Selecione seu nome'}</option>
-              {directory.map(row => <option key={row.id} value={row.id}>{row.name}</option>)}
+              {directory.map(row => <option key={row.id} value={row.id} disabled={!row.active}>{row.name} — {row.branch_name ?? 'Filial não definida'}{row.can_access_all_branches ? ' · Todas as filiais autorizadas' : ''}{!row.active ? ' · Inativo' : ''}</option>)}
             </select></label>
+            <button type="button" className="rma-advance-btn" disabled={busy || loading} onClick={() => setRetry(value => value + 1)}>Atualizar operadores</button>
             <label><Lock size={14} /> PIN de acesso<input aria-label="PIN de acesso" type="password" inputMode="numeric" autoComplete="off"
               value={pin} onChange={event => setPin(event.target.value.replace(/\D/g, ''))} minLength={4} maxLength={8} required disabled={busy} /></label>
             {directoryError && <p role="alert">{directoryError} <button type="button" onClick={() => setRetry(value => value + 1)}>Tentar novamente</button></p>}
@@ -148,7 +160,7 @@ export function PinAccessDialog({ mode, prepareDevice = false, identity, user, o
               onChange={event => setPassword(event.target.value)} required disabled={busy} /></label>
           </>}
           {error && <p role="alert" className="otp-error-msg">{error}</p>}
-          <button className="module-submit-btn" disabled={busy || (!owner && (!directoryReady || loading || Boolean(directoryError) || directory.length === 0))}>
+          <button className="module-submit-btn" disabled={busy || (!owner && (loading || Boolean(directoryError) || !directory.some(row => row.active)))}>
             {busy ? 'Conferindo…' : owner ? identity.salespersonId ? 'Entrar com a conta do proprietário' : 'Confirmar proprietário' : 'Entrar na minha filial'}
           </button>
           {onClose && <button type="button" className="rma-advance-btn" disabled={busy} onClick={close}>Cancelar</button>}

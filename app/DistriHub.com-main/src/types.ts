@@ -206,6 +206,7 @@ export interface PartnerProduct {
 }
 
 export interface PartnerSalesperson {
+  can_access_all_branches?: boolean;
   blocked_modules?: string[];
   id: string;
   user_id: string;

@@ -20,7 +20,7 @@ const identity = { authUserId: 'company', companyUserId: 'company', salespersonI
 const user = { id: 'company', email: 'owner@example.test' };
 const employee = { company_id: 'company', salesperson_id: 'employee', branch_id: 'north', role: 'caixa' };
 
-function harness({ reply = { data: [employee], error: null }, passwordUser = 'company', saved = null, device = { ready: true, error: null, retry() {} } } = {}) {
+function harness({ reply = { data: [employee], error: null }, scope = { can_access_all_branches: false, branches: [{ id: 'north', name: 'Varejo' }] }, directory = [{ id: 'employee', name: 'Ana', active: true, branch_id: 'north', branch_name: 'Varejo' }, { id: 'inactive', name: 'Ana', active: false, branch_id: 'south', branch_name: 'Atacado' }], passwordUser = 'company', saved = null, device = { ready: true, error: null, retry() {} } } = {}) {
   const calls = [], storage = new Map();
   if (saved) storage.set('distrihub:operator-selection:company:company', JSON.stringify(saved));
   const sessionStorage = { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value) };
@@ -32,6 +32,8 @@ function harness({ reply = { data: [employee], error: null }, passwordUser = 'co
       return q;
     },
     async rpc(name, args) { calls.push({ name, args });
+      if (name === 'list_partner_operator_directory') return { data: directory, error: null };
+      if (name === 'read_partner_operator_branch_access') return { data: scope, error: null };
       if (name === 'verify_partner_owner_password') return { data: args.p_password === 'owner-secret' && passwordUser === 'company', error: null };
       return typeof reply === 'function' ? reply() : reply; },
   };
@@ -119,6 +121,24 @@ test('wrong PIN, missing branch, foreign company and ambiguous RPC replies never
   await assert.rejects(harness().authorizePin(identity, 'employee', 'Ana', ''));
 });
 
+test('authorized administrators and managers revalidate their PIN when requesting another branch', async () => {
+  for (const role of ['administrador', 'gerente']) {
+    const h = harness({ reply: { data: [{ ...employee, role, branch_id: 'south' }], error: null },
+      scope: { can_access_all_branches: true, branches: [{ id: 'north', name: 'Atacado' }, { id: 'south', name: 'Varejo' }] } });
+    const access = await h.authorizePin({ ...identity, salespersonId: 'employee', branchId: 'north' }, 'employee', 'Ana', '1234', 'south');
+    assert.equal(access.operator.branchId, 'south');
+    assert.equal(access.operator.canAccessAllBranches, true);
+    assert.equal(h.calls[0].args.p_requested_branch_id, 'south');
+    assert.equal(h.calls[1].name, 'read_partner_operator_branch_access');
+  }
+  for (const scope of [null, {}, { can_access_all_branches: true, branches: [] },
+    { can_access_all_branches: false, branches: [{ id: 'north', name: 'Atacado' }] }]) {
+    await assert.rejects(harness({ scope, reply: { data: [{ ...employee, role: 'gerente', branch_id: 'south' }], error: null } })
+      .authorizePin(identity, 'employee', 'Ana', '1234', 'south'));
+  }
+  await assert.rejects(harness().authorizePin(identity, 'employee', 'Ana', '1234', 'south'));
+});
+
 test('owner access verifies its password on the server without signing in or changing the login session', async () => {
   const h = harness();
   await assert.rejects(h.authorizeOwner(identity, user, 'bad-password'));
@@ -160,25 +180,22 @@ test('login opens the app menus without a PIN screen or any operational data que
     assert.equal(view.renderer.root.findAllByProps({ 'aria-label': 'PIN de acesso' }).length, 0);
     await act(async () => view.renderer.root.findByProps({ 'aria-label': 'Trocar operador por PIN' }).props.onClick());
     assert.equal(view.renderer.root.findAllByProps({ 'aria-label': 'PIN de acesso' }).length, 1);
-    assert.equal(h.calls.filter(call => call.table).length, 1);
+    assert.equal(h.calls.filter(call => call.name === 'list_partner_operator_directory').length, 1);
     await act(async () => view.renderer.root.findByProps({ 'aria-label': 'Fechar' }).props.onClick());
     assert.equal(view.renderer.root.findAllByProps({ 'data-workspace': true }).length, 0);
   } finally { await view.close(); }
 });
 
-test('operator entry only offers collaborators and waits for the device heartbeat before loading names', async () => {
-  const device = { ready: false, error: 'Dispositivo não validado', retry() {} };
-  const h = harness({ device }), view = await render(h);
+test('operator directory identifies branches and inactive duplicates without reading business tables', async () => {
+  const h = harness(), view = await render(h);
   try {
     assert.equal(h.calls.filter(call => call.table).length, 0);
-    const dialog = view.renderer.root.findByType('form');
-    assert.equal(dialog.findAllByProps({ 'aria-label': 'Senha do proprietário' }).length, 0);
-    assert.equal(dialog.findAllByType('button').some(button => button.children.includes('Proprietário')), false);
-    assert.equal(dialog.findByProps({ className: 'module-submit-btn' }).props.disabled, true);
-    device.ready = true; device.error = null;
-    await act(async () => view.renderer.update(React.createElement(h.PartnerAccessGate, { ...view.props })));
-    assert.equal(h.calls.filter(call => call.table).length, 1);
-    assert.equal(view.renderer.root.findByProps({ 'aria-label': 'Colaborador' }).props.disabled, false);
+    const options = view.renderer.root.findAllByType('option');
+    assert.ok(options.some(o => o.children.join('').includes('Ana — Varejo')));
+    assert.ok(options.some(o => o.children.join('').includes('Ana — Atacado') && o.props.disabled));
+    const refresh = view.renderer.root.findAllByType('button').find(b => b.children.join('').includes('Atualizar operadores'));
+    await act(async () => refresh.props.onClick());
+    assert.equal(h.calls.filter(c => c.name === 'list_partner_operator_directory').length, 2);
     await enterPin(view);
     assert.equal(view.renderer.root.findByProps({ 'data-workspace': true }).props['data-branch'], 'north');
   } finally { await view.close(); }
@@ -194,7 +211,7 @@ test('operational content stays locked until PIN confirmation; PIN staff open th
   const h = harness(), view = await render(h);
   try {
     assert.equal(view.renderer.root.findAllByProps({ 'data-workspace': true }).length, 0);
-    assert.deepEqual(h.calls.filter(call => call.columns).map(call => call.columns), ['id,name']);
+    assert.equal(h.calls.some(call => call.table || call.columns), false);
     assert.equal(view.renderer.root.findAllByProps({ 'aria-label': 'Senha do proprietário' }).length, 0);
     await enterPin(view);
     const workspace = view.renderer.root.findByProps({ 'data-workspace': true });
@@ -261,7 +278,7 @@ test('pending PIN validation blocks duplicate submission and its late reply is i
   await act(async () => view.renderer.root.findByProps({ 'aria-label': 'Colaborador' }).props.onChange({ target: { value: 'employee' } }));
   await act(async () => view.renderer.root.findByProps({ 'aria-label': 'PIN de acesso' }).props.onChange({ target: { value: '1234' } }));
   await act(async () => { void submit(view); void submit(view); });
-  assert.equal(h.calls.filter(call => call.name).length, 1);
+  assert.equal(h.calls.filter(call => call.name === 'resolve_partner_pdv_operator').length, 1);
   await view.close();
   await act(async () => finish({ data: [employee], error: null }));
   assert.equal(h.storage.size, 0);

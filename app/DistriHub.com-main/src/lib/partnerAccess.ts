@@ -4,24 +4,32 @@ import { supabase } from './supabase';
 
 export type PinOperator = {
   id: string; name: string; branchId: string; role: SalespersonRole; pin: string;
+  canAccessAllBranches?: boolean;
+  allowedBranches?: { id: string; name: string }[];
 };
 export type PartnerAccess = { kind: 'owner' } | { kind: 'employee'; operator: PinOperator };
 const roles = ['administrador', 'gerente', 'caixa', 'vendedor', 'tecnico', 'atendente', 'logistica'];
 
-export async function authorizePin(identity: PartnerIdentity, id: string, name: string, pin: string): Promise<PartnerAccess> {
+export async function authorizePin(identity: PartnerIdentity, id: string, name: string, pin: string, requestedBranchId: string | null = null): Promise<PartnerAccess> {
   if (!supabase || !id || !/^\d{4,8}$/.test(pin)) throw new Error('Selecione o colaborador e informe o PIN de 4 a 8 dígitos.');
   const { data, error } = await supabase.rpc('resolve_partner_pdv_operator', {
-    p_salesperson_id: id, p_pin: pin, p_requested_branch_id: null,
+    p_salesperson_id: id, p_pin: pin, p_requested_branch_id: requestedBranchId,
   });
   const operator = Array.isArray(data) && data.length === 1 ? data[0] : null;
   if (error || !operator || operator.salesperson_id !== id || operator.company_id !== identity.companyUserId
     || typeof operator.branch_id !== 'string' || !operator.branch_id || !roles.includes(operator.role)) {
     throw new Error('PIN incorreto ou colaborador sem acesso a uma filial.');
   }
-  if (identity.salespersonId && (identity.salespersonId !== id || identity.branchId !== operator.branch_id)) {
+  if (requestedBranchId && operator.branch_id !== requestedBranchId) throw new Error('Filial não autorizada.');
+  const { data: scope, error: scopeError } = await supabase.rpc('read_partner_operator_branch_access', { p_salesperson_id: id, p_pin: pin });
+  const branches = scope?.branches;
+  const canAccessAllBranches = scope?.can_access_all_branches === true && ['administrador','gerente'].includes(operator.role);
+  if (scopeError || !Array.isArray(branches) || !branches.every(branch => typeof branch.id === 'string' && typeof branch.name === 'string')
+    || !branches.some(branch => branch.id === operator.branch_id)) throw new Error('Não foi possível confirmar as filiais autorizadas.');
+  if (identity.salespersonId && (identity.salespersonId !== id || (!canAccessAllBranches && identity.branchId !== operator.branch_id))) {
     throw new Error('Este acesso pertence a outro colaborador.');
   }
-  return { kind: 'employee', operator: { id, name, pin, branchId: operator.branch_id, role: operator.role } };
+  return { kind: 'employee', operator: { id, name, pin, branchId: operator.branch_id, role: operator.role, canAccessAllBranches, allowedBranches: branches } };
 }
 
 export async function authorizeOwner(identity: PartnerIdentity, user: User | null, password: string): Promise<PartnerAccess> {

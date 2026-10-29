@@ -1994,6 +1994,7 @@ function SalespeopleSubTab({
   const [editRole, setEditRole] = useSessionDraftState<SalespersonRole>('salespeople:edit-role', 'vendedor');
   const [editBranchId, setEditBranchId] = useSessionDraftState('salespeople:edit-branch-id', '');
   const [editActive, setEditActive] = useSessionDraftState('salespeople:edit-active', true);
+  const [savingBranchAccess, setSavingBranchAccess] = useState<string | null>(null);
   const [editBlockedModules, setEditBlockedModules] = useSessionDraftState<string[]>('salespeople:edit-blocked-modules', []);
   const roleRestrictedModules: Record<SalespersonRole, string[]> = {
     administrador: [],
@@ -2011,7 +2012,7 @@ function SalespeopleSubTab({
     useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const visibleSalespeople = selectedBranchId
-    ? salespeople.filter(salesperson => !salesperson.branch_id || salesperson.branch_id === selectedBranchId)
+    ? salespeople.filter(salesperson => !salesperson.branch_id || salesperson.branch_id === selectedBranchId || salesperson.can_access_all_branches)
     : salespeople;
 
   useEffect(() => {
@@ -2104,6 +2105,14 @@ function SalespeopleSubTab({
   function cancelEdit() {
     setEditingId(null);
     setEditError(null);
+  }
+
+  async function setBranchAccess(id: string, allowed: boolean) {
+    if (savingBranchAccess) return;
+    setSavingBranchAccess(id); setEditError(null);
+    try { await onUpdate(id, { can_access_all_branches: allowed }); }
+    catch (error) { setEditError(error instanceof Error ? error.message : 'Não foi possível alterar o acesso às filiais.'); }
+    finally { setSavingBranchAccess(null); }
   }
 
   async function saveEdit(id: string) {
@@ -2425,6 +2434,14 @@ function SalespeopleSubTab({
                               </select>
                             </label>
 
+                            {['administrador', 'gerente'].includes(salesperson.role) && <label>
+                              <span><input type="checkbox" aria-label={`Autorizar todas as filiais para ${salesperson.name}`}
+                                checked={salesperson.can_access_all_branches === true}
+                                disabled={savingBranchAccess !== null || editRole !== salesperson.role}
+                                onChange={event => void setBranchAccess(salesperson.id, event.target.checked)} /> Permitir acesso a todas as filiais</span>
+                              <small>A autorização é salva ao marcar ou desmarcar. A filial vinculada continua sendo a filial inicial.</small>
+                            </label>}
+
                             <label>
                               Taxa de comissão (%)
                               <input
@@ -2573,7 +2590,7 @@ function SalespeopleSubTab({
                     </td>
 
                     <td>
-                      {branch ? (
+                      {salesperson.can_access_all_branches ? `Todas as filiais · Base: ${branch?.name ?? 'Filial não definida'}` : branch ? (
                         branch.name
                       ) : (
                         <small
@@ -2582,7 +2599,7 @@ function SalespeopleSubTab({
                               '#475569',
                           }}
                         >
-                          Todas as filiais
+                          Filial não definida
                         </small>
                       )}
                     </td>

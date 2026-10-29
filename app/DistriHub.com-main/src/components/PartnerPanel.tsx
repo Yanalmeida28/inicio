@@ -105,6 +105,7 @@ type PartnerPanelProps = {
   onBack: () => void;
   pinOperator: PinOperator | null;
   onRequestAccess: (mode: 'employee' | 'owner') => void;
+  onSelectOperatorBranch?: (id: string) => Promise<void>;
   user: User | null;
   identity: PartnerIdentity | null;
   identityError: string | null;
@@ -284,6 +285,7 @@ export function PartnerPanel({
   onBack,
   pinOperator,
   onRequestAccess,
+  onSelectOperatorBranch,
   user,
   identity: authenticatedIdentity,
   identityError,
@@ -311,6 +313,8 @@ export function PartnerPanel({
     catch { return ''; }
   });
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [switchingBranch, setSwitchingBranch] = useState(false);
+  const [branchAccessError, setBranchAccessError] = useState<string | null>(null);
   useEffect(() => {
     if (!sidebarOpen) return;
     const mobile = window.matchMedia('(max-width: 900px)');
@@ -609,6 +613,7 @@ export function PartnerPanel({
     return partner.salespeople.filter(
       (salesperson) =>
         !salesperson.branch_id ||
+        salesperson.can_access_all_branches === true ||
         salesperson.branch_id === effectiveBranchId,
     );
   }, [partner.salespeople, effectiveBranchId]);
@@ -618,6 +623,13 @@ export function PartnerPanel({
   }
 
   function handleSelectBranch(id: string) {
+    if (isEmployeeRestricted && pinOperator?.canAccessAllBranches && onSelectOperatorBranch) {
+      if (!id || switchingBranch) return;
+      setSwitchingBranch(true); setBranchAccessError(null);
+      void onSelectOperatorBranch(id).catch(error => setBranchAccessError(error instanceof Error ? error.message : 'Não foi possível mudar de filial.'))
+        .finally(() => setSwitchingBranch(false));
+      return;
+    }
     if (isEmployeeRestricted) {
       if (
         !lockedBranchId
@@ -1402,7 +1414,7 @@ export function PartnerPanel({
 
   if (identity && !deviceSession.ready) {
     return <DeviceAccessGate companyId={identity.companyUserId} branchId={identity.salespersonId ? identity.branchId ?? '' : selectedBranchId}
-      error={deviceSession.error} onBranchChange={setSelectedBranchId} onRetry={deviceSession.retry} onLogout={onBack} />;
+      error={deviceSession.error} onBranchChange={pinOperator?.canAccessAllBranches ? handleSelectBranch : setSelectedBranchId} onRetry={deviceSession.retry} onLogout={onBack} />;
   }
 
   function preloadTab(tab: Tab) {
@@ -1757,12 +1769,15 @@ export function PartnerPanel({
         </button>
 
           {!accessLocked && <BranchSelector
-            branches={partner.branches}
+            branches={pinOperator?.canAccessAllBranches ? pinOperator.allowedBranches ?? [] : partner.branches}
             selectedBranchId={effectiveBranchId}
             onSelectBranch={handleSelectBranch}
-            isEmployeeLocked={isEmployeeRestricted}
+            isEmployeeLocked={isEmployeeRestricted && !pinOperator?.canAccessAllBranches}
+            allowConsolidated={!isEmployeeRestricted}
+            disabled={switchingBranch}
             lockedBranchName={lockedBranch?.name}
           />}
+        {branchAccessError && <p role="alert">{branchAccessError}</p>}
 
         <nav className="sidebar-nav">
           {visibleTabs.map(
