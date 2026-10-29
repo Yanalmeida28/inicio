@@ -85,29 +85,33 @@ test('owner access requires the correct account password on an isolated temporar
   await assert.rejects(h.authorizeOwner({ ...identity, salespersonId: 'employee' }, user, 'owner-secret'));
 });
 
-async function render(h, open = true) {
+async function render(h) {
   let renderer, logouts = 0;
   const props = { user, identity, onSwitchAccount: async () => { logouts++; }, children: (operator, requestAccess) =>
     React.createElement('main', { 'data-workspace': true, 'data-operator': operator?.id ?? 'owner', 'data-branch': operator?.branchId ?? 'all' },
+      React.createElement('button', { 'data-switch': true, onClick: () => requestAccess('employee') }, 'Trocar operador'),
       React.createElement('button', { 'data-owner': true, onClick: () => requestAccess('owner') }, 'Proprietário')) };
   await act(async () => { renderer = TestRenderer.create(React.createElement(h.PartnerAccessGate, props)); });
-  if (open) await act(async () => renderer.root.findAllByType('button').find(button => button.children.includes('Entrar com PIN')).props.onClick());
   return { renderer, props, get logouts() { return logouts; }, async close() { await act(async () => renderer.unmount()); } };
 }
 const submit = view => view.renderer.root.findByType('form').props.onSubmit({ preventDefault() {} });
-test('login opens an empty app shell with separate operator and owner entry points and no automatic password prompt', async () => {
-  const h = harness(), view = await render(h, false);
+test('login shows name and PIN directly on the initial screen without a preliminary button or password dialog', async () => {
+  const h = harness(), view = await render(h);
   try {
     assert.equal(view.renderer.root.findAllByProps({ 'data-locked-workspace': 'true' }).length, 1);
     assert.equal(view.renderer.root.findAllByProps({ 'data-workspace': true }).length, 0);
     assert.equal(view.renderer.root.findAllByProps({ role: 'dialog' }).length, 0);
-    assert.equal(h.calls.length, 0);
+    assert.equal(view.renderer.root.findAllByProps({ 'aria-label': 'Colaborador' }).length, 1);
+    assert.equal(view.renderer.root.findAllByProps({ 'aria-label': 'PIN de acesso' }).length, 1);
+    assert.equal(view.renderer.root.findAllByType('button').some(button => button.children.includes('Entrar com PIN')), false);
+    assert.equal(view.renderer.root.findAllByProps({ 'aria-label': 'Senha do proprietário' }).length, 0);
     const ownerButton = view.renderer.root.findAllByType('button').find(button => button.children.includes('Área do proprietário'));
     await act(async () => ownerButton.props.onClick());
     assert.equal(view.renderer.root.findAllByProps({ 'aria-label': 'Senha do proprietário' }).length, 1);
-    assert.equal(h.calls.filter(call => call.table).length, 0);
+    assert.equal(h.calls.filter(call => call.table).length, 1);
     await act(async () => view.renderer.root.findByProps({ 'aria-label': 'Fechar' }).props.onClick());
     assert.equal(view.renderer.root.findAllByProps({ role: 'dialog' }).length, 0);
+    assert.equal(view.renderer.root.findAllByProps({ 'aria-label': 'PIN de acesso' }).length, 1);
   } finally { await view.close(); }
 });
 
@@ -116,7 +120,7 @@ test('operator entry only offers collaborators and waits for the device heartbea
   const h = harness({ device }), view = await render(h);
   try {
     assert.equal(h.calls.filter(call => call.table).length, 0);
-    const dialog = view.renderer.root.findByProps({ role: 'dialog' });
+    const dialog = view.renderer.root.findByType('form');
     assert.equal(dialog.findAllByProps({ 'aria-label': 'Senha do proprietário' }).length, 0);
     assert.equal(dialog.findAllByType('button').some(button => button.children.includes('Proprietário')), false);
     assert.equal(dialog.findByProps({ className: 'module-submit-btn' }).props.disabled, true);
@@ -146,6 +150,20 @@ test('workspace stays unmounted until PIN confirmation; PIN staff open their bra
     assert.equal(workspace.props['data-operator'], 'employee'); assert.equal(workspace.props['data-branch'], 'north');
     assert.equal(view.logouts, 0);
     assert.doesNotMatch([...h.storage.values()].join(''), /1234|owner-secret/);
+  } finally { await view.close(); }
+});
+
+test('the existing operator switch opens a collaborator-only dialog after initial PIN entry', async () => {
+  const view = await render(harness());
+  try {
+    await enterPin(view);
+    await act(async () => view.renderer.root.findByProps({ 'data-switch': true }).props.onClick());
+    const dialog = view.renderer.root.findByProps({ role: 'dialog' });
+    assert.equal(dialog.findAllByProps({ 'aria-label': 'PIN de acesso' }).length, 1);
+    assert.equal(dialog.findAllByProps({ 'aria-label': 'Senha do proprietário' }).length, 0);
+    await act(async () => dialog.findByProps({ 'aria-label': 'Fechar' }).props.onClick());
+    assert.equal(view.renderer.root.findByProps({ 'data-workspace': true }).props['data-operator'], 'employee');
+    assert.equal(view.renderer.root.findAllByProps({ 'data-locked-workspace': 'true' }).length, 0);
   } finally { await view.close(); }
 });
 

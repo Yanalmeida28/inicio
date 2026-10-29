@@ -46,20 +46,18 @@ export function PartnerAccessGate({ user, identity, identityError, onRetryIdenti
       <aside className={`partner-sidebar ${sidebarOpen ? 'open' : ''}`}>
         <div className="sidebar-header"><div className="sidebar-brand"><Store size={22} /><strong>Painel do Lojista</strong></div></div>
         <div className="sidebar-operator" style={{ padding: 16 }}><small>Operador</small><p>Nenhum colaborador selecionado</p>
-          <button type="button" className="rma-advance-btn" onClick={() => setMode('employee')}><UserCheck size={14} /> Selecionar colaborador</button>
         </div>
         <button type="button" className="rma-advance-btn" style={{ margin: 12 }} onClick={() => setMode('owner')}><Shield size={14} /> Área do proprietário</button>
         <button type="button" className="rma-advance-btn" style={{ margin: 12 }} onClick={() => void onSwitchAccount()}>Sair da conta</button>
-        <nav className="sidebar-nav" aria-label="Módulos bloqueados">{['PDV', 'Cadastros', 'Pedidos', 'Caixa'].map(label => <button type="button" className="sidebar-nav-item" key={label} onClick={() => setMode('employee')}><Lock size={14} /> {label}</button>)}</nav>
       </aside>
-      <main className="sidebar-main"><div className="sidebar-main-inner"><div className="panel-module"><div className="module-header"><Lock size={20} /><h3>Aguardando PIN de acesso</h3></div>
-        <p>Selecione o colaborador e informe o PIN para carregar os dados da sua filial.</p>
-        <button type="button" className="module-submit-btn" onClick={() => setMode('employee')}>Entrar com PIN</button>
+      <main className="sidebar-main"><div className="sidebar-main-inner">
+        {mode !== 'owner' && <PinAccessDialog key={scope} inline mode="employee" prepareDevice
+          identity={identity} user={user} onAuthorize={allow} onSwitchAccount={onSwitchAccount} />}
         <button type="button" className="rma-advance-btn" onClick={() => setMode('owner')}>Área do proprietário</button>
-      </div></div></main>
+      </div></main>
     </div>}
     {current && children(current.kind === 'employee' ? current.operator : null, setMode)}
-    {mode && <PinAccessDialog key={`${scope}:${mode}`} mode={mode} prepareDevice={!current}
+    {mode && (current || mode === 'owner') && <PinAccessDialog key={`${scope}:${mode}`} mode={mode} prepareDevice={!current}
       identity={identity} user={user} onAuthorize={allow} onSwitchAccount={onSwitchAccount}
       onClose={() => setMode(null)} />}
   </>;
@@ -67,11 +65,11 @@ export function PartnerAccessGate({ user, identity, identityError, onRetryIdenti
 
 type DirectoryEntry = { id: string; name: string };
 type DialogProps = {
-  mode: Mode; prepareDevice?: boolean; identity: PartnerIdentity; user: User;
+  mode: Mode; inline?: boolean; prepareDevice?: boolean; identity: PartnerIdentity; user: User;
   onAuthorize: (access: PartnerAccess) => void; onSwitchAccount: () => Promise<void>; onClose?: () => void;
 };
 
-export function PinAccessDialog({ mode, prepareDevice = false, identity, user, onAuthorize, onSwitchAccount, onClose }: DialogProps) {
+export function PinAccessDialog({ mode, inline = false, prepareDevice = false, identity, user, onAuthorize, onSwitchAccount, onClose }: DialogProps) {
   const device = useDeviceHeartbeat(prepareDevice && mode === 'employee' ? identity.companyUserId : undefined, identity.salespersonId ? identity.branchId : null);
   const directoryReady = !prepareDevice || device.ready;
   const [directory, setDirectory] = useState<DirectoryEntry[]>([]);
@@ -140,8 +138,8 @@ export function PinAccessDialog({ mode, prepareDevice = false, identity, user, o
     }
   }
   const owner = mode === 'owner';
-  return <div className="modal-backdrop" onClick={close}>
-    <div className="modal-content operator-selection-modal" role="dialog" aria-modal="true"
+  return <div className={inline ? 'panel-module' : 'modal-backdrop'} onClick={inline ? undefined : close}>
+    <div className={inline ? 'rma-form' : 'modal-content operator-selection-modal'} role={inline ? undefined : 'dialog'} aria-modal={inline ? undefined : true}
       aria-labelledby="operator-access-title" onClick={event => event.stopPropagation()}>
       <div className="modal-header"><h3 id="operator-access-title">
         {owner ? <Shield size={18} /> : <UserCheck size={18} />}{' '}
@@ -171,7 +169,7 @@ export function PinAccessDialog({ mode, prepareDevice = false, identity, user, o
             {busy ? 'Conferindo…' : owner ? identity.salespersonId ? 'Entrar com a conta do proprietário' : 'Confirmar proprietário' : 'Entrar na minha filial'}
           </button>
           {onClose && <button type="button" className="rma-advance-btn" disabled={busy} onClick={close}>Cancelar</button>}
-          {!onClose && <button type="button" className="rma-advance-btn" disabled={busy} onClick={() => void exitAccount()}>Sair da conta</button>}
+          {!onClose && !inline && <button type="button" className="rma-advance-btn" disabled={busy} onClick={() => void exitAccount()}>Sair da conta</button>}
         </form>
       </div>
     </div>
