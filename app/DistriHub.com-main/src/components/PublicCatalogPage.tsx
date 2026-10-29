@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ShoppingCart, Store, MessageCircle, Image as ImageIcon } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { contrastText, normalizeColor } from '../lib/storeTheme';
@@ -53,18 +53,31 @@ export function PublicCatalogPage({ slug, branchSlug, userId = null, onSignIn }:
   const [selectedBranch, setSelectedBranch] = useState('');
   const [cart, setCart] = useState<CatalogCartItem[]>([]);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [requestedBranch, setRequestedBranch] = useState<string | null>(null);
   const [offset, setOffset] = useState(0);
   const [nextOffset, setNextOffset] = useState<number | null>(null);
   const [total, setTotal] = useState(0);
   const [productsLoading, setProductsLoading] = useState(true);
   const [retry, setRetry] = useState(0);
+  const appliedSearch = useRef('');
 
   useEffect(() => {
-    setCart([]); setRequestedBranch(null); setSearch(''); setOffset(0); setLoading(true);
+    setCart([]); setRequestedBranch(null); setSearch(''); setDebouncedSearch(''); appliedSearch.current = ''; setOffset(0); setLoading(true);
     setSettings(null); setProfile(null); setBranch(null); setBranches([]); setSelectedBranch('');
     setNextOffset(null); setTotal(0);
   }, [slug, branchSlug]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const next = search.trim();
+      if (next === appliedSearch.current) return;
+      appliedSearch.current = next;
+      // Reset pagination together with the applied term so the old term is never requested at offset 0.
+      setOffset(0); setDebouncedSearch(next);
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [search]);
 
   useEffect(() => {
     let active = true;
@@ -77,7 +90,7 @@ export function PublicCatalogPage({ slug, branchSlug, userId = null, onSignIn }:
       try {
         const { data, error: catalogError } = await supabase.rpc('read_public_catalog_page', {
           p_slug: slug, p_branch_slug: branchSlug ?? null, p_branch_id: requestedBranch,
-          p_search: search.trim(), p_offset: offset, p_limit: 48,
+          p_search: debouncedSearch, p_offset: offset, p_limit: 48,
         });
         if (catalogError) throw new Error(catalogError.message);
         if (!active) return;
@@ -94,7 +107,7 @@ export function PublicCatalogPage({ slug, branchSlug, userId = null, onSignIn }:
     }
     void loadCatalog();
     return () => { active = false; };
-  }, [branchSlug, slug, requestedBranch, search, offset, retry]);
+  }, [branchSlug, slug, requestedBranch, debouncedSearch, offset, retry]);
 
   const primaryBrandName = profile?.business_name ?? profile?.account_name ?? 'Loja';
   const logoUrl = settings?.logo_url ?? null;
@@ -163,7 +176,7 @@ export function PublicCatalogPage({ slug, branchSlug, userId = null, onSignIn }:
         </div>
 
         {preferences.welcome_message && <p style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', padding: '16px 20px', background: '#102638', borderRadius: 12 }}>{preferences.welcome_message}</p>}
-        <div className="public-catalog-filters"><label>Buscar produto<input type="search" value={search} onChange={e => { setSearch(e.target.value); setOffset(0); }} /></label>{!branch && branches.length > 1 && <label>Filial<select value={selectedBranch} onChange={e => { setSelectedBranch(e.target.value); setRequestedBranch(e.target.value); setOffset(0); setCart([]); }}>{branches.map(branch => <option key={branch.id} value={branch.id}>{branch.name}</option>)}</select></label>}</div>
+        <div className="public-catalog-filters"><label>Buscar produto<input type="search" value={search} onChange={e => setSearch(e.target.value)} /></label>{!branch && branches.length > 1 && <label>Filial<select value={selectedBranch} onChange={e => { setSelectedBranch(e.target.value); setRequestedBranch(e.target.value); setOffset(0); setCart([]); }}>{branches.map(branch => <option key={branch.id} value={branch.id}>{branch.name}</option>)}</select></label>}</div>
         {error && <div role="alert"><p>{error}</p><button type="button" disabled={productsLoading} onClick={() => setRetry(value => value + 1)}>Tentar novamente</button></div>}
         <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, ${preferences.card_size === 'compact' ? 220 : 280}px), 1fr))`, gap: preferences.card_size === 'compact' ? 12 : 20 }}>
           {visibleProducts.map((product) => (

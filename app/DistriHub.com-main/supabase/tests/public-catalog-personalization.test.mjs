@@ -13,10 +13,14 @@ const theme={};
 vm.runInNewContext(compile(await readFile(new URL('../../src/lib/storeTheme.ts',import.meta.url),'utf8')),{exports:theme});
 const source=compile(await readFile(new URL('../../src/components/PublicCatalogPage.tsx',import.meta.url),'utf8'));
 let renderer;
-afterEach(async()=>{if(renderer)await act(async()=>renderer.unmount());renderer=null;});
+// Controllable timers so the 300 ms search debounce is exercised deterministically.
+let timers=new Map(),timerId=0;
+const fakeWindow={setTimeout:(fn,ms)=>{timers.set(++timerId,{fn,ms});return timerId;},clearTimeout:id=>{timers.delete(id);}};
+const flushTimers=async()=>{const due=[...timers.values()];timers.clear();await act(async()=>{due.forEach(timer=>timer.fn());});};
+afterEach(async()=>{timers.clear();if(renderer)await act(async()=>renderer.unmount());renderer=null;});
 function component(rpc){
   const exports={};
-  vm.runInNewContext(source,{exports,Error,require(name){
+  vm.runInNewContext(source,{exports,Error,window:fakeWindow,require(name){
     if(name==='../lib/supabase')return {supabase:{rpc},isSupabaseConfigured:true};
     if(name==='../lib/personalization')return personalizationHelpers;
     if(name==='../lib/storeTheme')return theme;
@@ -95,7 +99,11 @@ test('catalog appends server pages and sends branch and search filters with a re
   assert.equal(calls.at(-1).p_offset,0);
   output=JSON.stringify(renderer.toJSON());
   assert.ok(!output.includes('Primeiro')&&!output.includes('Segundo'));
+  const requestsBeforeTyping=calls.length;
   await act(async()=>renderer.root.findByProps({type:'search'}).props.onChange({target:{value:'Encontrado'}}));
+  assert.equal(calls.length,requestsBeforeTyping,'typing alone must not query');
+  assert.ok([...timers.values()].every(timer=>timer.ms===300));
+  await flushTimers();
   assert.equal(calls.at(-1).p_search,'Encontrado');
   assert.equal(calls.at(-1).p_branch_id,'b');
   assert.equal(calls.at(-1).p_offset,0);
