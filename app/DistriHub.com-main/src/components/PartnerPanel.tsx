@@ -421,7 +421,7 @@ export function PartnerPanel({
     catch { /* Storage does not change account authorization. */ }
   }, [identity, isEmployeeRestricted, operatorScope, selectedBranchId]);
 
-  const checkoutCash = useCheckoutCash(effectiveBranchId, pinOperator?.id ?? null, pinOperator?.pin ?? null, managedCashSession?.operator_name ?? activeSalesperson?.name ?? 'Proprietário / Administrador', operatorScope, !accessLocked && ['pdv', 'pedidos', 'caixa'].includes(activeTab), managedCashSession?.id ?? null);
+  const checkoutCash = useCheckoutCash(effectiveBranchId, pinOperator?.id ?? null, pinOperator?.pin ?? null, managedCashSession?.operator_name ?? activeSalesperson?.name ?? 'Proprietário / Administrador', operatorScope, !accessLocked && ['pdv', 'pedidos', 'caixa'].includes(activeTab), managedCashSession?.id ?? null, activeTab === 'pedidos' ? 'pedidos' : activeTab === 'caixa' ? 'caixa' : 'pdv');
   const refreshCash = checkoutCash.refresh;
   useEffect(() => {
     if (!accessLocked && (activeTab === 'pdv' || activeTab === 'pedidos' || activeTab === 'caixa')) void refreshCash().catch(() => {});

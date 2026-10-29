@@ -43,6 +43,7 @@ before(async () => {
   await db.exec("CREATE FUNCTION public.record_fiscal_document(p_document_id uuid DEFAULT NULL, p_document_type text DEFAULT 'nfe', p_status text DEFAULT 'pending', p_document_number text DEFAULT NULL, p_access_key text DEFAULT NULL, p_payload jsonb DEFAULT '{}'::jsonb) RETURNS uuid LANGUAGE sql AS $$ SELECT NULL::uuid $$");
   fiscalDefaultsBefore = (await sql("SELECT pg_get_function_arguments('public.record_fiscal_document(uuid,text,text,text,text,jsonb)'::regprocedure) AS args")).rows[0].args;
   await db.exec('ALTER TABLE partner_salespeople ADD COLUMN name text');
+  await db.exec("ALTER TABLE partner_salespeople ADD COLUMN blocked_modules text[] NOT NULL DEFAULT '{}'");
   await db.exec(await read('../migrations/20261003182612_partner_cash_register.sql'));
   await db.exec(await read('../migrations/20261003190000_secure_financial_subscription_fiscal_and_branch_flows.sql'));
   await db.exec(await read('../migrations/20261003193000_add_post_close_cash_refunds.sql'));
@@ -67,6 +68,7 @@ before(async () => {
   await db.exec(await read('../migrations/20261013202052_readable_sale_numbers.sql'));
   await db.exec(await read('../migrations/20261015013718_fix_sales_history_cancellation_and_completion.sql'));
   await db.exec(await read('../migrations/20261017172437_shared_branch_checkout_operator_history.sql'));
+  await db.exec(await read('../migrations/20261029164610_separate_checkout_cash_permissions.sql'));
 });
 after(() => db.close());
 
@@ -77,6 +79,51 @@ async function splitSale(extra = {}) {
     [r.id,'Cliente',JSON.stringify([{product_id:product,name:'Produto',quantity:1,unit_price:100}]),r.method,branch,r.status,'pdv','varejo','entrega',r.fee,JSON.stringify(r.parts)]);
   return r;
 }
+
+test('PDV-only collaborator can inspect an open destination and complete a sale while Caixa remains blocked', async () => {
+ const closed=await mutate('abrir',0);await mutate('fechar',0,{session:closed});
+ const open=await mutate('abrir',25);
+ await login(other);await mutate('abrir',90,{branch:foreignBranch});await login(owner);
+ // Enforce the production shared-operator guard and the linked-account module
+ // restriction. Subscription/device admission remains isolated by this fixture.
+ const operatorGuard=await read('../migrations/20261008173749_enforce_shared_operator_module_permissions.sql');
+ await db.exec(operatorGuard.slice(0,operatorGuard.indexOf('REVOKE ALL')).replace('CREATE FUNCTION','CREATE OR REPLACE FUNCTION'));
+ await db.exec(`CREATE OR REPLACE FUNCTION partner_subscription_private.require_actor(feature text) RETURNS void LANGUAGE plpgsql AS $$
+ BEGIN IF auth.uid() IS NULL THEN RAISE EXCEPTION 'Não autenticado'; END IF;
+ IF EXISTS(SELECT 1 FROM public.partner_salespeople WHERE auth_user_id=auth.uid() AND active=true AND feature=ANY(blocked_modules))
+ THEN RAISE EXCEPTION 'Módulo bloqueado'; END IF; END $$;`);
+ try {
+  await sql("UPDATE partner_salespeople SET blocked_modules=ARRAY['caixa'] WHERE id=$1",[employee]);
+  await login(employeeAuth);
+  await assert.rejects(sql('SELECT read_partner_cash_register($1)',[branch]),/bloqueado/);
+  const snapshot=(await sql("SELECT read_partner_checkout_cash($1,NULL,NULL,'pdv') AS data",[branch])).rows[0].data;
+  assert.equal(snapshot.actor_key,employee);assert.equal(snapshot.can_manage,false);
+  assert.deepEqual(Object.keys(snapshot).sort(),['actor_key','can_manage','sessions']);
+  assert.equal(snapshot.sessions.length,1);assert.equal(snapshot.sessions[0].id,open);
+  assert.deepEqual(Object.keys(snapshot.sessions[0]).sort(),['actor_key','branch_id','closed_at','id','opened_at','operator_id','operator_name']);
+  const sold=await sale();
+  const movement=(await sql("SELECT session_id,performed_by FROM partner_cash_movements WHERE sale_id=$1 AND kind='venda'",[sold.id])).rows[0];
+  assert.equal(movement.session_id,open);assert.equal(movement.performed_by,employee);
+  assert.equal((await sql('SELECT stock FROM partner_products WHERE id=$1',[product])).rows[0].stock,9);
+  await assert.rejects(sql("SELECT read_partner_checkout_cash($1,NULL,NULL,'caixa')",[branch]),/bloqueado/);
+  await assert.rejects(sql("SELECT read_partner_checkout_cash($1,NULL,NULL,'financeiro')",[branch]),/inválido/);
+  await assert.rejects(sql('SELECT read_partner_checkout_cash($1,NULL,NULL,NULL)',[branch]),/inválido/);
+  await assert.rejects(sql('SELECT read_partner_checkout_cash($1)',[foreignBranch]),/filial/i);
+  await sql("UPDATE partner_salespeople SET blocked_modules=ARRAY['caixa','pdv'] WHERE id=$1",[employee]);
+  await assert.rejects(sql('SELECT read_partner_checkout_cash($1)',[branch]),/bloqueado/);
+  await login(owner);
+  await assert.rejects(sql('SELECT read_partner_checkout_cash($1,$2,$3)',[branch,employee,'1234']),/bloqueado/);
+  await sql("UPDATE partner_salespeople SET blocked_modules=ARRAY['caixa'] WHERE id=$1",[employee]);
+  await assert.rejects(sql('SELECT read_partner_checkout_cash($1,$2,$3)',[branch,employee,'wrong-pin']),/PIN|incorreto|invalido|inválido/i);
+  assert.equal((await sql('SELECT read_partner_checkout_cash($1,$2,$3) AS data',[branch,employee,'1234'])).rows[0].data.sessions[0].id,open);
+  await sql('UPDATE partner_salespeople SET active=false WHERE id=$1',[employee]);
+  await assert.rejects(sql('SELECT read_partner_checkout_cash($1,$2,$3)',[branch,employee,'1234']),/inativo|invalido|inválido/i);
+  assert.equal((await sql("SELECT has_function_privilege('anon','public.read_partner_checkout_cash(uuid,uuid,text,text)','EXECUTE') AS allowed")).rows[0].allowed,false);
+ } finally {
+  await db.exec(`CREATE OR REPLACE FUNCTION partner_subscription_private.require_operator_module(p_feature text,p_operator uuid) RETURNS void LANGUAGE sql AS $$ SELECT $$;
+   CREATE OR REPLACE FUNCTION partner_subscription_private.require_actor(feature text) RETURNS void LANGUAGE sql AS $$ SELECT $$;`);
+ }
+});
 
 test('split payment charges cash and PIX once, includes freight and cancels each part with stock restored once',async()=>{
   const session=await mutate('abrir',20);

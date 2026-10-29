@@ -75,8 +75,26 @@ test('supervised checkout rechecks the selected cash while preserving manager au
  let view;await act(async()=>{view=TestRenderer.create(React.createElement(Consumer));});
  try {
   assert.equal(api.status,'open');await act(async()=>api.assertOpen());
-  assert.ok(calls.every(c=>c.args.p_salesperson_id===null&&c.args.p_pin===null));
+  assert.ok(calls.every(c=>c.name==='read_partner_checkout_cash'&&c.args.p_module==='pdv'&&c.args.p_salesperson_id===null&&c.args.p_pin===null));
   data={...data,sessions:[{...managerSession,closed_at:'now'}]};await act(async()=>assert.rejects(api.assertOpen(),/não está aberto/));
+ } finally {act(()=>view.unmount());}
+});
+
+test('cash availability follows the active module and never requests the management cash report', async () => {
+ const calls=[];
+ const hook=await compile('../../src/hooks/useCheckoutCash.ts',{
+  react:React,'../lib/supabase':{supabase:{rpc:async(name,args)=>{calls.push({name,args});return {data:{actor_key:'owner',sessions:[ownerSession]},error:null};}}},
+  '../lib/checkoutCash':helpers,'../lib/pdv':{pdvErrorMessage:e=>e.message},
+ });
+ let api;
+ function Consumer({module}){api=hook.useCheckoutCash('branch',null,null,'Owner','owner',true,null,module);return null;}
+ let view;await act(async()=>{view=TestRenderer.create(React.createElement(Consumer,{module:'pdv'}));});
+ try {
+  assert.equal(api.status,'open');
+  await act(async()=>view.update(React.createElement(Consumer,{module:'pedidos'})));
+  await act(async()=>view.update(React.createElement(Consumer,{module:'caixa'})));
+  assert.ok(calls.every(call=>call.name==='read_partner_checkout_cash'));
+  assert.deepEqual(calls.map(call=>call.args.p_module),['pdv','pedidos','caixa']);
  } finally {act(()=>view.unmount());}
 });
 
