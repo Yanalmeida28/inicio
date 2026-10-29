@@ -5,8 +5,8 @@ import { printProductLabel, productLabelDocument, productLabelQr, validateProduc
 
 export function ProductLabelModal({ product, onClose }: { product: PartnerProduct | undefined; onClose: () => void }) {
   const [preset,setPreset] = useState('58');
-  const [width,setWidth] = useState('58');
-  const [height,setHeight] = useState('40');
+  const [width,setWidth] = useState('40');
+  const [height,setHeight] = useState('58');
   const [qrUrl,setQrUrl] = useState('');
   const [error,setError] = useState('');
   const [printing,setPrinting] = useState(false);
@@ -25,7 +25,11 @@ export function ProductLabelModal({ product, onClose }: { product: PartnerProduc
     } catch(cause) {return {html:'',error:cause instanceof Error ? cause.message : 'Medidas inválidas.'};}
   },[product,width,height,qrUrl]);
   if (!product) return null;
-  function choose(value: string, w: string, h: string) {setPreset(value);setWidth(w);setHeight(h);}
+  const vertical = Number(height) >= Number(width);
+  function choose(value: string, w: string, h: string) {setPreset(value);setWidth(vertical ? h : w);setHeight(vertical ? w : h);}
+  function orient(portrait: boolean) {
+    if (portrait !== vertical) {setWidth(height);setHeight(width);}
+  }
   async function print() {
     if(lock.current || !product || !qrUrl || preview.error) return;
     lock.current=true;setPrinting(true);setError('');
@@ -37,9 +41,13 @@ export function ProductLabelModal({ product, onClose }: { product: PartnerProduc
     <div className="modal-content thermal-label-modal" role="dialog" aria-modal="true" aria-labelledby="product-label-title" onClick={event=>event.stopPropagation()}>
       <div className="modal-header"><h3 id="product-label-title">Imprimir etiqueta</h3><button type="button" aria-label="Fechar etiqueta" onClick={onClose}><X size={18}/></button></div>
       <div className="thermal-size-toggle" style={{flexWrap:'wrap'}}>
-        <button type="button" className={preset==='58'?'active':''} onClick={()=>choose('58','58','40')}>58 × 40 mm</button>
-        <button type="button" className={preset==='80'?'active':''} onClick={()=>choose('80','80','50')}>80 × 50 mm</button>
+        <button type="button" className={preset==='58'?'active':''} onClick={()=>choose('58','58','40')}>{vertical ? '40 × 58' : '58 × 40'} mm</button>
+        <button type="button" className={preset==='80'?'active':''} onClick={()=>choose('80','80','50')}>{vertical ? '50 × 80' : '80 × 50'} mm</button>
         <button type="button" className={preset==='custom'?'active':''} onClick={()=>choose('custom','50','30')}>Personalizada</button>
+      </div>
+      <div className="thermal-size-toggle" role="group" aria-label="Orientação da etiqueta">
+        <button type="button" aria-pressed={vertical} className={vertical ? 'active' : ''} onClick={()=>orient(true)}>Vertical</button>
+        <button type="button" aria-pressed={!vertical} className={!vertical ? 'active' : ''} onClick={()=>orient(false)}>Horizontal</button>
       </div>
       {preset==='custom' && <div className="form-row" style={{marginBottom:12}}>
         <label>Largura (mm)<input type="number" min="30" max="150" step="0.1" value={width} onChange={event=>setWidth(event.target.value)}/></label>

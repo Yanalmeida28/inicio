@@ -20,6 +20,7 @@ export async function productLabelQr(product: LabelProduct) {
 // A separate document keeps navigation, modal styles and mobile breakpoints off the paper.
 export function productLabelDocument(product: LabelProduct, size: ProductLabelSize, qrUrl: string, doc = document.implementation.createHTMLDocument('Etiqueta do produto')) {
   validateProductLabelSize(size);
+  const vertical = size.height >= size.width;
   doc.head.replaceChildren(); doc.body.replaceChildren();
   doc.title = 'Etiqueta do produto'; doc.documentElement.lang = 'pt-BR';
   const charset = doc.createElement('meta'); charset.setAttribute('charset','utf-8'); doc.head.append(charset);
@@ -28,8 +29,8 @@ export function productLabelDocument(product: LabelProduct, size: ProductLabelSi
     @page { size: ${size.width}mm ${size.height}mm; margin: 0; }
     * { box-sizing: border-box; }
     html, body { width: ${size.width}mm; height: ${size.height}mm; margin: 0; padding: 0; background: #fff; color: #000; }
-    .product-label { width: 100%; height: 100%; display: grid; grid-template-columns: 38% minmax(0,1fr); gap: 2mm; align-items: center; padding: 2mm; font-family: Arial,sans-serif; break-inside: avoid; overflow: hidden; }
-    .label-qr { display: flex; align-items: center; min-width: 0; height: 100%; overflow: hidden; }
+    .product-label { width: 100%; height: 100%; display: grid; grid-template-columns: ${vertical ? 'minmax(0,1fr)' : '38% minmax(0,1fr)'}; ${vertical ? 'grid-template-rows: minmax(0,1fr) auto; text-align: center;' : ''} gap: 2mm; align-items: center; padding: 2mm; font-family: Arial,sans-serif; break-inside: avoid; overflow: hidden; }
+    .label-qr { display: flex; align-items: center; justify-content: center; min-width: 0; min-height: 0; height: 100%; overflow: hidden; }
     .label-qr img { display: block; width: 100%; max-height: 100%; object-fit: contain; }
     .label-info { display: flex; flex-direction: column; justify-content: center; gap: 1mm; min-width: 0; overflow: hidden; }
     .label-name { font-size: ${size.width < 45 ? 10 : 12}px; line-height: 1.15; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: ${size.height < 30 ? 2 : 3}; overflow: hidden; }

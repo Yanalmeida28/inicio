@@ -38,6 +38,19 @@ test('product label is an isolated white document with physical page size and li
   assert.match(css,/background: #fff; color: #000/);
   assert.doesNotMatch(css,/modal|partner-panel/);
 });
+test('vertical labels use portrait paper and stack the QR above centered product information',()=>{
+  const api=harness();
+  for(const size of [{width:40,height:58},{width:50,height:80},{width:30,height:50}]) {
+    const doc=api.productLabelDocument(product,size,'qr');
+    const css=doc.head.children.find(node=>node.tag==='style').textContent;
+    assert.ok(css.includes('size: '+size.width+'mm '+size.height+'mm'));
+    assert.match(css,/grid-template-columns: minmax\(0,1fr\)/);
+    assert.match(css,/grid-template-rows: minmax\(0,1fr\) auto; text-align: center/);
+    assert.equal(doc.body.children[0].children[0].className,'label-qr');
+    assert.equal(doc.body.children[0].children[1].className,'label-info');
+  }
+});
+
 test('printing waits for QR image decoding and prints the separate document only',async()=>{
   let release;
   const api=harness({decode:()=>new Promise(resolve=>{release=resolve;})});
