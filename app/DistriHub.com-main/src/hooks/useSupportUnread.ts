@@ -23,11 +23,16 @@ export function useSupportUnread(actorId: string | undefined, admin = false) {
     const update = () => { void refresh(); };
     const channel = client.channel('support-unread-' + actorId + '-' + admin).on('postgres_changes', {event: 'INSERT', schema: 'public', table: 'support_messages', ...(admin ? {} : {filter: 'user_id=eq.' + actorId})}, update).subscribe(status => { if (status === 'SUBSCRIBED') update(); });
     update();
-    const interval = window.setInterval(update, 10000);
+    // Realtime handles immediate updates; periodic polling reconciles missed events.
+    // Avoid background-tab requests, but refresh immediately when the tab returns.
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === 'visible') update();
+    }, 20_000);
     window.addEventListener('distrihub:support-read', update);
     window.addEventListener('focus', update);
-    document.addEventListener('visibilitychange', update);
-    return () => { live = false; window.clearInterval(interval); window.removeEventListener('distrihub:support-read', update); window.removeEventListener('focus', update); document.removeEventListener('visibilitychange', update); void client.removeChannel(channel); };
+    const onVisibilityChange = () => { if (document.visibilityState === 'visible') update(); };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => { live = false; window.clearInterval(interval); window.removeEventListener('distrihub:support-read', update); window.removeEventListener('focus', update); document.removeEventListener('visibilitychange', onVisibilityChange); void client.removeChannel(channel); };
   }, [actorId, admin]);
   return snapshot.actorId === actorId ? snapshot : {total: 0, conversations: {}};
 }
