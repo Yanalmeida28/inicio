@@ -53,6 +53,7 @@ export function PublicCatalogPage({ slug, branchSlug, userId = null, onSignIn }:
   const [selectedBranch, setSelectedBranch] = useState('');
   const [cart, setCart] = useState<CatalogCartItem[]>([]);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [requestedBranch, setRequestedBranch] = useState<string | null>(null);
   const [offset, setOffset] = useState(0);
   const [nextOffset, setNextOffset] = useState<number | null>(null);
@@ -67,6 +68,11 @@ export function PublicCatalogPage({ slug, branchSlug, userId = null, onSignIn }:
   }, [slug, branchSlug]);
 
   useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => window.clearTimeout(timer);
+  }, [search]);
+
+  useEffect(() => {
     let active = true;
     async function loadCatalog() {
       setProductsLoading(true); setError(null);
@@ -77,7 +83,7 @@ export function PublicCatalogPage({ slug, branchSlug, userId = null, onSignIn }:
       try {
         const { data, error: catalogError } = await supabase.rpc('read_public_catalog_page', {
           p_slug: slug, p_branch_slug: branchSlug ?? null, p_branch_id: requestedBranch,
-          p_search: search.trim(), p_offset: offset, p_limit: 48,
+          p_search: debouncedSearch, p_offset: offset, p_limit: 48,
         });
         if (catalogError) throw new Error(catalogError.message);
         if (!active) return;
@@ -94,7 +100,7 @@ export function PublicCatalogPage({ slug, branchSlug, userId = null, onSignIn }:
     }
     void loadCatalog();
     return () => { active = false; };
-  }, [branchSlug, slug, requestedBranch, search, offset, retry]);
+  }, [branchSlug, slug, requestedBranch, debouncedSearch, offset, retry]);
 
   const primaryBrandName = profile?.business_name ?? profile?.account_name ?? 'Loja';
   const logoUrl = settings?.logo_url ?? null;
