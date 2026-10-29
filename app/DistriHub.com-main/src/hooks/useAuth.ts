@@ -132,6 +132,28 @@ export function useAuth(): UseAuthReturn {
     }
 
     const client = supabase;
+    const { data: ownerProfile, error: ownerError } = await readWithJwtRecovery(() => client
+      .from('partner_profiles')
+      .select('id')
+      .eq('id', authUserId)
+      .limit(1)
+      .maybeSingle(), isCurrent);
+
+    if (ownerError) {
+      throw new Error(`Não foi possível validar a identidade do proprietário: ${ownerError.message}`);
+    }
+
+    if (ownerProfile) {
+      return {
+        authUserId,
+        companyUserId: authUserId,
+        role: 'administrador',
+        salespersonId: null,
+        branchId: null,
+        isOwner: true,
+      };
+    }
+
     const { data, error } = await readWithJwtRecovery(() => client
       .from('partner_salespeople')
       .select('id, user_id, role, branch_id, active')
@@ -159,37 +181,26 @@ export function useAuth(): UseAuthReturn {
         role: salesperson.role,
         salespersonId: salesperson.id,
         branchId: salesperson.branch_id ?? null,
+        isOwner: false,
       };
     }
 
-    const { data: ownerProfile, error: ownerError } = await readWithJwtRecovery(() => client
-      .from('partner_profiles')
-      .select('id')
-      .eq('id', authUserId)
-      .limit(1)
-      .maybeSingle(), isCurrent);
-
-    if (ownerError) {
-      throw new Error(`Não foi possível validar a identidade do proprietário: ${ownerError.message}`);
+    const { data: verified, error: userError } = await supabase.auth.getUser();
+    if (userError || verified.user?.id !== authUserId) throw new Error('Sessão inválida para concluir o cadastro.');
+    // Metadata supplies contact fields only. Roles, plans and access are resolved by the database.
+    const metadata = verified.user.user_metadata;
+    if (typeof metadata.business_name !== 'string' || !metadata.business_name.trim()
+      || typeof metadata.whatsapp !== 'string' || !metadata.whatsapp.trim()) {
+      throw new Error('Conta sem cadastro de empresa. Conclua os dados do cadastro para acessar o painel.');
     }
-    if (!ownerProfile) {
-      const { data: verified, error: userError } = await supabase.auth.getUser();
-      if (userError || verified.user?.id !== authUserId) throw new Error('Sessão inválida para concluir o cadastro.');
-      // Metadata supplies contact fields only. Roles, plans and access are resolved by the database.
-      const metadata = verified.user.user_metadata;
-      if (typeof metadata.business_name !== 'string' || !metadata.business_name.trim()
-        || typeof metadata.whatsapp !== 'string' || !metadata.whatsapp.trim()) {
-        throw new Error('Conta sem cadastro de empresa. Conclua os dados do cadastro para acessar o painel.');
-      }
-      const { error: createError } = await supabase.from('partner_profiles').upsert({
-        id: authUserId, business_name: metadata.business_name.trim(), whatsapp: metadata.whatsapp.trim(), segment: 'assistencia',
-        ...(typeof metadata.document === 'string' && (isValidCpf(metadata.document) || isValidCnpj(metadata.document))
-          ? { document: normalizeDocument(metadata.document) } : {}),
-      }, { onConflict: 'id', ignoreDuplicates: true });
-      if (createError) throw new Error(`Não foi possível concluir o cadastro: ${createError.message}`);
-    }
+    const { error: createError } = await supabase.from('partner_profiles').upsert({
+      id: authUserId, business_name: metadata.business_name.trim(), whatsapp: metadata.whatsapp.trim(), segment: 'assistencia',
+      ...(typeof metadata.document === 'string' && (isValidCpf(metadata.document) || isValidCnpj(metadata.document))
+        ? { document: normalizeDocument(metadata.document) } : {}),
+    }, { onConflict: 'id', ignoreDuplicates: true });
+    if (createError) throw new Error(`Não foi possível concluir o cadastro: ${createError.message}`);
 
-    return { authUserId, companyUserId: authUserId, role: 'administrador', salespersonId: null, branchId: null };
+    return { authUserId, companyUserId: authUserId, role: 'administrador', salespersonId: null, branchId: null, isOwner: true };
   }, []);
 
   const loadProfile = useCallback(async (userId: string, isCurrent: () => boolean = () => true): Promise<PartnerProfile | null> => {

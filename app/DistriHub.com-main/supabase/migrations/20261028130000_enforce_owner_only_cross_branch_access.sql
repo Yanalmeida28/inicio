@@ -1,13 +1,13 @@
 BEGIN;
 
-CREATE OR REPLACE FUNCTION public.partner_employee_can_access_branch(p_user_id uuid, p_branch_id uuid)
+CREATE OR REPLACE FUNCTION public.partner_employee_can_access_branch(p_company_id uuid, p_branch_id uuid)
 RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=''
 AS $$
   SELECT p_branch_id IS NOT NULL
     AND count(*) = 1
     AND COALESCE(bool_and(
-      sp.user_id = p_user_id
+      sp.user_id = p_company_id
       AND COALESCE(sp.active, true) = true
       AND sp.branch_id = p_branch_id
     ), false)

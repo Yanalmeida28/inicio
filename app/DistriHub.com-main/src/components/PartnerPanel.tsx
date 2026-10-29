@@ -435,6 +435,9 @@ export function PartnerPanel({
     finally { setRecoveringSale(false); }
   }
 
+  const isCompanyOwner = identity?.isOwner === true
+    && identity.authUserId === identity.companyUserId
+    && identity.salespersonId === null;
   const effectiveRole: SalespersonRole = activeSalesperson
     ? activeSalesperson.role
     : 'administrador';
@@ -1735,7 +1738,11 @@ export function PartnerPanel({
               <CadastrosModule
                 key={target ?? 'principal'}
                 isActive={activeTab === (target ? 'administrativo' : 'cadastros')}
-                canManageSalespeople={Boolean(identity && !identity.salespersonId)}
+                canManageSalespeople={isCompanyOwner}
+                isCompanyOwner={isCompanyOwner}
+                companyOwnerName={partner.profile?.name ?? null}
+                onLoadAdminBranchAccess={partner.loadAdminBranchAccess}
+                onSetAdminBranchAccess={partner.setAdminBranchAccess}
                 findProductDuplicates={partner.findProductDuplicates}
                 onDataScopeChange={setCadastroDataScope}
                 suppliersReady={partner.suppliersReady}
@@ -1758,9 +1765,9 @@ export function PartnerPanel({
                 suppliers={
                   filteredSuppliers
                 }
-                salespeople={
-                  filteredSalespeople
-                }
+                salespeople={target === 'vendedores' && isCompanyOwner
+                  ? partner.salespeople
+                  : filteredSalespeople}
                 combos={
                   partner.combos
                 }
@@ -2399,7 +2406,7 @@ export function PartnerPanel({
               <AdminModule
                 onDataScopeChange={setAdminDataScope}
                 onReportScopeChange={setReportDataScope}
-                intelligenceAllowed={canViewBusinessIntelligence(Boolean(identity && !identity.salespersonId && identity.authUserId === identity.companyUserId), !currentSalespersonId,
+                intelligenceAllowed={canViewBusinessIntelligence(isCompanyOwner, !currentSalespersonId,
                   ['administrativo', 'relatorios', 'financeiro'].filter(module => !blockedTabs.includes(module as Tab) && canUseSaasFeature(saas.subscription, module)))}
                 intelligenceDataReady={partner.resourcesReady && !partner.loading && !partner.syncing}
                 intelligenceDataError={partner.error || partner.syncError}
@@ -2452,11 +2459,7 @@ export function PartnerPanel({
                     tab as Tab,
                   )
                 }
-                ownerView={Boolean(
-                  identity &&
-                  !identity.salespersonId &&
-                  identity.authUserId === identity.companyUserId
-                )}
+                ownerView={isCompanyOwner}
               />)}
               </div>
             )}

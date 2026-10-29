@@ -65,7 +65,7 @@ test('inactive collaborator identity is denied by the application and creation f
 });
 
 test('the company owner can manage collaborators from Basic plan registrations', () => {
-  assert.match(partnerPanel, /canManageSalespeople={Boolean\(identity && !identity\.salespersonId\)}/);
+  assert.match(partnerPanel, /canManageSalespeople={isCompanyOwner}/);
   assert.match(collaboratorForm, /canManageSalespeople\s*\?\s*\[\.\.\.subTabs/);
   assert.match(collaboratorForm, /label: 'Colaboradores'/);
   assert.match(collaboratorForm, /adminTarget === 'vendedores' \|\| \(!adminTarget && canManageSalespeople\)/);

@@ -16,6 +16,7 @@ import type {
   B2BOrder,
   DeliveryOperation,
   PartnerBranch,
+  PartnerAdminBranchAccess,
   PartnerCategory,
   PartnerCombo,
   PartnerCustomer,
@@ -3239,6 +3240,50 @@ read('sales', (signal) => fetchAllPages((from, to) => client
     [data.salespeople, requireIdentity],
   );
 
+  const loadAdminBranchAccess = useCallback(async (): Promise<PartnerAdminBranchAccess[]> => {
+    const currentIdentity = requireIdentity();
+    if (!currentIdentity.isOwner || currentIdentity.authUserId !== currentIdentity.companyUserId) {
+      throw new Error('Somente o proprietário autenticado pode consultar as concessões de filiais.');
+    }
+    if (!isSupabaseConfigured || !supabase) {
+      throw new Error('Supabase não configurado.');
+    }
+
+    const { data: grants, error: grantsError } = await supabase
+      .from('partner_admin_branch_access')
+      .select('id, company_id, salesperson_id, branch_id, all_branches, granted_by, granted_at, revoked_at')
+      .eq('company_id', currentIdentity.companyUserId)
+      .order('granted_at', { ascending: false });
+    if (grantsError) throw grantsError;
+    return (grants ?? []) as PartnerAdminBranchAccess[];
+  }, [requireIdentity]);
+
+  const setAdminBranchAccess = useCallback(async (
+    salespersonId: string,
+    branchId: string | null,
+    allBranches: boolean,
+    granted: boolean,
+  ): Promise<void> => {
+    const currentIdentity = requireIdentity();
+    if (!currentIdentity.isOwner || currentIdentity.authUserId !== currentIdentity.companyUserId) {
+      throw new Error('Somente o proprietário autenticado pode conceder ou revogar acessos de filiais.');
+    }
+    if (!isSupabaseConfigured || !supabase) {
+      throw new Error('Supabase não configurado.');
+    }
+
+    const { error: accessError } = await supabase.rpc(
+      'set_partner_admin_branch_access',
+      {
+        p_salesperson_id: salespersonId,
+        p_branch_id: branchId,
+        p_all_branches: allBranches,
+        p_granted: granted,
+      },
+    );
+    if (accessError) throw accessError;
+  }, [requireIdentity]);
+
   const deleteSalesperson = useCallback(
     async (
       id: string,
@@ -4179,6 +4224,8 @@ read('sales', (signal) => fetchAllPages((from, to) => client
     addSalesperson,
     updateSalesperson,
     deleteSalesperson,
+    loadAdminBranchAccess,
+    setAdminBranchAccess,
 
     addServiceOrder,
     updateServiceOrder,

@@ -242,6 +242,18 @@ export interface PartnerIdentity {
   role: SalespersonRole;
   salespersonId: string | null;
   branchId: string | null;
+  isOwner: boolean;
+}
+
+export interface PartnerAdminBranchAccess {
+  id: string;
+  company_id: string;
+  salesperson_id: string;
+  branch_id: string | null;
+  all_branches: boolean;
+  granted_by: string;
+  granted_at: string;
+  revoked_at: string | null;
 }
 
 export interface SaleItem {
