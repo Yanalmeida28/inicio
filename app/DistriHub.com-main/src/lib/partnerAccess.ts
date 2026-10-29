@@ -1,6 +1,6 @@
 import type { User } from '@supabase/supabase-js';
 import type { PartnerIdentity, SalespersonRole } from '../types';
-import { createOwnerVerificationClient, supabase } from './supabase';
+import { supabase } from './supabase';
 
 export type PinOperator = {
   id: string; name: string; branchId: string; role: SalespersonRole; pin: string;
@@ -27,13 +27,8 @@ export async function authorizePin(identity: PartnerIdentity, id: string, name: 
 export async function authorizeOwner(identity: PartnerIdentity, user: User | null, password: string): Promise<PartnerAccess> {
   if (!user?.email || identity.salespersonId || identity.authUserId !== identity.companyUserId
     || user.id !== identity.companyUserId || !password) throw new Error('Confirme a senha da conta do proprietário.');
-  const verifier = createOwnerVerificationClient();
-  try {
-    const { data, error } = await verifier.auth.signInWithPassword({ email: user.email, password });
-    if (error || data.user?.id !== identity.companyUserId) throw new Error('Senha do proprietário incorreta ou acesso indisponível.');
-    return { kind: 'owner' };
-  } finally {
-    // The temporary session never touches the app's storage or refresh token.
-    await verifier.auth.signOut({ scope: 'local' }).catch(() => {});
-  }
+  if (!supabase) throw new Error('Serviço indisponível.');
+  const { data, error } = await supabase.rpc('verify_partner_owner_password', { p_password: password });
+  if (error || data !== true) throw new Error('Senha da Área do proprietário incorreta ou acesso temporariamente bloqueado por tentativas.');
+  return { kind: 'owner' };
 }

@@ -1,4 +1,5 @@
 import { PrinterSettings } from './PrinterSettings';
+import { OwnerPasswordSettings } from './OwnerPasswordSettings';
 import { useState, type ReactNode } from 'react';
 import {
   Settings, User, Mail, Phone, FileText, Lock, CreditCard,
@@ -14,6 +15,7 @@ import { useSaasSubscription } from '../../hooks/useSaasSubscription';
 import { planCatalog } from '../../lib/planCatalog';
 
 type Props = {
+  canManageOwnerPassword?: boolean;
   user: SupabaseUser | null;
   profile: PartnerProfile | null;
   onProfileUpdate: (profile: Partial<PartnerProfile>) => Promise<unknown>;
@@ -62,7 +64,7 @@ const planLabels: Record<string, string> = {
 };
 
 
-export function SettingsModule({ user, profile, onProfileUpdate, branchManagement, onSubscriptionChanged }: Props) {
+export function SettingsModule({ user, profile, onProfileUpdate, branchManagement, onSubscriptionChanged, canManageOwnerPassword = false }: Props) {
   const saas = useSaasSubscription(profile?.id);
   const [accountName, setAccountName] = useState(profile?.account_name ?? '');
   const [whatsapp, setWhatsapp] = useState(profile?.whatsapp ?? '');
@@ -197,14 +199,16 @@ export function SettingsModule({ user, profile, onProfileUpdate, branchManagemen
         <div className="security-info">
           <div className="catalog-toggle-icon"><Lock size={20} /></div>
           <div>
-            <strong>Senha de Acesso</strong>
-            <small>Altere sua senha periodicamente para maior segurança</small>
+            <strong>Senha de login</strong>
+            <small>Senha usada para entrar na conta do aplicativo</small>
           </div>
         </div>
         <button className="rma-advance-btn" onClick={() => setShowPasswordModal(true)}>
-          <Lock size={14} /> Alterar Senha
+          <Lock size={14} /> Alterar senha de login
         </button>
       </div>
+
+      {canManageOwnerPassword && <OwnerPasswordSettings />}
 
       {/* SaaS Billing Section */}
       <div className="section-divider">
@@ -320,7 +324,7 @@ function PasswordModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-card" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h4><Lock size={18} /> Alterar Senha</h4>
+          <h4><Lock size={18} /> Alterar senha de login</h4>
           <button className="modal-close" onClick={onClose}><X size={18} /></button>
         </div>
         {success ? (

@@ -2355,6 +2355,7 @@ export function PartnerPanel({
               <div hidden={activeTab !== 'configuracoes'}>
               {renderTab('configuracoes',
               <SettingsModule
+                canManageOwnerPassword={Boolean(identity && !isEmployeeRestricted && !pinOperator)}
                 onSubscriptionChanged={() => { void saas.refresh(); }}
                 branchManagement={!isEmployeeRestricted ? <MultiStoreModule
                   branches={partner.branches}

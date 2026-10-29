@@ -143,7 +143,7 @@ export function PinAccessDialog({ mode, prepareDevice = false, identity, user, o
             {directoryError && <p role="alert">{directoryError} <button type="button" onClick={() => setRetry(value => value + 1)}>Tentar novamente</button></p>}
             {!loading && !directoryError && directory.length === 0 && <p role="status">Nenhum colaborador ativo disponível nesta conta. Verifique o cadastro na Área do proprietário.</p>}
           </> : identity.salespersonId ? <p>Para liberar o acesso geral, entre com a conta do proprietário.</p> : <>
-            <p>Confirme a senha do proprietário para liberar todas as filiais.</p>
+            <p>Informe a senha da Área do proprietário para liberar todas as filiais. Se ainda não cadastrou uma senha exclusiva em Configurações, use sua senha de login.</p>
             <label>Senha do proprietário<input aria-label="Senha do proprietário" type="password" autoComplete="current-password" value={password}
               onChange={event => setPassword(event.target.value)} required disabled={busy} /></label>
           </>}

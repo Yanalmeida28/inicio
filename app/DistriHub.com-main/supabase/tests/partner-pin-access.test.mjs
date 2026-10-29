@@ -31,7 +31,9 @@ function harness({ reply = { data: [employee], error: null }, passwordUser = 'co
         then(resolve) { return Promise.resolve({ data: [{ id: 'employee', name: 'Ana' }], error: null }).then(resolve); } };
       return q;
     },
-    async rpc(name, args) { calls.push({ name, args }); return typeof reply === 'function' ? reply() : reply; },
+    async rpc(name, args) { calls.push({ name, args });
+      if (name === 'verify_partner_owner_password') return { data: args.p_password === 'owner-secret' && passwordUser === 'company', error: null };
+      return typeof reply === 'function' ? reply() : reply; },
   };
   const deps = { supabase: client, createOwnerVerificationClient() {
     calls.push({ verifier: true });
@@ -117,12 +119,12 @@ test('wrong PIN, missing branch, foreign company and ambiguous RPC replies never
   await assert.rejects(harness().authorizePin(identity, 'employee', 'Ana', ''));
 });
 
-test('owner access requires the correct account password on an isolated temporary client', async () => {
+test('owner access verifies its password on the server without signing in or changing the login session', async () => {
   const h = harness();
   await assert.rejects(h.authorizeOwner(identity, user, 'bad-password'));
   assert.equal((await h.authorizeOwner(identity, user, 'owner-secret')).kind, 'owner');
-  assert.ok(h.calls.some(call => call.verifierSignOut === 'local'));
-  assert.ok(h.calls.filter(call => call.passwordEmail).every(call => call.passwordEmail === user.email));
+  assert.ok(h.calls.some(call => call.name === 'verify_partner_owner_password'));
+  assert.equal(h.calls.some(call => call.verifier || call.passwordEmail), false);
   await assert.rejects(harness({ passwordUser: 'someone-else' }).authorizeOwner(identity, user, 'owner-secret'));
   await assert.rejects(h.authorizeOwner({ ...identity, salespersonId: 'employee' }, user, 'owner-secret'));
 });

@@ -5,14 +5,6 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
 
-export function createOwnerVerificationClient(): SupabaseClient {
-  if (!isSupabaseConfigured) throw new Error('Serviço de autenticação indisponível.');
-  return createClient(supabaseUrl, supabaseAnonKey, {
-    auth: { storageKey: 'distrihub-owner-verification', persistSession: false,
-      autoRefreshToken: false, detectSessionInUrl: false },
-  });
-}
-
 // Sessão persistida no storage PADRÃO do Supabase (localStorage).
 // Antes usávamos sessionStorage, o que fazia a sessão JWT se perder ao abrir
 // outra aba ou em determinados reloads — a UI continuava com `identity` no
