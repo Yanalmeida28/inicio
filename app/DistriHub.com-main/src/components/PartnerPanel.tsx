@@ -1853,8 +1853,12 @@ export function PartnerPanel({
             {storeSettings.internal_notice && <div role="note" className="store-internal-notice">{storeSettings.internal_notice}</div>}
             {saas.error && <div role="alert"><p>{saas.error}</p><button className="rma-advance-btn" onClick={() => { void saas.refresh(); }}>Verificar assinatura novamente</button></div>}
             {!saas.loading && saas.subscription && !saas.subscription.can_access && <p role="status">A assinatura está sem acesso operacional. Regularize em Configurações ou entre em contato com o suporte.</p>}
-            {!saas.loading && !visibleTabs.some((tab) => tab.id === activeTab) && (
-              <p role="status">Este módulo não está disponível na assinatura atual.</p>
+            {!partner.loading && !saas.loading && saas.subscription?.can_access && !visibleTabs.some((tab) => tab.id === activeTab) && (
+              <p role="status">{blockedTabs.includes(activeTab)
+                ? visibleTabs.length === 0
+                  ? 'Seu operador está sem módulos liberados. Solicite ao proprietário a liberação em Usuários e permissões.'
+                  : 'Seu operador não tem permissão para acessar este módulo. Solicite a liberação ao proprietário.'
+                : 'Este módulo não está disponível na assinatura atual.'}</p>
             )}
             {renderTab('cadastros', renderCadastros())}
 
