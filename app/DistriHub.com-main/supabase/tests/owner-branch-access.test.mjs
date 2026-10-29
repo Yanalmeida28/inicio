@@ -7,6 +7,10 @@ const migration = await readFile(
   new URL('../migrations/20261028180000_owner_authorized_admin_branch_access.sql', import.meta.url),
   'utf8',
 );
+const legacyPrivilegedFunctions = await readFile(
+  new URL('./fixtures/legacy-privileged-functions.sql', import.meta.url),
+  'utf8',
+);
 const authSource = await readFile(new URL('../../src/hooks/useAuth.ts', import.meta.url), 'utf8');
 const panelSource = await readFile(new URL('../../src/components/PartnerPanel.tsx', import.meta.url), 'utf8');
 const cadastrosSource = await readFile(new URL('../../src/components/partner/CadastrosModule.tsx', import.meta.url), 'utf8');
@@ -142,6 +146,7 @@ test('owner grants explicit branch scopes; every other role stays in its authori
         ('34000000-0000-0000-0000-000000000001','${owner}','${mainBranch}'),
         ('34000000-0000-0000-0000-000000000002','${owner}','${secondBranch}');
     `);
+    await db.exec(legacyPrivilegedFunctions);
     await db.exec(migration);
 
     const setAuth = async userId => {
@@ -419,7 +424,8 @@ test('collaborator administration, operator selection and company isolation are 
         ('${seller2}','${owner}','Vendedor 2','vendedor',true,'${second}','${seller2}','h'),
         ('${otherStaff}','${otherOwner}','Externo','vendedor',true,'${foreign}','${otherStaff}','h');
     `);
-    await db.exec(migration);
+            await db.exec(legacyPrivilegedFunctions);
+            await db.exec(migration);
     // Re-applying the migration must be idempotent.
     await db.exec(migration);
     const setAuth = async id => {
@@ -596,7 +602,8 @@ test('migrations 20261028130000 then 20261028180000 apply in order, keep legitim
 
     await db.exec(earlier);
     assert.equal(await argNames(), '{p_company_id,p_branch_id}', '130000 must keep production parameter names');
-    await db.exec(migration);
+        await db.exec(legacyPrivilegedFunctions);
+        await db.exec(migration);
     await db.exec(migration);
     assert.equal(await argNames(), '{p_company_id,p_branch_id}', '180000 must keep production parameter names');
     assert.equal(

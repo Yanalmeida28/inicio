@@ -663,9 +663,16 @@ BEGIN
       'DROP POLICY IF EXISTS restrict_authenticated_company_branch ON public.%I',
       v_table.table_name
     );
+    -- Only the OS tables already grant is_super_admin() in their existing gate policies
+    -- (os_branch_gate, os_items_branch_gate, os_photos_branch_gate). Keep that support
+    -- access, and nothing broader, so no other table gains a superadmin bypass.
     v_policy_sql := format(
-      'CREATE POLICY restrict_authenticated_company_branch ON public.%I AS RESTRICTIVE FOR ALL TO authenticated USING (user_id = (SELECT auth.uid()) OR (branch_id IS NOT NULL AND public.partner_employee_can_access_branch(user_id, branch_id))) WITH CHECK (user_id = (SELECT auth.uid()) OR (branch_id IS NOT NULL AND public.partner_employee_can_access_branch(user_id, branch_id)))',
-      v_table.table_name
+      'CREATE POLICY restrict_authenticated_company_branch ON public.%I AS RESTRICTIVE FOR ALL TO authenticated USING (user_id = (SELECT auth.uid()) OR (branch_id IS NOT NULL AND public.partner_employee_can_access_branch(user_id, branch_id))%s) WITH CHECK (user_id = (SELECT auth.uid()) OR (branch_id IS NOT NULL AND public.partner_employee_can_access_branch(user_id, branch_id))%s)',
+      v_table.table_name,
+      CASE WHEN v_table.table_name IN ('service_orders','service_order_items','service_order_photos')
+        THEN ' OR (SELECT public.is_super_admin())' ELSE '' END,
+      CASE WHEN v_table.table_name IN ('service_orders','service_order_items','service_order_photos')
+        THEN ' OR (SELECT public.is_super_admin())' ELSE '' END
     );
     EXECUTE v_policy_sql;
   END LOOP;
@@ -789,28 +796,63 @@ CREATE POLICY deny_direct_partner_stock_movement_delete ON public.partner_stock_
 -- Fail closed if a deployed function differs from the audited production definition.
 DO $cash_supervisor_branch_guard$
 DECLARE
-  v_schema text;
   v_function regprocedure;
   v_definition text;
-  v_old text := '(sp.role=''administrador'' OR sp.branch_id=p_branch_id)';
-  v_new text := '(sp.branch_id=p_branch_id OR (sp.role=''administrador'' AND public.partner_salesperson_has_branch_access(op.company_id,sp.id,p_branch_id)))';
+  v_patched text;
+  v_schema text;
+  v_fn record;
+  v_alias_old text := '\((\w+)\.role\s*=\s*''administrador''\s+OR\s+\1\.branch_id\s*=\s*p_branch_id\)';
+  v_alias_new text := '(\1.branch_id=p_branch_id OR (\1.role=''administrador'' AND public.partner_salesperson_has_branch_access(\1.user_id,\1.id,p_branch_id)))';
+  v_bare_old text := '\(role\s*=\s*''administrador''\s+OR\s+branch_id\s*=\s*p_branch_id\)';
+  v_bare_new text := '(branch_id=p_branch_id OR (role=''administrador'' AND public.partner_salesperson_has_branch_access(user_id,id,p_branch_id)))';
+  v_cad_old text := 'sp.role=''administrador'' OR sp.branch_id=branch';
+  v_cad_new text := 'sp.branch_id=branch OR (sp.role=''administrador'' AND public.partner_salesperson_has_branch_access(sp.user_id,sp.id,branch))';
 BEGIN
+  -- The two cash RPC implementations must exist; fail closed otherwise.
+  FOREACH v_schema IN ARRAY ARRAY['public', 'partner_cash_supervision_private']
+  LOOP
+    IF to_regprocedure(
+      format('%I.mutate_partner_cash_register(text,uuid,uuid,text,uuid,numeric,text,text,uuid,text,uuid)', v_schema)
+    ) IS NULL THEN
+      RAISE EXCEPTION 'Cash supervisor RPC missing in schema %', v_schema;
+    END IF;
+  END LOOP;
+
+  -- Patch every SECURITY DEFINER supervisor lookup that still lets any administrator
+  -- of the company authorize a branch, regardless of owner-granted access.
+  FOR v_fn IN
+    SELECT p.oid::regprocedure AS fn
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE p.prokind = 'f'
+      AND (n.nspname = 'public' OR n.nspname LIKE 'partner\_%')
+      AND (p.prosrc ~ v_alias_old OR p.prosrc ~ v_bare_old OR p.prosrc LIKE '%' || v_cad_old || '%')
+  LOOP
+    v_definition := pg_get_functiondef(v_fn.fn);
+    v_patched := regexp_replace(v_definition, v_alias_old, v_alias_new, 'g');
+    v_patched := regexp_replace(v_patched, v_bare_old, v_bare_new, 'g');
+    v_patched := replace(v_patched, v_cad_old, v_cad_new);
+    IF v_patched = v_definition THEN
+      RAISE EXCEPTION 'Could not patch branch guard in %', v_fn.fn;
+    END IF;
+    EXECUTE v_patched;
+  END LOOP;
+
+  -- Post-conditions: no legacy guard remains and both cash RPCs use the new check.
+  IF EXISTS (
+    SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE p.prokind = 'f' AND (n.nspname = 'public' OR n.nspname LIKE 'partner\_%')
+      AND (p.prosrc ~ v_alias_old OR p.prosrc ~ v_bare_old OR p.prosrc LIKE '%' || v_cad_old || '%')
+  ) THEN
+    RAISE EXCEPTION 'Legacy administrator branch guard still present after patch';
+  END IF;
   FOREACH v_schema IN ARRAY ARRAY['public', 'partner_cash_supervision_private']
   LOOP
     v_function := to_regprocedure(
       format('%I.mutate_partner_cash_register(text,uuid,uuid,text,uuid,numeric,text,text,uuid,text,uuid)', v_schema)
     );
-    IF v_function IS NULL THEN
-      RAISE EXCEPTION 'Cash supervisor RPC missing in schema %', v_schema;
-    END IF;
-    SELECT pg_get_functiondef(v_function) INTO v_definition;
-    IF strpos(v_definition, v_old) > 0 THEN
-      IF (length(v_definition) - length(replace(v_definition, v_old, ''))) <> length(v_old) THEN
-        RAISE EXCEPTION 'Unexpected number of cash supervisor guards in %', v_schema;
-      END IF;
-      EXECUTE replace(v_definition, v_old, v_new);
-    ELSIF strpos(v_definition, v_new) = 0 THEN
-      RAISE EXCEPTION 'Cash supervisor guard does not match audited definition in %', v_schema;
+    IF strpos(pg_get_functiondef(v_function), 'partner_salesperson_has_branch_access') = 0 THEN
+      RAISE EXCEPTION 'Cash supervisor guard not applied in %', v_schema;
     END IF;
   END LOOP;
 END;
