@@ -13,6 +13,16 @@ const sessionDraftMocks = {
   useSessionDraftScope: () => 'test',
   useSessionDraftState: (_draftId, initialValue) => React.useState(initialValue),
 };
+
+const registrationProps = (planId, extra = {}) => ({
+  planId, canManageSalespeople: true, initialTab: 'vendedores', selectedBranchId: 'branch',
+  branches: [{ id: 'branch', name: 'Filial' }], products: [], categories: [], suppliers: [],
+  salespeople: [], combos: [], modifiers: [], customers: [], sales: [], allSales: [],
+  segment: 'assistencia', findProductDuplicates: async () => [], ...extra,
+});
+const buttonText = button => button.children.filter(value => typeof value === 'string').join('').trim();
+const collaboratorShortcut = renderer => renderer.root.findAllByType('button').some(button => buttonText(button) === 'Colaboradores');
+const collaboratorEditor = renderer => renderer.root.findAllByType('button').some(button => buttonText(button).includes('Adicionar colaborador'));
 vm.runInNewContext(ts.transpileModule(await readFile(new URL('../../src/components/partner/CadastrosModule.tsx', import.meta.url), 'utf8'), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2020 },
 }).outputText, {
@@ -24,7 +34,8 @@ vm.runInNewContext(ts.transpileModule(await readFile(new URL('../../src/componen
     : name === './ProductProfitPreview' ? { ProductProfitPreview: () => null }
     : name === './ProductPhotoField' ? { ProductPhotoField: () => null }
     : name === './ProductLabelModal' ? { ProductLabelModal: () => null }
-    : name === './CustomerPhoto' || name === '../../lib/cadastroXml' || name === '../../utils' || name === '../../lib/saleReturns' || name === './ImportExportModule'
+    : name === './ImportExportModule' ? { ImportExportModule: () => null, ExportButtons: () => null }
+    : name === './CustomerPhoto' || name === '../../lib/cadastroXml' || name === '../../utils' || name === '../../lib/saleReturns'
       ? {}
       : require(name),
 });
@@ -51,6 +62,49 @@ test('estoque no Administrativo não duplica menus; valida e salva o saldo conta
   assert.equal(calls[0][0], 'p');
   assert.equal(calls[0][1].stock, 0);
   await act(async () => renderer.unmount());
+});
+
+for (const plan of ['basico', 'profissional', 'enterprise', undefined]) {
+  test(`Colaboradores outside Administrative is visible only in Basic: ${plan ?? 'loading'}`, async () => {
+    let renderer;
+    await act(async () => { renderer = TestRenderer.create(React.createElement(exports.CadastrosModule, registrationProps(plan))); });
+    try {
+      assert.equal(collaboratorShortcut(renderer), plan === 'basico');
+      assert.equal(collaboratorEditor(renderer), plan === 'basico');
+      if (plan !== 'basico') assert.ok(renderer.root.findAllByType('button').some(button =>
+        button.props.className?.includes('active') && buttonText(button) === 'Produtos & Serviços'));
+    } finally { await act(async () => renderer.unmount()); }
+  });
+}
+
+for (const plan of ['basico', 'profissional', 'enterprise']) {
+  test(`Administrative collaborator management remains available in ${plan}`, async () => {
+    let renderer;
+    await act(async () => { renderer = TestRenderer.create(React.createElement(exports.CadastrosModule,
+      registrationProps(plan, { adminTarget: 'vendedores' }))); });
+    try { assert.equal(collaboratorShortcut(renderer), false); assert.equal(collaboratorEditor(renderer), true); }
+    finally { await act(async () => renderer.unmount()); }
+  });
+}
+
+test('a restored or open Basic collaborator tab closes when the plan changes', async () => {
+  let renderer;
+  await act(async () => { renderer = TestRenderer.create(React.createElement(exports.CadastrosModule, registrationProps('basico'))); });
+  try {
+    assert.equal(collaboratorEditor(renderer), true);
+    for (const plan of ['profissional', 'enterprise']) {
+      await act(async () => renderer.update(React.createElement(exports.CadastrosModule, registrationProps(plan))));
+      assert.equal(collaboratorShortcut(renderer), false); assert.equal(collaboratorEditor(renderer), false);
+    }
+  } finally { await act(async () => renderer.unmount()); }
+});
+
+test('Basic plan does not expose collaborator management without owner permission', async () => {
+  let renderer;
+  await act(async () => { renderer = TestRenderer.create(React.createElement(exports.CadastrosModule,
+    registrationProps('basico', { canManageSalespeople: false }))); });
+  try { assert.equal(collaboratorShortcut(renderer), false); assert.equal(collaboratorEditor(renderer), false); }
+  finally { await act(async () => renderer.unmount()); }
 });
 
 test('editar colaborador conserva bloqueios, permite escolher módulos e respeita a função', async () => {
@@ -89,4 +143,5 @@ test('filial mostra colaboradores locais e globais, sem incluir outra filial', a
   assert.ok(!names.includes('other'));
   await act(async () => renderer.unmount());
 });
+
 

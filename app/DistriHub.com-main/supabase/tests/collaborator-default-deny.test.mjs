@@ -64,9 +64,11 @@ test('inactive collaborator identity is denied by the application and creation f
   assert.match(collaboratorForm, /Novos colaboradores ficam inativos e sem acesso aos módulos/);
 });
 
-test('the company owner can manage collaborators from Basic plan registrations', () => {
+test('only Basic plan registrations expose the owner collaborator shortcut', () => {
   assert.match(partnerPanel, /canManageSalespeople={Boolean\(identity && !identity\.salespersonId\)}/);
-  assert.match(collaboratorForm, /canManageSalespeople\s*\?\s*\[\.\.\.subTabs/);
+  assert.match(partnerPanel, /planId={saas\.subscription\?\.effective_plan}/);
+  assert.match(collaboratorForm, /showSalespeopleOutsideAdmin = canManageSalespeople && planId === 'basico'/);
+  assert.match(collaboratorForm, /showSalespeopleOutsideAdmin\s*\?\s*\[\.\.\.subTabs/);
   assert.match(collaboratorForm, /label: 'Colaboradores'/);
-  assert.match(collaboratorForm, /adminTarget === 'vendedores' \|\| \(!adminTarget && canManageSalespeople\)/);
+  assert.match(collaboratorForm, /adminTarget === 'vendedores' \|\| \(!adminTarget && showSalespeopleOutsideAdmin\)/);
 });

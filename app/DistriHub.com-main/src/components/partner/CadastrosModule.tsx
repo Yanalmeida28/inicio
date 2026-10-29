@@ -22,6 +22,7 @@ import { ProductLabelModal as ThermalLabelModal } from './ProductLabelModal';
 import { ImportExportModule, ExportButtons } from './ImportExportModule';
 import { saleReturnLabel, saleItemDescription } from '../../lib/saleReturns';
 import { normalizeProductName } from '../../lib/productNames';
+import type { SaasPlanId } from '../../lib/saas';
 
 type PartnerCustomerUpdate = Partial<
   Omit<PartnerCustomer, 'id' | 'user_id' | 'created_at' | 'updated_at'>
@@ -34,6 +35,7 @@ type Props = {
   suppliersReady?: boolean;
   findProductDuplicates: (name: string, branchId: string) => Promise<PartnerProduct[]>;
   canManageSalespeople?: boolean;
+  planId?: SaasPlanId;
   adminTarget?: string;
   initialTab?: SubTab;
   isActive?: boolean;
@@ -104,6 +106,7 @@ function getActionPopoverPosition(event: React.MouseEvent<HTMLButtonElement>, wi
 export function CadastrosModule({
   adminTarget,
   canManageSalespeople = false,
+  planId,
   findProductDuplicates,
   initialTab = 'produtos', productType = 'todos',
   isActive = true, onDataScopeChange, suppliersReady = true,
@@ -117,9 +120,13 @@ export function CadastrosModule({
 }: Props) {
   const parentDraftScope = useSessionDraftScope();
   const [subTab, setSubTab] = useSessionDraftState<SubTab>(`cadastros:${adminTarget ?? 'principal'}:active-subtab`, initialTab);
-  const visibleSubTabs = canManageSalespeople
+  const showSalespeopleOutsideAdmin = canManageSalespeople && planId === 'basico';
+  const visibleSubTabs = showSalespeopleOutsideAdmin
     ? [...subTabs, { id: 'vendedores' as const, label: 'Colaboradores', icon: Users }]
     : subTabs;
+  useEffect(() => {
+    if (!adminTarget && subTab === 'vendedores' && !showSalespeopleOutsideAdmin) setSubTab('produtos');
+  }, [adminTarget, subTab, showSalespeopleOutsideAdmin, setSubTab]);
   useEffect(() => { if (isActive) onDataScopeChange?.(subTab); }, [isActive, subTab, onDataScopeChange]);
   const [visitedSubTabs, setVisitedSubTabs] = useState<Set<SubTab>>(() => new Set([initialTab]));
   useEffect(() => {
@@ -219,7 +226,7 @@ export function CadastrosModule({
           <SuppliersSubTab suppliers={suppliers} branches={branches} selectedBranchId={selectedBranchId} onAdd={onAddSupplier} onUpdate={onUpdateSupplier} onDelete={onDeleteSupplier} />
           </div>
         )}
-        {subTab === 'vendedores' && (adminTarget === 'vendedores' || (!adminTarget && canManageSalespeople)) && (
+        {subTab === 'vendedores' && (adminTarget === 'vendedores' || (!adminTarget && showSalespeopleOutsideAdmin)) && (
           <SalespeopleSubTab
             salespeople={salespeople}
             branches={branches}
