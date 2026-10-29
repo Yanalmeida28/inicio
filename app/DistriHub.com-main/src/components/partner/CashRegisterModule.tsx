@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase';
 import { isDefinitiveSaleRejection, pdvErrorMessage } from '../../lib/pdv';
 import { CashRequestStore, cashAmount, cashBusinessDay, cashDaySalesTotal, cashPaymentLabels, cashTotals, printCashReport, type CashMovement, type CashRequest, type CashSession } from '../../lib/cashRegister';
 import { money } from '../../utils';
+import { CashOverview } from './CashOverview';
 import type { PartnerSale, PartnerSalesperson } from '../../types';
 
 type Props = {
@@ -45,6 +46,7 @@ export function CashRegisterModule({ branchId, branchName, scopeKey, sales, oper
   const [canManage, setCanManage] = useState(false);
   const [cashSales, setCashSales] = useState<PartnerSale[]>([]);
   const inFlight = useRef(false);
+  const reportRef = useRef<HTMLElement | null>(null);
   const generation = useRef(0);
   const context = useRef({ branchId, operatorId, operatorPin, scopeKey });
   context.current = { branchId, operatorId, operatorPin, scopeKey };
@@ -230,8 +232,10 @@ export function CashRegisterModule({ branchId, branchName, scopeKey, sales, oper
     }}><RefreshCw size={14} /> Atualizar</button>
     {error && <p className="otp-error-msg" role="alert">{error}</p>}
     {notice && <p role="status">{notice}</p>}
+    {canManage && !loading && !error && <CashOverview key={branchId} branchId={branchId} branchName={branchName} sessions={sessions} movements={movements}
+      onViewReport={id => { setSelectedId(id); reportRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }} />}
     {canManage && onManageSession && <section className="cash-card">
-      <label>Caixa para operar<select value={managedSessionId ?? ''} disabled={busy || loading || Boolean(pending)} onChange={e => {
+      <label>Caixa para operar<select aria-label="Caixa para operar" value={managedSessionId ?? ''} disabled={busy || loading || Boolean(pending)} onChange={e => {
         const session = sessions.find(item => item.id === e.target.value && !item.closed_at) ?? null;
         setSelectedId(session?.id ?? ''); onManageSession(session);
         setOpening('0'); setAmount(''); setReason(''); setCounted(''); setNotes(''); setSupervisorId(''); setSupervisorPin('');
@@ -296,7 +300,7 @@ export function CashRegisterModule({ branchId, branchName, scopeKey, sales, oper
         </form>
         </fieldset>
       </section>}
-      <section className="cash-card"><h4>Histórico e relatório</h4><label>Caixa<select value={selected?.id ?? ''} onChange={e => setSelectedId(e.target.value)}>
+      <section className="cash-card" ref={reportRef}><h4>Histórico e relatório</h4><label>Caixa<select value={selected?.id ?? ''} onChange={e => setSelectedId(e.target.value)}>
         {!sessions.length && <option value="">Nenhum caixa registrado</option>}
         {sessions.map(s => <option key={s.id} value={s.id}>{new Date(s.opened_at).toLocaleString('pt-BR')} · {s.operator_name} · {s.closed_at ? 'Fechado' : 'Aberto'}</option>)}
       </select></label>
