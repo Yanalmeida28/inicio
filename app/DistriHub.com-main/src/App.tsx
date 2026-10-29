@@ -1,10 +1,11 @@
-import { Suspense, lazy, useEffect, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useState } from 'react';
 import { ArrowLeft, Lock, ShieldAlert, Eye, KeyRound, Mail, ShieldCheck, CheckCircle2 } from 'lucide-react';
 import type { BusinessSegment } from './types';
 import { readWithJwtRecovery, useAuth } from './hooks/useAuth';
 import { useSuperAdminAuth } from './hooks/useSuperAdminAuth';
 import { HubHome } from './components/HubHome';
 import { supabase } from './lib/supabase';
+import { OperatorSelectionStore } from './lib/checkoutCash';
 
 const PartnerPanel = lazy(() => import('./components/PartnerPanel').then((module) => ({ default: module.PartnerPanel })));
 const AuthScreen = lazy(() => import('./components/AuthScreen').then((module) => ({ default: module.AuthScreen })));
@@ -40,6 +41,20 @@ function App() {
   const [navigationError, setNavigationError] = useState<string | null>(null);
   const sessionUserId = auth.user?.id ?? null;
 
+  const accountScope = auth.identity ? `${auth.identity.authUserId}:${auth.identity.companyUserId}` : null;
+  const { signOut } = auth;
+  const handleSwitchAccount = useCallback(async () => {
+    await signOut();
+    if (accountScope) {
+      try { sessionStorage.removeItem(`distrihub:operator-selection:${accountScope}`); }
+      catch { /* The session has already been terminated. */ }
+    }
+    setPartnerInitialTab(undefined);
+    setSuperAdminUnlocked(false);
+    setSessionAccess(null);
+    setView('auth');
+  }, [signOut, accountScope]);
+
   useEffect(() => {
     if (publicCatalog) return;
     if (auth.loading) return;
@@ -64,6 +79,20 @@ function App() {
     async function restorePanel() {
       try {
         if (!supabase) throw new Error('Não foi possível conectar para recuperar o painel.');
+        // A saved PIN operator used the owner's token. Require a real login
+        // before restoring such sessions after the account-switching upgrade.
+        {
+          const scope = `${sessionUserId}:${sessionUserId}`;
+          let legacyOperator = false;
+          try { legacyOperator = Boolean(new OperatorSelectionStore(sessionStorage, scope).read()?.operatorId); }
+          catch { /* Storage may be unavailable. No PIN selection is restored. */ }
+          if (legacyOperator) {
+            await handleSwitchAccount();
+            try { sessionStorage.removeItem(`distrihub:operator-selection:${scope}`); }
+            catch { /* The old session is already terminated. */ }
+            return;
+          }
+        }
         const client = supabase;
         const { data, error } = await readWithJwtRecovery(() => client.rpc('is_super_admin'), () => !cancelled);
         if (error || typeof data !== 'boolean') throw new Error('Não foi possível confirmar o acesso ao painel. Tente novamente.');
@@ -78,7 +107,7 @@ function App() {
     }
     void restorePanel();
     return () => { cancelled = true; };
-  }, [auth.loading, auth.passwordRecovery, sessionUserId, sessionRetry, publicCatalog]);
+  }, [auth.loading, auth.passwordRecovery, sessionUserId, sessionRetry, publicCatalog, handleSwitchAccount]);
 
   const segment: BusinessSegment = auth.profile?.segment ?? 'assistencia';
 
@@ -99,11 +128,7 @@ function App() {
   async function handleLogout() {
     setNavigationError(null);
     try {
-      await auth.signOut();
-      setPartnerInitialTab(undefined);
-      setSuperAdminUnlocked(false);
-      setSessionAccess(null);
-      setView('auth');
+      await handleSwitchAccount();
     } catch (error) {
       setNavigationError(error instanceof Error ? error.message : 'Não foi possível sair. Tente novamente.');
     }
@@ -191,6 +216,8 @@ function App() {
       {view === 'partner' && (
         <Suspense fallback={<LoadingScreen label="Área do parceiro" />}>
           <PartnerPanel
+            key={auth.user?.id}
+            onSwitchAccount={handleSwitchAccount}
             onBack={handleLogout}
             user={auth.user}
             identity={auth.identity}

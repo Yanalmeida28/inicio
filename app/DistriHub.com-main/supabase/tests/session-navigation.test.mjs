@@ -14,9 +14,15 @@ vm.runInNewContext(ts.transpileModule(await readFile(new URL('../../src/hooks/us
   exports: clockHelpers, Error, window: { setTimeout: fn => fn() },
   require: name => name === '../utils' || name === '../lib/supabase' ? {} : require(name),
 });
-async function harness({ user = { id: 'owner' }, master = false, permissionError = null, loading = false, recovery = false, clockFailures = 0 } = {}) {
+const cashExports = {};
+vm.runInNewContext(ts.transpileModule(await readFile(new URL('../../src/lib/checkoutCash.ts', import.meta.url), 'utf8'), {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
+}).outputText, { exports: cashExports });
+async function harness({ user = { id: 'owner' }, master = false, permissionError = null, loading = false, recovery = false, clockFailures = 0, legacy = false, signoutError = false } = {}) {
   let auth, renderer, signouts = 0, checks = 0;
-  function partner({ onBack }) { return React.createElement('button', { onClick: onBack, 'data-panel': 'partner' }, 'Sair do app'); }
+  const stored = new Map(legacy ? [['distrihub:operator-selection:owner:owner', JSON.stringify({ branchId: 'a', operatorId: 'employee' })]] : []);
+  const storage = { getItem: key => stored.get(key) ?? null, removeItem: key => stored.delete(key) };
+  function partner({ onBack, onSwitchAccount }) { return React.createElement('button', { onClick: onBack, onDoubleClick: onSwitchAccount, 'data-panel': 'partner' }, 'Sair do app'); }
   function admin({ onBack }) { return React.createElement('button', { onClick: onBack, 'data-panel': 'master' }, 'Sair do app'); }
   function login(props) { return React.createElement('div', { 'data-panel': 'login', 'data-recovery': props.recoveryMode }); }
   const dependencies = {
@@ -30,19 +36,54 @@ async function harness({ user = { id: 'owner' }, master = false, permissionError
     './components/AuthScreen': { AuthScreen: login },
     './lib/supabase': { supabase: { async rpc() { checks++; return clockFailures-- > 0 ? { data: null, error: { code: 'PGRST303', message: 'JWT issued at future' } } : { data: master, error: permissionError }; } } },
     './lib/b2bOrder': {},
+    './lib/checkoutCash': cashExports,
   };
   const exports = {};
   vm.runInNewContext(ts.transpileModule(source, {
     compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2020 },
-  }).outputText, { exports, Error, require: name => dependencies[name] ?? require(name) });
+  }).outputText, { exports, Error, sessionStorage: storage, require: name => dependencies[name] ?? require(name) });
   auth = { user, loading, passwordRecovery: recovery, profile: null, identity: null,
-    async signOut() { signouts++; auth = { ...auth, user: null }; renderer.update(React.createElement(exports.default)); } };
+    async signOut() { signouts++; if (signoutError) throw new Error('Logout failed'); auth = { ...auth, user: null }; renderer.update(React.createElement(exports.default)); } };
   await act(async () => { renderer = TestRenderer.create(React.createElement(exports.default)); });
-  return { renderer, get signouts() { return signouts; }, get checks() { return checks; },
+  return { renderer, stored, get signouts() { return signouts; }, get checks() { return checks; },
     recoverClock() { clockFailures = 0; },
     async update(changes) { auth = { ...auth, ...changes }; await act(async () => renderer.update(React.createElement(exports.default))); },
     async close() { await act(async () => renderer.unmount()); } };
 }
+
+test('switching accounts ends the current session and requires a new login', async () => {
+  const h = await harness();
+  await act(async () => h.renderer.root.findByProps({ 'data-panel': 'partner' }).props.onDoubleClick());
+  assert.equal(h.signouts, 1);
+  assert.ok(h.renderer.root.findByProps({ 'data-panel': 'login' }));
+  assert.equal(h.renderer.root.findAllByProps({ 'data-panel': 'partner' }).length, 0);
+  await h.close();
+});
+
+test('failed account switch keeps the session and does not navigate to login', async () => {
+  const h = await harness({ signoutError: true });
+  await act(async () => assert.rejects(h.renderer.root.findByProps({ 'data-panel': 'partner' }).props.onDoubleClick(), /Logout failed/));
+  assert.ok(h.renderer.root.findByProps({ 'data-panel': 'partner' }));
+  assert.equal(h.renderer.root.findAllByProps({ 'data-panel': 'login' }).length, 0);
+  await h.close();
+});
+
+test('legacy PIN sessions cannot reload as owner and require account authentication', async () => {
+  const h = await harness({ legacy: true });
+  assert.equal(h.signouts, 1);
+  assert.equal(h.checks, 0);
+  assert.equal(h.stored.size, 0);
+  assert.ok(h.renderer.root.findByProps({ 'data-panel': 'login' }));
+  await h.close();
+});
+
+test('failed legacy session logout blocks protected panels and retains the legacy marker', async () => {
+  const h = await harness({ legacy: true, signoutError: true });
+  assert.equal(h.signouts, 1);
+  assert.equal(h.stored.size, 1);
+  assert.equal(h.renderer.root.findAllByProps({ 'data-panel': 'partner' }).length, 0);
+  await h.close();
+});
 
 test('reload restores the partner panel from an existing session without logging out', async () => {
   const h = await harness();

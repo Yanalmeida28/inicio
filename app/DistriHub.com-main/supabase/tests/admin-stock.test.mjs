@@ -74,3 +74,19 @@ test('editar colaborador conserva bloqueios, permite escolher módulos e respeit
   assert.deepEqual([...calls[0][1].blocked_modules], ['caixa']);
   await act(async () => renderer.unmount());
 });
+
+test('filial mostra colaboradores locais e globais, sem incluir outra filial', async () => {
+  let renderer;
+  const employee = (id, branch_id) => ({ id, branch_id, name: id, role: 'vendedor', commission_rate: 0, active: true, blocked_modules: [] });
+  await act(async () => { renderer = TestRenderer.create(React.createElement(exports.CadastrosModule, {
+    adminTarget: 'vendedores', initialTab: 'vendedores', selectedBranchId: 'branch-a',
+    canGrantAllBranches: true, branches: [], products: [],
+    salespeople: [employee('local', 'branch-a'), employee('global', null), employee('other', 'branch-b')],
+  })); });
+  const names = renderer.root.findAllByType('strong').map(node => node.children.join(''));
+  assert.ok(names.includes('local'));
+  assert.ok(names.includes('global'));
+  assert.ok(!names.includes('other'));
+  await act(async () => renderer.unmount());
+});
+

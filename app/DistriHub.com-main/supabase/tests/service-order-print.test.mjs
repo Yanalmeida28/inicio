@@ -5,7 +5,7 @@ import vm from 'node:vm';
 import ts from '../../node_modules/typescript/lib/typescript.js';
 
 const source = await readFile(new URL('../../src/lib/serviceOrderPrint.ts', import.meta.url), 'utf8');
-function harness(blocked = false) {
+function harness(blocked = false, brokenLogo = false) {
   const calls = [];
   const elements = [];
   const createElement = tag => {
@@ -14,7 +14,8 @@ function harness(blocked = false) {
       children: [],
       append(...children) { this.children.push(...children); },
       replaceChildren() { this.children = []; },
-      decode() { calls.push('decode'); return Promise.resolve(); },
+      decode() { calls.push('decode'); return brokenLogo ? Promise.reject(new Error('Logo unavailable')) : Promise.resolve(); },
+      remove() { this.removed = true; calls.push('remove'); },
     };
     elements.push(element);
     return element;
@@ -35,6 +36,13 @@ function harness(blocked = false) {
   return { ...exports, doc, calls };
 }
 const order = { id: '12345678-abcd', branch_id: 'b', customer_id: null, customer_name: '<img src=x onerror=alert(1)>', customer_phone: '11999999999', os_number: 'OS-42', status: 'aberta', created_at: '2026-10-20T15:00:00Z', forecast_delivery: '2026-10-21', parts_total: 30, labor_total: 50, discount_total: 5, total: 75, warranty_snapshot: 'Garantia\nCondições' };
+
+test('a broken logo is omitted without closing or blocking OS printing', async () => {
+  const api = harness(false, true);
+  await api.printServiceOrder(order, [], { settings: { logo_url: 'https://example.test/missing.png' } });
+  assert.deepEqual(api.calls, ['decode', 'remove', 'print']);
+  assert.equal(api.doc.images[0].removed, true);
+});
 test('OS prints saved customer, correct branch, totals, literal text and service warranty without exposing costs', async () => {
   const api = harness();
   await api.printServiceOrder({ ...order, entry_notes: '[Checklist de entrada]\nTouch: Com defeito\n[/Checklist de entrada]', approval_notes: '[Checklist de saída]\nTouch: Funcionando\n[/Checklist de saída]' }, [{ product_name: 'Peça', quantity: 2, unit_price: 15, unit_cost: 999 }], { companyName: 'Empresa', branches: [{ id: 'other', name: 'Errada' }, { id: 'b', name: 'Filial correta', address: 'Rua A' }] }, 'Garantia\nCondições');

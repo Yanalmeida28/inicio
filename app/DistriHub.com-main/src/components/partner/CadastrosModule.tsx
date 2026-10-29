@@ -2004,7 +2004,7 @@ function SalespeopleSubTab({
     useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const visibleSalespeople = selectedBranchId
-    ? salespeople.filter(salesperson => salesperson.branch_id === selectedBranchId)
+    ? salespeople.filter(salesperson => !salesperson.branch_id || salesperson.branch_id === selectedBranchId)
     : salespeople;
 
   useEffect(() => {

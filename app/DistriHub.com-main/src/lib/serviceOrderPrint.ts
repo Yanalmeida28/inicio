@@ -115,12 +115,9 @@ export async function printServiceOrder(order: ServiceOrder, items: ServiceOrder
   const signatures = node('div', ''); signatures.className = 'signatures';
   node('strong', 'Assinatura do cliente', node('p', '', signatures)); node('strong', 'Responsável pelo atendimento', node('p', '', signatures));
   fields(['Data', '______ / ______ / __________']);
-  try {
-    await Promise.all(Array.from(doc.images, image => image.decode()));
-  } catch {
-    popup.close();
-    throw new Error('Não foi possível carregar a logo da loja para imprimir a OS.');
-  }
+  await Promise.all(Array.from(doc.images, image => image.decode().catch(() => {
+    image.remove();
+  })));
   if (!popup.closed) {
     popup.focus();
     popup.print();

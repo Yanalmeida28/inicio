@@ -2,10 +2,8 @@ import { useSupportUnread } from '../hooks/useSupportUnread';
 import { SupportUnreadBadge } from './SupportUnreadBadge';
 import { ModuleBoundary } from './ModuleBoundary';
 import { moduleLoader } from '../lib/moduleLoading';
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { OperatorPinInput } from './partner/OperatorPinInput';
-import { OperatorConfirmationGate } from '../lib/operatorConfirmation';
 import {
   ArrowLeft,
   Boxes,
@@ -26,7 +24,6 @@ import {
   Wrench,
   UserCheck,
   Lock,
-  KeyRound,
   RefreshCw,
 } from 'lucide-react';
 
@@ -45,7 +42,7 @@ import { pdvErrorMessage } from '../lib/pdv';
 import { panelStyle } from '../lib/personalization';
 import { storeTheme } from '../lib/storeTheme';
 import { cadastroDestination, type AdminCadastrosTarget } from '../lib/cadastrosNavigation';
-import { supabase } from '../lib/supabase';
+import { AccountAccessDialog } from './partner/AccountAccessDialog';
 import { BranchSelector } from './partner/BranchSelector';
 import { useCheckoutCash } from '../hooks/useCheckoutCash';
 import { SessionDraftProvider, useSessionDraftState, clearConfirmedPdvDraft } from '../hooks/useSessionDraft';
@@ -105,6 +102,7 @@ import type {
 
 type PartnerPanelProps = {
   onBack: () => void;
+  onSwitchAccount: () => Promise<void>;
   user: User | null;
   identity: PartnerIdentity | null;
   identityError: string | null;
@@ -281,6 +279,7 @@ const logisticaBlockedTabs: Tab[] = [
 
 export function PartnerPanel({
   onBack,
+  onSwitchAccount,
   user,
   identity,
   identityError,
@@ -324,24 +323,7 @@ export function PartnerPanel({
     };
   }, [sidebarOpen]);
 
-  const [currentSalespersonId, setCurrentSalespersonId] =
-    useState<string | null>(null);
-  const [activeOperatorPin, setActiveOperatorPin] =
-    useState<string | null>(null);
-  const operatorRestoredScope = useRef('');
-  const [operatorSelectionScope, setOperatorSelectionScope] = useState('');
-
-  const [showOperatorModal, setShowOperatorModal] = useState(false);
-  const operatorConfirmation = useRef(new OperatorConfirmationGate());
-  const [operatorConfirming, setOperatorConfirming] = useState(false);
-  useEffect(() => () => operatorConfirmation.current.invalidate(), []);
-  const [selectedOperatorId, setSelectedOperatorId] =
-    useState<string>('owner');
-  const [operatorPinInput, setOperatorPinInput] = useState('');
-  useEffect(() => {
-    if (!showOperatorModal) setOperatorPinInput('');
-  }, [showOperatorModal]);
-  const [operatorPinError, setOperatorPinError] = useState('');
+  const [accountAccess, setAccountAccess] = useState<'employee' | 'owner' | null>(null);
 
   useEffect(() => {
     setVisitedTabs((current) => current.has(activeTab) ? current : new Set(current).add(activeTab));
@@ -380,12 +362,7 @@ export function PartnerPanel({
         created_at: '',
         updated_at: '',
       }
-    : currentSalespersonId
-      ? partner.salespeople.find(
-          (salesperson) =>
-            salesperson.id === currentSalespersonId,
-        )
-      : null;
+    : null;
 
   const isEmployeeRestricted = Boolean(identity?.salespersonId);
 
@@ -395,14 +372,6 @@ export function PartnerPanel({
 
   const effectiveBranchId =
     isEmployeeRestricted ? lockedBranchId ?? '' : selectedBranchId;
-  const operatorContextRef = useRef('');
-  operatorContextRef.current = JSON.stringify([identity?.authUserId, identity?.companyUserId, effectiveBranchId, identity?.salespersonId]);
-  useEffect(() => {
-    operatorConfirmation.current.invalidate();
-    setOperatorConfirming(false);
-    setOperatorPinInput('');
-  }, [identity?.authUserId, identity?.companyUserId, effectiveBranchId, identity?.salespersonId]);
-
   useEffect(() => {
     if (!effectiveBranchId || partner.loading || (activeTab !== 'pdv' && activeTab !== 'pedidos')) return;
     let active = true;
@@ -440,38 +409,14 @@ export function PartnerPanel({
     : 'administrador';
 
   const operatorScope = `${identity?.authUserId}:${identity?.companyUserId}`;
-  useEffect(() => { setManagedCashSession(null); }, [operatorScope, effectiveBranchId, currentSalespersonId]);
+  useEffect(() => { setManagedCashSession(null); }, [operatorScope, effectiveBranchId]);
   useEffect(() => {
-    if (!identity || !deviceSession.ready || partner.loading || partner.resourcesReady === false || operatorRestoredScope.current === operatorScope) return;
-    operatorRestoredScope.current = operatorScope;
-    setOperatorSelectionScope(operatorScope);
-    if (isEmployeeRestricted) return;
-    setCurrentSalespersonId(null);
-    setActiveOperatorPin(null);
-    if (selectedBranchId && !partner.branches.some(branch => branch.id === selectedBranchId)) setSelectedBranchId('');
-    setShowOperatorModal(false);
-    let saved;
-    try { saved = new OperatorSelectionStore(sessionStorage, operatorScope).read(); }
-    catch { return; }
-    if (!saved) return;
-    if (!selectedBranchId && partner.branches.some(branch => branch.id === saved.branchId)) setSelectedBranchId(saved.branchId);
-    const operator = partner.salespeople.find(person => person.id === saved.operatorId && (person.active ?? person.is_active) !== false);
-    if (operator && (!selectedBranchId || selectedBranchId === saved.branchId) && (!operator.branch_id || operator.branch_id === saved.branchId)) {
-      setCurrentSalespersonId(operator.id);
-      setActiveOperatorPin(null);
-      setSelectedOperatorId(operator.id);
-      setOperatorPinError('Confirme o PIN para retomar o operador e o caixa selecionados.');
-      setShowOperatorModal(true);
-    }
-  }, [identity, deviceSession.ready, partner.loading, partner.resourcesReady, partner.branches, partner.salespeople, selectedBranchId, operatorScope, isEmployeeRestricted]);
-  useEffect(() => {
-    if (operatorSelectionScope !== operatorScope || !identity || isEmployeeRestricted) return;
-    try { new OperatorSelectionStore(sessionStorage, operatorScope).save({ branchId: selectedBranchId, operatorId: currentSalespersonId }); }
-    catch { /* Storage unavailable: server authorization still applies. */ }
-  }, [operatorScope, operatorSelectionScope, identity, isEmployeeRestricted, selectedBranchId, currentSalespersonId]);
+    if (!identity || isEmployeeRestricted) return;
+    try { new OperatorSelectionStore(sessionStorage, operatorScope).save({ branchId: selectedBranchId, operatorId: null }); }
+    catch { /* Storage does not change account authorization. */ }
+  }, [identity, isEmployeeRestricted, operatorScope, selectedBranchId]);
 
-  const checkoutCash = useCheckoutCash(effectiveBranchId, isEmployeeRestricted ? null : currentSalespersonId,
-    isEmployeeRestricted ? null : activeOperatorPin, managedCashSession?.operator_name ?? activeSalesperson?.name ?? 'Proprietário / Administrador', operatorScope, ['pdv', 'pedidos', 'caixa'].includes(activeTab), managedCashSession?.id ?? null);
+  const checkoutCash = useCheckoutCash(effectiveBranchId, null, null, managedCashSession?.operator_name ?? activeSalesperson?.name ?? 'Proprietário / Administrador', operatorScope, ['pdv', 'pedidos', 'caixa'].includes(activeTab), managedCashSession?.id ?? null);
   const refreshCash = checkoutCash.refresh;
   useEffect(() => {
     if (activeTab === 'pdv' || activeTab === 'pedidos' || activeTab === 'caixa') void refreshCash().catch(() => {});
@@ -663,27 +608,8 @@ export function PartnerPanel({
   }, [partner.salespeople, effectiveBranchId]);
 
   function getOperatorContext() {
-    /*
-     * Sessão de funcionário: nenhum id de colaborador é enviado — a RPC
-     * resolve o operador pelo auth.uid() da própria sessão. Enviar o id
-     * da sessão com PIN nulo seria rejeitado, pois a RPC exige um PIN
-     * válido sempre que p_salesperson_id é informado.
-     *
-     * Sessão de proprietário: usa o operador escolhido no modal
-     * (id + PIN digitado) ou nulo para operar diretamente como
-     * administrador via auth.uid().
-     */
-    if (isEmployeeRestricted) {
-      return {
-        operatorId: null,
-        operatorPin: null,
-      };
-    }
-
-    return {
-      operatorId: currentSalespersonId ?? null,
-      operatorPin: activeOperatorPin,
-    };
+    // Use the authenticated account for every operation, never an impersonated name.
+    return { operatorId: null, operatorPin: null };
   }
 
   function handleSelectBranch(id: string) {
@@ -715,8 +641,6 @@ export function PartnerPanel({
       }
 
       setSelectedBranchId('');
-      setCurrentSalespersonId(null);
-      setActiveOperatorPin(null);
       return;
     }
 
@@ -733,24 +657,6 @@ export function PartnerPanel({
 
     setSelectedBranchId(id);
 
-    if (
-      currentSalespersonId &&
-      !isEmployeeRestricted
-    ) {
-      const currentOperator =
-        partner.salespeople.find(
-          (salesperson) =>
-            salesperson.id === currentSalespersonId,
-        );
-
-      if (
-        currentOperator?.branch_id &&
-        currentOperator.branch_id !== id
-      ) {
-        setCurrentSalespersonId(null);
-        setActiveOperatorPin(null);
-      }
-    }
   }
 
   async function handleAddProduct(
@@ -1441,203 +1347,6 @@ export function PartnerPanel({
 
     if (selectedBranchId === id) {
       setSelectedBranchId('');
-      setCurrentSalespersonId(null);
-      setActiveOperatorPin(null);
-    }
-  }
-
-  function invalidateOperatorConfirmation() {
-    operatorConfirmation.current.invalidate();
-    setOperatorConfirming(false);
-  }
-
-  function closeOperatorModal() {
-    invalidateOperatorConfirmation();
-    setOperatorPinInput('');
-    setShowOperatorModal(false);
-  }
-
-  function openOperatorModal() {
-    invalidateOperatorConfirmation();
-    if (isEmployeeRestricted) {
-      setSelectedOperatorId(
-        identity?.salespersonId ?? 'owner',
-      );
-    } else {
-      setSelectedOperatorId(
-        currentSalespersonId ?? 'owner',
-      );
-    }
-
-    setOperatorPinInput('');
-    setOperatorPinError('');
-    setShowOperatorModal(true);
-  }
-
-  async function handleConfirmOperator() {
-    setOperatorPinError('');
-
-    if (isEmployeeRestricted) {
-      const employeeId =
-        identity?.salespersonId;
-
-      if (!employeeId) {
-        setOperatorPinError(
-          'Identidade do funcionário inválida.',
-        );
-        return;
-      }
-
-      if (
-        !identity?.branchId
-      ) {
-        setOperatorPinError(
-          'Funcionário sem filial vinculada.',
-        );
-        return;
-      }
-
-      if (
-        selectedOperatorId !== employeeId
-      ) {
-        setOperatorPinError(
-          'Funcionários só podem operar com sua própria identidade.',
-        );
-        return;
-      }
-
-      setCurrentSalespersonId(
-        employeeId,
-      );
-      setActiveOperatorPin(null);
-      setShowOperatorModal(false);
-      return;
-    }
-
-    if (
-      selectedOperatorId === 'owner' ||
-      !selectedOperatorId
-    ) {
-      setCurrentSalespersonId(null);
-      setActiveOperatorPin(null);
-      setShowOperatorModal(false);
-      return;
-    }
-
-    const targetSalesperson =
-      partner.salespeople.find(
-        (salesperson) =>
-          salesperson.id ===
-          selectedOperatorId,
-      );
-
-    if (!targetSalesperson) {
-      setOperatorPinError(
-        'Operador não encontrado.',
-      );
-      return;
-    }
-
-    if (
-      targetSalesperson.branch_id &&
-      effectiveBranchId &&
-      targetSalesperson.branch_id !==
-        effectiveBranchId
-    ) {
-      setOperatorPinError(
-        'Este operador pertence a outra filial.',
-      );
-      return;
-    }
-
-    const pin =
-      operatorPinInput.trim();
-
-    if (!/^\d{4,8}$/.test(pin)) {
-      setOperatorPinError(
-        'Digite o PIN de 4 a 8 dígitos.',
-      );
-      return;
-    }
-
-    if (!supabase) {
-      setOperatorPinError(
-        'Não foi possível conectar ao sistema. Tente novamente.',
-      );
-      return;
-    }
-
-    const requestedBranchId =
-      targetSalesperson.branch_id ??
-      effectiveBranchId ??
-      null;
-
-    const attempt = operatorConfirmation.current.begin(operatorContextRef.current);
-    if (!attempt) return;
-    setOperatorConfirming(true);
-    try {
-    const {
-      data: operator,
-      error: operatorError,
-    } = await supabase.rpc(
-      'resolve_partner_operator',
-      {
-        p_salesperson_id:
-          targetSalesperson.id,
-        p_pin: pin,
-        p_requested_branch_id:
-          requestedBranchId,
-      },
-    );
-
-    if (!operatorConfirmation.current.current(attempt, operatorContextRef.current)) return;
-    if (operatorError) {
-      console.error(
-        'Erro ao validar operador:',
-        operatorError,
-      );
-
-      setOperatorPinError(
-        'PIN incorreto ou operador sem acesso a esta filial.',
-      );
-
-      return;
-    }
-
-    if (
-      !operator ||
-      (Array.isArray(operator) &&
-        operator.length === 0)
-    ) {
-      setOperatorPinError(
-        'PIN incorreto ou operador inválido.',
-      );
-
-      return;
-    }
-
-    setCurrentSalespersonId(
-      targetSalesperson.id,
-    );
-
-    setActiveOperatorPin(pin);
-
-    if (targetSalesperson.branch_id) {
-      setSelectedBranchId(
-        targetSalesperson.branch_id,
-      );
-    }
-
-    closeOperatorModal();
-    } catch (error) {
-      if (operatorConfirmation.current.current(attempt, operatorContextRef.current)) {
-        setOperatorPinError(error instanceof Error ? error.message : 'Falha ao confirmar operador.');
-      }
-    } finally {
-      if (operatorConfirmation.current.current(attempt, operatorContextRef.current)) {
-        operatorConfirmation.current.finish(attempt);
-        setOperatorConfirming(false);
-      }
     }
   }
 
@@ -2019,19 +1728,25 @@ export function PartnerPanel({
 
             <button
               onClick={
-                openOperatorModal
+                () => setAccountAccess('employee')
               }
               className="rma-advance-btn"
               style={{
                 fontSize: '11px',
                 padding: '4px 8px',
               }}
-              title="Trocar Operador / Funcionário"
+              title="Trocar conta de funcionário"
+              aria-label="Trocar conta de funcionário"
             >
               <UserCheck size={14} />
             </button>
           </div>
         </div>
+
+        <button type="button" className="rma-advance-btn" style={{ margin: '0 12px 12px' }}
+          onClick={() => setAccountAccess('owner')}>
+          <Shield size={14} /> Área do proprietário
+        </button>
 
           <BranchSelector
             branches={partner.branches}
@@ -2109,7 +1824,7 @@ export function PartnerPanel({
           <SessionDraftProvider
             key={`${identity?.authUserId ?? user?.id ?? 'pending'}:${identity?.companyUserId ?? 'pending'}:workspace:${effectiveBranchId || 'all'}`}
             scope={`${identity?.authUserId ?? user?.id ?? 'pending'}:${identity?.companyUserId ?? 'pending'}:workspace:${effectiveBranchId || 'all'}`}
-            legacyScope={`${identity?.authUserId ?? user?.id ?? 'pending'}:${identity?.companyUserId ?? 'pending'}:${currentSalespersonId ?? 'owner'}:${effectiveBranchId || 'all'}`}
+            legacyScope={`${identity?.authUserId ?? user?.id ?? 'pending'}:${identity?.companyUserId ?? 'pending'}:${identity?.salespersonId ?? 'owner'}:${effectiveBranchId || 'all'}`}
           >
           <div className="partner-content">
             {storeSettings.internal_notice && <div role="note" className="store-internal-notice">{storeSettings.internal_notice}</div>}
@@ -2150,12 +1865,7 @@ export function PartnerPanel({
                 cashContext={checkoutCash}
                 onOpenCash={() => setActiveTab('caixa')}
                 onOpenOrders={() => setActiveTab('pedidos')}
-                onConfirmCashOperator={!isEmployeeRestricted ? (operatorId) => {
-                  setSelectedOperatorId(operatorId === undefined ? currentSalespersonId ?? 'owner' : operatorId ?? 'owner');
-                  setOperatorPinInput('');
-                  setOperatorPinError('');
-                  setShowOperatorModal(true);
-                } : undefined}
+                onConfirmCashOperator={() => setAccountAccess('employee')}
                 canEditPrice={effectiveRole === 'gerente' || (!isEmployeeRestricted && effectiveRole === 'administrador')}
                 key={`${pdvRevision}:${effectiveBranchId}`}
                 hasPendingSale={Boolean(partner.pendingSale)}
@@ -2399,7 +2109,7 @@ export function PartnerPanel({
               <AdminModule
                 onDataScopeChange={setAdminDataScope}
                 onReportScopeChange={setReportDataScope}
-                intelligenceAllowed={canViewBusinessIntelligence(Boolean(identity && !identity.salespersonId && identity.authUserId === identity.companyUserId), !currentSalespersonId,
+                intelligenceAllowed={canViewBusinessIntelligence(Boolean(identity && !identity.salespersonId && identity.authUserId === identity.companyUserId), !identity?.salespersonId,
                   ['administrativo', 'relatorios', 'financeiro'].filter(module => !blockedTabs.includes(module as Tab) && canUseSaasFeature(saas.subscription, module)))}
                 intelligenceDataReady={partner.resourcesReady && !partner.loading && !partner.syncing}
                 intelligenceDataError={partner.error || partner.syncError}
@@ -2660,210 +2370,8 @@ export function PartnerPanel({
         </div>
       </div>
 
-      {showOperatorModal && (
-        <div
-          className="modal-backdrop"
-          onClick={() =>
-            closeOperatorModal()
-          }
-        >
-          <div
-            className="modal-content operator-selection-modal"
-            onClick={(event) =>
-              event.stopPropagation()
-            }
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="operator-selection-title"
-          >
-            <div className="modal-header">
-              <h3 id="operator-selection-title">
-                Seleção de Operador /
-                Funcionário
-              </h3>
-
-              <button
-                onClick={() =>
-                  closeOperatorModal()
-                }
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="rma-form">
-              <label>
-                Selecione o Operador do
-                Sistema
-
-                <select
-                  aria-label="Operador do sistema"
-                  value={
-                    selectedOperatorId
-                  }
-                  onChange={(event) => {
-                    invalidateOperatorConfirmation();
-                    setSelectedOperatorId(
-                      event.target.value,
-                    );
-
-                    setOperatorPinInput(
-                      '',
-                    );
-
-                    setOperatorPinError(
-                      '',
-                    );
-                  }}
-                  disabled={
-                    isEmployeeRestricted
-                  }
-                >
-                  <option value="owner">
-                    Proprietário (acesso a todas as filiais)
-                  </option>
-
-                  {partner.salespeople.map(
-                    (salesperson) => {
-                      const spBranch =
-                        partner.branches.find(
-                          (branch) =>
-                            branch.id ===
-                            salesperson.branch_id,
-                        );
-
-                      const branchText =
-                        spBranch
-                          ? `Filial: ${spBranch.name}`
-                          : 'Sem filial vinculada — acesso bloqueado';
-
-                      return (
-                        <option
-                          key={
-                            salesperson.id
-                          }
-                          value={
-                            salesperson.id
-                          }
-                          disabled={!salesperson.branch_id}
-                        >
-                          {salesperson.name}{' '}
-                          (
-                          {salesperson.role.toUpperCase()}
-                          ) —{' '}
-                          {branchText}
-                        </option>
-                      );
-                    },
-                  )}
-                </select>
-                <small className="operator-selection-detail">
-                  {selectedOperatorId === 'owner' || !selectedOperatorId
-                    ? 'Proprietário / Administrador Geral — Acesso a todas as filiais'
-                    : partner.salespeople.filter(person => person.id === selectedOperatorId).map(person => {
-                        const branch = partner.branches.find(item => item.id === person.branch_id);
-                        return `${person.name} — ${person.role.toUpperCase()} — ${branch ? `Filial: ${branch.name}` : 'Acesso a todas as filiais'}`;
-                      })}
-                </small>
-              </label>
-
-              {selectedOperatorId &&
-                selectedOperatorId !==
-                  'owner' &&
-                !isEmployeeRestricted && (
-                  <label>
-                    <KeyRound
-                      size={14}
-                    />{' '}
-                    PIN de Acesso
-
-                    <OperatorPinInput
-                      key={selectedOperatorId}
-                      value={operatorPinInput}
-                      onValueChange={value => { setOperatorPinInput(value); setOperatorPinError(''); }}
-                    />
-
-                    <small
-                      style={{
-                        color:
-                          '#889eaf',
-                      }}
-                    >
-                      Digite o PIN de 4 a
-                      8 dígitos.
-                    </small>
-                  </label>
-                )}
-
-              {isEmployeeRestricted && (
-                <p
-                  style={{
-                    color:
-                      '#889eaf',
-                    fontSize:
-                      '12px',
-                    marginTop:
-                      '4px',
-                  }}
-                >
-                  Funcionários operam
-                  somente com sua
-                  própria identidade e
-                  filial vinculada.
-                </p>
-              )}
-
-              {operatorPinError && (
-                <p
-                  className="otp-error-msg"
-                  style={{
-                    color:
-                      '#e3829b',
-                    fontSize:
-                      '12px',
-                  }}
-                >
-                  {operatorPinError}
-                </p>
-              )}
-
-              <div
-                style={{
-                  display:
-                    'flex',
-                  gap: '8px',
-                  marginTop:
-                    '8px',
-                }}
-              >
-                <button
-                  type="button"
-                  className="module-submit-btn"
-                  disabled={operatorConfirming}
-                  onClick={
-                    handleConfirmOperator
-                  }
-                  style={{
-                    flex: 1,
-                  }}
-                >
-                  Confirmar Operador
-                </button>
-
-                <button
-                  type="button"
-                  className="rma-advance-btn"
-                  onClick={() =>
-                    closeOperatorModal()
-                  }
-                >
-                  Cancelar
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {accountAccess && <AccountAccessDialog mode={accountAccess}
+        onClose={() => setAccountAccess(null)} onContinue={onSwitchAccount} />}
     </div>
   );
 }
