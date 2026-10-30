@@ -4,6 +4,7 @@ import type { BusinessSegment } from './types';
 import { readWithJwtRecovery, useAuth } from './hooks/useAuth';
 import { useSuperAdminAuth } from './hooks/useSuperAdminAuth';
 import { HubHome } from './components/HubHome';
+import { AppUpdateNotice } from './components/AppUpdateNotice';
 import { supabase } from './lib/supabase';
 import { PartnerAccessGate } from './components/partner/PartnerAccessGate';
 
@@ -29,6 +30,10 @@ function LoadingScreen({ label }: { label: string }) {
 
 function App() {
   const auth = useAuth();
+  return <><AppUpdateNotice expectedUserId={auth.user?.id ?? null} /><AppContent auth={auth} /></>;
+}
+
+function AppContent({ auth }: { auth: ReturnType<typeof useAuth> }) {
   const superAdminAuth = useSuperAdminAuth();
 
   const publicCatalog = typeof window !== 'undefined' && ['/catalogo', '/catalogo/'].includes(window.location?.pathname);

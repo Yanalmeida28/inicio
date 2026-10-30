@@ -26,6 +26,7 @@ async function harness({ user = { id: 'owner' }, master = false, permissionError
   function admin({ onBack }) { return React.createElement('button', { onClick: onBack, 'data-panel': 'master' }, 'Sair do app'); }
   function login(props) { return React.createElement('div', { 'data-panel': 'login', 'data-recovery': props.recoveryMode }); }
   const dependencies = {
+    './components/AppUpdateNotice': { AppUpdateNotice: () => null },
     './hooks/useAuth': { useAuth: () => auth, readWithJwtRecovery: clockHelpers.readWithJwtRecovery },
     './hooks/useSuperAdminAuth': { useSuperAdminAuth: () => ({}) },
     './hooks/useCart': { useCart: () => ({ cart: [], cartCount: 0, cartTotal: 0 }) },

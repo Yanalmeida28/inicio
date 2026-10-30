@@ -4,6 +4,7 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
+export const AUTH_STORAGE_KEY = 'distrihub-auth';
 
 // Sessão persistida no storage PADRÃO do Supabase (localStorage).
 // Antes usávamos sessionStorage, o que fazia a sessão JWT se perder ao abrir
@@ -12,7 +13,7 @@ export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
 export const supabase: SupabaseClient | null = isSupabaseConfigured
   ? createClient(supabaseUrl, supabaseAnonKey, {
       auth: {
-        storageKey: 'distrihub-auth',
+        storageKey: AUTH_STORAGE_KEY,
         persistSession: true,
         autoRefreshToken: true,
         detectSessionInUrl: true,
