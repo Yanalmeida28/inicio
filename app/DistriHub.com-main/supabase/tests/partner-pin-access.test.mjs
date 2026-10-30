@@ -20,10 +20,11 @@ const identity = { authUserId: 'company', companyUserId: 'company', salespersonI
 const user = { id: 'company', email: 'owner@example.test' };
 const employee = { company_id: 'company', salesperson_id: 'employee', branch_id: 'north', role: 'caixa' };
 
-function harness({ reply = { data: [employee], error: null }, scope = { can_access_all_branches: false, branches: [{ id: 'north', name: 'Varejo' }] }, directory = [{ id: 'employee', name: 'Ana', active: true, branch_id: 'north', branch_name: 'Varejo' }, { id: 'inactive', name: 'Ana', active: false, branch_id: 'south', branch_name: 'Atacado' }], passwordUser = 'company', saved = null, device = { ready: true, error: null, retry() {} } } = {}) {
+function harness({ reply = { data: [employee], error: null }, scope = { can_access_all_branches: false, branches: [{ id: 'north', name: 'Varejo' }] }, directory = [{ id: 'employee', name: 'Ana', active: true, branch_id: 'north', branch_name: 'Varejo' }, { id: 'inactive', name: 'Ana', active: false, branch_id: 'south', branch_name: 'Atacado' }], passwordUser = 'company', saved = null, savedSession = null, issuedSession = null, device = { ready: true, error: null, retry() {} } } = {}) {
   const calls = [], storage = new Map();
   if (saved) storage.set('distrihub:operator-selection:company:company', JSON.stringify(saved));
-  const sessionStorage = { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value) };
+  if (savedSession) storage.set('distrihub:operator-session:company:company', JSON.stringify(savedSession));
+  const sessionStorage = { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) };
   const client = {
     from(table) {
       calls.push({ table });
@@ -32,6 +33,8 @@ function harness({ reply = { data: [employee], error: null }, scope = { can_acce
       return q;
     },
     async rpc(name, args) { calls.push({ name, args });
+      if (name === 'create_partner_operator_session') return { data: issuedSession, error: null };
+      if (name === 'revoke_partner_operator_session') return { data: null, error: null };
       if (name === 'list_partner_operator_directory') return { data: directory, error: null };
       if (name === 'read_partner_operator_branch_access') return { data: scope, error: null };
       if (name === 'verify_partner_owner_password') return { data: args.p_password === 'owner-secret' && passwordUser === 'company', error: null };
@@ -169,6 +172,34 @@ async function render(h, openOperator = true) {
   return { renderer, props, get logouts() { return logouts; }, async close() { await act(async () => renderer.unmount()); } };
 }
 const submit = view => view.renderer.root.findByType('form').props.onSubmit({ preventDefault() {} });
+
+test('reload restores an opaque operator session only after server validation, never from a saved selection', async () => {
+  const credential = 'ops_' + 'a'.repeat(64);
+  const expiresAt = new Date(Date.now() + 3600000).toISOString();
+  const h = harness({ issuedSession: { credential, expires_at: expiresAt } });
+  let view = await render(h);
+  await enterPin(view);
+  const savedSession = JSON.parse(h.storage.get('distrihub:operator-session:company:company'));
+  assert.equal(savedSession.credential, credential);
+  assert.equal(savedSession.branchId, 'north');
+  assert.doesNotMatch(JSON.stringify(savedSession), /1234|role|allowedBranches/);
+  await view.close();
+  const restored = harness({ savedSession });
+  view = await render(restored, false);
+  assert.equal(view.renderer.root.findByProps({ 'data-workspace': true }).props['data-operator'], 'employee');
+  assert.equal(view.renderer.root.findAllByProps({ role: 'dialog' }).length, 0);
+  assert.equal(restored.calls.find(call => call.name === 'resolve_partner_pdv_operator').args.p_pin, credential);
+  await view.close();
+  for (const config of [
+    { savedSession, reply: { data: null, error: new Error('revoked') } },
+    { savedSession: { ...savedSession, expiresAt: '2000-01-01' } },
+    { savedSession: { ...savedSession, credential: '1234' } },
+  ]) {
+    const denied = await render(harness(config), false);
+    assert.equal(denied.renderer.root.findByProps({ 'data-partner-panel': true }).props['data-locked'], true);
+    await denied.close();
+  }
+});
 test('login opens the app menus without a PIN screen or any operational data query', async () => {
   const h = harness(), view = await render(h, false);
   try {

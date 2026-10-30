@@ -4,8 +4,8 @@ import type { User } from '@supabase/supabase-js';
 import { Lock, Shield, UserCheck, X } from 'lucide-react';
 import type { PartnerIdentity } from '../../types';
 import { supabase } from '../../lib/supabase';
-import { authorizeOwner, authorizePin, type PartnerAccess, type PinOperator } from '../../lib/partnerAccess';
-import { OperatorSelectionStore } from '../../lib/checkoutCash';
+import { authorizeOwner, authorizePin, rememberOperatorAccess, revokeOperatorSession, type PartnerAccess, type PinOperator } from '../../lib/partnerAccess';
+import { OperatorSelectionStore, OperatorSessionStore } from '../../lib/checkoutCash';
 
 type Mode = 'employee' | 'owner';
 type Props = {
@@ -25,29 +25,68 @@ export function PartnerAccessGate({ user, identity, identityError, onRetryIdenti
   const [mode, setMode] = useState<Mode | null>(null);
   const current = authorized?.scope === scope ? authorized.access : null;
   const currentRef = useRef(current);
+  const generation = useRef({ value: 0 });
   currentRef.current = current;
   async function selectBranch(id: string) {
     const previous = currentRef.current;
     if (!identity || previous?.kind !== 'employee' || !previous.operator.canAccessAllBranches || !id) throw new Error('Filial não autorizada.');
     const access = await authorizePin(identity, previous.operator.id, previous.operator.name, previous.operator.pin, id);
     if (currentRef.current !== previous) throw new Error('O operador mudou. Selecione a filial novamente.');
-    allow(access);
+    await allow(access.kind === 'employee' ? { ...access, operator: { ...access.operator, sessionExpiresAt: previous.operator.sessionExpiresAt } } : access);
   }
-  function allow(access: PartnerAccess) {
+  async function allow(access: PartnerAccess) {
     if (!identity) return;
+    const attempt = ++generation.current.value;
+    let remembered = access;
+    try { remembered = await rememberOperatorAccess(access); } catch { /* Keep the verified access in memory if persistence is unavailable. */ }
+    if (attempt !== generation.current.value) return;
+    try {
+      const store = new OperatorSessionStore(sessionStorage, scope);
+      const previous = store.read();
+      store.clear();
+      if (remembered.kind === 'employee' && remembered.operator.sessionExpiresAt) store.save({
+        operatorId: remembered.operator.id, operatorName: remembered.operator.name, branchId: remembered.operator.branchId,
+        credential: remembered.operator.pin, expiresAt: remembered.operator.sessionExpiresAt,
+      });
+      if (previous && (remembered.kind !== 'employee' || previous.credential !== remembered.operator.pin)) {
+        await revokeOperatorSession(previous.credential);
+      }
+    } catch { /* Storage failure must not discard the currently verified access. */ }
+    if (attempt !== generation.current.value) return;
     try { new OperatorSelectionStore(sessionStorage, scope).save({
       operatorId: access.kind === 'employee' ? access.operator.id : null,
       branchId: access.kind === 'employee' ? access.operator.branchId : '',
     }); } catch { /* PIN and password are never persisted. */ }
-    setAuthorized({ scope, access });
+    setAuthorized({ scope, access: remembered });
     setMode(null);
   }
+  useEffect(() => {
+    const lifetime = generation.current;
+    const attempt = ++lifetime.value;
+    let live = true;
+    if (identity && user) {
+      const expectedIdentity = identity;
+      let saved: ReturnType<OperatorSessionStore['read']> = null;
+      try { saved = new OperatorSessionStore(sessionStorage, scope).read(); } catch { /* Locked until PIN confirmation. */ }
+      if (saved) {
+        const session = saved;
+        void authorizePin(expectedIdentity, session.operatorId, session.operatorName, session.credential, session.branchId)
+          .then(access => {
+            if (!live || attempt !== lifetime.value || access.kind !== 'employee') return;
+            setAuthorized({ scope, access: { kind: 'employee', operator: { ...access.operator, sessionExpiresAt: session.expiresAt } } });
+          })
+          .catch(() => { /* Fail closed; leave the saved session for a retry after a temporary network failure. */ });
+      }
+    }
+    return () => { live = false; lifetime.value++; };
+  }, [scope, user, identity]);
+  function requestAccess(nextMode: Mode) { generation.current.value++; setMode(nextMode); }
   if (!identity || !user) return <div className="partner-panel"><p role="status">
     {identityError || 'Validando sua sessão…'}</p>
     {identityError && onRetryIdentity && <button type="button" className="module-submit-btn" onClick={onRetryIdentity}>Tentar novamente</button>}
   </div>;
   return <>
-    {children(current?.kind === 'employee' ? current.operator : null, setMode, !current, selectBranch)}
+    {children(current?.kind === 'employee' ? current.operator : null, requestAccess, !current, selectBranch)}
     {mode && <PinAccessDialog key={`${scope}:${mode}`} mode={mode}
       identity={identity} user={user} onAuthorize={allow} onSwitchAccount={onSwitchAccount}
       onClose={() => setMode(null)} />}

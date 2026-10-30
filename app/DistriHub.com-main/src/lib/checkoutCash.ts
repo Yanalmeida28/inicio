@@ -34,3 +34,27 @@ export class OperatorSelectionStore {
     this.storage.setItem(this.key, JSON.stringify({ branchId: selection.branchId, operatorId: selection.operatorId }));
   }
 }
+
+export type SavedOperatorSession = {
+  operatorId: string; operatorName: string; branchId: string; credential: string; expiresAt: string;
+};
+export class OperatorSessionStore {
+  constructor(private storage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>, private scope: string) {}
+  private get key() { return `distrihub:operator-session:${this.scope}`; }
+  read(): SavedOperatorSession | null {
+    try {
+      const value = JSON.parse(this.storage.getItem(this.key) ?? 'null');
+      if (!value || !['operatorId','operatorName','branchId','credential','expiresAt'].every(key => typeof value[key] === 'string')
+        || !value.operatorId || !value.branchId || !/^ops_[0-9a-f]{64}$/.test(value.credential)
+        || !(Date.parse(value.expiresAt) > Date.now())) return null;
+      return value;
+    } catch { return null; }
+  }
+  save(value: SavedOperatorSession) {
+    this.storage.setItem(this.key, JSON.stringify({
+      operatorId: value.operatorId, operatorName: value.operatorName, branchId: value.branchId,
+      credential: value.credential, expiresAt: value.expiresAt,
+    }));
+  }
+  clear() { this.storage.removeItem(this.key); }
+}

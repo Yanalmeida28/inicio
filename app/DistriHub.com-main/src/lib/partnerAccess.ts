@@ -6,12 +6,13 @@ export type PinOperator = {
   id: string; name: string; branchId: string; role: SalespersonRole; pin: string;
   canAccessAllBranches?: boolean;
   allowedBranches?: { id: string; name: string }[];
+  sessionExpiresAt?: string;
 };
 export type PartnerAccess = { kind: 'owner' } | { kind: 'employee'; operator: PinOperator };
 const roles = ['administrador', 'gerente', 'caixa', 'vendedor', 'tecnico', 'atendente', 'logistica'];
 
 export async function authorizePin(identity: PartnerIdentity, id: string, name: string, pin: string, requestedBranchId: string | null = null): Promise<PartnerAccess> {
-  if (!supabase || !id || !/^\d{4,8}$/.test(pin)) throw new Error('Selecione o colaborador e informe o PIN de 4 a 8 dígitos.');
+  if (!supabase || !id || !/^(?:\d{4,8}|ops_[0-9a-f]{64})$/.test(pin)) throw new Error('Selecione o colaborador e informe o PIN de 4 a 8 dígitos.');
   const { data, error } = await supabase.rpc('resolve_partner_pdv_operator', {
     p_salesperson_id: id, p_pin: pin, p_requested_branch_id: requestedBranchId,
   });
@@ -30,6 +31,22 @@ export async function authorizePin(identity: PartnerIdentity, id: string, name: 
     throw new Error('Este acesso pertence a outro colaborador.');
   }
   return { kind: 'employee', operator: { id, name, pin, branchId: operator.branch_id, role: operator.role, canAccessAllBranches, allowedBranches: branches } };
+}
+
+export async function rememberOperatorAccess(access: PartnerAccess): Promise<PartnerAccess> {
+  if (access.kind !== 'employee' || access.operator.pin.startsWith('ops_') || !supabase) return access;
+  const { data, error } = await supabase.rpc('create_partner_operator_session', {
+    p_salesperson_id: access.operator.id, p_pin: access.operator.pin,
+  });
+  if (error || !data || !/^ops_[0-9a-f]{64}$/.test(data.credential)
+    || typeof data.expires_at !== 'string' || !(Date.parse(data.expires_at) > Date.now())) return access;
+  return { kind: 'employee', operator: { ...access.operator, pin: data.credential, sessionExpiresAt: data.expires_at } };
+}
+export async function revokeOperatorSession(credential: string) {
+  if (credential.startsWith('ops_') && supabase) {
+    const { error } = await supabase.rpc('revoke_partner_operator_session', { p_credential: credential });
+    if (error) throw error;
+  }
 }
 
 export async function authorizeOwner(identity: PartnerIdentity, user: User | null, password: string): Promise<PartnerAccess> {

@@ -53,6 +53,8 @@ function AppContent({ auth }: { auth: ReturnType<typeof useAuth> }) {
     if (accountScope) {
       try { sessionStorage.removeItem(`distrihub:operator-selection:${accountScope}`); }
       catch { /* The session has already been terminated. */ }
+      try { sessionStorage.removeItem(`distrihub:operator-session:${accountScope}`); }
+      catch { /* A new login has a different server session and cannot reuse the token. */ }
     }
     setPartnerInitialTab(undefined);
     setSuperAdminUnlocked(false);
