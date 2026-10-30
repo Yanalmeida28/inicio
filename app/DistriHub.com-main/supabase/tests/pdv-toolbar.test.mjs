@@ -69,6 +69,36 @@ test('checkout places customer type and customer picker in the same layout row',
   ), false);
 });
 
+test('mobile shortcuts navigate and focus without submitting or changing the sale', async () => {
+  const visits = [];
+  let submissions = 0;
+  await act(async () => {
+    renderer = TestRenderer.create(React.createElement(module.exports.Checkout, {
+      ...props, cameraScannerEnabled: true, onCreateSale: async () => { submissions++; },
+    }), { createNodeMock: element => ({
+      scrollIntoView() { visits.push(['scroll', element.props['aria-label']]); },
+      focus() { visits.push(['focus', element.props['aria-label']]); },
+    }) });
+  });
+  const shortcuts = () => renderer.root.findByProps({ 'aria-label': 'Atalhos da venda' }).findAllByType('button');
+  assert.equal(shortcuts().length, 4);
+  assert.equal(shortcuts()[3].props.disabled, true);
+  await act(async () => shortcuts()[0].props.onClick());
+  assert.deepEqual(visits.map(visit => visit[0]), ['scroll', 'focus']);
+  await act(async () => renderer.root.findByProps({ className: 'pdv-product-card' }).props.onClick());
+  assert.equal(shortcuts()[3].props.disabled, false);
+  assert.ok(shortcuts()[3].findByType('strong').children.join('').includes('100,00'));
+  visits.length = 0;
+  await act(async () => shortcuts()[2].props.onClick());
+  await act(async () => shortcuts()[3].props.onClick());
+  assert.deepEqual(visits.map(visit => visit[1]), [
+    'Carrinho', 'Carrinho', 'Pagamento e entrega', 'Pagamento e entrega',
+  ]);
+  assert.equal(submissions, 0);
+  await act(async () => renderer.update(React.createElement(module.exports.Checkout, { ...props, isActive: false })));
+  assert.equal(renderer.root.findAllByProps({ 'aria-label': 'Atalhos da venda' }).length, 0);
+});
+
 test('checkout enables cart scrolling starting with six products', async () => {
   const products = Array.from({ length: 6 }, (_, index) => ({
     id: `product-${index}`,
@@ -335,7 +365,7 @@ if (process.env.PDV_BROWSER_FIXTURE === '1') {
   await mkdir(directory, { recursive: true });
   const css = await readFile(new URL('../../src/index.css', import.meta.url), 'utf8');
   const browserReact = require('../../node_modules/react');
-  const markup = renderToStaticMarkup(browserReact.createElement(loadCheckout(browserReact).Checkout, props));
+  const markup = renderToStaticMarkup(browserReact.createElement(loadCheckout(browserReact).Checkout, { ...props, cameraScannerEnabled: true }));
   await writeFile(new URL('preview.html', directory), `<!doctype html><meta charset="utf-8"><style>${css}</style>
     <div class="partner-panel sidebar-layout partner-pdv-mode" style="width:100%;background:white;--dh-surface:white;--dh-border:#ccc;--dh-blue:#2563eb;--dh-blue-soft:#eff6ff;--dh-accent-text:#172033">
       <aside class="partner-sidebar"><div class="sidebar-header">DistriHub</div></aside>

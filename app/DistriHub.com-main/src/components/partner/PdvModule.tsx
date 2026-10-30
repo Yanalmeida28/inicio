@@ -522,6 +522,13 @@ function PdvCheckout({ products, customers, credits, rmaRequests = [], hasPendin
   const [search, setSearch] = useSessionDraftState('checkout:product-search', '');
   const [visibleProductCount, setVisibleProductCount] = useState(PRODUCT_PAGE_SIZE);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const cartSectionRef = useRef<HTMLElement>(null);
+  const paymentSectionRef = useRef<HTMLDivElement>(null);
+  function goToSaleSection(target: HTMLElement | null) {
+    if (!target) return;
+    target.scrollIntoView({ block: 'start' });
+    target.focus({ preventScroll: true });
+  }
   const [cameraOpen, setCameraOpen] = useState(false);
   useEffect(() => {
     setVisibleProductCount(PRODUCT_PAGE_SIZE);
@@ -978,7 +985,7 @@ function PdvCheckout({ products, customers, credits, rmaRequests = [], hasPendin
           </div>
         </div>
         <div className="pdv-right" role="region" aria-label="Opções da venda">
-          <section className="pdv-cart-main" aria-label="Carrinho">
+          <section ref={cartSectionRef} tabIndex={-1} className="pdv-cart-main" aria-label="Carrinho">
           <div className="pdv-cart-header">
             <h4>Carrinho · {cart.reduce((count, item) => count + item.quantity, 0)} itens</h4>
             {cart.length > 0 && (
@@ -993,7 +1000,7 @@ function PdvCheckout({ products, customers, credits, rmaRequests = [], hasPendin
             <thead><tr><th>Produto</th><th>Quantidade</th><th>Preço</th><th>Subtotal</th><th>Remover</th></tr></thead>
             <tbody>
             {cart.length === 0 ? (
-              <tr><td colSpan={5} className="empty-row">Carrinho vazio. Selecione um produto à esquerda para começar.</td></tr>
+              <tr><td colSpan={5} className="empty-row">Carrinho vazio. Toque em um produto para começar.</td></tr>
             ) : (
               cart.map((item) => (
                 <tr key={item.product_id}>
@@ -1015,7 +1022,7 @@ function PdvCheckout({ products, customers, credits, rmaRequests = [], hasPendin
           </table>
           </div>
           </section>
-          <div className="pdv-sale-scroll">
+          <div ref={paymentSectionRef} tabIndex={-1} className="pdv-sale-scroll" role="region" aria-label="Pagamento e entrega">
           {branchChangedWithCart && cart.length > 0 && (
             <div className="pdv-restricted-checkout" role="alert">
               <LockIcon size={16} />
@@ -1163,6 +1170,12 @@ function PdvCheckout({ products, customers, credits, rmaRequests = [], hasPendin
         </div>
       </div>
 
+      {isActive && !cameraOpen && <nav className="pdv-mobile-actions" aria-label="Atalhos da venda">
+        <button type="button" disabled={cartLocked} onClick={() => goToSaleSection(searchInputRef.current)}><Search size={19}/><span>Buscar</span></button>
+        {cameraScannerEnabled && <button type="button" disabled={cartLocked} onClick={() => { if (canChangeCart()) setCameraOpen(true); }}><Camera size={19}/><span>Câmera</span></button>}
+        <button type="button" onClick={() => goToSaleSection(cartSectionRef.current)}><ShoppingCart size={19}/><span>Carrinho · {cart.reduce((count, item) => count + item.quantity, 0)}</span></button>
+        <button type="button" className="pdv-mobile-review" disabled={!cart.length || cartLocked} onClick={() => goToSaleSection(paymentSectionRef.current)}><strong>{money.format(chargeTotal)}</strong><span>Revisar venda</span></button>
+      </nav>}
       </fieldset>
     </>
   );
