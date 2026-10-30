@@ -666,7 +666,10 @@ function ProductsSubTab({ suppliersReady = true, defaultIsService = false, isAct
 
       {labelProductId && (
         <ThermalLabelModal
+          key={labelProductId}
           product={products.find((p) => p.id === labelProductId)}
+          products={allProducts}
+          onSaveBarcode={async code=>{await onUpdateProduct(labelProductId,{barcode:code});}}
           onClose={() => setLabelProductId(null)}
         />
       )}

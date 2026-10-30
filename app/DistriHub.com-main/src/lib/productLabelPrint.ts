@@ -1,8 +1,8 @@
 import type { PartnerProduct } from '../types';
 import { money } from '../utils';
 
-export type ProductLabelSize = { width: number; height: number; showPrice?: boolean };
-type LabelProduct = Pick<PartnerProduct, 'id' | 'name' | 'sku' | 'sale_price'>;
+export type ProductLabelSize = { width: number; height: number; showPrice?: boolean; codeType?: 'qr' | 'barcode' };
+type LabelProduct = Pick<PartnerProduct, 'id' | 'name' | 'sku' | 'sale_price' | 'barcode'>;
 
 export function validateProductLabelSize(size: ProductLabelSize) {
   if (!Number.isFinite(size.width) || !Number.isFinite(size.height) || size.width < 30 || size.width > 150 || size.height < 20 || size.height > 150) {
@@ -17,7 +17,7 @@ export async function productLabelQr(product: LabelProduct) {
   hints.set(EncodeHintType.MARGIN, 4);
   hints.set(EncodeHintType.CHARACTER_SET, 'UTF-8');
   // One SVG unit per module avoids fractional padding before physical sizing.
-  const svg = new BrowserQRCodeSvgWriter().write(product.sku?.trim() || product.id, 0, 0, hints);
+  const svg = new BrowserQRCodeSvgWriter().write(product.barcode?.trim() || product.sku?.trim() || product.id, 0, 0, hints);
   svg.setAttribute('data-modules', svg.getAttribute('width') ?? '');
   svg.setAttribute('shape-rendering', 'crispEdges');
   const background = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
@@ -50,7 +50,14 @@ export function productLabelQrSide(size: ProductLabelSize, qrUrl: string) {
 export function productLabelDocument(product: LabelProduct, size: ProductLabelSize, qrUrl: string, doc = document.implementation.createHTMLDocument('Etiqueta do produto')) {
   validateProductLabelSize(size);
   const vertical = size.height >= size.width;
-  const qrSide = productLabelQrSide(size, qrUrl);
+  const barcode = size.codeType === 'barcode';
+  const qrSide = barcode ? 0 : productLabelQrSide(size, qrUrl);
+  const barHeight = Math.min(15, size.height - 6 - (size.showPrice === false ? 17 : 23));
+  if (barcode) {
+    const svg = decodeURIComponent(qrUrl.slice(qrUrl.indexOf(',') + 1));
+    const modules = Number(svg.match(/data-bar-modules="(\d+)"/)?.[1]);
+    if (!modules || modules * 0.25 > size.width - 4 || barHeight < 10) throw new Error('Etiqueta pequena para este código de barras. Escolha papel mais largo ou retire o preço.');
+  }
   doc.head.replaceChildren(); doc.body.replaceChildren();
   doc.title = 'Etiqueta do produto'; doc.documentElement.lang = 'pt-BR';
   const charset = doc.createElement('meta'); charset.setAttribute('charset','utf-8'); doc.head.append(charset);
@@ -69,13 +76,18 @@ export function productLabelDocument(product: LabelProduct, size: ProductLabelSi
     @media screen { html, body { width: 100%; height: 100%; } }
   `;
   doc.head.append(style);
+  if (barcode) {
+    const barStyle = doc.createElement('style');
+    barStyle.textContent = '.product-label { grid-template-columns: minmax(0,1fr); grid-template-rows: ' + barHeight + 'mm minmax(0,1fr); text-align: center; } .label-qr img { width: ' + (size.width - 4) + 'mm; height: ' + barHeight + 'mm; object-fit: fill; }';
+    doc.head.append(barStyle);
+  }
   const label = doc.createElement('main'); label.className = 'product-label';
   const qr = doc.createElement('div'); qr.className = 'label-qr';
-  const image = doc.createElement('img'); image.src = qrUrl; image.alt = 'QR do produto'; qr.append(image);
+  const image = doc.createElement('img'); image.src = qrUrl; image.alt = barcode ? 'Código de barras do produto' : 'QR do produto'; qr.append(image);
   const info = doc.createElement('div'); info.className = 'label-info';
   for (const [tag, className, text] of [
     ['strong','label-name',product.name],
-    ['span','label-sku',`SKU: ${product.sku?.trim() || '—'}`],
+    ['span','label-sku',barcode || product.barcode?.trim() ? 'Código: ' + (product.barcode?.trim() || product.sku?.trim() || '') : `SKU: ${product.sku?.trim() || '—'}`],
     ['span','label-price',money.format(product.sale_price)],
   ]) {
     if (className === 'label-price' && size.showPrice === false) continue;

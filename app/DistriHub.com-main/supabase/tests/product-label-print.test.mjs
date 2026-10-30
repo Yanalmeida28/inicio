@@ -106,6 +106,16 @@ test('real generated SVG QR codes decode to the exact SKU or product ID with whi
   } finally {globalThis.document=previous;}
 });
 
+test('barcode labels print the saved code and refuse bars that would be too narrow',()=>{
+ const api=harness();
+ const uri='data:image/svg+xml;charset=utf-8,'+encodeURIComponent('<svg data-bar-modules="121"></svg>');
+ const doc=api.productLabelDocument({...product,barcode:'001234567890'},{width:40,height:58,codeType:'barcode'},uri);
+ assert.equal(doc.body.children[0].children[1].children[1].textContent,'Código: 001234567890');
+ assert.equal(doc.images[0].alt,'Código de barras do produto');
+ const dense='data:image/svg+xml;charset=utf-8,'+encodeURIComponent('<svg data-bar-modules="300"></svg>');
+ assert.throws(()=>api.productLabelDocument(product,{width:40,height:58,codeType:'barcode'},dense),/pequena/);
+});
+
 test('printing waits for QR image decoding and prints the separate document only',async()=>{
   let release;
   const api=harness({decode:()=>new Promise(resolve=>{release=resolve;})});
