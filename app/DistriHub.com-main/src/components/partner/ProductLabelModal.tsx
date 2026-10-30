@@ -15,6 +15,7 @@ export function ProductLabelModal({ product, products = [], onSaveBarcode, onClo
   const [width,setWidth] = useState('40');
   const [height,setHeight] = useState('58');
   const [showPrice,setShowPrice] = useState(true);
+  const [marginMm,setMarginMm] = useState('3');
   const [qrUrl,setQrUrl] = useState('');
   const [error,setError] = useState('');
   const [printing,setPrinting] = useState(false);
@@ -30,11 +31,11 @@ export function ProductLabelModal({ product, products = [], onSaveBarcode, onClo
   },[effectiveProduct,codeType]);
   const preview = useMemo(()=>{
     try {
-      const size={width:Number(width),height:Number(height),showPrice,codeType};
+      const size={width:Number(width),height:Number(height),showPrice,codeType,marginMm:Number(marginMm)};
       validateProductLabelSize(size);
       return {html:effectiveProduct && qrUrl ? '<!doctype html>'+productLabelDocument(effectiveProduct,size,qrUrl).documentElement.outerHTML : '',error:''};
     } catch(cause) {return {html:'',error:cause instanceof Error ? cause.message : 'Medidas inválidas.'};}
-  },[effectiveProduct,width,height,qrUrl,showPrice,codeType]);
+  },[effectiveProduct,width,height,qrUrl,showPrice,codeType,marginMm]);
   if (!product) return null;
   const vertical = Number(height) >= Number(width);
   function choose(value: string, w: string, h: string) {setPreset(value);setWidth(vertical ? h : w);setHeight(vertical ? w : h);}
@@ -44,7 +45,7 @@ export function ProductLabelModal({ product, products = [], onSaveBarcode, onClo
   async function print() {
     if(lock.current || codeLock.current || !product || !qrUrl || preview.error) return;
     lock.current=true;setPrinting(true);setError('');
-    try {await printProductLabel(effectiveProduct ?? product,{width:Number(width),height:Number(height),showPrice,codeType},qrUrl);}
+    try {await printProductLabel(effectiveProduct ?? product,{width:Number(width),height:Number(height),showPrice,codeType,marginMm:Number(marginMm)},qrUrl);}
     catch(cause){setError(cause instanceof Error ? cause.message : 'Não foi possível imprimir a etiqueta.');}
     finally{lock.current=false;setPrinting(false);}
   }
@@ -94,8 +95,12 @@ export function ProductLabelModal({ product, products = [], onSaveBarcode, onClo
       <label style={{display:'flex',alignItems:'center',gap:8,marginBottom:12}}>
         <input type="checkbox" checked={showPrice} onChange={event=>setShowPrice(event.target.checked)} disabled={printing} /> Mostrar preço na etiqueta
       </label>
+      <label>Margem de segurança (mm)<input aria-label="Margem de segurança da etiqueta" type="number" min="2" max="6" step="0.5" value={marginMm} disabled={printing} onChange={event=>setMarginMm(event.target.value)}/></label>
+      <small>A margem afasta o conteúdo das quatro bordas. Se o código não couber com essa margem, use uma etiqueta maior.</small>
       <p>Use as medidas da etiqueta colocada na impressora. Na impressão, escolha o mesmo papel, escala de 100% e desative cabeçalhos e rodapés.</p>
-      {preview.html && <iframe title="Prévia da etiqueta do produto" srcDoc={preview.html} style={{display:'block',width:'100%',height:'auto',aspectRatio:`${width} / ${height}`,border:'1px solid #ccc',background:'#fff',marginBottom:16}}/>}
+      {preview.html && <div style={{overflowX:'auto',padding:'4px 2px',marginBottom:16}}>
+        <iframe title="Prévia da etiqueta do produto" srcDoc={preview.html} style={{display:'block',width:`${width}mm`,height:`${height}mm`,boxSizing:'content-box',maxWidth:'none',border:'1px solid #ccc',background:'#fff',margin:'0 auto'}}/>
+      </div>}
       {!qrUrl && !error && <p role="status">Gerando código do produto…</p>}
       {(error || preview.error) && <p role="alert" className="form-error-msg">{error || preview.error}</p>}
       <button type="button" className="module-submit-btn" disabled={printing || savingCode || !qrUrl || Boolean(preview.error) || (codeType==='barcode' && codeDraft.trim()!==productBarcodeValue(effectiveProduct ?? product))} onClick={()=>void print()}><QrCode size={16}/> {printing?'Preparando…':'Imprimir etiqueta'}</button>

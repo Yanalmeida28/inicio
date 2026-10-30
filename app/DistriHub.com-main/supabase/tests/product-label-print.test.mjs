@@ -69,7 +69,7 @@ test('small labels refuse to shrink a dense QR and longer data requires more phy
   const api=harness();
   assert.throws(()=>api.productLabelDocument(product,{width:30,height:20},'qr'),/pequena/);
   const dense='data:image/svg+xml;charset=utf-8,'+encodeURIComponent('<svg data-modules="65"></svg>');
-  assert.equal(api.productLabelQrSide({width:50,height:80},dense),46);
+  assert.equal(api.productLabelQrSide({width:50,height:80},dense),44);
   assert.throws(()=>api.productLabelQrSide({width:40,height:58},dense),/pequena/);
 });
 
@@ -114,6 +114,24 @@ test('barcode labels print the saved code and refuse bars that would be too narr
  assert.equal(doc.images[0].alt,'Código de barras do produto');
  const dense='data:image/svg+xml;charset=utf-8,'+encodeURIComponent('<svg data-bar-modules="300"></svg>');
  assert.throws(()=>api.productLabelDocument(product,{width:40,height:58,codeType:'barcode'},dense),/pequena/);
+});
+
+test('safe margins constrain both QR and barcode geometry without stretching the preview',()=>{
+ const api=harness(),size={width:40,height:58,marginMm:4};
+ assert.equal(api.productLabelArea(size).width,32);
+ assert.equal(api.productLabelArea(size).height,50);
+ const side=api.productLabelQrSide(size,'qr');
+ assert.ok(side<=32&&side+2+23<=50);
+ const doc=api.productLabelDocument(product,size,'qr');
+ const css=doc.head.children.find(node=>node.tag==='style').textContent;
+ assert.ok(css.includes('padding: 4mm'));
+ assert.ok(css.includes('min-height: 0; max-width: 100%; max-height: 100%'));
+ assert.ok(!css.includes('@media screen'));
+ const barcode='data:image/svg+xml;charset=utf-8,'+encodeURIComponent('<svg data-bar-modules="121"></svg>');
+ const bars=api.productLabelDocument(product,{...size,codeType:'barcode'},barcode);
+ assert.ok(bars.head.children.filter(node=>node.tag==='style').some(node=>node.textContent.includes('width: 32mm')));
+ assert.throws(()=>api.productLabelDocument(product,{...size,marginMm:6,codeType:'barcode'},barcode),/pequena/);
+ for(const marginMm of [0,NaN,7])assert.throws(()=>api.productLabelDocument(product,{...size,marginMm},'qr'),/margem/);
 });
 
 test('printing waits for QR image decoding and prints the separate document only',async()=>{

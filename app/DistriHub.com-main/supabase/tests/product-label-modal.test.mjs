@@ -32,9 +32,15 @@ test('generated barcode waits for confirmed persistence, blocks duplicate saves 
   assert.equal(closed,false);
   await act(async()=>finish());
   assert.equal(print().props.disabled,false);
+  await act(async()=>r.root.findByProps({'aria-label':'Margem de segurança da etiqueta'}).props.onChange({target:{value:'4'}}));
+  const preview=r.root.findByType('iframe');
+  assert.equal(preview.props.style.width,'40mm');
+  assert.equal(preview.props.style.height,'58mm');
+  assert.equal(preview.props.style.boxSizing,'content-box');
   await act(async()=>print().props.onClick());
   assert.equal(h.calls[0][0].barcode,'200000500006');
   assert.equal(h.calls[0][1].codeType,'barcode');
+  assert.equal(h.calls[0][1].marginMm,4);
  }finally{await act(async()=>r.unmount());}
 });
 test('failed persistence leaves the new code unavailable for printing',async()=>{
