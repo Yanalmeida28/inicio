@@ -97,13 +97,13 @@ export function ProductLabelModal({ product, products = [], onSaveBarcode, onClo
       </label>
       <label>Margem de segurança (mm)<input aria-label="Margem de segurança da etiqueta" type="number" min="2" max="6" step="0.5" value={marginMm} disabled={printing} onChange={event=>setMarginMm(event.target.value)}/></label>
       <small>A margem afasta o conteúdo das quatro bordas. Se o código não couber com essa margem, use uma etiqueta maior.</small>
-      <p>Use as medidas da etiqueta colocada na impressora. Na impressão, escolha o mesmo papel, escala de 100% e desative cabeçalhos e rodapés.</p>
+      <p>A etiqueta abre em PDF de uma página, sem data, endereço ou numeração do navegador. No PDF, use o botão de imprimir, selecione o mesmo tamanho de papel e escala de 100% ou Tamanho real.</p>
       {preview.html && <div style={{overflowX:'auto',padding:'4px 2px',marginBottom:16}}>
         <iframe title="Prévia da etiqueta do produto" srcDoc={preview.html} style={{display:'block',width:`${width}mm`,height:`${height}mm`,boxSizing:'content-box',maxWidth:'none',border:'1px solid #ccc',background:'#fff',margin:'0 auto'}}/>
       </div>}
       {!qrUrl && !error && <p role="status">Gerando código do produto…</p>}
       {(error || preview.error) && <p role="alert" className="form-error-msg">{error || preview.error}</p>}
-      <button type="button" className="module-submit-btn" disabled={printing || savingCode || !qrUrl || Boolean(preview.error) || (codeType==='barcode' && codeDraft.trim()!==productBarcodeValue(effectiveProduct ?? product))} onClick={()=>void print()}><QrCode size={16}/> {printing?'Preparando…':'Imprimir etiqueta'}</button>
+      <button type="button" className="module-submit-btn" disabled={printing || savingCode || !qrUrl || Boolean(preview.error) || (codeType==='barcode' && codeDraft.trim()!==productBarcodeValue(effectiveProduct ?? product))} onClick={()=>void print()}><QrCode size={16}/> {printing?'Preparando PDF…':'Abrir PDF para imprimir'}</button>
     </div>
   </div>;
 }

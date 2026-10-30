@@ -2,7 +2,7 @@ import type { PartnerProduct } from '../types';
 import { money } from '../utils';
 
 export type ProductLabelSize = { width: number; height: number; showPrice?: boolean; codeType?: 'qr' | 'barcode'; marginMm?: number };
-type LabelProduct = Pick<PartnerProduct, 'id' | 'name' | 'sku' | 'sale_price' | 'barcode'>;
+export type LabelProduct = Pick<PartnerProduct, 'id' | 'name' | 'sku' | 'sale_price' | 'barcode'>;
 
 export function validateProductLabelSize(size: ProductLabelSize) {
   if (!Number.isFinite(size.width) || !Number.isFinite(size.height) || size.width < 30 || size.width > 150 || size.height < 20 || size.height > 150) {
@@ -55,8 +55,7 @@ export function productLabelQrSide(size: ProductLabelSize, qrUrl: string) {
   return Math.max(minimum, Math.min(available, vertical ? area.width : area.width * 0.38));
 }
 
-// A separate document keeps navigation, modal styles and mobile breakpoints off the paper.
-export function productLabelDocument(product: LabelProduct, size: ProductLabelSize, qrUrl: string, doc = document.implementation.createHTMLDocument('Etiqueta do produto')) {
+export function productLabelLayout(size: ProductLabelSize, qrUrl: string) {
   validateProductLabelSize(size);
   const vertical = size.height >= size.width;
   const barcode = size.codeType === 'barcode';
@@ -68,6 +67,21 @@ export function productLabelDocument(product: LabelProduct, size: ProductLabelSi
     const modules = Number(svg.match(/data-bar-modules="(\d+)"/)?.[1]);
     if (!modules || modules * 0.25 > area.width || barHeight < 10) throw new Error('Etiqueta pequena para este código de barras. Escolha papel maior, retire o preço ou revise a margem.');
   }
+  const stacked = barcode || vertical;
+  const imageWidth = barcode ? area.width : qrSide;
+  const imageHeight = barcode ? barHeight : qrSide;
+  return {vertical,barcode,qrSide,area,barHeight,stacked,imageWidth,imageHeight,
+    imageX:area.margin+(stacked?(area.width-imageWidth)/2:0),
+    imageY:area.margin+(stacked?0:(area.height-imageHeight)/2),
+    textX:stacked?area.margin:area.margin+imageWidth+2,
+    textY:stacked?area.margin+imageHeight+2:area.margin,
+    textWidth:stacked?area.width:area.width-imageWidth-2,
+    textHeight:stacked?area.height-imageHeight-2:area.height};
+}
+
+// The HTML document is the preview only; actual printing uses a one-page PDF.
+export function productLabelDocument(product: LabelProduct, size: ProductLabelSize, qrUrl: string, doc = document.implementation.createHTMLDocument('Etiqueta do produto')) {
+  const {vertical,barcode,qrSide,area,barHeight} = productLabelLayout(size,qrUrl);
   doc.head.replaceChildren(); doc.body.replaceChildren();
   doc.title = 'Etiqueta do produto'; doc.documentElement.lang = 'pt-BR';
   const charset = doc.createElement('meta'); charset.setAttribute('charset','utf-8'); doc.head.append(charset);
@@ -108,13 +122,15 @@ export function productLabelDocument(product: LabelProduct, size: ProductLabelSi
 
 export async function printProductLabel(product: LabelProduct, size: ProductLabelSize, qrUrl: string) {
   validateProductLabelSize(size);
-  const popup = window.open('', '_blank', 'width=480,height=360');
+  const popup = window.open('', '_blank', 'width=900,height=700');
   if (!popup) throw new Error('Permita pop-ups neste navegador para imprimir a etiqueta.');
   try {
-    const doc = productLabelDocument(product,size,qrUrl,popup.document);
-    await Promise.all(Array.from(doc.images).map(img=>img.decode()));
+    const {createProductLabelPdf} = await import('./productLabelPdf');
+    const pdf = await createProductLabelPdf(product,size,qrUrl);
     if (popup.closed) return;
-    await new Promise<void>(resolve=>popup.requestAnimationFrame(()=>resolve()));
-    popup.focus(); popup.print();
+    const url = URL.createObjectURL(pdf.output('blob'));
+    try { popup.location.replace(url); }
+    catch (cause) { URL.revokeObjectURL(url); throw cause; }
+    window.setTimeout(()=>URL.revokeObjectURL(url),15*60*1000);
   } catch (cause) { popup.close(); throw cause; }
 }

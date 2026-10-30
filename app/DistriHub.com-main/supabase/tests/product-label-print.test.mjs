@@ -9,7 +9,7 @@ const source=await readFile(new URL('../../src/lib/productLabelPrint.ts',import.
 const require=createRequire(import.meta.url);
 const product={id:'product-id',name:'Produto <img src=x onerror=alert(1)>',sku:'TEST-123',sale_price:39.9};
 function harness({blocked=false,decode=()=>Promise.resolve()}={}) {
-  const calls=[];
+  const calls=[],pdfRequests=[];
   function document() {
     const doc={images:[],documentElement:{lang:''},createElement(tag){
       const node={tag,children:[],attributes:{},setAttribute(key,value){this.attributes[key]=value;},append(...items){this.children.push(...items);},replaceChildren(...items){this.children=items;},decode};
@@ -19,13 +19,13 @@ function harness({blocked=false,decode=()=>Promise.resolve()}={}) {
     doc.head=doc.createElement('head');doc.body=doc.createElement('body');return doc;
   }
   const doc=document();
-  const popup={document:doc,closed:false,focus(){calls.push('focus');},print(){calls.push('popup-print');},close(){calls.push('close');this.closed=true;},requestAnimationFrame(callback){callback();}};
+  const popup={document:doc,closed:false,location:{replace(url){assert.equal(url,'blob:label');calls.push('pdf-open');}},focus(){calls.push('focus');},print(){throw Error('HTML printing must never be called');},close(){calls.push('close');this.closed=true;}};
   const exports={};
   vm.runInNewContext(ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText,{
-    exports,document:{implementation:{createHTMLDocument:document}},window:{open(){calls.push('open');return blocked?null:popup;},print(){throw Error('The application page must never be printed');}},
-    require(name){if(name==='../utils')return {money:new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'})};throw Error(name);},
+    exports,document:{implementation:{createHTMLDocument:document}},URL:{createObjectURL(){calls.push('blob-url');return 'blob:label';},revokeObjectURL(){calls.push('revoke');}},window:{setTimeout(){},open(){calls.push('open');return blocked?null:popup;},print(){throw Error('The application page must never be printed');}},
+    require(name){if(name==='../utils')return {money:new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'})};if(name==='./productLabelPdf')return {createProductLabelPdf:async(...args)=>{calls.push('pdf-create');pdfRequests.push(args);await decode();return {output:()=>({})};}};throw Error(name);},
   });
-  return {...exports,doc,popup,calls};
+  return {...exports,doc,popup,calls,pdfRequests};
 }
 test('product label is an isolated white document with physical page size and literal product text',()=>{
   const api=harness();
@@ -61,8 +61,8 @@ test('hiding price removes it from both generated labels and the printed documen
     assert.deepEqual(info.map(node=>node.className),['label-name','label-sku']);
   }
   await api.printProductLabel(product,{width:40,height:58,showPrice:false},'qr');
-  assert.equal(api.doc.body.children[0].children[1].children.some(node=>node.className==='label-price'),false);
-  assert.ok(api.calls.includes('popup-print'));
+  assert.equal(api.pdfRequests[0][1].showPrice,false);
+  assert.ok(api.calls.includes('pdf-open'));
 });
 
 test('small labels refuse to shrink a dense QR and longer data requires more physical space',()=>{
@@ -134,13 +134,14 @@ test('safe margins constrain both QR and barcode geometry without stretching the
  for(const marginMm of [0,NaN,7])assert.throws(()=>api.productLabelDocument(product,{...size,marginMm},'qr'),/margem/);
 });
 
-test('printing waits for QR image decoding and prints the separate document only',async()=>{
+test('printing waits for PDF generation and opens the PDF without printing an HTML page',async()=>{
   let release;
   const api=harness({decode:()=>new Promise(resolve=>{release=resolve;})});
   const pending=api.printProductLabel(product,{width:58,height:40},'qr');
-  assert.deepEqual(api.calls,['open']);
+  await Promise.resolve();await Promise.resolve();
+  assert.deepEqual(api.calls,['open','pdf-create']);
   release();await pending;
-  assert.deepEqual(api.calls,['open','focus','popup-print']);
+  assert.deepEqual(api.calls,['open','pdf-create','blob-url','pdf-open']);
 });
 test('invalid dimensions never open a print window',async()=>{
   const api=harness();
@@ -151,5 +152,5 @@ test('blocked popups report an actionable error; failed QR never prints',async()
   await assert.rejects(harness({blocked:true}).printProductLabel(product,{width:80,height:50},'qr'),/pop-ups/);
   const api=harness({decode:()=>Promise.reject(Error('Image failed'))});
   await assert.rejects(api.printProductLabel(product,{width:80,height:50},'qr'),/Image failed/);
-  assert.deepEqual(api.calls,['open','close']);
+  assert.deepEqual(api.calls,['open','pdf-create','close']);
 });
