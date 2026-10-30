@@ -73,6 +73,7 @@ test('the real PartnerPanel renders its own menus while all operational hooks an
   const partner = { loading: false, syncing: false, settings: null, profile: null,
     branches: [], salespeople: [], suppliers: [], categories: [], products: [], movements: [], sales: [], customers: [], rmas: [], invoices: [], orders: [] };
   const dependencies = {
+    './ModuleBoundary': { ModuleBoundary: ({ children }) => children },
     '../hooks/usePartnerData': { usePartnerData: value => { calls.push(['data', value]); return partner; } },
     '../hooks/useDeviceHeartbeat': { useDeviceHeartbeat: value => { calls.push(['device', value]); return { ready: false }; } },
     '../hooks/useSaasSubscription': { useSaasSubscription: value => { calls.push(['subscription', value]); return { loading: false, subscription: null }; } },
@@ -83,6 +84,8 @@ test('the real PartnerPanel renders its own menus while all operational hooks an
     '../lib/storeTheme': { storeTheme: () => ({}) },
     '../lib/checkoutCash': cashExports,
     '../lib/moduleLoading': { moduleLoader: () => () => { throw new Error('Unexpected module prefetch'); } },
+    './partner/HelpModule': { HelpModule: props => React.createElement('section', { 'data-help': true },
+      React.createElement('button', { 'data-help-back': true, onClick: props.onBack }, 'Back')) },
   };
   vm.runInNewContext(compile(await read('components/PartnerPanel.tsx')), { exports, Error,
     require: name => dependencies[name] ?? (name.startsWith('.') ? new Proxy({}, { get: () => () => null }) : require(name)),
@@ -105,6 +108,12 @@ test('the real PartnerPanel renders its own menus while all operational hooks an
     assert.ok(calls.filter(([kind]) => ['device', 'subscription', 'unread'].includes(kind)).every(([, value]) => value === undefined));
     assert.ok(calls.filter(([kind]) => kind === 'cash').every(([, value]) => value === false));
     assert.equal(renderer.root.findByProps({ 'aria-label': 'Sincronizar' }).props.disabled, true);
+    await act(async () => renderer.root.findByProps({ 'aria-label': 'Ajuda' }).props.onClick());
+    assert.equal(renderer.root.findAllByProps({ 'data-help': true }).length, 1);
+    assert.ok(calls.filter(([kind]) => kind === 'data').every(([, value]) => value === null));
+    assert.ok(calls.filter(([kind]) => ['device', 'subscription', 'unread'].includes(kind)).every(([, value]) => value === undefined));
+    await act(async () => renderer.root.findByProps({ 'data-help-back': true }).props.onClick());
+    assert.equal(renderer.root.findAllByProps({ 'data-help': true }).length, 0);
     await act(async () => renderer.root.findByProps({ 'aria-label': 'Trocar operador por PIN' }).props.onClick());
     assert.deepEqual(requests, ['employee']);
   } finally { await act(async () => renderer.unmount()); }

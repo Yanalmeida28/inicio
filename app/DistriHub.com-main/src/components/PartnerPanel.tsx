@@ -25,6 +25,7 @@ import {
   UserCheck,
   Lock,
   RefreshCw,
+  BookOpen,
 } from 'lucide-react';
 
 import type { User } from '@supabase/supabase-js';
@@ -50,6 +51,7 @@ import { OperatorSelectionStore } from '../lib/checkoutCash';
 
 const loadCadastrosModule = moduleLoader(() => import('./partner/CadastrosModule').then((module) => ({ default: module.CadastrosModule })));
 const CadastrosModule = lazy(loadCadastrosModule);
+const HelpModule = lazy(() => import('./partner/HelpModule').then(module => ({default:module.HelpModule})));
 const loadPdvModule = moduleLoader(() => import('./partner/PdvModule').then((module) => ({ default: module.PdvModule })));
 const PdvModule = lazy(loadPdvModule);
 const loadCashRegisterModule = moduleLoader(() => import('./partner/CashRegisterModule').then((module) => ({ default: module.CashRegisterModule })));
@@ -313,6 +315,8 @@ export function PartnerPanel({
     catch { return ''; }
   });
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [helpFocus, setHelpFocus] = useState<string | undefined>();
   const [switchingBranch, setSwitchingBranch] = useState(false);
   const [branchAccessError, setBranchAccessError] = useState<string | null>(null);
   useEffect(() => {
@@ -1428,6 +1432,7 @@ export function PartnerPanel({
 
   function handleTabClick(tab: Tab) {
     if (blockedTabs.includes(tab)) return;
+    setHelpOpen(false);
     setVisitedTabs((current) => current.has(tab) ? current : new Set(current).add(tab));
     setActiveTab(tab);
     setSidebarOpen(false);
@@ -1794,7 +1799,7 @@ export function PartnerPanel({
                 onTouchStart={() => preloadTab(id)}
                 aria-label={label}
                 className={`sidebar-nav-item ${
-                  activeTab === id
+                  !helpOpen && activeTab === id
                     ? 'active'
                     : ''
                 }`}
@@ -1807,6 +1812,9 @@ export function PartnerPanel({
               </button>
             ),
           )}
+          <button type="button" aria-label="Ajuda" aria-current={helpOpen?'page':undefined} className={'sidebar-nav-item '+(helpOpen?'active':'')} onClick={()=>{setHelpFocus(undefined);setHelpOpen(true);setSidebarOpen(false);}}>
+            <BookOpen size={20}/><span className="sidebar-nav-label">Ajuda</span>
+          </button>
           <button
             type="button"
             className="sidebar-nav-item"
@@ -1838,12 +1846,21 @@ export function PartnerPanel({
 
       <div className="sidebar-main">
         <div className="sidebar-main-inner">
+          {!helpOpen&&<button type="button" className="rma-advance-btn" style={{marginBottom:12}} onClick={()=>{setHelpFocus(accessLocked?'acesso':activeTab);setHelpOpen(true);setSidebarOpen(false);}}>
+            <BookOpen size={16}/> Como usar esta tela
+          </button>}
           {partner.error && (
             <p className="partner-loading">
               {partner.error}
             </p>
           )}
 
+          {helpOpen && <ModuleBoundary><Suspense fallback={<p role="status">Carregando ajuda…</p>}>
+            <HelpModule planId={saas.subscription?.effective_plan} features={saas.subscription?.features} plans={saas.subscription?.plans}
+              focusModule={helpFocus} allowedModules={accessLocked?[]:visibleTabs.map(tab=>tab.id)}
+              onBack={()=>setHelpOpen(false)} onNavigate={module=>{if(!accessLocked&&visibleTabs.some(tab=>tab.id===module))handleTabClick(module as Tab);}}/>
+          </Suspense></ModuleBoundary>}
+          <div hidden={helpOpen}>
           {accessLocked ? <div className="partner-content"><p role="status">Selecione seu operador no menu e confirme o PIN para visualizar os dados da sua filial.</p></div> : <SessionDraftProvider
             key={`${identity?.authUserId ?? user?.id ?? 'pending'}:${identity?.companyUserId ?? 'pending'}:workspace:${effectiveBranchId || 'all'}`}
             scope={`${identity?.authUserId ?? user?.id ?? 'pending'}:${identity?.companyUserId ?? 'pending'}:workspace:${effectiveBranchId || 'all'}`}
@@ -2396,6 +2413,7 @@ export function PartnerPanel({
             )}
           </div>
           </SessionDraftProvider>}
+          </div>
         </div>
       </div>
 
