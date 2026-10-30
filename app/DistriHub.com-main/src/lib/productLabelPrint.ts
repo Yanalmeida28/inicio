@@ -11,16 +11,46 @@ export function validateProductLabelSize(size: ProductLabelSize) {
 }
 
 export async function productLabelQr(product: LabelProduct) {
-  const { BrowserQRCodeSvgWriter } = await import('@zxing/browser');
-  const svg = new BrowserQRCodeSvgWriter().write(product.sku?.trim() || product.id, 256, 256);
+  const [{ BrowserQRCodeSvgWriter }, { EncodeHintType }] = await Promise.all([import('@zxing/browser'), import('@zxing/library')]);
+  const hints = new Map();
+  hints.set(EncodeHintType.ERROR_CORRECTION, 'M');
+  hints.set(EncodeHintType.MARGIN, 4);
+  hints.set(EncodeHintType.CHARACTER_SET, 'UTF-8');
+  // One SVG unit per module avoids fractional padding before physical sizing.
+  const svg = new BrowserQRCodeSvgWriter().write(product.sku?.trim() || product.id, 0, 0, hints);
+  svg.setAttribute('data-modules', svg.getAttribute('width') ?? '');
   svg.setAttribute('shape-rendering', 'crispEdges');
+  const background = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+  background.setAttribute('width', '100%'); background.setAttribute('height', '100%'); background.setAttribute('fill', '#fff');
+  svg.insertBefore(background, svg.firstChild);
   return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(new XMLSerializer().serializeToString(svg));
+}
+
+export function productLabelQrSide(size: ProductLabelSize, qrUrl: string) {
+  validateProductLabelSize(size);
+  let modules = 37;
+  if (qrUrl.startsWith('data:image/svg+xml;charset=utf-8,')) {
+    const svg = decodeURIComponent(qrUrl.slice(qrUrl.indexOf(',') + 1));
+    const encoded = Number(svg.match(/data-modules="(\d+)"/)?.[1]);
+    if (!Number.isInteger(encoded) || encoded < 29 || encoded > 185) throw new Error('QR inválido. Gere a etiqueta novamente.');
+    modules = encoded;
+  }
+  // 0.5 mm per module gives roughly four printer dots at 203 dpi, including the quiet zone.
+  const minimum = Math.ceil(modules * 0.5 * 10) / 10;
+  const vertical = size.height >= size.width;
+  const textHeight = size.showPrice === false ? 17 : 23;
+  const available = vertical
+    ? Math.min(size.width - 4, size.height - 4 - 2 - textHeight)
+    : Math.min(size.height - 4, size.width - 4 - 2 - 10);
+  if (available < minimum) throw new Error('Etiqueta pequena para este QR. Escolha um tamanho maior ou retire o preço.');
+  return Math.max(minimum, Math.min(available, vertical ? size.width - 4 : (size.width - 4) * 0.38));
 }
 
 // A separate document keeps navigation, modal styles and mobile breakpoints off the paper.
 export function productLabelDocument(product: LabelProduct, size: ProductLabelSize, qrUrl: string, doc = document.implementation.createHTMLDocument('Etiqueta do produto')) {
   validateProductLabelSize(size);
   const vertical = size.height >= size.width;
+  const qrSide = productLabelQrSide(size, qrUrl);
   doc.head.replaceChildren(); doc.body.replaceChildren();
   doc.title = 'Etiqueta do produto'; doc.documentElement.lang = 'pt-BR';
   const charset = doc.createElement('meta'); charset.setAttribute('charset','utf-8'); doc.head.append(charset);
@@ -29,9 +59,9 @@ export function productLabelDocument(product: LabelProduct, size: ProductLabelSi
     @page { size: ${size.width}mm ${size.height}mm; margin: 0; }
     * { box-sizing: border-box; }
     html, body { width: ${size.width}mm; height: ${size.height}mm; margin: 0; padding: 0; background: #fff; color: #000; }
-    .product-label { width: 100%; height: 100%; display: grid; grid-template-columns: ${vertical ? 'minmax(0,1fr)' : '38% minmax(0,1fr)'}; ${vertical ? 'grid-template-rows: minmax(0,1fr) auto; text-align: center;' : ''} gap: 2mm; align-items: center; padding: 2mm; font-family: Arial,sans-serif; break-inside: avoid; overflow: hidden; }
+    .product-label { width: 100%; height: 100%; display: grid; grid-template-columns: ${vertical ? 'minmax(0,1fr)' : qrSide + 'mm minmax(0,1fr)'}; ${vertical ? 'grid-template-rows: ' + qrSide + 'mm minmax(0,1fr); text-align: center;' : ''} gap: 2mm; align-items: center; padding: 2mm; font-family: Arial,sans-serif; break-inside: avoid; overflow: hidden; }
     .label-qr { display: flex; align-items: center; justify-content: center; min-width: 0; min-height: 0; height: 100%; overflow: hidden; }
-    .label-qr img { display: block; width: 100%; max-height: 100%; object-fit: contain; }
+    .label-qr img { display: block; width: ${qrSide}mm; height: ${qrSide}mm; flex: none; object-fit: contain; background: #fff; }
     .label-info { display: flex; flex-direction: column; justify-content: center; gap: 1mm; min-width: 0; overflow: hidden; }
     .label-name { font-size: ${size.width < 45 ? 10 : 12}px; line-height: 1.15; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: ${size.height < 30 ? 2 : 3}; overflow: hidden; }
     .label-sku { font-size: 9px; line-height: 1.15; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
