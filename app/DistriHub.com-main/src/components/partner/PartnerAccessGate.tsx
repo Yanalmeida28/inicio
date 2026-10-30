@@ -96,7 +96,7 @@ export function PartnerAccessGate({ user, identity, identityError, onRetryIdenti
 type DirectoryEntry = { id: string; name: string; active: boolean; branch_name: string | null; can_access_all_branches?: boolean };
 type DialogProps = {
   mode: Mode; identity: PartnerIdentity; user: User;
-  onAuthorize: (access: PartnerAccess) => void; onSwitchAccount: () => Promise<void>; onClose?: () => void;
+  onAuthorize: (access: PartnerAccess) => void | Promise<void>; onSwitchAccount: () => Promise<void>; onClose?: () => void;
 };
 
 export function PinAccessDialog({ mode, identity, user, onAuthorize, onSwitchAccount, onClose }: DialogProps) {
@@ -164,7 +164,7 @@ export function PinAccessDialog({ mode, identity, user, onAuthorize, onSwitchAcc
       const access = mode === 'owner'
         ? await authorizeOwner(identity, user, password)
         : await authorizePin(identity, selected, directory.find(row => row.id === selected)?.name ?? 'Colaborador', pin);
-      if (attempt === generation.current.value) { setPin(''); setPassword(''); onAuthorize(access); }
+      if (attempt === generation.current.value) { setPin(''); setPassword(''); await onAuthorize(access); }
     } catch (cause) {
       if (attempt === generation.current.value) setError(cause instanceof Error ? cause.message : 'Não foi possível confirmar o acesso.');
     } finally {

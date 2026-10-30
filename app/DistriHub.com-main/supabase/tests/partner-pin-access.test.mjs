@@ -33,7 +33,7 @@ function harness({ reply = { data: [employee], error: null }, scope = { can_acce
       return q;
     },
     async rpc(name, args) { calls.push({ name, args });
-      if (name === 'create_partner_operator_session') return { data: issuedSession, error: null };
+      if (name === 'create_partner_operator_session') return { data: typeof issuedSession === 'function' ? await issuedSession() : issuedSession, error: null };
       if (name === 'revoke_partner_operator_session') return { data: null, error: null };
       if (name === 'list_partner_operator_directory') return { data: directory, error: null };
       if (name === 'read_partner_operator_branch_access') return { data: scope, error: null };
@@ -200,6 +200,21 @@ test('reload restores an opaque operator session only after server validation, n
     await denied.close();
   }
 });
+test('PIN confirmation stays busy until the reload credential is saved and refuses duplicate requests', async () => {
+  let finish, pending;
+  const h = harness({ issuedSession: () => new Promise(resolve => { finish = resolve; }) });
+  const view = await render(h);
+  await act(async () => view.renderer.root.findByProps({ 'aria-label': 'Colaborador' }).props.onChange({ target: { value: 'employee' } }));
+  await act(async () => view.renderer.root.findByProps({ 'aria-label': 'PIN de acesso' }).props.onChange({ target: { value: '1234' } }));
+  await act(async () => { pending = submit(view); });
+  assert.equal(view.renderer.root.findByProps({ 'aria-label': 'PIN de acesso' }).props.disabled, true);
+  await act(async () => submit(view));
+  assert.equal(h.calls.filter(call => call.name === 'create_partner_operator_session').length, 1);
+  await act(async () => { finish({ credential: 'ops_'+'b'.repeat(64), expires_at: new Date(Date.now()+3600000).toISOString() }); await pending; });
+  assert.ok(view.renderer.root.findByProps({ 'data-workspace': true }));
+  await view.close();
+});
+
 test('login opens the app menus without a PIN screen or any operational data query', async () => {
   const h = harness(), view = await render(h, false);
   try {
