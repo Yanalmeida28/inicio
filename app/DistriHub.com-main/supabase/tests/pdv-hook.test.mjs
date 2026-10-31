@@ -12,6 +12,7 @@ const require = createRequire(import.meta.url);
 const source = await readFile(new URL('../../src/hooks/usePartnerData.ts',import.meta.url),'utf8');
 const helperSource = await readFile(new URL('../../src/lib/pdv.ts',import.meta.url),'utf8');
 const syncSource = await readFile(new URL('../../src/lib/partnerSync.ts',import.meta.url),'utf8');
+const productPersistenceSource = await readFile(new URL('../../src/lib/productPersistence.ts',import.meta.url),'utf8');
 const productNamesSource = await readFile(new URL('../../src/lib/productNames.ts',import.meta.url),'utf8');
 const compile = source => ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText;
 const invoiceModule={exports:{}};
@@ -100,11 +101,11 @@ test('RMA photo retry repeats the same storage path and checks the metadata conf
 test('product photo updates preserve an omitted image and honor explicit removal',async()=>{
  const calls=[];
  const product={id:'photo-product',user_id:'owner',branch_id:'branch',name:'Produto',image_url:'https://storage.test/photo.png',cost_price:10,sale_price:20,wholesale_price:15,stock:2,min_stock:1};
- const h=await harness({readResult:(table,fallback)=>table==='partner_products'?{data:Array.isArray(fallback.data)?[product]:product,error:null}:fallback,rpc:async(name,args)=>{calls.push([name,args]);if(args.p_image_url!==undefined)product.image_url=args.p_image_url;return {data:product.id,error:null};}});
+ const h=await harness({readResult:(table,fallback)=>table==='partner_products'?{data:Array.isArray(fallback.data)?[product]:product,error:null}:fallback,rpc:async(name,args)=>{calls.push([name,args]);if(args.p_image_url!==undefined)product.image_url=args.p_image_url;return {data:{...product,barcode:args.p_barcode,sku:args.p_sku},error:null};}});
  await act(async()=>h.current.updateProduct(product.id,{name:'Produto atualizado'}));
- assert.equal(calls.findLast(call=>call[0]==='execute_partner_product_barcode_mutation')[1].p_image_url,product.image_url);
+ assert.equal(calls.findLast(call=>call[0]==='save_partner_product_profile')[1].p_image_url,product.image_url);
  await act(async()=>h.current.updateProduct(product.id,{image_url:null}));
- assert.equal(calls.findLast(call=>call[0]==='execute_partner_product_barcode_mutation')[1].p_image_url,null);
+ assert.equal(calls.findLast(call=>call[0]==='save_partner_product_profile')[1].p_image_url,null);
  assert.equal(h.current.products.find(item=>item.id===product.id).image_url,null);
 });
 test('product creation and editing only publish data after server confirmation',async()=>{
@@ -113,9 +114,11 @@ test('product creation and editing only publish data after server confirmation',
  const h=await harness({resourceScope:'cadastros:produtos',rpc:async()=>({data:reply,error:null})});
  await act(async()=>assert.rejects(h.current.addProduct(product),/servidor não confirmou/));
  assert.equal(h.current.products.length,0);
- reply='created-product';
+ reply={...product,id:'created-product',name:'Nome confirmado no banco',ncm:'12345678'};
  await act(async()=>h.current.addProduct(product));
  assert.equal(h.current.products[0].id,'created-product');
+ assert.equal(h.current.products[0].name,'Nome confirmado no banco');
+ assert.equal(h.current.products[0].ncm,'12345678');
  const before=h.current.products[0];
  reply='wrong-product';
  await act(async()=>assert.rejects(h.current.updateProduct('created-product',{name:'Alterado'}),/não confirmou o produto/));
@@ -201,7 +204,7 @@ test('older product reads cannot overwrite a newer Realtime product update',asyn
 });
 test('product barcode is sent independently and partial updates preserve it until explicit clearing',async()=>{
  const calls=[];const product={id:'codes-product',user_id:'owner',branch_id:'branch',name:'Produto',sku:'INTERNO-42',barcode:'0012345678905',cost_price:10,sale_price:20,wholesale_price:15,stock:2,min_stock:1};
- const h=await harness({readResult:(table,fallback)=>table==='partner_products'?{data:[product],error:null}:fallback,rpc:async(name,args)=>{calls.push(args);return {data:product.id,error:null};}});
+ const h=await harness({readResult:(table,fallback)=>table==='partner_products'?{data:[product],error:null}:fallback,rpc:async(name,args)=>{calls.push(args);return {data:{...product,barcode:args.p_barcode,sku:args.p_sku},error:null};}});
  await act(async()=>h.current.updateProduct(product.id,{name:'Outro nome'}));
  assert.equal(calls.at(-1).p_sku,'INTERNO-42');assert.equal(calls.at(-1).p_barcode,'0012345678905');
  await act(async()=>h.current.updateProduct(product.id,{barcode:'0098765432109'}));
@@ -212,18 +215,29 @@ test('product barcode is sent independently and partial updates preserve it unti
  await act(async()=>h.current.addProduct({...product,id:undefined,barcode:'0012345678905'}));
  assert.equal(calls.at(-1).p_sku,'INTERNO-42');assert.equal(calls.at(-1).p_barcode,'0012345678905');
 });
-test('photo saving waits for the persisted URL and never announces an unconfirmed image',async()=>{
+test('photo saving uses the server row and refuses mismatched URLs and malformed confirmations',async()=>{
  const product={id:'photo-check',user_id:'owner',branch_id:'branch',name:'Produto',image_url:'https://storage.test/old.jpg',stock:2,min_stock:1,cost_price:10,sale_price:20};
- let persisted={...product},failRead=false,reply=product.id;
- const h=await harness({readResult:(table,fallback)=>table==='partner_products'?Array.isArray(fallback.data)?{data:[product],error:null}:failRead?{data:null,error:{message:'offline'}}:{data:persisted,error:null}:fallback,rpc:async()=>({data:reply,error:null})});
+ let reply={...product};
+ const h=await harness({initialProducts:[product],rpc:async()=>({data:reply,error:null})});
  await act(async()=>assert.rejects(h.current.updateProduct(product.id,{image_url:'https://storage.test/new.jpg'}),/confirmar a foto/));
  assert.equal(h.current.products[0].image_url,product.image_url);
- persisted={...product,image_url:'https://storage.test/new.jpg'};failRead=true;
- await act(async()=>assert.rejects(h.current.updateProduct(product.id,{image_url:persisted.image_url}),/confirmar a foto/));
- failRead=false;reply='another-product';
- await act(async()=>assert.rejects(h.current.updateProduct(product.id,{image_url:persisted.image_url}),/não confirmou o produto/));
- reply=product.id;await act(async()=>h.current.updateProduct(product.id,{image_url:persisted.image_url}));
- assert.equal(h.current.products[0].image_url,persisted.image_url);
+ reply={...product,id:'another-product'};
+ await act(async()=>assert.rejects(h.current.updateProduct(product.id,{image_url:'https://storage.test/new.jpg'}),/não confirmou o produto/));
+ reply={...product,image_url:'https://storage.test/new.jpg'};
+ await act(async()=>h.current.updateProduct(product.id,{image_url:reply.image_url}));
+ assert.equal(h.current.products[0].image_url,reply.image_url);
+});
+
+test('product fiscal edits send an explicit patch and only show the persisted tax fields',async()=>{
+ const product={id:'tax-product',user_id:'owner',branch_id:'branch',name:'Produto',ncm:'12345678',icms_rate:18};
+ const calls=[];
+ const h=await harness({initialProducts:[product],rpc:async(name,args)=>{calls.push({name,args});return {data:{...product,ncm:null,icms_rate:0},error:null};}});
+ await act(async()=>h.current.updateProduct(product.id,{ncm:null,icms_rate:0}));
+ assert.equal(calls[0].name,'save_partner_product_profile');
+ assert.equal(JSON.stringify(calls[0].args.p_fiscal),JSON.stringify({ncm:null,icms_rate:0}));
+ assert.equal(h.current.products[0].ncm,null);assert.equal(h.current.products[0].icms_rate,0);
+ await act(async()=>h.current.updateProduct(product.id,{barcode:'00123'}));
+ assert.equal(JSON.stringify(calls[1].args.p_fiscal),'{}');
 });
 
 test('service warranty updates existing settings directly and only publishes a confirmed saved term',async()=>{
@@ -276,6 +290,8 @@ async function harness({initialSales=[],initialInvoices=[],initialCustomers=[],i
   vm.runInNewContext(compile(syncSource),{exports:syncModule.exports,AbortController,Date,setTimeout(callback){const id=++timerId;timeouts.set(id,callback);return id;},clearTimeout(id){timeouts.delete(id);}});
   const productNamesModule={exports:{}};
   vm.runInNewContext(compile(productNamesSource),{exports:productNamesModule.exports});
+  const productPersistenceModule={exports:{}};
+  vm.runInNewContext(compile(productPersistenceSource),{exports:productPersistenceModule.exports});
   const hookModule={exports:{}};
   vm.runInNewContext(compile(source),{
     exports:hookModule.exports,sessionStorage:storage,crypto:{randomUUID},console,
@@ -289,6 +305,7 @@ async function harness({initialSales=[],initialInvoices=[],initialCustomers=[],i
       if(name==='../lib/operationAttempts')return operationModule.exports;
       if(name==='../lib/pdv')return helperModule.exports;
       if(name==='../lib/partnerSync')return syncModule.exports;
+      if(name==='../lib/productPersistence')return productPersistenceModule.exports;
       if(name==='../lib/productNames')return productNamesModule.exports;
       throw new Error('Unexpected import '+name);
     },
@@ -1006,3 +1023,4 @@ test('history hook serializes requests and rejects an unconfirmed sale ID',async
  let pending;await act(async()=>{pending=h.current.cancelHistorySale(sold.id,'branch');await assert.rejects(h.current.cancelHistorySale(sold.id,'branch'),/Aguarde/);});
  await act(async()=>{release({data:'other-sale',error:null});await assert.rejects(pending,/não confirmado/);});assert.equal(h.current.sales[0].status,'concluida');
 });
+

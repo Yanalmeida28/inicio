@@ -6,6 +6,7 @@ import type { XmlStockImport } from '../lib/cadastroXml';
 import { OperationAttempts } from '../lib/operationAttempts';
 import type { RmaPhotoFile } from '../components/partner/RmaPhotoUpload';
 import { mergePartnerChange, PartnerDataVersions, PartnerLoadCache, partnerResources, partnerRequiredResources, withLoadTimeout, type PartnerCollection } from '../lib/partnerSync';
+import { productFiscalPatch } from '../lib/productPersistence';
 import { findProductNameDuplicates } from '../lib/productNames';
 import { splitPaymentError, billedSaleError, saleChargeTotal, validSalePrice, isDefinitiveSaleRejection, PdvSaleAttemptStore, pdvErrorMessage, type CustomerCredit } from '../lib/pdv';
 import type {
@@ -1046,11 +1047,12 @@ read('sales', (signal) => fetchAllPages((from, to) => client
 
       const { data: created, error: rpcError } =
         await client.rpc(
-          'execute_partner_product_barcode_mutation',
+          'save_partner_product_profile',
           {
             p_salesperson_id: effectiveOperatorId,
             p_pin: effectiveOperatorPin,
             p_product_id: null,
+            p_fiscal: productFiscalPatch(product),
             p_branch_id: product.branch_id ?? null,
             p_name: product.name,
             p_cost_price: product.cost_price,
@@ -1072,18 +1074,10 @@ read('sales', (signal) => fetchAllPages((from, to) => client
         throw rpcError;
       }
 
-      // A RPC retorna o id (uuid) do produto, não a linha completa.
-      if (typeof created !== 'string' || !created) {
+      if (!created || typeof created.id !== 'string' || created.user_id !== currentIdentity.companyUserId) {
         throw new Error('O servidor não confirmou o cadastro do produto. Mantenha os dados abertos e tente novamente.');
       }
-
-      const createdProduct: PartnerProduct = {
-        ...product,
-        id: created,
-        user_id: currentIdentity.companyUserId,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
+      const createdProduct = created as PartnerProduct;
 
       dataRevisionRef.current.invalidate(["products"]);
       setData((prev) => ({
@@ -1159,13 +1153,14 @@ read('sales', (signal) => fetchAllPages((from, to) => client
       const effectiveOperatorId = operatorId ?? null;
       const effectiveOperatorPin = operatorPin ?? null;
 
-      const { data: confirmedId, error: rpcError } =
+      const { data: savedProduct, error: rpcError } =
         await supabase.rpc(
-          'execute_partner_product_barcode_mutation',
+          'save_partner_product_profile',
           {
             p_salesperson_id: effectiveOperatorId,
             p_pin: effectiveOperatorPin,
             p_product_id: id,
+            p_fiscal: productFiscalPatch(product),
             p_branch_id:
               product.branch_id ?? existing.branch_id ?? null,
             p_name: product.name ?? existing.name,
@@ -1196,23 +1191,13 @@ read('sales', (signal) => fetchAllPages((from, to) => client
         throw rpcError;
       }
 
-      if (confirmedId !== id) throw new Error('O servidor não confirmou o produto. Mantenha o cadastro aberto e tente salvar novamente.');
-      if (product.image_url !== undefined) {
-        const { data: persisted, error: readError } = await withLoadTimeout(() => supabase!.from('partner_products')
-          .select('id,image_url').eq('id', id).eq('user_id', currentIdentity.companyUserId).maybeSingle(),
-          'O produto foi enviado, mas a confirmação da foto demorou demais. Mantenha o cadastro aberto e tente novamente.');
-        if (readError || !persisted || persisted.id !== id || (persisted.image_url ?? null) !== (product.image_url ?? null)) {
-          throw new Error('O produto foi enviado, mas não foi possível confirmar a foto salva. Mantenha o cadastro aberto e tente novamente.');
-        }
+      if (!savedProduct || savedProduct.id !== id || savedProduct.user_id !== currentIdentity.companyUserId) {
+        throw new Error('O servidor não confirmou o produto. Mantenha o cadastro aberto e tente salvar novamente.');
       }
-
-      // Only publish the local photo after confirming the persisted value.
-      const updatedProduct: PartnerProduct = {
-        ...existing,
-        ...product,
-        id,
-        updated_at: new Date().toISOString(),
-      };
+      if (product.image_url !== undefined && (savedProduct.image_url ?? null) !== (product.image_url ?? null)) {
+        throw new Error('Não foi possível confirmar a foto salva. Mantenha o cadastro aberto e tente novamente.');
+      }
+      const updatedProduct = savedProduct as PartnerProduct;
 
       dataRevisionRef.current.invalidate(["products"]);
       setData((prev) => ({
@@ -4216,3 +4201,4 @@ read('sales', (signal) => fetchAllPages((from, to) => client
     recordAuditLog,
   };
 }
+
